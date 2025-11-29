@@ -42,9 +42,12 @@ PRIMARY_DARK = "#1E63C4"     # Темный синий
 TEXT_COLOR = "#3D4858"       # Темно-серый (Основной текст)
 LIGHT_BG_MAIN = "#F1F5F9"    # Светло-серый фон полей
 BORDER_COLOR = "#E2E8F0"     # Цвет рамки
-DARK_BORDER = "#94a3b8"      # Темная рамка для невыбранных элементов
+DARK_BORDER = "#222222"      # Почти черный для контуров
 MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
 
+# ==========================================
+# CSS СТИЛИ (ИСПРАВЛЕННЫЕ - ЖЕСТКОЕ ПЕРЕОПРЕДЕЛЕНИЕ ЦВЕТОВ)
+# ==========================================
 st.markdown(f"""
    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -55,16 +58,12 @@ st.markdown(f"""
             --text-color: {TEXT_COLOR};
         }}
         
-        /* 1. ОСНОВНАЯ ТИПОГРАФИКА */
         html, body, [class*="stApp"], [class*="css"] {{
             font-family: 'Inter', sans-serif;
             background-color: #FFFFFF !important;
             color: {TEXT_COLOR} !important; 
         }}
-        h1, h2, h3, p, label, span, div, a {{
-            color: {TEXT_COLOR} !important; 
-        }}
-
+        
         .block-container {{
             padding-top: 1rem !important;
             padding-bottom: 2rem !important;
@@ -72,9 +71,8 @@ st.markdown(f"""
         }}
         
         /* ======================================================= */
-        /* 2. ПОЛЯ ВВОДА (Input, Textarea, Selectbox)              */
+        /* ПОЛЯ ВВОДА                                              */
         /* ======================================================= */
-        
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
@@ -83,177 +81,130 @@ st.markdown(f"""
             border: 1px solid {BORDER_COLOR} !important;
             border-radius: 6px;
         }}
-
-        /* ФОКУС: СИНЯЯ РАМКА */
-        .stTextInput input:focus,
-        .stTextArea textarea:focus,
-        .stSelectbox div[data-baseweb="select"] > div:focus-within {{
+        .stTextInput input:focus, .stTextArea textarea:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
-        
-        /* Иконки Selectbox */
-        .stSelectbox svg {{
-            fill: {TEXT_COLOR} !important;
-        }}
+        .stSelectbox svg {{ fill: {TEXT_COLOR} !important; }}
 
         /* ======================================================= */
-        /* ИСПРАВЛЕНИЕ: ЦВЕТА ВЫПАДАЮЩЕГО СПИСКА (Скриншот 3)      */
+        /* ВЫПАДАЮЩИЕ СПИСКИ (Белый фон)                           */
         /* ======================================================= */
-        
-        /* Само всплывающее окно меню */
-        ul[data-baseweb="menu"] {{
-            background-color: #FFFFFF !important; /* Белый фон списка */
+        div[data-baseweb="popover"], ul[data-baseweb="menu"] {{
+            background-color: #FFFFFF !important;
             border: 1px solid {BORDER_COLOR} !important;
         }}
-        
-        /* Элементы списка */
         li[data-baseweb="option"] {{
-            color: {TEXT_COLOR} !important; /* Темный текст */
+            color: {TEXT_COLOR} !important; 
             background-color: #FFFFFF !important;
         }}
-        
-        /* Элемент списка при наведении или выборе */
-        li[data-baseweb="option"]:hover,
-        li[data-baseweb="option"][aria-selected="true"] {{
-            background-color: {LIGHT_BG_MAIN} !important; /* Светло-серый фон при наведении */
-            color: {PRIMARY_COLOR} !important; /* Синий текст */
+        li[data-baseweb="option"]:hover, li[data-baseweb="option"][aria-selected="true"] {{
+            background-color: {LIGHT_BG_MAIN} !important;
+            color: {PRIMARY_COLOR} !important;
             font-weight: 600;
         }}
         
         /* ======================================================= */
-        /* 3. РАДИО-КНОПКИ (ИСПРАВЛЕНИЕ - Скриншот 1 и 2)          */
+        /* РАДИО-КНОПКИ (ИСПРАВЛЕНИЕ: БЕЛЫЙ ПУСТОЙ, СИНИЙ ПОЛНЫЙ)  */
         /* ======================================================= */
 
-        /* Контейнер радио-кнопок */
+        /* 1. Контейнер самой радио-кнопки */
         div[role="radiogroup"] label {{
-            background-color: #FFFFFF !important;
+            background-color: transparent !important;
             border: 1px solid {BORDER_COLOR};
             border-radius: 6px;
             padding: 10px 15px;
             margin-right: 5px;
-            transition: border 0.2s;
         }}
 
-        /* 3.1. КРУЖОК - НЕ ВЫБРАН (Белый фон, ТОНКАЯ ЧЕРНАЯ рамка) */
+        /* 2. КРУЖОК - НЕ ВЫБРАН */
+        /* Принудительно ставим БЕЛЫЙ фон и ЧЕРНУЮ (темную) рамку */
         div[role="radiogroup"] label div[data-baseweb="radio"] > div {{
-            background-color: #FFFFFF !important;
-            border: 1px solid #222222 !important; /* Исправлено на почти черный */
+            background-color: #FFFFFF !important;  /* БЕЛЫЙ ФОН */
+            border: 1px solid #000000 !important;  /* ЧЕРНАЯ РАМКА */
         }}
 
-        /* 3.2. КРУЖОК - ВЫБРАН (СИНИЙ фон, СИНЯЯ рамка) */
+        /* 3. КРУЖОК - ВЫБРАН */
+        /* Когда input:checked, красим круг в СИНИЙ */
         div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div {{
-            background-color: {PRIMARY_COLOR} !important;
-            border-color: {PRIMARY_COLOR} !important;
+            background-color: {PRIMARY_COLOR} !important; /* СИНИЙ ФОН */
+            border-color: {PRIMARY_COLOR} !important;     /* СИНЯЯ РАМКА */
             border-width: 1px !important;
         }}
         
-        /* 3.3. ВНУТРЕННЯЯ ТОЧКА (Белая) */
+        /* 4. ВНУТРЕННЯЯ ТОЧКА при выборе */
+        /* Делаем её белой, чтобы было видно, что выбрано (Синий круг с белой точкой) */
         div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div > div {{
-            background-color: #FFFFFF !important;
-        }}
-
-        /* Текст выбранной радио-кнопки */
-        div[role="radiogroup"] label input:checked + div {{
-             color: {TEXT_COLOR} !important;
-             font-weight: 600;
+            background-color: #FFFFFF !important; 
         }}
         
-        /* Рамка вокруг выбранного блока (синяя) */
+        /* 5. Подсветка рамки всего блока при выборе */
         div[role="radiogroup"] label:has(input:checked) {{
             border-color: {PRIMARY_COLOR} !important;
-            background-color: #F8FAFC !important; /* Чуть подсвечиваем фон блока */
+            background-color: #F0F7FF !important; /* Легкий синий фон для всего блока */
         }}
 
-
         /* ======================================================= */
-        /* 4. ЧЕКБОКСЫ (ИСПРАВЛЕНИЕ - Скриншот 1 и 2)              */
+        /* ЧЕКБОКСЫ (АНАЛОГИЧНО)                                   */
         /* ======================================================= */
-
-        /* 4.1. КВАДРАТ - НЕ ВЫБРАН (Белый фон, ТОНКАЯ ЧЕРНАЯ рамка) */
+        
+        /* НЕ ВЫБРАН: Белый квадрат, Черная рамка */
         div[data-baseweb="checkbox"] > div:first-child {{
             background-color: #FFFFFF !important;
-            border: 1px solid #222222 !important; /* Исправлено на почти черный */
+            border: 1px solid #000000 !important;
         }}
-
-        /* 4.2. КВАДРАТ - ВЫБРАН (СИНИЙ фон, СИНЯЯ рамка) */
+        
+        /* ВЫБРАН: Синий квадрат, Синяя рамка */
         div[data-baseweb="checkbox"] input:checked + div:first-child {{
             background-color: {PRIMARY_COLOR} !important;
             border-color: {PRIMARY_COLOR} !important;
         }}
         
-        /* ГАЛОЧКА (Белая) */
+        /* Галочка внутри белая */
         div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
             fill: #FFFFFF !important;
         }}
         
-        /* Убираем ховер-эффект (чтобы не краснел/оранжевел) */
+        /* Убираем красный ховер */
         div[data-baseweb="checkbox"]:hover > div:first-child {{
             border-color: {PRIMARY_COLOR} !important;
         }}
 
-
         /* ======================================================= */
-        /* 5. КНОПКА ЗАПУСКА                                       */
+        /* КНОПКА                                                  */
         /* ======================================================= */
         .stButton button {{
             background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
             color: white !important;
-            font-weight: bold;
+            border: none;
             border-radius: 6px;
             height: 50px;
-            width: 100%;
-            border: none;
-            margin-top: 10px;
-        }}
-        .stButton button:focus {{
-            border-color: {PRIMARY_COLOR} !important;
-            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
-            color: white !important;
-        }}
-
-
-        /* ======================================================= */
-        /* 6. САЙДБАР                                              */
-        /* ======================================================= */
-        .st-emotion-cache-1cpxwwu {{ 
-            width: 65% !important;
-            padding-right: 20px; 
-            max-width: 65% !important;
-            padding-left: 0 !important;
         }}
         
+        /* ======================================================= */
+        /* САЙДБАР                                                 */
+        /* ======================================================= */
+        .st-emotion-cache-1cpxwwu {{ 
+            width: 65% !important; max-width: 65% !important;
+        }}
         div[data-testid="column"]:nth-child(2) {{
-            position: fixed !important;
-            right: 0 !important;
-            top: 0 !important;
-            width: 35% !important; 
-            height: 100vh !important;
-            overflow-y: auto !important; 
-            background-color: #FFFFFF !important; 
-            padding: 1rem 1rem 2rem 1.5rem !important; 
-            z-index: 100;
+            position: fixed !important; right: 0; top: 0; width: 35% !important; height: 100vh;
+            overflow-y: auto; background-color: #FFFFFF !important;
+            padding: 1rem 1rem 2rem 1.5rem !important; z-index: 100;
             box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; 
         }}
-
         div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] > div,
         div[data-testid="column"]:nth-child(2) .stTextInput input,
         div[data-testid="column"]:nth-child(2) .stTextarea textarea {{
             background-color: {LIGHT_BG_MAIN} !important; 
-            color: {TEXT_COLOR} !important;
             border: 1px solid {BORDER_COLOR} !important;
-            box-shadow: none !important;
-        }}
-
-        div[data-testid="column"]:nth-child(2) .stCaption {{
-            display: none;
         }}
 
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. ЛОГИКА (БЭКЕНД - ВАШ РАБОЧИЙ КОД)
+# 2. ЛОГИКА (БЭКЕНД)
 # ==========================================
 
 try:
@@ -450,18 +401,14 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ИНТЕРФЕЙС (МАКЕТ С ДВУМЯ КОЛОНКАМИ)
+# 3. ИНТЕРФЕЙС
 # ==========================================
 
-# --- ОСНОВНОЙ МАКЕТ: ДВЕ КОЛОНКИ (65% / 35%) ---
 col_main, col_sidebar = st.columns([65, 35]) 
 
-# --- ЛЕВАЯ КОЛОНКА (Основной контент) ---
 with col_main:
-    
     st.title("SEO Анализатор Релевантности")
 
-    # Инициализация стейта для кнопки
     if 'start_analysis_flag' not in st.session_state:
         st.session_state.start_analysis_flag = False
 
@@ -501,73 +448,43 @@ with col_main:
     )
     source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
 
-    # --- 4. Редактируемые списки (Левая колонка) ---
+    # --- 4. Редактируемые списки ---
     st.markdown("### Редактируемые списки")
 
-    # Не учитывать домены
     excludes = st.text_area("Не учитывать домены (каждый с новой строки)", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
     st.caption("Домены, которые будут исключены из анализа конкурентов.")
 
-    # Стоп-слова
     c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=200, key="settings_stops")
     st.caption("Слова, которые будут удалены перед лемматизацией.")
 
-    # 5. КНОПКА ЗАПУСКА (РАСПОЛОЖЕНА ВНИЗУ)
     st.markdown("---")
     if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
         st.session_state.start_analysis_flag = True
 
-# --- ПРАВАЯ КОЛОНКА (Настройки) ---
+# --- ПРАВАЯ КОЛОНКА ---
 with col_sidebar:
-    # Используем st.container, чтобы стили CSS-колонок могли работать с содержимым
     with st.container(): 
         st.markdown("#####⚙️ Настройки")
 
-        # --- Блок 1: Основные параметры (SELECTS/TEXT INPUTS) ---
         st.markdown("###### Основные параметры")
-        
-        # User-Agent
         ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
         st.caption("Определяет, как будет скачиваться страница.")
         
-        # Поисковая система
         search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
-        
-        # Яндекс / Регион
         region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
-        
-        # Устройство
         device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-        
-        # Анализировать ТОП
         top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
 
-        # Учитывать тип страниц по url
-        st.selectbox(
-            "Учитывать тип страниц по url", 
-            ["Все страницы", "Главные страницы", "Внутренние страницы"],
-            key="settings_url_type"
-        )
-
-        # Учитывать тип
-        st.selectbox(
-            "Учитывать тип", 
-            ["Все страницы", "Коммерческие", "Информационные"],
-            key="settings_content_type"
-        )
+        st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
+        st.selectbox("Учитывать тип", ["Все страницы", "Коммерческие", "Информационные"], key="settings_content_type")
         
-        # --- Блок 2: Редактируемые списки (Заглушки для сайдбара) ---
         st.markdown("###### Редактируемые списки")
-        
         st.markdown("Не учитывать домены (каждый с новой строки)")
         st.text_area("Пустое поле для вида", value=DEFAULT_EXCLUDE[:100], height=100, label_visibility="collapsed", disabled=True)
         st.markdown("Стоп-слова (каждое с новой строки)")
         st.text_area("Пустое поле для вида", value=DEFAULT_STOPS[:50], height=100, label_visibility="collapsed", disabled=True)
 
-        
-        # --- Блок 3: Флажки ---
         st.markdown("###### Переключатели")
-        
         col_check1_s, col_check2_s = st.columns(2)
         with col_check1_s:
             st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
@@ -577,12 +494,10 @@ with col_sidebar:
             st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
             st.checkbox("Исключать агрегаторы/маркетплейсы в поиске (дополнительно)", True, key="settings_agg")
 
-
-# --- ЛОГИКА ЗАПУСКА (ВЫПОЛНЯЕТСЯ ПРИ НАЖАТИИ КНОПКИ) ---
+# --- ЛОГИКА ЗАПУСКА ---
 if st.session_state.start_analysis_flag:
     st.session_state.start_analysis_flag = False
 
-    # (Проверка ввода и сбор настроек)
     if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
         st.error("Введите URL!")
         st.stop()
@@ -608,14 +523,13 @@ if st.session_state.start_analysis_flag:
     
     target_urls = []
     if source_type == "Google (Авто)":
-        
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
         
         try:
             with st.spinner(f"Сбор ТОПа {st.session_state.settings_search_engine}..."):
                 if not USE_SEARCH:
-                    st.error("Библиотека 'googlesearch' не найдена. Невозможно выполнить автоматический поиск ТОПа.")
+                    st.error("Библиотека 'googlesearch' не найдена.")
                     st.stop()
 
                 found = search(st.session_state.query_input, num_results=st.session_state.settings_top_n * 2, lang="ru")
@@ -630,7 +544,6 @@ if st.session_state.start_analysis_flag:
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
     else: 
-        # Ручной список (из рабочего text_area)
         manual_urls_area_run = st.text_area("Список URL (каждый с новой строки)", height=200, key="manual_urls_area_run")
         target_urls = [u.strip() for u in manual_urls_area_run.split('\n') if u.strip()]
 
@@ -638,7 +551,6 @@ if st.session_state.start_analysis_flag:
         st.error("Нет конкурентов для анализа.")
         st.stop()
         
-    # --- ОБРАБОТКА ДАННЫХ ВАШЕГО САЙТА ---
     my_data = None
     if my_input_type == "Релевантная страница на вашем сайте":
         prog = st.progress(0.0)
@@ -647,19 +559,13 @@ if st.session_state.start_analysis_flag:
         my_data = parse_page(st.session_state.my_url_input, settings)
         prog.progress(0.05)
         if not my_data:
-            st.error("Ошибка доступа к сайту. Проверьте URL или попробуйте 'Исходный код'.")
+            st.error("Ошибка доступа к сайту.")
             st.stop()
         prog.empty()
         status.empty()
     elif my_input_type == "Исходный код страницы или текст":
-        my_data = {
-            'url': 'Local Content', 
-            'domain': 'local.content', 
-            'body_text': st.session_state.my_content_input, 
-            'anchor_text': '' 
-        }
+        my_data = {'url': 'Local Content', 'domain': 'local.content', 'body_text': st.session_state.my_content_input, 'anchor_text': '' }
     
-    # --- СКАЧИВАНИЕ КОНКУРЕНТОВ ---
     comp_data = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
@@ -679,57 +585,31 @@ if st.session_state.start_analysis_flag:
     status_comp.empty()
     
     if len(comp_data) < 2 and my_input_type != "Без страницы":
-        st.warning(f"Мало данных конкурентов для надежного анализа (менее 2). Продолжаю с {len(comp_data)} данными.")
+        st.warning(f"Мало данных конкурентов для надежного анализа (менее 2).")
 
     if not my_data and my_input_type != "Без страницы":
          st.error("Не удалось получить данные для сравнения.")
          st.stop()
          
-    # --- РАСЧЕТ МЕТРИК И ВЫВОД РЕЗУЛЬТАТОВ ---
     results = calculate_metrics(comp_data, my_data, settings)
     st.success("Готово! Результаты ниже.")
     
-    # Вывод результатов в основной колонке
     with col_main:
         if my_data and len(comp_data) > 0:
             st.markdown("### 1. Рекомендации по глубине")
             df_d = results['depth']
             if not df_d.empty:
                 df_d = df_d.sort_values(by="diff_abs", ascending=False)
-                
-                rows_per_page = 20
-                total_rows = len(df_d)
-                total_pages = math.ceil(total_rows / rows_per_page)
-                
-                if 'page_number' not in st.session_state: st.session_state.page_number = 1
-                
-                col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
-                with col_p1:
-                    if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
-                        st.session_state.page_number -= 1
-                with col_p2:
-                    st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
-                with col_p3:
-                    if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
-                        st.session_state.page_number += 1
-                            
-                start_idx = (st.session_state.page_number - 1) * rows_per_page
-                end_idx = start_idx + rows_per_page
-                df_page = df_d.iloc[start_idx:end_idx]
-                
-                st.dataframe(df_page, column_config={"diff_abs": None}, use_container_width=True, height=800)
+                st.dataframe(df_d, column_config={"diff_abs": None}, use_container_width=True, height=800)
                 st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
                 
                 with st.expander("2. Гибридный ТОП"):
                     st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
-                    
                 with st.expander("3. N-граммы"):
                     st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
 
-            
             with st.expander("4. ТОП релевантности"):
                 st.dataframe(results['relevance_top'], use_container_width=True)
 
             if not my_data:
-                st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы' или не удалось получить данные.")
-
+                st.warning("Основные таблицы не отображаются, так как был выбран режим 'Без страницы'.")
