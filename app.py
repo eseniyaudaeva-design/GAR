@@ -531,14 +531,7 @@ with col_sidebar:
             key="settings_content_type"
         )
         
-        # --- Блок 2: Редактируемые списки (Заглушки для сайдбара) ---
-        st.markdown("###### Редактируемые списки")
-        
-        st.markdown("Не учитывать домены (каждый с новой строки)")
-        st.text_area("Пустое поле для вида", value=DEFAULT_EXCLUDE[:100], height=100, label_visibility="collapsed", disabled=True)
-        st.markdown("Стоп-слова (каждое с новой строки)")
-        st.text_area("Пустое поле для вида", value=DEFAULT_STOPS[:50], height=100, label_visibility="collapsed", disabled=True)
-
+        # Блок с заглушками списков удален отсюда, так как он есть слева
         
         # --- Блок 3: Флажки ---
         st.markdown("###### Переключатели")
@@ -707,4 +700,5 @@ if st.session_state.start_analysis_flag:
 
             if not my_data:
                 st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы' или не удалось получить данные.")
+
 
