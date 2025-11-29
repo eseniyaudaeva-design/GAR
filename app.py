@@ -1,248 +1,201 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import requests
-from bs4 import BeautifulSoup
-import re
-from collections import Counter
-import math
-import inspect
-import concurrent.futures
-from urllib.parse import urlparse
-
-# ==========================================
-# 1. КОНФИГУРАЦИЯ
-# ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
-
-# Обновленный список исключаемых доменов
-DEFAULT_EXCLUDE_DOMAINS = [
-    "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com",
-    "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru",
-    "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", 
-    "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", 
-    "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", 
-    "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", 
-    "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", 
-    "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by"
-]
-DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
-DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
-
-# Список регионов для имитации
-REGIONS = [
-    "Москва", "Санкт-Петербург", "Екатеринбург", "Новосибирск", "Казань", 
-    "Нижний Новгород", "Самара", "Челябинск", "Омск", "Краснодар", 
-    "Киев (UA)", "Минск (BY)", "Алматы (KZ)"
-]
-
-# Цвета
-PRIMARY_COLOR = "#277EFF"    # Синий акцент
-PRIMARY_DARK = "#1E63C4"     # Темный синий
-TEXT_COLOR = "#3D4858"       # Темно-серый (Основной текст)
-LIGHT_BG_MAIN = "#F1F5F9"    # Светло-серый фон полей
-BORDER_COLOR = "#E2E8F0"     # Цвет рамки
-DARK_BORDER = "#94a3b8"      # Темная рамка для невыбранных элементов
-MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
-
 st.markdown(f"""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        
-        :root {{
-            --primary-color: {PRIMARY_COLOR};
-            --text-color: {TEXT_COLOR};
-        }}
-        
-        /* 1. БАЗОВЫЙ ТЕКСТ */
-        html, body, .stApp {{
-            font-family: 'Inter', sans-serif;
-            background-color: #FFFFFF !important;
-            color: {TEXT_COLOR} !important;
-        }}
-        
-        h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {{
-            color: {TEXT_COLOR} !important;
-        }}
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        
+        :root {{
+            --primary-color: {PRIMARY_COLOR};
+            --text-color: {TEXT_COLOR};
+        }}
+        
+        /* 1. БАЗОВЫЙ ТЕКСТ */
+        html, body, .stApp {{
+            font-family: 'Inter', sans-serif;
+            background-color: #FFFFFF !important;
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {{
+            color: {TEXT_COLOR} !important;
+        }}
 
-        .block-container {{
-            padding-top: 1rem !important;
-            padding-bottom: 2rem !important;
-            max-width: 100% !important; 
-        }}
-        
-        /* ======================================================= */
-        /* ПОЛЯ ВВОДА                                              */
-        /* ======================================================= */
-        
-        .stTextInput input, 
-        .stTextArea textarea, 
-        .stSelectbox div[data-baseweb="select"] > div {{
-            color: {TEXT_COLOR} !important;
-            background-color: {LIGHT_BG_MAIN} !important;
-            border: 1px solid {BORDER_COLOR} !important;
-            border-radius: 6px;
-        }}
+        .block-container {{
+            padding-top: 1rem !important;
+            padding-bottom: 2rem !important;
+            max-width: 100% !important; 
+        }}
+        
+        /* ======================================================= */
+        /* ПОЛЯ ВВОДА                                              */
+        /* ======================================================= */
+        
+        .stTextInput input, 
+        .stTextArea textarea, 
+        .stSelectbox div[data-baseweb="select"] > div {{
+            color: {TEXT_COLOR} !important;
+            background-color: {LIGHT_BG_MAIN} !important;
+            border: 1px solid {BORDER_COLOR} !important;
+            border-radius: 6px;
+        }}
 
-        div[data-baseweb="input"]:focus-within,
-        div[data-baseweb="textarea"]:focus-within,
-        div[data-baseweb="select"] > div:focus-within {{
-            border-color: {PRIMARY_COLOR} !important;
-            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
-        }}
+        div[data-baseweb="input"]:focus-within,
+        div[data-baseweb="textarea"]:focus-within,
+        div[data-baseweb="select"] > div:focus-within {{
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
+        }}
 
-        .stTextInput input:focus,
-        .stTextArea textarea:focus {{
-            outline: none !important;
-            border-color: transparent !important;
-            box-shadow: none !important;
-        }}
-        
-        input, textarea {{
-            caret-color: {PRIMARY_COLOR} !important;
-            color: {TEXT_COLOR} !important;
-        }}
-        
-        ::placeholder {{
-            color: #94a3b8 !important;
-            opacity: 1;
-        }}
-        
-        .stSelectbox svg {{
-            fill: {TEXT_COLOR} !important;
-        }}
+        .stTextInput input:focus,
+        .stTextArea textarea:focus {{
+            outline: none !important;
+            border-color: transparent !important;
+            box-shadow: none !important;
+        }}
+        
+        input, textarea {{
+            caret-color: {PRIMARY_COLOR} !important;
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        ::placeholder {{
+            color: #94a3b8 !important;
+            opacity: 1;
+        }}
+        
+        .stSelectbox svg {{
+            fill: {TEXT_COLOR} !important;
+        }}
 
-        /* ======================================================= */
-        /* !!! ИСПРАВЛЕНИЕ ВЫПАДАЮЩЕГО СПИСКА (POPOVER) !!!        */
-        /* ======================================================= */
-        
-        /* Фон самого выпадающего окна и списка */
-        div[data-baseweb="popover"],
-        div[data-baseweb="menu"],
-        div[data-baseweb="menu"] ul {{
-            background-color: #FFFFFF !important;
-        }}
+        /* ======================================================= */
+        /* !!! ИСПРАВЛЕНИЕ ВЫПАДАЮЩЕГО СПИСКА (POPOVER) !!!        */
+        /* ======================================================= */
+        
+        /* Фон самого выпадающего окна и списка */
+        div[data-baseweb="popover"],
+        div[data-baseweb="menu"],
+        div[data-baseweb="menu"] ul {{
+            background-color: #FFFFFF !important;
+        }}
 
-        /* Опции (строки) внутри списка */
-        div[data-baseweb="menu"] li {{
-            background-color: #FFFFFF !important;
-            color: {TEXT_COLOR} !important;
-        }}
-        
-        /* Контейнер для текста опции */
-        div[data-baseweb="menu"] li span, 
-        div[data-baseweb="menu"] li div {{
-            color: {TEXT_COLOR} !important;
-        }}
+        /* Опции (строки) внутри списка */
+        div[data-baseweb="menu"] li {{
+            background-color: #FFFFFF !important;
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        /* Контейнер для текста опции */
+        div[data-baseweb="menu"] li span, 
+        div[data-baseweb="menu"] li div {{
+            color: {TEXT_COLOR} !important;
+        }}
 
-        /* При наведении курсора на опцию */
-        div[data-baseweb="menu"] li:hover {{
-            background-color: {LIGHT_BG_MAIN} !important;
-        }}
+        /* При наведении курсора на опцию */
+        div[data-baseweb="menu"] li:hover {{
+            background-color: {LIGHT_BG_MAIN} !important;
+        }}
 
-        /* Выбранный элемент в списке (активный) */
-        div[data-baseweb="menu"] li[aria-selected="true"] {{
-            background-color: {LIGHT_BG_MAIN} !important;
-            color: {PRIMARY_COLOR} !important;
-            font-weight: 600;
-        }}
-        
-        /* Цвет текста выбранного элемента */
-        div[data-baseweb="menu"] li[aria-selected="true"] * {{
-            color: {PRIMARY_COLOR} !important;
-        }}
+        /* Выбранный элемент в списке (активный) */
+        div[data-baseweb="menu"] li[aria-selected="true"] {{
+            background-color: {LIGHT_BG_MAIN} !important;
+            color: {PRIMARY_COLOR} !important;
+            font-weight: 600;
+        }}
+        
+        /* Цвет текста выбранного элемента */
+        div[data-baseweb="menu"] li[aria-selected="true"] * {{
+            color: {PRIMARY_COLOR} !important;
+        }}
 
-        /* ======================================================= */
-        /* РАДИО И ЧЕКБОКСЫ                                        */
-        /* ======================================================= */
-        
-        div[role="radiogroup"] label {{
-            background-color: #FFFFFF !important;
-            border: 1px solid {BORDER_COLOR};
-            margin-right: 5px;
-        }}
-        
-        div[role="radiogroup"] p {{
-            color: {TEXT_COLOR} !important;
-        }}
-        
-        div[role="radiogroup"] label div[data-baseweb="radio"] > div {{
-            background-color: #FFFFFF !important;
-            border: 2px solid {DARK_BORDER} !important;
-        }}
-        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div {{
-            background-color: {PRIMARY_COLOR} !important;
-            border-color: {PRIMARY_COLOR} !important;
-        }}
-        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div > div {{
-            background-color: #FFFFFF !important;
-        }}
-        div[role="radiogroup"] label:has(input:checked) {{
-            border-color: {PRIMARY_COLOR} !important;
-        }}
+        /* ======================================================= */
+        /* РАДИО И ЧЕКБОКСЫ                                        */
+        /* ======================================================= */
+        
+        div[role="radiogroup"] label {{
+            background-color: #FFFFFF !important;
+            border: 1px solid {BORDER_COLOR};
+            margin-right: 5px;
+        }}
+        
+        div[role="radiogroup"] p {{
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        div[role="radiogroup"] label div[data-baseweb="radio"] > div {{
+            background-color: #FFFFFF !important;
+            border: 2px solid {DARK_BORDER} !important;
+        }}
+        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div {{
+            background-color: {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
+        }}
+        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div > div {{
+            background-color: #FFFFFF !important;
+        }}
+        div[role="radiogroup"] label:has(input:checked) {{
+            border-color: {PRIMARY_COLOR} !important;
+        }}
 
-        /* Чекбоксы */
-        div[data-baseweb="checkbox"] label, div[data-baseweb="checkbox"] p {{
-            color: {TEXT_COLOR} !important;
-        }}
-        div[data-baseweb="checkbox"] > div:first-child {{
-            background-color: #FFFFFF !important;
-            border: 2px solid {DARK_BORDER} !important;
-        }}
-        div[data-baseweb="checkbox"] input:checked + div:first-child {{
-            background-color: {PRIMARY_COLOR} !important;
-            border-color: {PRIMARY_COLOR} !important;
-        }}
-        div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
-            fill: #FFFFFF !important;
-        }}
+        /* Чекбоксы */
+        div[data-baseweb="checkbox"] label, div[data-baseweb="checkbox"] p {{
+            color: {TEXT_COLOR} !important;
+        }}
+        div[data-baseweb="checkbox"] > div:first-child {{
+            background-color: #FFFFFF !important;
+            border: 2px solid {DARK_BORDER} !important;
+        }}
+        div[data-baseweb="checkbox"] input:checked + div:first-child {{
+            background-color: {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
+        }}
+        div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
+            fill: #FFFFFF !important;
+        }}
 
-        /* ======================================================= */
-        /* КНОПКА                                                  */
-        /* ======================================================= */
-        .stButton button {{
-            background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
-            color: white !important;
-            border: none;
-            height: 50px;
-        }}
-        .stButton button:focus {{
-            border-color: {PRIMARY_COLOR} !important;
-            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
-            color: white !important;
-        }}
-        .stButton button p {{
-            color: white !important;
-        }}
+        /* ======================================================= */
+        /* КНОПКА                                                  */
+        /* ======================================================= */
+        .stButton button {{
+            background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
+            color: white !important;
+            border: none;
+            height: 50px;
+        }}
+        .stButton button:focus {{
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
+            color: white !important;
+        }}
+        .stButton button p {{
+            color: white !important;
+        }}
 
-        /* ======================================================= */
-        /* САЙДБАР                                                 */
-        /* ======================================================= */
-        .st-emotion-cache-1cpxwwu {{ 
-            width: 65% !important;
-            max-width: 65% !important;
-        }}
-        div[data-testid="column"]:nth-child(2) {{
-            position: fixed !important;
-            right: 0 !important;
-            top: 0 !important;
-            width: 35% !important; 
-            height: 100vh !important;
-            overflow-y: auto !important; 
-            background-color: #FFFFFF !important; 
-            padding: 1rem 1rem 2rem 1.5rem !important; 
-            z-index: 100;
-            box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; 
-            border-left: 1px solid {BORDER_COLOR};
-        }}
-        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] > div,
-        div[data-testid="column"]:nth-child(2) .stTextInput input,
-        div[data-testid="column"]:nth-child(2) .stTextarea textarea {{
-            background-color: {LIGHT_BG_MAIN} !important; 
-            color: {TEXT_COLOR} !important;
-            border: 1px solid {BORDER_COLOR} !important;
-        }}
-        div[data-testid="column"]:nth-child(2) .stCaption {{ display: none; }}
+        /* ======================================================= */
+        /* САЙДБАР                                                 */
+        /* ======================================================= */
+        .st-emotion-cache-1cpxwwu {{ 
+            width: 65% !important;
+            max-width: 65% !important;
+        }}
+        div[data-testid="column"]:nth-child(2) {{
+            position: fixed !important;
+            right: 0 !important;
+            top: 0 !important;
+            width: 35% !important; 
+            height: 100vh !important;
+            overflow-y: auto !important; 
+            background-color: #FFFFFF !important; 
+            padding: 1rem 1rem 2rem 1.5rem !important; 
+            z-index: 100;
+            box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; 
+            border-left: 1px solid {BORDER_COLOR};
+        }}
+        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] > div,
+        div[data-testid="column"]:nth-child(2) .stTextInput input,
+        div[data-testid="column"]:nth-child(2) .stTextarea textarea {{
+            background-color: {LIGHT_BG_MAIN} !important; 
+            color: {TEXT_COLOR} !important;
+            border: 1px solid {BORDER_COLOR} !important;
+        }}
+        div[data-testid="column"]:nth-child(2) .stCaption {{ display: none; }}
 
     </style>
 """, unsafe_allow_html=True)
@@ -719,4 +672,5 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
