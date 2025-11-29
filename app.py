@@ -41,10 +41,11 @@ PRIMARY_COLOR = "#277EFF"    # Голубой/Синий для кнопки
 PRIMARY_DARK = "#1E63C4"     
 TEXT_COLOR = "#3D4858"       # Темно-серый (Основной текст)
 LIGHT_BG_MAIN = "#F1F5F9"    # Светло-серый фон полей в левом блоке
-LIGHT_BG_SIDEBAR = "#E9EEF4" # Очень светло-серый фон для полей в сайдбаре (как на скриншоте)
+DARK_BG_SIDEBAR = "#334155"  # Темно-серый фон для полей в сайдбаре (как на скриншоте)
+SIDEBAR_TEXT_COLOR = "#FFFFFF" # Белый текст для полей в сайдбаре
 BORDER_COLOR = "#E2E8F0"     # Цвет рамки
 RED_ACCENT = "#DC3545"       # Красный (для маркера выбранной кнопки)
-MAROON_DIVIDER = "#8B0000"   # Темно-бордовый для разделителя
+MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
 
 st.markdown(f"""
    <style>
@@ -98,15 +99,9 @@ st.markdown(f"""
             border: 1px solid {BORDER_COLOR};
             font-weight: 400;
         }}
-        /* Выбранный элемент (Красная рамка, Черный/Красный маркер) */
-        div[data-testid="stRadio"] input:checked + div {{
-            background-color: #FFFFFF !important; 
-            color: {TEXT_COLOR} !important; 
-            border-color: {RED_ACCENT} !important; 
-            font-weight: 600;
-        }}
         /* Маркеры: Стиль согласно скриншоту */
         [data-testid="stCheckbox"] svg {{ color: #000000 !important; }}
+        div[data-testid="stRadio"] input:checked + div {{ border-color: {RED_ACCENT} !important; font-weight: 600; }}
         div[data-testid="stRadio"] input:checked + div svg circle:first-child {{ stroke: {RED_ACCENT} !important; fill: {RED_ACCENT} !important; }}
         div[data-testid="stRadio"] input:not(:checked) + div svg circle:first-child {{ stroke: #000000 !important; fill: #FFFFFF !important; }}
         div[data-testid="stRadio"] input:not(:checked) + div svg circle:last-child {{ fill: #000000 !important; }}
@@ -118,10 +113,9 @@ st.markdown(f"""
         
         /* Фон для правой колонки (имитация сайдбара) */
         div[data-testid="column"]:nth-child(2) > div {{
-            padding-left: 20px; /* Отступ от разделителя */
+            padding-left: 20px; 
             padding-right: 20px;
-            box-shadow: -2px 0 0 0 {MAROON_DIVIDER} inset; 
-            /* Добавляем стили для прокрутки, если нужно (только на результаты) */
+            box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; /* Тонкий красный разделитель */
         }}
 
         /* Стилизация полей ввода в САЙДБАРЕ (ПРАВАЯ КОЛОНКА) */
@@ -129,17 +123,18 @@ st.markdown(f"""
         div[data-testid="column"]:nth-child(2) .stTextInput input,
         div[data-testid="column"]:nth-child(2) .stTextarea textarea
         {{
-            background-color: {LIGHT_BG_SIDEBAR} !important; 
+            background-color: {DARK_BG_SIDEBAR} !important; /* Темно-серый фон */
+            color: {SIDEBAR_TEXT_COLOR} !important; /* Белый текст */
             border: none !important; 
             box-shadow: none !important;
-            border-radius: 4px;
+            border-radius: 0px; /* Убираем скругление */
             padding: 10px 12px;
         }}
         
-        /* Устранение лишних отступов в сайдбаре */
+        /* Устранение лишних отступов и сброс стандартного стиля */
         div[data-testid="column"]:nth-child(2) .stSelectbox, 
         div[data-testid="column"]:nth-child(2) .stTextInput {{
-            margin-bottom: 5px !important;
+            margin-bottom: 0px !important;
         }}
         
         /* Уменьшение отступа заголовков в сайдбаре */
@@ -358,9 +353,6 @@ def calculate_metrics(comp_data, my_data, settings):
 # ==========================================
 
 # --- КНОПКА ЗАПУСКА НА САМОМ ВЕРХУ ---
-# Инициализация для корректного запуска
-if 'last_button_click' not in st.session_state:
-    st.session_state.last_button_click = ''
 if 'start_analysis_flag' not in st.session_state:
     st.session_state.start_analysis_flag = False
 
@@ -423,61 +415,63 @@ with col_main:
 
 # --- ПРАВАЯ КОЛОНКА (Настройки) ---
 with col_sidebar:
-    st.markdown("##### ⚙️ Настройки")
+    # Используем st.container, чтобы стили CSS-колонок могли работать с содержимым
+    with st.container(): 
+        st.markdown("##### ⚙️ Настройки")
 
-    # --- Блок 1: Основные параметры (SELECTS/TEXT INPUTS) ---
-    st.markdown("###### Основные параметры")
-    
-    # User-Agent
-    ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
-    st.caption("Определяет, как будет скачиваться страница.")
-    
-    # Поисковая система
-    search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
-    
-    # Яндекс / Регион
-    region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
-    
-    # Устройство
-    device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-    
-    # Анализировать ТОП
-    top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
+        # --- Блок 1: Основные параметры (SELECTS/TEXT INPUTS) ---
+        st.markdown("###### Основные параметры")
+        
+        # User-Agent
+        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
+        st.caption("Определяет, как будет скачиваться страница.")
+        
+        # Поисковая система
+        search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
+        
+        # Яндекс / Регион
+        region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
+        
+        # Устройство
+        device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
+        
+        # Анализировать ТОП
+        top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
 
-    # Учитывать тип страниц по url
-    st.selectbox(
-        "Учитывать тип страниц по url", 
-        ["Все страницы", "Главные страницы", "Внутренние страницы"],
-        key="settings_url_type"
-    )
+        # Учитывать тип страниц по url
+        st.selectbox(
+            "Учитывать тип страниц по url", 
+            ["Все страницы", "Главные страницы", "Внутренние страницы"],
+            key="settings_url_type"
+        )
 
-    # Учитывать тип
-    st.selectbox(
-        "Учитывать тип", 
-        ["Все страницы", "Коммерческие", "Информационные"],
-        key="settings_content_type"
-    )
-    
-    # --- Блок 2: Редактируемые списки (Заглушки для сайдбара) ---
-    st.markdown("###### Редактируемые списки")
-    
-    st.markdown("Не учитывать домены (каждый с новой строки)")
-    st.text_area("Пустое поле для вида", value=DEFAULT_EXCLUDE[:100], height=100, label_visibility="collapsed", disabled=True)
-    st.markdown("Стоп-слова (каждое с новой строки)")
-    st.text_area("Пустое поле для вида", value=DEFAULT_STOPS[:50], height=100, label_visibility="collapsed", disabled=True)
+        # Учитывать тип
+        st.selectbox(
+            "Учитывать тип", 
+            ["Все страницы", "Коммерческие", "Информационные"],
+            key="settings_content_type"
+        )
+        
+        # --- Блок 2: Редактируемые списки (Заглушки для сайдбара) ---
+        st.markdown("###### Редактируемые списки")
+        
+        st.markdown("Не учитывать домены (каждый с новой строки)")
+        st.text_area("Пустое поле для вида", value=DEFAULT_EXCLUDE[:100], height=100, label_visibility="collapsed", disabled=True)
+        st.markdown("Стоп-слова (каждое с новой строки)")
+        st.text_area("Пустое поле для вида", value=DEFAULT_STOPS[:50], height=100, label_visibility="collapsed", disabled=True)
 
-    
-    # --- Блок 3: Флажки ---
-    st.markdown("###### Переключатели")
-    
-    col_check1_s, col_check2_s = st.columns(2)
-    with col_check1_s:
-        st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
-        st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
-        st.checkbox("Учитывать числа (0-9)", False, key="settings_numbers")
-    with col_check2_s:
-        st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
-        st.checkbox("Исключать агрегаторы/маркетплейсы в поиске (дополнительно)", True, key="settings_agg")
+        
+        # --- Блок 3: Флажки ---
+        st.markdown("###### Переключатели")
+        
+        col_check1_s, col_check2_s = st.columns(2)
+        with col_check1_s:
+            st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
+            st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+            st.checkbox("Учитывать числа (0-9)", False, key="settings_numbers")
+        with col_check2_s:
+            st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
+            st.checkbox("Исключать агрегаторы/маркетплейсы в поиске (дополнительно)", True, key="settings_agg")
 
 
 # --- ЛОГИКА ЗАПУСКА (ВЫПОЛНЯЕТСЯ ПРИ НАЖАТИИ КНОПКИ) ---
@@ -533,7 +527,8 @@ if st.session_state.start_analysis_flag:
             st.stop()
     else: 
         # Ручной список (из рабочего text_area)
-        target_urls = [u.strip() for u in st.session_state.settings_excludes.split('\n') if u.strip()]
+        manual_urls_area_run = st.text_area("Список URL (каждый с новой строки)", height=200, key="manual_urls_area_run")
+        target_urls = [u.strip() for u in manual_urls_area_run.split('\n') if u.strip()]
 
     if not target_urls:
         st.error("Нет конкурентов для анализа.")
@@ -544,4 +539,92 @@ if st.session_state.start_analysis_flag:
     if my_input_type == "Релевантная страница на вашем сайте":
         prog = st.progress(0.0)
         status = st.empty()
-        s
+        status.text("Скачиваем ваш сайт...")
+        my_data = parse_page(st.session_state.my_url_input, settings)
+        prog.progress(0.05)
+        if not my_data:
+            st.error("Ошибка доступа к сайту. Проверьте URL или попробуйте 'Исходный код'.")
+            st.stop()
+        prog.empty()
+        status.empty()
+    elif my_input_type == "Исходный код страницы или текст":
+        my_data = {
+            'url': 'Local Content', 
+            'domain': 'local.content', 
+            'body_text': st.session_state.my_content_input, 
+            'anchor_text': '' 
+        }
+    
+    # --- СКАЧИВАНИЕ КОНКУРЕНТОВ ---
+    comp_data = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
+        done = 0
+        total_tasks = len(target_urls)
+        prog_comp = st.progress(0)
+        status_comp = st.empty()
+        
+        for f in concurrent.futures.as_completed(futures):
+            res = f.result()
+            if res: comp_data.append(res)
+            done += 1
+            prog_comp.progress(done / total_tasks)
+            status_comp.text(f"Скачано {done} из {total_tasks} конкурентов...")
+            
+    prog_comp.empty()
+    status_comp.empty()
+    
+    if len(comp_data) < 2 and my_input_type != "Без страницы":
+        st.warning(f"Мало данных конкурентов для надежного анализа (менее 2). Продолжаю с {len(comp_data)} данными.")
+
+    if not my_data and my_input_type != "Без страницы":
+         st.error("Не удалось получить данные для сравнения.")
+         st.stop()
+         
+    # --- РАСЧЕТ МЕТРИК И ВЫВОД РЕЗУЛЬТАТОВ ---
+    results = calculate_metrics(comp_data, my_data, settings)
+    st.success("Готово! Результаты ниже.")
+    
+    # Вывод результатов в основной колонке
+    with col_main:
+        if my_data and len(comp_data) > 0:
+            st.markdown("### 1. Рекомендации по глубине")
+            df_d = results['depth']
+            if not df_d.empty:
+                df_d = df_d.sort_values(by="diff_abs", ascending=False)
+                
+                rows_per_page = 20
+                total_rows = len(df_d)
+                total_pages = math.ceil(total_rows / rows_per_page)
+                
+                if 'page_number' not in st.session_state: st.session_state.page_number = 1
+                
+                col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
+                with col_p1:
+                    if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
+                        st.session_state.page_number -= 1
+                with col_p2:
+                    st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+                with col_p3:
+                    if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
+                        st.session_state.page_number += 1
+                            
+                start_idx = (st.session_state.page_number - 1) * rows_per_page
+                end_idx = start_idx + rows_per_page
+                df_page = df_d.iloc[start_idx:end_idx]
+                
+                st.dataframe(df_page, column_config={"diff_abs": None}, use_container_width=True, height=800)
+                st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
+                
+                with st.expander("2. Гибридный ТОП"):
+                    st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
+                    
+                with st.expander("3. N-граммы"):
+                    st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
+
+            
+            with st.expander("4. ТОП релевантности"):
+                st.dataframe(results['relevance_top'], use_container_width=True)
+
+            if not my_data:
+                st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы' или не удалось получить данные.")
