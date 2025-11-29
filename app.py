@@ -42,14 +42,20 @@ PRIMARY_DARK = "#1E63C4"     # Темный синий
 TEXT_COLOR = "#3D4858"       # Темно-серый (Основной текст)
 LIGHT_BG_MAIN = "#F1F5F9"    # Светло-серый фон полей
 BORDER_COLOR = "#E2E8F0"     # Цвет рамки
-DARK_BORDER = "#475569"      # Тонкая темная рамка для невыбранных элементов
+DARK_BORDER = "#94a3b8"      # Темная рамка для невыбранных элементов
 MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
 
 st.markdown(f"""
    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* 1. ОСНОВНАЯ ТЕМА И ТИПОГРАФИКА */
+        /* ГЛОБАЛЬНОЕ ПЕРЕОПРЕДЕЛЕНИЕ ТЕМЫ STREAMLIT */
+        :root {{
+            --primary-color: {PRIMARY_COLOR};
+            --text-color: {TEXT_COLOR};
+        }}
+        
+        /* 1. ОСНОВНАЯ ТИПОГРАФИКА */
         html, body, [class*="stApp"], [class*="css"] {{
             font-family: 'Inter', sans-serif;
             background-color: #FFFFFF !important;
@@ -59,7 +65,6 @@ st.markdown(f"""
             color: {TEXT_COLOR} !important; 
         }}
 
-        /* Уменьшение общего отступа */
         .block-container {{
             padding-top: 1rem !important;
             padding-bottom: 2rem !important;
@@ -67,7 +72,7 @@ st.markdown(f"""
         }}
         
         /* ======================================================= */
-        /* 2. СТИЛИЗАЦИЯ ПОЛЕЙ ВВОДА (Input, Textarea, Selectbox)  */
+        /* 2. ПОЛЯ ВВОДА (Input, Textarea, Selectbox)              */
         /* ======================================================= */
         
         .stTextInput input, 
@@ -79,49 +84,49 @@ st.markdown(f"""
             border-radius: 6px;
         }}
 
-        /* ФОКУС (СИНИЙ ЦВЕТ) - Делает рамку синей при нажатии */
-        div[data-baseweb="input"]:focus-within,
-        div[data-baseweb="textarea"]:focus-within,
-        div[data-baseweb="select"]:focus-within {{
+        /* ФОКУС: СИНЯЯ РАМКА (перебиваем оранжевый) */
+        .stTextInput input:focus,
+        .stTextArea textarea:focus,
+        .stSelectbox div[data-baseweb="select"] > div:focus-within {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
-        /* Selectbox иконки и текст */
-        .stSelectbox div[data-baseweb="select"] span,
-        .stSelectbox div[data-baseweb="select"] svg {{
-            color: {TEXT_COLOR} !important;
+        /* Иконки Selectbox */
+        .stSelectbox svg {{
             fill: {TEXT_COLOR} !important;
         }}
         
         /* ======================================================= */
-        /* 3. РАДИО-КНОПКИ (КРУЖОЧКИ)                              */
+        /* 3. РАДИО-КНОПКИ (ИСПРАВЛЕНИЕ ЦВЕТОВ)                    */
         /* ======================================================= */
 
-        /* Контейнер радио-группы */
+        /* Контейнер радио-кнопок */
         div[role="radiogroup"] label {{
             background-color: #FFFFFF !important;
             border: 1px solid {BORDER_COLOR};
             border-radius: 6px;
             padding: 10px 15px;
             margin-right: 5px;
+            transition: border 0.2s;
         }}
 
-        /* 1. НЕ ВЫБРАННЫЙ КРУЖОК -> БЕЛЫЙ с ТЕМНОЙ ОКОНТОВКОЙ */
-        div[role="radiogroup"] label div[data-baseweb="radio"] > div:first-child {{
+        /* 3.1. КРУЖОК - НЕ ВЫБРАН (Белый фон, темная рамка) */
+        /* Ищем div внутри радио, который рисует круг */
+        div[role="radiogroup"] label div[data-baseweb="radio"] > div {{
             background-color: #FFFFFF !important;
-            border: 1px solid {DARK_BORDER} !important; /* Тонкая темная обводка */
+            border: 2px solid {DARK_BORDER} !important;
         }}
-        
-        /* 2. ВЫБРАННЫЙ КРУЖОК -> СИНЯЯ ОБВОДКА, БЕЛЫЙ ФОН */
-        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div:first-child {{
-            border-color: {PRIMARY_COLOR} !important;
-            background-color: #FFFFFF !important;
-        }}
-        
-        /* 3. ВНУТРЕННЯЯ ТОЧКА -> СИНЯЯ */
-        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div:first-child > div {{
+
+        /* 3.2. КРУЖОК - ВЫБРАН (Синий фон, Синяя рамка) */
+        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div {{
             background-color: {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
+        }}
+        
+        /* 3.3. ВНУТРЕННЯЯ ТОЧКА (Белая) */
+        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div > div {{
+            background-color: #FFFFFF !important;
         }}
 
         /* Текст выбранной радио-кнопки */
@@ -129,34 +134,35 @@ st.markdown(f"""
              color: {TEXT_COLOR} !important;
              font-weight: 600;
         }}
-        /* Рамка активного контейнера радио (делаем синей) */
+        
+        /* Рамка вокруг выбранного блока (синяя) */
         div[role="radiogroup"] label:has(input:checked) {{
             border-color: {PRIMARY_COLOR} !important;
         }}
 
 
         /* ======================================================= */
-        /* 4. ЧЕКБОКСЫ (КВАДРАТИКИ)                                */
+        /* 4. ЧЕКБОКСЫ (ИСПРАВЛЕНИЕ ЦВЕТОВ)                        */
         /* ======================================================= */
 
-        /* 1. НЕ ВЫБРАННЫЙ ЧЕКБОКС -> БЕЛЫЙ с ТЕМНОЙ ОКОНТОВКОЙ */
+        /* 4.1. КВАДРАТ - НЕ ВЫБРАН (Белый фон, темная рамка) */
         div[data-baseweb="checkbox"] > div:first-child {{
             background-color: #FFFFFF !important;
-            border: 1px solid {DARK_BORDER} !important; /* Тонкая темная обводка */
+            border: 2px solid {DARK_BORDER} !important;
         }}
 
-        /* 2. ВЫБРАННЫЙ ЧЕКБОКС -> СИНИЙ ФОН */
+        /* 4.2. КВАДРАТ - ВЫБРАН (Синий фон, Синяя рамка) */
         div[data-baseweb="checkbox"] input:checked + div:first-child {{
             background-color: {PRIMARY_COLOR} !important;
             border-color: {PRIMARY_COLOR} !important;
         }}
         
-        /* ГАЛОЧКА внутри -> БЕЛАЯ */
+        /* ГАЛОЧКА (Белая) */
         div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
             fill: #FFFFFF !important;
         }}
         
-        /* Убираем эффекты наведения стандартной темы */
+        /* Убираем ховер-эффект Streamlit (красный) */
         div[data-baseweb="checkbox"]:hover > div:first-child {{
             border-color: {PRIMARY_COLOR} !important;
         }}
