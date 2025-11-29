@@ -498,7 +498,7 @@ with col_main:
 
     # 3. Источник конкурентов
     st.markdown("### Поиск или URL страниц конкурентов")
-    source_type_new = st.radio(
+   source_type_new = st.radio(
         "Источник конкурентов", 
         ["Поиск", "Список url-адресов ваших конкурентов"], 
         horizontal=True,
@@ -506,6 +506,16 @@ with col_main:
         key="competitor_source_radio"
     )
     source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
+
+    # !!! ДОБАВЛЕННЫЙ БЛОК НАЧАЛО !!!
+    manual_urls_input = ""
+    if source_type == "Ручной список":
+        st.markdown("### Введите список URL")
+        manual_urls_input = st.text_area(
+            "Вставьте ссылки здесь (каждая с новой строки)", 
+            height=200, 
+            key="manual_urls_ui"  # Уникальный ключ для интерфейса
+        ) 
 
     # --- 4. Редактируемые списки ---
     st.markdown("### Редактируемые списки")
@@ -601,9 +611,10 @@ if st.session_state.start_analysis_flag:
         except Exception as e:
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
-    else: 
-        manual_urls_area_run = st.text_area("Список URL (каждый с новой строки)", height=200, key="manual_urls_area_run")
-        target_urls = [u.strip() for u in manual_urls_area_run.split('\n') if u.strip()]
+   else: 
+        # Мы просто берем данные из session_state по ключу, который задали выше
+        raw_urls = st.session_state.get("manual_urls_ui", "")
+        target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
 
     if not target_urls:
         st.error("Нет конкурентов для анализа.")
@@ -699,5 +710,6 @@ if st.session_state.start_analysis_flag:
 
             if not my_data:
                 st.warning("Основные таблицы не отображаются, так как был выбран режим 'Без страницы'.")
+
 
 
