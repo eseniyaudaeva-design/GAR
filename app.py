@@ -20,51 +20,89 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Глобальные переменные которые были потеряны
+# Глобальные переменные
 DEFAULT_EXCLUDE = ["yandex.ru", "avito.ru", "ozon.ru", "wildberries.ru", "youtube.com", "dzen.ru", "hh.ru", "t.me"]
 DEFAULT_STOPS = ["рублей", "руб", "купить", "цена", "шт", "см", "мм", "кг", "кв", "м2", "стр", "ул"]
 
-# Полный CSS с исправлениями
+# ЧИСТЫЙ БЕЛЫЙ ДИЗАЙН С СИНИМИ АКЦЕНТАМИ
 st.markdown("""
     <style>
-        /* СБРОС СТИЛЕЙ STREAMLIT */
+        /* ПОЛНОСТЬЮ БЕЛЫЙ ФОН */
         .stApp {
-            background: linear-gradient(135deg, #E6F3FF 0%, #F0F9FF 50%, #E6F7FF 100%) !important;
-            color: #262730 !important;
+            background: #ffffff !important;
+            color: #333333 !important;
             font-family: 'Inter', sans-serif !important;
+        }
+        
+        /* ГРАДИЕНТНЫЕ ЗАГОЛОВКИ */
+        .gradient-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            background-clip: text !important;
+            font-weight: 700 !important;
+            margin-bottom: 1rem !important;
+        }
+        
+        .gradient-subheader {
+            background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            background-clip: text !important;
+            font-weight: 600 !important;
+        }
+        
+        h1 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            background-clip: text !important;
+            font-weight: 700 !important;
+            font-size: 2.5rem !important;
+            text-align: center !important;
+            margin-bottom: 2rem !important;
+        }
+        
+        h2 {
+            background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            background-clip: text !important;
+            font-weight: 600 !important;
+            font-size: 1.5rem !important;
+            margin: 1.5rem 0 1rem 0 !important;
+        }
+        
+        h3 {
+            color: #2c5282 !important;
+            font-weight: 600 !important;
+            font-size: 1.2rem !important;
         }
         
         /* ОСНОВНЫЕ ЭЛЕМЕНТЫ */
-        h1, h2, h3, h4, h5, h6 {
-            color: #1890ff !important;
-            font-weight: 600 !important;
-            font-family: 'Inter', sans-serif !important;
-        }
-        
-        p, div, span, label {
-            color: #262730 !important;
-            font-family: 'Inter', sans-serif !important;
-        }
-        
-        /* КОНТЕЙНЕРЫ */
         .main .block-container {
-            background: transparent !important;
+            background: #ffffff !important;
             padding-top: 2rem !important;
         }
         
-        /* ГЛАВНЫЙ БЛОК ВВОДА */
-        .main-input-container {
-            background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%) !important;
-            padding: 25px !important;
-            border-radius: 15px !important;
-            border: 1px solid #e1f0ff !important;
-            margin-bottom: 25px !important;
-            box-shadow: 0 4px 12px rgba(0, 120, 215, 0.08) !important;
+        p, div, span, label {
+            color: #333333 !important;
+            font-family: 'Inter', sans-serif !important;
         }
         
-        /* КНОПКИ */
+        /* КАРТОЧКИ И КОНТЕЙНЕРЫ */
+        .main-input-container {
+            background: #ffffff !important;
+            padding: 25px !important;
+            border-radius: 12px !important;
+            border: 2px solid #e2e8f0 !important;
+            margin-bottom: 25px !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
+        }
+        
+        /* КНОПКИ С ГРАДИЕНТОМ */
         .stButton button {
-            background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%) !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
             color: white !important;
             font-weight: 600 !important;
             border-radius: 10px !important;
@@ -73,28 +111,29 @@ st.markdown("""
             border: none !important;
             font-size: 16px !important;
             transition: all 0.3s ease !important;
-            box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3) !important;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
         }
         
         .stButton button:hover {
-            background: linear-gradient(135deg, #096dd9 0%, #0050b3 100%) !important;
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important;
             transform: translateY(-2px) !important;
-            box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4) !important;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
             color: white !important;
         }
         
         /* ТЕКСТОВЫЕ ПОЛЯ */
         .stTextInput input, .stTextArea textarea {
             background-color: #ffffff !important;
-            color: #262730 !important;
-            border: 1px solid #bae7ff !important;
+            color: #333333 !important;
+            border: 2px solid #e2e8f0 !important;
             border-radius: 8px !important;
-            padding: 10px !important;
+            padding: 12px !important;
+            font-size: 14px !important;
         }
         
         .stTextInput input:focus, .stTextArea textarea:focus {
-            border-color: #1890ff !important;
-            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
+            border-color: #667eea !important;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
         }
         
         /* РАДИО КНОПКИ */
@@ -102,87 +141,94 @@ st.markdown("""
             background-color: #ffffff !important;
             padding: 15px !important;
             border-radius: 10px !important;
-            border: 1px solid #e1f0ff !important;
+            border: 2px solid #e2e8f0 !important;
             margin-bottom: 10px !important;
         }
         
         .stRadio label {
-            color: #262730 !important;
+            color: #333333 !important;
             font-weight: 500 !important;
         }
         
         /* СЕЛЕКТЫ */
         .stSelectbox select {
             background-color: #ffffff !important;
-            color: #262730 !important;
-            border: 1px solid #bae7ff !important;
+            color: #333333 !important;
+            border: 2px solid #e2e8f0 !important;
             border-radius: 8px !important;
         }
         
         /* ЧЕКБОКСЫ */
         .stCheckbox {
-            color: #262730 !important;
+            color: #333333 !important;
         }
         
         .stCheckbox > label {
-            color: #096dd9 !important;
+            color: #2c5282 !important;
             font-weight: 500 !important;
         }
         
         /* EXPANDER */
         .streamlit-expanderHeader {
-            background: linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%) !important;
-            color: #096dd9 !important;
+            background: #ffffff !important;
+            color: #2c5282 !important;
             font-weight: 600 !important;
-            border-radius: 10px !important;
-            border: 1px solid #bae7ff !important;
+            border-radius: 8px !important;
+            border: 2px solid #e2e8f0 !important;
             padding: 15px !important;
         }
         
         .streamlit-expanderContent {
             background-color: #ffffff !important;
-            border-radius: 0 0 10px 10px !important;
-            border: 1px solid #e1f0ff !important;
+            border-radius: 0 0 8px 8px !important;
+            border: 2px solid #e2e8f0 !important;
             border-top: none !important;
         }
         
         /* ПРОГРЕСС БАР */
         .stProgress > div > div > div {
-            background: linear-gradient(90deg, #1890ff 0%, #36cfc9 100%) !important;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
         }
         
         /* ТАБЛИЦЫ */
         .dataframe {
-            border-radius: 10px !important;
-            box-shadow: 0 4px 12px rgba(0, 120, 215, 0.1) !important;
+            border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
         }
         
         /* DIVIDER */
         hr {
-            border-color: #e1f0ff !important;
+            border-color: #e2e8f0 !important;
             margin: 2rem 0 !important;
         }
         
         /* SPINNER */
         .stSpinner > div {
-            border-color: #1890ff !important;
+            border-color: #667eea !important;
         }
         
         /* ALERTS */
         .stAlert {
-            border-radius: 10px !important;
+            border-radius: 8px !important;
             border: 1px solid !important;
         }
         
-        .stAlert [data-testid="stMarkdownContainer"] {
-            color: inherit !important;
-        }
-        
-        /* LABELS ДЛЯ ВСЕХ ЭЛЕМЕНТОВ */
+        /* LABELS */
         .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label {
-            color: #096dd9 !important;
+            color: #2c5282 !important;
             font-weight: 600 !important;
             font-size: 14px !important;
+        }
+        
+        /* УБИРАЕМ ЛЮБЫЕ СЛЕДЫ ТЕМНОЙ ТЕМЫ */
+        .css-1d391kg, .css-1lcbmhc, .css-1outwn7 {
+            background-color: #ffffff !important;
+        }
+        
+        /* УЛУЧШЕННЫЕ РАДИО КНОПКИ */
+        .st-cc, .st-cd, .st-ce, .st-cf, .st-cg {
+            color: #333333 !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -202,6 +248,7 @@ def check_password():
             justify-content: center; 
             align-items: center; 
             min-height: 80vh;
+            background: #ffffff;
         '>
     """, unsafe_allow_html=True)
     
@@ -209,14 +256,14 @@ def check_password():
     with col2:
         st.markdown("""
             <div style='
-                background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%); 
+                background: #ffffff; 
                 padding: 40px; 
-                border-radius: 20px; 
-                border: 1px solid #e1f0ff; 
-                box-shadow: 0 8px 25px rgba(0, 120, 215, 0.15);
+                border-radius: 15px; 
+                border: 2px solid #e2e8f0; 
+                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
                 text-align: center;
             '>
-                <h2 style='color: #1890ff; margin-bottom: 30px;'>🔐 Авторизация</h2>
+                <h2 style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 30px;'>🔐 Авторизация</h2>
         """, unsafe_allow_html=True)
         
         pwd = st.text_input("Пароль доступа", type="password", key="auth_password")
@@ -237,7 +284,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 3. БЭКЕНД (ЛОГИКА)
+# 3. БЭКЕНД (ЛОГИКА) - БЕЗ ИЗМЕНЕНИЙ
 # ==========================================
 
 # --- Патч NLP ---
@@ -354,7 +401,7 @@ def process_lemmas(text, settings):
 # 4. ИНТЕРФЕЙС
 # ==========================================
 
-st.title("🎯 ГАР PRO: Анализатор Релевантности")
+st.markdown('<h1>🎯 ГАР PRO: Анализатор Релевантности</h1>', unsafe_allow_html=True)
 
 # ГЛАВНЫЙ БЛОК ВВОДА
 with st.container():
@@ -375,7 +422,7 @@ with st.container():
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ИСТОЧНИК КОНКУРЕНТОВ
-st.subheader("📊 Источник конкурентов")
+st.markdown('<h2>📊 Источник конкурентов</h2>', unsafe_allow_html=True)
 source_mode = st.radio(
     "Выберите источник:",
     ["Google Поиск (Авто)", "Ручной список"], 
@@ -595,16 +642,16 @@ if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ", key="analyze_btn"):
     st.divider()
     
     # 1. ТАБЛИЦА: РЕКОМЕНДАЦИИ ПО ГЛУБИНЕ
-    st.markdown('<div class="table-header">📈 Рекомендации по глубине</div>', unsafe_allow_html=True)
+    st.markdown('<h2>📈 Рекомендации по глубине</h2>', unsafe_allow_html=True)
     if not df_main.empty:
         df_main = df_main.sort_values(by="diff_abs", ascending=False)
         
         # Стилизация (подсветка)
         def color_diff(val):
             if val > 0: 
-                return 'background-color: #e6fffb; color: #006d75'
+                return 'background-color: #f0fff4; color: #22543d; border-left: 4px solid #38a169;'
             if val < 0: 
-                return 'background-color: #fff2e8; color: #ad4e00'
+                return 'background-color: #fff5f5; color: #742a2a; border-left: 4px solid #e53e3e;'
             return ''
             
         st.dataframe(
@@ -617,7 +664,7 @@ if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ", key="analyze_btn"):
         st.warning("Нет данных.")
 
     # 2. ТАБЛИЦА: МЕТА-ТЕГИ
-    st.markdown('<div class="table-header">🔍 Информация по мета-тегам</div>', unsafe_allow_html=True)
+    st.markdown('<h2>🔍 Информация по мета-тегам</h2>', unsafe_allow_html=True)
     meta_data = []
     # Мой сайт
     meta_data.append({
@@ -637,7 +684,7 @@ if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ", key="analyze_btn"):
     st.dataframe(pd.DataFrame(meta_data), use_container_width=True)
 
     # 3. ТАБЛИЦА: ТОП РЕЛЕВАНТНОСТИ ДОКУМЕНТОВ
-    st.markdown('<div class="table-header">🏆 ТОП релевантности документов</div>', unsafe_allow_html=True)
+    st.markdown('<h2>🏆 ТОП релевантности документов</h2>', unsafe_allow_html=True)
     top_rows = []
     for i, p in enumerate(comp_pages):
         # Простой расчет релевантности (кол-во слов из общего словаря)
