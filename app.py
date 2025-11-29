@@ -1,19 +1,19 @@
-импортировать освещенный потоком света как ул.
-импортировать панды как ПД
-импортировать бестолковый как например
-импортировать запросы
-от бс4 импортировать КрасиваяСуп
-импортировать ре
-от коллекции импортировать Прилавок
-импортировать математика
-импортировать проверять
-импортировать concurrent.futures
-от urllib.parse импортировать urlparse
+import streamlit as st
+import pandas as pd
+import numpy as np
+import requests
+from bs4 import BeautifulSoup
+import re
+from collections import Counter
+import math
+import inspect
+import concurrent.futures
+from urllib.parse import urlparse
 
 # ==========================================
 # 1. КОНФИГУРАЦИЯ
 # ==========================================
-st.set_page_config(макет="широкий", заголовок_страницы="ГАР ПРО", значок_страницы="📊")
+st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
 # Обновленный список исключаемых доменов
 DEFAULT_EXCLUDE_DOMAINS = [
@@ -30,28 +30,28 @@ DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
 
 # Список регионов для имитации
-РЕГИОНЫ = [
+REGIONS = [
     "Москва", "Санкт-Петербург", "Екатеринбург", "Новосибирск", "Казань", 
     "Нижний Новгород", "Самара", "Челябинск", "Омск", "Краснодар", 
-    "Киев (UA)", "Минск (BY)", «Алматы (КЗ)»
+    "Киев (UA)", "Минск (BY)", "Алматы (КЗ)" # <-- ИСПРАВЛЕНА ОШИБКА С КАВЫЧКАМИ
 ]
 
 # Цвета
 PRIMARY_COLOR = "#277EFF"    # Синий акцент
 PRIMARY_DARK = "#1E63C4"     # Темный синий
-ТЕКСТ_ЦВЕТ = "#3D4858"       # Темно-серый (Основной текст)
-LIGHT_BG_MAIN = "#ФФФФФФ"    # Белый фон полей (ИЗМЕНЕНО) 
+TEXT_COLOR = "#3D4858"       # Темно-серый (Основной текст)
+LIGHT_BG_MAIN = "#FFFFFF"    # Белый фон полей
 BORDER_COLOR = "#E2E8F0"     # Цвет рамки
-DARK_BORDER = "#94a3b8"      # Темная рамка для невыбранных элементов [cite: 3]
-MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя [cite: 3]
+DARK_BORDER = "#94a3b8"      # Темная рамка для невыбранных элементов
+MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
 
 # --- ДОБАВЛЕНИЕ/ИЗМЕНЕНИЕ CSS ДЛЯ РЕШЕНИЯ ЗАДАЧИ ---
-ст.уценка(е"""
-   <стиль>
+st.markdown(f"""
+   <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        :корень {{
-            --основной-цвет: {PRIMARY_COLOR};
-            --текст-цвет: {TEXT_COLOR};
+        :root {{
+            --primary-color: {PRIMARY_COLOR};
+            --text-color: {TEXT_COLOR};
             --light-bg-main: {LIGHT_BG_MAIN};
             --border-color: {BORDER_COLOR};
         }}
@@ -60,11 +60,11 @@ MAROON_DIVIDER = "#990000"   # Темно-бордовый для раздели
         html, body, .stApp {{
             font-family: 'Inter', sans-serif;
             background-color: #FFFFFF !important;
-            color: {TEXT_COLOR} !важный;
+            color: {TEXT_COLOR} !important;
         }}
         
         h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {{
-            цвет: {TEXT_COLOR} !important;
+            color: {TEXT_COLOR} !important;
         }}
 
         .block-container {{
@@ -81,9 +81,9 @@ MAROON_DIVIDER = "#990000"   # Темно-бордовый для раздели
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
-            color: {TEXT_COLOR} !важный;
-            цвет фона: {LIGHT_BG_MAIN} !важный;
-            граница: сплошная 1 пиксель {BORDER_COLOR} !important;
+            color: {TEXT_COLOR} !important;
+            background-color: {LIGHT_BG_MAIN} !important;
+            border: 1px solid {BORDER_COLOR} !important;
             border-radius: 6px;
         }}
 
@@ -93,20 +93,20 @@ MAROON_DIVIDER = "#990000"   # Темно-бордовый для раздели
         
         /* Для обычных инпутов */
         div[data-baseweb="input"]:focus-within {{
-            border-color: {PRIMARY_COLOR} !важный;
-            коробка-тень: 0 0 0 1px {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
         /* Для больших текстовых полей (Textarea) */
         div[data-baseweb="textarea"]:focus-within {{
-            border-color: {PRIMARY_COLOR} !важный;
-            коробка-тень: 0 0 0 1px {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
         /* Для селектов */
         div[data-baseweb="select"] > div:focus-within {{
-            border-color: {PRIMARY_COLOR} !важный;
-            коробка-тень: 0 0 0 1px {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
         /* --- НОВЫЙ CSS: Selectbox Dropdown (Requirement 1) --- */
@@ -116,7 +116,7 @@ MAROON_DIVIDER = "#990000"   # Темно-бордовый для раздели
         }
         /* Текст опций в выпадающем списке */
         ul[data-testid="stSelectboxVirtualDropdown"] li p {
-            цвет: {TEXT_COLOR} !important; /* Цвет текста опций */
+            color: {TEXT_COLOR} !important; /* Цвет текста опций */
         }
         /* Опция при наведении */
         ul[data-testid="stSelectboxVirtualDropdown"] li:hover {
@@ -135,19 +135,19 @@ MAROON_DIVIDER = "#990000"   # Темно-бордовый для раздели
         
         /* Цвет курсора и текста внутри */
         input, textarea {{
-            caret-color: {PRIMARY_COLOR} !важный;
-            цвет: {TEXT_COLOR} !важный;
+            caret-color: {PRIMARY_COLOR} !important;
+            color: {TEXT_COLOR} !important;
         }}
         
-        /* Заполнитель */
-        ::заполнитель {{
-            цвет: #94a3b8 !важно;
-            непрозрачность: 1;
+        /* Placeholder */
+        ::placeholder {{
+            color: #94a3b8 !important;
+            opacity: 1;
         }}
         
         /* Иконки Selectbox */
-        .stSelectbox SVG {{
-            заполнить: {TEXT_COLOR} !important;
+        .stSelectbox svg {{
+            fill: {TEXT_COLOR} !important;
         }}
 
         /* ======================================================= */
@@ -163,41 +163,41 @@ MAROON_DIVIDER = "#990000"   # Темно-бордовый для раздели
         
         /* Текст внутри радио */
         div[role="radiogroup"] p {{
-            color: {TEXT_COLOR} !важный;
+            color: {TEXT_COLOR} !important;
         }}
         
-        div[role="radiogroup"] метка div[data-baseweb="radio"] > div {{
-            цвет фона: #FFFFFF !important;
-            граница: сплошная 2 пикселя {DARK_BORDER} !важный;
+        div[role="radiogroup"] label div[data-baseweb="radio"] > div {{
+            background-color: #FFFFFF !important;
+            border: 2px solid {DARK_BORDER} !important;
         }}
-        Ввод метки div[role="radiogroup"]: проверено + div[data-baseweb="radio"] > div {{
-            цвет фона: {PRIMARY_COLOR} !важный;
-            цвет границы: {PRIMARY_COLOR} !важный;
+        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div {{
+            background-color: {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
         }}
-        Ввод метки div[role="radiogroup"]: проверено + div[data-baseweb="radio"] > div > div {{
-            цвет фона: #FFFFFF !important;
+        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div > div {{
+            background-color: #FFFFFF !important;
         }}
         div[role="radiogroup"] label:has(input:checked) {{
-            цвет границы: {PRIMARY_COLOR} !важный;
+            border-color: {PRIMARY_COLOR} !important;
         }}
 
         /* Чекбоксы */
-        метка div[data-baseweb="checkbox"], div[data-baseweb="checkbox"] p {{
-            цвет: {TEXT_COLOR} !важный;
+        div[data-baseweb="checkbox"] label, div[data-baseweb="checkbox"] p {{
+            color: {TEXT_COLOR} !important;
         }}
         div[data-baseweb="checkbox"] > div:first-child {{
-            цвет фона: #FFFFFF !important;
-            граница: сплошная 2 пикселя {DARK_BORDER} !важный;
+            background-color: #FFFFFF !important;
+            border: 2px solid {DARK_BORDER} !important;
         }}
         div[data-baseweb="checkbox"] input:checked + div:first-child {{
-            цвет фона: {PRIMARY_COLOR} !важный;
-            цвет границы: {PRIMARY_COLOR} !важный;
+            background-color: {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
         }}
         div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
-            fill: #FFFFFF !важно;
+            fill: #FFFFFF !important;
         }}
         div[data-baseweb="checkbox"]:hover > div:first-child {{
-            цвет границы: {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
         }}
         
         /* --- НОВЫЙ CSS: Expander (Requirement 3 visual style) --- */
@@ -212,16 +212,16 @@ MAROON_DIVIDER = "#990000"   # Темно-бордовый для раздели
         }
         /* Изменение цвета текста заголовка Expander */
         div[data-testid="stExpander"] > div:first-child p {
-            цвет: {TEXT_COLOR} !важный; 
+            color: {TEXT_COLOR} !important; 
         }
-        /* Фокус на расширителе */
+        /* Фокус на Expander */
         div[data-testid="stExpander"] > div:first-child:focus-within {
-            цвет границы: {PRIMARY_COLOR} !важный;
-            коробка-тень: 0 0 0 1px {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }
         /* Стиль содержимого Expander */
         div[data-testid="stExpanderContent"] {
-            дополнение: 0 0 1рем 0 !важный;
+            padding: 0 0 1rem 0 !important;
         }
         /* --- КОНЕЦ НОВОГО CSS --- */
 
@@ -231,260 +231,260 @@ MAROON_DIVIDER = "#990000"   # Темно-бордовый для раздели
         .stButton button {{
            
             background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
-            цвет: белый !важно;
-            граница: нет;
-            высота: 50 пикселей;
+            color: white !important;
+            border: none;
+            height: 50px;
         }}
-        Кнопка .stButton: фокус {{
-            цвет границы: {PRIMARY_COLOR} !важный;
-            коробка-тень: 0 0 0 1px {PRIMARY_COLOR} !важный;
-            цвет: белый !важно;
+        .stButton button:focus {{
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
+            color: white !important;
         }}
-        Кнопка .stButton p {{
-            цвет: белый !важно;
+        .stButton button p {{
+            color: white !important;
         }}
 
-        /* ==================================================== */
-        /* САЙДБАР */
-        /* ==================================================== */
+        /* ======================================================= */
+        /* САЙДБАР                                                 */
+        /* ======================================================= */
         .st-emotion-cache-1cpxwwu {{ 
             
-            ширина: 65% !важно;
-            максимальная ширина: 65% !важно;
+            width: 65% !important;
+            max-width: 65% !important;
         }}
         div[data-testid="column"]:nth-child(2) {{
-            позиция: фиксированная !важно;
-            правильно: 0 !важно;
-            вверху: 0 !важно;
-            ширина: 35% !важно; 
-            высота: 100vh !важно;
-            переполнение-y: авто! важно; 
-            цвет фона: #FFFFFF !important;
-            отступ: 1rem 1rem 2rem 1,5rem !важно; 
-            z-индекс: 100;
-            коробка-тень: -1px 0 0 0 {MAROON_DIVIDER} вставка; 
-            граница слева: 1 пиксель, сплошная {BORDER_COLOR};
+            position: fixed !important;
+            right: 0 !important;
+            top: 0 !important;
+            width: 35% !important; 
+            height: 100vh !important;
+            overflow-y: auto !important; 
+            background-color: #FFFFFF !important;
+            padding: 1rem 1rem 2rem 1.5rem !important; 
+            z-index: 100;
+            box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; 
+            border-left: 1px solid {BORDER_COLOR};
         }}
-        div[data-testid="column"]:nth-child(2).stSelectbox div[data-baseweb="select"] > div,
-        div[data-testid="column"]:nth-child(2).stTextInput ввод,
-        div[data-testid="column"]:nth-child(2).stTextarea textarea {{
-            цвет фона: {LIGHT_BG_MAIN} !важный;
-            цвет: {TEXT_COLOR} !важный;
-            граница: сплошная 1 пиксель {BORDER_COLOR} !важный;
+        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] > div,
+        div[data-testid="column"]:nth-child(2) .stTextInput input,
+        div[data-testid="column"]:nth-child(2) .stTextarea textarea {{
+            background-color: {LIGHT_BG_MAIN} !important;
+            color: {TEXT_COLOR} !important;
+            border: 1px solid {BORDER_COLOR} !important;
         }}
         div[data-testid="column"]:nth-child(2) .stCaption {{ display: none;
         }}
 
-    </стиль>
-""", unsafe_allow_html=Истинный)
+    </style>
+""", unsafe_allow_html=True)
 
 # ==========================================
 # 2. ЛОГИКА (БЭКЕНД)
 # ==========================================
 
-пытаться:
-    если нет хасаттр(проверить, 'getargspec'):
-        защита getargspec(функция):
-            спецификация = Inspect.getfullargspec(func)
-            возвращаться spec.args, spec.varargs, spec.varkw, spec.defaults
-        Inspect.getargspec = getargspec
-    импортировать пиморфия2
-    морф = pymorphy2.MorphAnalyzer()
-    USE_NLP = Истинный
-кроме:
-    морф = Никто
-    USE_NLP = ЛОЖЬ
+try:
+    if not hasattr(inspect, 'getargspec'):
+        def getargspec(func):
+            spec = inspect.getfullargspec(func)
+            return spec.args, spec.varargs, spec.varkw, spec.defaults
+        inspect.getargspec = getargspec
+    import pymorphy2
+    morph = pymorphy2.MorphAnalyzer()
+    USE_NLP = True
+except:
+    morph = None
+    USE_NLP = False
 
-пытаться:
-    от гуглпоиск импортировать поиск
-    USE_SEARCH = Истинный
-кроме:
-    USE_SEARCH = ЛОЖЬ
+try:
+    from googlesearch import search
+    USE_SEARCH = True
+except:
+    USE_SEARCH = False
 
-защита процесс_текст(текст, настройки, n_gram=1):
-    шаблон = r'[а-яА-ЯёЁ0-9a-zA-Z]+' если настройки['цифры'] еще r'[а-яА-ЯёЁa-zA-Z]+'
-    слова = re.findall(шаблон, text.lower())
-    останавливается = набор(с.ниже() для В в настройки['custom_stops'])
-    чистые_слова = []
+def process_text(text, settings, n_gram=1):
+    pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' if settings['numbers'] else r'[а-яА-ЯёЁa-zA-Z]+'
+    words = re.findall(pattern, text.lower())
+    stops = set(w.lower() for w in settings['custom_stops'])
+    clean_words = []
     
-    для В в слова:
-        если только(в) < 2 или В в остановки: продолжать
-        лемма = ш
-        если USE_NLP и н_грамм == 1: 
+    for w in words:
+        if len(w) < 2 or w in stops: continue
+        lemma = w
+        if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
-            если «ПРЕП» в день дня или 'КОНЖ' в день дня или 'ПРКЛ' в день дня или 'НПРО' в день: продолжать
-            лемма = p.normal_form
-        clean_words.append(лемма)
+            if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
+            lemma = p.normal_form
+        clean_words.append(lemma)
     
-    если н_грамм > 1:
-        нграммы = []
-        для я в диапазон(только(чистые_слова) - н_грамм + 1):
-            фраза = " ".join(clean_words[i:i+n_gram])
-            ngrams.append(фраза)
-        возвращаться нграммы
-    возвращаться чистые_слова
+    if n_gram > 1:
+        ngrams = []
+        for i in range(len(clean_words) - n_gram + 1):
+            phrase = " ".join(clean_words[i:i+n_gram])
+            ngrams.append(phrase)
+        return ngrams
+    return clean_words
 
-защита parse_page(URL, настройки):
-    заголовки = {'Пользовательский агент': настройки['делать']}
-    пытаться:
-        r = Requests.get(url, заголовки=заголовки, таймаут=15)
-        если r.status_code != 200: возвращаться Никто
-        суп = BeautifulSoup(r.text, 'html.парсер')
+def parse_page(url, settings):
+    headers = {'User-Agent': settings['ua']}
+    try:
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code != 200: return None
+        soup = BeautifulSoup(r.text, 'html.parser')
         
-        если настройки['ноиндекс']:
-            для т в суп.find_all(['ноиндекс', 'сценарий', 'стиль', 'голова', 'нижний колонтитул', 'нет']): t.decompose()
-        еще:
-            для т в суп(['сценарий', 'стиль', 'голова']): t.decompose()
+        if settings['noindex']:
+            for t in soup.find_all(['noindex', 'script', 'style', 'head', 'footer', 'nav']): t.decompose()
+        else:
+            for t in soup(['script', 'style', 'head']): t.decompose()
             
-        якоря_список = [a.get_text(strip=Истинный) для а в суп.find_all('а') если a.get_text(strip=Истинный)]
-        якорный_текст = " ".join(список_якорей)
+        anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
+        anchor_text = " ".join(anchors_list)
       
-        дополнительный_текст = []
-        если настройки['alt_title']:
-            для изображение в суп.find_all('img', все=Истинный): extra_text.append(img['все'])
-            для т в суп.find_all(title=Истинный): extra_text.append(t['заголовок'])
-        body_text = суп.get_text(разделитель=' ') + " " + " ".join(extra_text)
+        extra_text = []
+        if settings['alt_title']:
+            for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
+            for t in soup.find_all(title=True): extra_text.append(t['title'])
+        body_text = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         
-        возвращаться {
-            'URL-адрес': URL, 'домен': urlparse(url).netloc, 
-            'body_text': body_text, 'anchor_text': якорный_текст
+        return {
+            'url': url, 'domain': urlparse(url).netloc, 
+            'body_text': body_text, 'anchor_text': anchor_text
         }
-    кроме: возвращаться Никто
+    except: return None
 
-защита вычислить_метрики(comp_data, мои_данные, настройки):
-    если нет мои_данные или нет мои_данные['body_text']:
+def calculate_metrics(comp_data, my_data, settings):
+    if not my_data or not my_data['body_text']:
         my_lemmas = []
         my_anchors = []
         my_len = 0
-    еще:
-        my_lemmas =process_text(my_data['body_text'], настройки)
-        my_anchors =process_text(my_data['anchor_text'], настройки)
-        my_len = только(мои_леммы)
+    else:
+        my_lemmas = process_text(my_data['body_text'], settings)
+        my_anchors = process_text(my_data['anchor_text'], settings)
+        my_len = len(my_lemmas)
     
-    комп_документы = []
-    для п в комп_данные:
-        тело = Process_text(p['body_text'], настройки)
-        якорь = Process_text(p['anchor_text'], настройки)
-        comp_docs.append({'тело': тело, 'якорь': якорь})
+    comp_docs = []
+    for p in comp_data:
+        body = process_text(p['body_text'], settings)
+        anchor = process_text(p['anchor_text'], settings)
+        comp_docs.append({'body': body, 'anchor': anchor})
         
-    если нет комп_документы:
-        возвращаться {"глубина": pd.DataFrame(), "гибридный": pd.DataFrame(), "нграммы": pd.DataFrame(), "relevance_top": pd.DataFrame(), "мой_счет": {"ширина": 0, "глубина": 0}}
+    if not comp_docs:
+        return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}}
 
     
-    avg_len = np.mean([только(д['тело']) для д в комп_документы])
-    норм_к = (мой_лен / avg_лен) если (настройки['норма'] и avg_len > 0) еще 1.0
+    avg_len = np.mean([len(d['body']) for d in comp_docs])
+    norm_k = (my_len / avg_len) if (settings['norm'] and avg_len > 0) else 1.0
     
-    словарный запас = набор(мои_леммы)
-    для д в comp_docs: vocab.update(d['тело'])
-    словарный запас = отсортированный(список(словар))
+    vocab = set(my_lemmas)
+    for d in comp_docs: vocab.update(d['body'])
+    vocab = sorted(list(vocab))
     
-    Н= только(комп_документы)
-    doc_freqs = Счетчик()
-    для д в комп_документы:
-        для В в набор(д['тело']): doc_freqs[w] += 1
+    N = len(comp_docs)
+    doc_freqs = Counter()
+    for d in comp_docs:
+        for w in set(d['body']): doc_freqs[w] += 1
         
-    к1, б = 1.2, 0.75
+    k1, b = 1.2, 0.75
  
-    table_глубина, table_hybrid = [], []
+    table_depth, table_hybrid = [], []
     
-    для слово в словарный запас:
-        df = doc_freqs[слово]
-        если дф < 2 и слово нет в мои_леммы: продолжать 
+    for word in vocab:
+        df = doc_freqs[word]
+        if df < 2 and word not in my_lemmas: continue 
         
-        my_tf = my_lemmas.count(слово)
-        my_anch_tf = my_anchors.count(слово)
+        my_tf = my_lemmas.count(word)
+        my_anch_tf = my_anchors.count(word)
         
-        c_body_tfs = [d['тело'].count(слово) для д в комп_документы]
+        c_body_tfs = [d['body'].count(word) for d in comp_docs]
     
-        c_anch_tfs = [d['якорь'].count(слово) для д в комп_документы]
+        c_anch_tfs = [d['anchor'].count(word) for d in comp_docs]
         
         med_tf = np.median(c_body_tfs)
         med_anch = np.median(c_anch_tfs)
-        max_tf = НП.Макс(c_body_tfs)
+        max_tf = np.max(c_body_tfs)
         
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
         
         bm25_scores = []
       
-        для идентификатор в перечислять(комп_документы):
-            tf = c_body_tfs[я]
-            дл = только(д['тело'])
-            счет = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - б+б*(дл/авг_лен)))
-            bm25_scores.append(оценка)
+        for i, d in enumerate(comp_docs):
+            tf = c_body_tfs[i]
+            dl = len(d['body'])
+            score = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (dl / avg_len)))
+            bm25_scores.append(score)
         bm25_top = np.median(bm25_scores)
         
   
         bm25_my = 0
-        если my_len > 0:
-            bm25_my = idf * (my_tf * (k1 + 1)) / (my_tf + k1 * (1 - б+б*(мой_лен/авг_лен)))
+        if my_len > 0:
+            bm25_my = idf * (my_tf * (k1 + 1)) / (my_tf + k1 * (1 - b + b * (my_len / avg_len)))
         
-        target_body = интервал(с_tf * 1.3 * норм_к)
+        target_body = int(med_tf * 1.3 * norm_k)
         diff_body = target_body - my_tf
-        target_anch = интервал(мед_анч *норм_к)
+        target_anch = int(med_anch * norm_k)
  
         diff_anch = target_anch - my_anch_tf
         
-        если с_tf > 0.5 или мой_тф > 0:
-            table_length.append({
-                "Слово": слово, "Словоформы": слово, "Повторы у вас": мой_тф, 
-                "Минимум": напримермин(c_body_tfs), "Максимум": интервал(макс_тф * норма_к),
+        if med_tf > 0.5 or my_tf > 0:
+            table_depth.append({
+                "Слово": word, "Словоформы": word, "Повторы у вас": my_tf, 
+                "Минимум": np.min(c_body_tfs), "Максимум": int(max_tf * norm_k),
          
                 "Общее Добавить/Убрать": diff_body,
                 "Тег A у вас": my_anch_tf, "Тег A рекомендации": target_anch,
                 "Тег A Добавить/Убрать": diff_anch,
-                "Текст у вас": мой_тф, "Текст рекомендации": target_body, "Текст Добавить/Убрать": diff_body,
-                "Переспам": интервал(макс_тф * норма_к), "Переспам*IDF": круглый(max_tf*norm_k*idf, 1),
-                "diff_abs": пресс(diff_body)
+                "Текст у вас": my_tf, "Текст рекомендации": target_body, "Текст Добавить/Убрать": diff_body,
+                "Переспам": int(max_tf * norm_k), "Переспам*IDF": round(max_tf * norm_k * idf, 1),
+                "diff_abs": abs(diff_body)
             })
             table_hybrid.append({
-                "Слово": слово, "TF-IDF ТОП": круглый(med_tf *idf, 2), "TF-IDF ваш сайт": круглый(my_tf *idf, 2),
-                "BM25 ТОП": круглый(bm25_top, 2), "BM25 ваш сайт": круглый(bm25_my, 2), «ЦАХАЛ»: круглый(ИДФ, 2),
-                "Кол-во сайтов": дф, "Медиана": круглый(с_тф, 1), "Переспам": max_tf,
-                "Среднее по ТОПу": круглый(np.mean(c_body_tfs) если c_body_tfs еще 0, 1), «Ваш сайт»: мой_тф,
-                "<a> по ТОПу": круглый(с_анч, 1), "<a> ваш сайт": my_anch_tf
+                "Слово": word, "TF-IDF ТОП": round(med_tf * idf, 2), "TF-IDF ваш сайт": round(my_tf * idf, 2),
+                "BM25 ТОП": round(bm25_top, 2), "BM25 ваш сайт": round(bm25_my, 2), "IDF": round(idf, 2),
+                "Кол-во сайтов": df, "Медиана": round(med_tf, 1), "Переспам": max_tf,
+                "Среднее по ТОПу": round(np.mean(c_body_tfs) if c_body_tfs else 0, 1), "Ваш сайт": my_tf,
+                "<a> по ТОПу": round(med_anch, 1), "<a> ваш сайт": my_anch_tf
             })
 
     table_ngrams = []
-    если комп_документы:
+    if comp_docs:
   
-        my_bi =process_text(my_data['body_text'], настройки, 2) если мои_данные и 'body_text' в мои_данные еще []
-        comp_bi = [process_text(p['body_text'], настройки, 2) для п в комп_данные]
-        all_bi = набор
-        для с в comp_bi: all_bi.update(c)
-        bi_freqs = Счетчик()
-        для с в комп_би:
-            для б_ в набор(c): bi_freqs[b_] += 1
+        my_bi = process_text(my_data['body_text'], settings, 2) if my_data and 'body_text' in my_data else []
+        comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data]
+        all_bi = set(my_bi)
+        for c in comp_bi: all_bi.update(c)
+        bi_freqs = Counter()
+        for c in comp_bi:
+            for b_ in set(c): bi_freqs[b_] += 1
 
      
-        для бг в альбе
-            df = the_freeqs[bg]
-            если дф < 2 и бг нет в мой_би: продолжать
-            my_c = my_bi.count(бг)
-            comp_c = [c.count(bg) для с в комп_документы если 'тело' в с]
-            med_c = np.median(comp_c) если комп_с еще 0
+        for bg in all_bi:
+            df = bi_freqs[bg]
+            if df < 2 and bg not in my_bi: continue
+            my_c = my_bi.count(bg)
+            comp_c = [c.count(bg) for c in comp_docs if 'body' in c]
+            med_c = np.median(comp_c) if comp_c else 0
      
-            если с_с > 0 или мой_с > 0:
+            if med_c > 0 or my_c > 0:
                 table_ngrams.append({
-                    "N-грамма": бг, "Кол-во сайтов": дф, "Медианное вхождение": с_с,
-                    "Среднее": круглый(np.mean(comp_c) если комп_с еще 0, 1), "На сайте": мой_с,
+                    "N-грамма": bg, "Кол-во сайтов": df, "Медианное вхождение": med_c,
+                    "Среднее": round(np.mean(comp_c) if comp_c else 0, 1), "На сайте": my_c,
               
-                    «ТФ-ИДФ»: круглый(my_c * math.log(N/df если дф>0 еще 1), 3)
+                    "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
                 })
 
-    таблица_rel = []
-    для я, п в перечислять(комп_данные):
-        p_lemmas =process_text(p['body_text'], настройки)
-        ш = только(набор(p_lemmas).пересечение(словарь))
+    table_rel = []
+    for i, p in enumerate(comp_data):
+        p_lemmas = process_text(p['body_text'], settings)
+        w = len(set(p_lemmas).intersection(vocab))
         table_rel.append({
-            "Домен": п['домен'], "Позиция": я+1, "URL": п['URL-адрес'],
+            "Домен": p['domain'], "Позиция": i+1, "URL": p['url'],
           
-            "Ширина": В, "Глубина": только(п_леммы)
+            "Ширина": w, "Глубина": len(p_lemmas)
         })
         
-    возвращаться {
-        "глубина": pd.DataFrame(table_глубина), "гибридный": pd.DataFrame(table_hybrid),
-        "нграммы": pd.DataFrame(table_ngrams), "relevance_top": pd.DataFrame(table_rel),
-        "мой_счет": {"ширина": только(набор(my_lemmas).intersection(vocab)), "глубина": только(my_lemmas)}
+    return {
+        "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
+        "ngrams": pd.DataFrame(table_ngrams), "relevance_top": pd.DataFrame(table_rel),
+        "my_score": {"width": len(set(my_lemmas).intersection(vocab)), "depth": len(my_lemmas)}
     }
 
 # ==========================================
@@ -495,300 +495,300 @@ MAROON_DIVIDER = "#990000"   # Темно-бордовый для раздели
 col_main, col_sidebar = st.columns([65, 35]) 
 
 # Инициализация ключа для ручного ввода URL-ов, если его нет
-если 'manual_urls_area_run' нет в st.session_state:
+if 'manual_urls_area_run' not in st.session_state:
     st.session_state.manual_urls_area_run = ""
 
 # --- ЛЕВАЯ КОЛОНКА ---
-с col_main:
+with col_main:
     
-    ул.заголовок("SEO Анализатор Релевантности")
+    st.title("SEO Анализатор Релевантности")
 
-    если 'start_anaанализ_флаг' нет в st.session_state:
-        st.session_state.start_anaанализ_flag = ЛОЖЬ
+    if 'start_analysis_flag' not in st.session_state:
+        st.session_state.start_analysis_flag = False
 
     # 1. URL или код страницы
-    ст.уценка("### URL или код страницы Вашего сайта")
+    st.markdown("### URL или код страницы Вашего сайта")
     my_input_type = st.radio(
         "Тип страницы", 
         ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], 
-        горизонтальный=Истинный,
-        label_visibility="рухнул",
-        ключ ="my_page_source_radio"
+        horizontal=True,
+        label_visibility="collapsed",
+        key="my_page_source_radio"
     )
 
-    мой_url = ""
-    моя_страница_контент = ""
+    my_url = ""
+    my_page_content = ""
 
-    если мой_входной_тип == "Релевантная страница на вашем сайте":
-        # С ЗАСТАВЩИК
+    if my_input_type == "Релевантная страница на вашем сайте":
+        # С PLACEHOLDER
         my_url = st.text_input(
             "URL страницы", 
-            заполнитель ="https://site.ru/catalog/tovar", 
-            label_visibility="рухнул", 
-            ключ ="мой_url_input"
+            placeholder="https://site.ru/catalog/tovar", 
+            label_visibility="collapsed", 
+            key="my_url_input"
         )
     
-    Элиф мой_входной_тип == "Исходный код страницы или текст":
-        my_page_content = st.text_area("Исходный код или текст", высота=200, label_visibility="рухнул", заполнитель="Вставьте HTML-код или чистый текст страницы", ключ="мой_контент_вход")
-    Элиф мой_входной_тип == "Без страницы":
+    elif my_input_type == "Исходный код страницы или текст":
+        my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML-код или чистый текст страницы", key="my_content_input")
+    elif my_input_type == "Без страницы":
         st.info("Выбран анализ без страницы вашего сайта.")
 
     # 2. Поисковой запрос
-    ст.уценка("### Поисковой запрос")
-    # С ЗАСТАВЩИК
-    запрос = st.text_input(
+    st.markdown("### Поисковой запрос")
+    # С PLACEHOLDER
+    query = st.text_input(
         "Основной запрос", 
-        заполнитель ="Например: купить пластиковые окна", 
-        label_visibility="рухнул", 
-        ключ ="запрос_вход"
+        placeholder="Например: купить пластиковые окна", 
+        label_visibility="collapsed", 
+        key="query_input"
     )
-    ул.чекбокс("Дополнительные запросы", отключен=Истинный, значение=ЛОЖЬ)
+    st.checkbox("Дополнительные запросы", disabled=True, value=False)
 
     # 3. Источник конкурентов (ИЗМЕНЕНО)
-    ст.уценка("### Поиск или URL страниц конкурентов")
+    st.markdown("### Поиск или URL страниц конкурентов")
     
     # Виджет radio для выбора режима работы
     source_type_new = st.radio(
         "Источник конкурентов", 
         ["Поиск (Автоматический сбор ТОП)", "Ручной список URL (Нажмите ниже)"], # Изменено для ясности
-        горизонтальный=ЛОЖЬ,
-        label_visibility="рухнул",
-        ключ ="конкурент_источник_радио"
+        horizontal=False,
+        label_visibility="collapsed",
+        key="competitor_source_radio"
     )
     
-    исходный_тип = "Google (Авто)" если source_type_new == "Поиск (Автоматический сбор ТОП)" еще "Ручной список" 
+    source_type = "Google (Авто)" if source_type_new == "Поиск (Автоматический сбор ТОП)" else "Ручной список" 
     
     # Виджет expander для ручного списка URL (реализует логику раскрытия/закрытия)
-    если исходный_тип == "Ручной список":
+    if source_type == "Ручной список":
         # Expander, стилизованный под "поле"
-        с ул.расширитель("Список url-адресов ваших конкурентов", развернутый=Истинный, ключ="competitor_urls_expander"):
+        with st.expander("Список url-адресов ваших конкурентов", expanded=True, key="competitor_urls_expander"):
             # Поле для ввода конкурентов, используем key для доступа в session_state в логике запуска
             st.text_area(
                 "Введите URL-адреса конкурентов, каждый с новой строки:",
-                высота=200,
-                ключ ="manual_urls_area_run" 
+                height=200,
+                key="manual_urls_area_run" 
             )
-            ул.подпись("Данное поле автоматически закрывается при повторном нажатии на заголовок, как вы и просили.")
+            st.caption("Данное поле автоматически закрывается при повторном нажатии на заголовок, как вы и просили.")
             
     # --- 4. Редактируемые списки (Оставлено без изменений) ---
-    ст.уценка("### Редактируемые списки")
+    st.markdown("### Редактируемые списки")
 
     # Не учитывать домены
-    исключает = st.text_area("Не учитывать домены (каждый с новой строки)", DEFAULT_EXCLUDE, высота=200, ключ="settings_excludes")
-    ул.подпись("Домены, которые будут исключены из анализа конкурентов.")
+    excludes = st.text_area("Не учитывать домены (каждый с новой строки)", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
+    st.caption("Домены, которые будут исключены из анализа конкурентов.")
 
     # Стоп-слова
-    c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, высота=200, ключ="settings_stops")
-    ул.подпись("Слова, которые будут удалены перед лемматизацией.")
+    c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=200, key="settings_stops")
+    st.caption("Слова, которые будут удалены перед лемматизацией.")
 
     # 5. КНОПКА
-    ст.уценка("---")
+    st.markdown("---")
    
-    если st.кнопка("ЗАПУСТИТЬ АНАЛИЗ", тип="начальный", use_container_width=Истинный, ключ="start_anaанализ_btn"):
-        st.session_state.start_anaанализ_flag = Истинный
+    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+        st.session_state.start_analysis_flag = True
 
 # --- ПРАВАЯ КОЛОНКА ---
-с col_sidebar:
-    с ул.контейнер(): 
-        ст.уценка("#####⚙️ Настройки")
+with col_sidebar:
+    with st.container(): 
+        st.markdown("#####⚙️ Настройки")
 
-        ст.уценка("###### Основные параметры")
-        ua = st.selectbox(«Пользователь-Агент», [«Mozilla/5.0 (Windows NT 10.0; Win64; x64)», «ЯндексБот/3.0»], ключ="settings_ua")
-        ул.подпись("Определяет, как будет скачиваться страница.")
+        st.markdown("###### Основные параметры")
+        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
+        st.caption("Определяет, как будет скачиваться страница.")
         
-        search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], ключ="settings_search_engine")
-        регион = st.selectbox("Яндекс / Регион", РЕГИОНЫ, ключ="settings_region")
-        устройство = st.selectbox("Устройство", [«Десктоп», «Мобильный»], ключ="settings_device")
-        top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], индекс=1, ключ="settings_top_n")
+        search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
+        region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
+        device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
+        top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
         st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", 
-        "Внутренние страницы"], ключ="settings_url_type")
-        st.selectbox("Учитывать тип", ["Все страницы", "Коммерческие", "Информационные"], ключ="settings_content_type")
+        "Внутренние страницы"], key="settings_url_type")
+        st.selectbox("Учитывать тип", ["Все страницы", "Коммерческие", "Информационные"], key="settings_content_type")
         
         # --- ДУБЛИ УДАЛЕНЫ ---
         
-        ст.уценка("###### Переключатели")
+        st.markdown("###### Переключатели")
         col_check1_s, col_check2_s = st.columns(2)
-        с col_check1_s:
-            ул.чекбокс("Исключать noindex/script/style/head/footer/nav", Истинный, ключ="settings_noindex")
+        with col_check1_s:
+            st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
             
-            ул.чекбокс("Учитывать Alt/Title", ЛОЖЬ, ключ="settings_alt")
-            ул.чекбокс("Учитывать числа (0-9)", ЛОЖЬ, ключ="settings_numbers")
-        с col_check2_s:
-            ул.чекбокс("Нормировать по длине (LSA/BM25)", Истинный, ключ="settings_norm")
-            ул.чекбокс("Исключать агрегаторы/маркетплейсы в поиске (дополнительно)", Истинный, ключ="settings_agg")
+            st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+            st.checkbox("Учитывать числа (0-9)", False, key="settings_numbers")
+        with col_check2_s:
+            st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
+            st.checkbox("Исключать агрегаторы/маркетплейсы в поиске (дополнительно)", True, key="settings_agg")
 
 
 # ==========================================
 # 4. ЛОГИКА ЗАПУСКА (ИЗМЕНЕНО)
 # ==========================================
-если st.session_state.start_anaлиз_flag:
-    st.session_state.start_anaанализ_flag = ЛОЖЬ
+if st.session_state.start_analysis_flag:
+    st.session_state.start_analysis_flag = False
 
-    если мой_входной_тип == "Релевантная страница на вашем сайте" и нет st.session_state.get('мой_url_input'):
-        ул.ошибка("Введите URL!")
+    if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
+        st.error("Введите URL!")
    
-        ст.стоп()
+        st.stop()
         
-    если мой_входной_тип == "Исходный код страницы или текст" и нет st.session_state.get('мой_контент_вход', '').strip():
-        ул.ошибка("Введите исходный код или текст!")
-        ст.стоп()
+    if my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
+        st.error("Введите исходный код или текст!")
+        st.stop()
     
-    если исходный_тип == "Google (Авто)" и st.session_state.settings_search_engine != "Google":
-        ст.предупреждение(f"Анализ ТОП-а для **{st.session_state.settings_search_engine}** пока не реализован.
+    if source_type == "Google (Авто)" and st.session_state.settings_search_engine != "Google":
+        st.warning(f"Анализ ТОП-а для **{st.session_state.settings_search_engine}** пока не реализован.
         Используется Google Search.")
-        если нет st.session_state.get('query_input'):
-            ул.ошибка("Введите запрос для поиска конкурентов!")
-            ст.стоп()
+        if not st.session_state.get('query_input'):
+            st.error("Введите запрос для поиска конкурентов!")
+            st.stop()
             
-    если исходный_тип == "Ручной список" и нет st.session_state.manual_urls_area_run.strip():
-        ул.ошибка("Выбран ручной ввод, но список URL пуст!")
-        ст.стоп()
+    if source_type == "Ручной список" and not st.session_state.manual_urls_area_run.strip():
+        st.error("Выбран ручной ввод, но список URL пуст!")
+        st.stop()
 
 
-    настройки = {
-        'ноиндекс': st.session_state.settings_noindex, 
+    settings = {
+        'noindex': st.session_state.settings_noindex, 
         'alt_title': st.session_state.settings_alt, 
-        'цифры': st.session_state.settings_numbers,
-        'норма': st.session_state.settings_norm, 
-        'делать': st.session_state.settings_ua, 
+        'numbers': st.session_state.settings_numbers,
+        'norm': st.session_state.settings_norm, 
+        'ua': st.session_state.settings_ua, 
      
         'custom_stops': st.session_state.settings_stops.split()
     }
     
     target_urls = []
-    если исходный_тип == "Google (Авто)":
-        исключая = [d.strip() для д в st.session_state.settings_excludes.split('\n') если d.strip()]
-        если st.session_state.settings_agg: excl.extend(["дедушка", "озон", "лесные ягоды", "рынок", "Вон тот", "ютуб"])
+    if source_type == "Google (Авто)":
+        excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
+        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
         
-        пытаться:
-            с ул.спиннер(f"Сбор ТОПа {st.session_state.settings_search_engine}..."):
+        try:
+            with st.spinner(f"Сбор ТОПа {st.session_state.settings_search_engine}..."):
             
-                если нет USE_SEARCH:
-                    ул.ошибка("Библиотека 'googlesearch' не найдена.")
-                    ст.стоп()
+                if not USE_SEARCH:
+                    st.error("Библиотека 'googlesearch' не найдена.")
+                    st.stop()
 
-                найдено = поиск (st.session_state.query_input, num_results=st.session_state.settings_top_n * 2, только="ру")
+                found = search(st.session_state.query_input, num_results=st.session_state.settings_top_n * 2, lang="ru")
                 cnt = 0
            
-                для в в найденный:
-                    если мой_входной_тип == "Релевантная страница на вашем сайте" и st.session_state.my_url_input в в: продолжать
-                    если любой(х в urlparse(u).netloc для х в исключая): продолжать
+                for u in found:
+                    if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input in u: continue
+                    if any(x in urlparse(u).netloc for x in excl): continue
                     target_urls.append(u)
             
-                    КПТ += 1
-                    если cnt >= st.session_state.settings_top_n: перерыв
-        кроме Исключение как е:
-            ул.ошибка(f"Ошибка при поиске: {и}")
-            ст.стоп()
+                    cnt += 1
+                    if cnt >= st.session_state.settings_top_n: break
+        except Exception as e:
+            st.error(f"Ошибка при поиске: {e}")
+            st.stop()
             
     # ИЗМЕНЕНО: Читаем из session_state, так как виджет создан в секции ИНТЕРФЕЙС
-    еще: 
-        target_urls = [u.strip() для в в st.session_state.manual_urls_area_run.split('\n') если u.strip()]
+    else: 
+        target_urls = [u.strip() for u in st.session_state.manual_urls_area_run.split('\n') if u.strip()]
 
-    если нет целевые_urls:
-        ул.ошибка("Нет конкурентов для анализа.")
-        ст.стоп()
+    if not target_urls:
+        st.error("Нет конкурентов для анализа.")
+        st.stop()
         
-    мои_данные = Никто
-    если мой_входной_тип == "Релевантная страница на вашем сайте":
-        прог = st.progress(0.0)
-        статус = ст.пустой()
-        статус.текст("Скачиваем ваш сайт...")
-        my_data = parse_page(st.session_state.my_url_input, настройки)
-        прог.прогресс(0.05)
-        если нет мои_данные:
-            ул.ошибка("Ошибка доступа к сайту.
+    my_data = None
+    if my_input_type == "Релевантная страница на вашем сайте":
+        prog = st.progress(0.0)
+        status = st.empty()
+        status.text("Скачиваем ваш сайт...")
+        my_data = parse_page(st.session_state.my_url_input, settings)
+        prog.progress(0.05)
+        if not my_data:
+            st.error("Ошибка доступа к сайту.
             Проверьте URL или попробуйте 'Исходный код'.")
-            ст.стоп()
-        прог.пустой()
-        статус.пустой()
-    Элиф мой_входной_тип == "Исходный код страницы или текст":
-        мои_данные = {
-            'URL-адрес': «Местный контент», 
-            'домен': 'локальный.контент', 
+            st.stop()
+        prog.empty()
+        status.empty()
+    elif my_input_type == "Исходный код страницы или текст":
+        my_data = {
+            'url': 'Local Content', 
+            'domain': 'local.content', 
             'body_text': st.session_state.my_content_input, 
    
             'anchor_text': '' 
         }
     
-    комп_данные = []
-    с concurrent.futures.ThreadPoolExecutor(max_workers=5) как исполнитель:
-        Futures = {executor.submit(parse_page, u, настройки): u для в в target_urls}
-        сделано = 0
-        total_tasks = только(target_urls)
+    comp_data = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
+        done = 0
+        total_tasks = len(target_urls)
         prog_comp = st.progress(0)
         status_comp = st.empty()
        
   
-        для ж в concurrent.futures.as_completed(фьючерсы):
-            рез = f.result()
-            если разрешение: comp_data.append(рез)
-            готово += 1
-            prog_comp.progress(сделано/общее_задач)
-            status_comp.text(f"Прыжок {сделанный} из {total_tasks} конкурентов...")
+        for f in concurrent.futures.as_completed(futures):
+            res = f.result()
+            if res: comp_data.append(res)
+            done += 1
+            prog_comp.progress(done / total_tasks)
+            status_comp.text(f"Скачано {done} из {total_tasks} конкурентов...")
             
     
     prog_comp.empty()
     status_comp.empty()
     
-    если только(comp_data) < 2 и мой_входной_тип != "Без страницы":
-        ст.предупреждение(f"Мало данных конкурентов (менее 2).
-        Продолжаю с {только(comp_data)} данными.")
+    if len(comp_data) < 2 and my_input_type != "Без страницы":
+        st.warning(f"Мало данных конкурентов (менее 2).
+        Продолжаю с {len(comp_data)} данными.")
 
-    если нет мои_данные и мой_входной_тип != "Без страницы":
-         ул.ошибка("Не удалось получить данные для сравнения.")
-         ст.стоп()
+    if not my_data and my_input_type != "Без страницы":
+         st.error("Не удалось получить данные для сравнения.")
+         st.stop()
          
-    результаты = Calculate_metrics (comp_data, my_data, настройки)
-    ул.успех("Готово! Результаты ниже.")
+    results = calculate_metrics(comp_data, my_data, settings)
+    st.success("Готово! Результаты ниже.")
     
-    с ручной_воротник:
-        если мои_данные и только(comp_data) > 0:
-            ст.уценка("### 1. Рекомендации по глубине")
+    with col_main:
+        if my_data and len(comp_data) > 0:
+            st.markdown("### 1. Рекомендации по глубине")
   
-            df_d = результаты['глубина']
-            если нет df_d.пустой:
-                df_d = df_d.sort_values(by="diff_abs", по возрастанию=ЛОЖЬ)
+            df_d = results['depth']
+            if not df_d.empty:
+                df_d = df_d.sort_values(by="diff_abs", ascending=False)
                 
                 rows_per_page = 20
-                всего_строк = только(df_d)
+                total_rows = len(df_d)
    
                 total_pages = math.ceil(total_rows / rows_per_page)
                 
-                если 'номер_страницы' нет в st.session_state: st.session_state.page_number = 1
+                if 'page_number' not in st.session_state: st.session_state.page_number = 1
                 
                 col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
       
-                с столбец_p1:
-                    если st.кнопка("⬅️ Назад", ключ="prev_page_button") и st.session_state.page_number > 1:
+                with col_p1:
+                    if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
                         st.session_state.page_number -= 1
-                с столбец_p2:
+                with col_p2:
                    
-                    ст.уценка(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=Истинный)
-                с col_p3:
-                    если st.кнопка("Вперед ➡️", ключ="кнопка следующей_страницы") и st.session_state.page_number < всего_страниц:
+                    st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+                with col_p3:
+                    if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
                         st.session_state.page_number += 1
                    
             
-                start_idx = (st.session_state.page_number - 1) * строк_на_страницу
+                start_idx = (st.session_state.page_number - 1) * rows_per_page
                 end_idx = start_idx + rows_per_page
                 df_page = df_d.iloc[start_idx:end_idx]
                 
                
-                st.dataframe(df_page, columns_config={"diff_abs": Никто}, use_container_width=Истинный, высота=800)
-                st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "глубина.csv")
+                st.dataframe(df_page, column_config={"diff_abs": None}, use_container_width=True, height=800)
+                st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
                 
-                с ул.расширитель("2. Гибридный ТОП"):
-                    st.dataframe(результаты['гибридный'].sort_values(по="TF-IDF ТОП", по возрастанию=ЛОЖЬ), use_container_width=Истинный)
+                with st.expander("2. Гибридный ТОП"):
+                    st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
                 
                 
-                с ул.расширитель("3. N-граммы"):
-                    st.dataframe(результаты['нграмм'].sort_values(по=«ТФ-ИДФ», по возрастанию=ЛОЖЬ), use_container_width=Истинный)
+                with st.expander("3. N-граммы"):
+                    st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
 
             
-            с ул.расширитель("4. ТОП релевантности"):
-                st.dataframe(результаты['relevance_top'], use_container_width=Истинный)
+            with st.expander("4. ТОП релевантности"):
+                st.dataframe(results['relevance_top'], use_container_width=True)
 
-            если нет мои_данные:
-                ст.предупреждение("Основные таблицы не отображаются, 
+            if not my_data:
+                st.warning("Основные таблицы не отображаются, 
                 так как был выбран режим 'Без страницы'.")
