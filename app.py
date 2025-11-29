@@ -16,43 +16,35 @@ def check_password():
         # Стили для окна авторизации
         st.markdown("""
             <style>
-            /* Скрываем ВСЕ лишние элементы Streamlit */
-            #MainMenu, footer, header, .stDeployButton, #stDecoration {display: none !important;}
-            .stApp > header {display: none !important;}
-            [data-testid="stToolbar"] {display: none !important;}
-            [data-testid="stDecoration"] {display: none !important;}
-            [data-testid="stStatusWidget"] {display: none !important;}
-            [data-testid="stAppViewContainer"] > div:first-child {display: none !important;}
+            /* Скрываем только самые основные элементы */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            .stDeployButton {display: none;}
             
-            /* Убираем все отступы и паддинги */
+            /* Основные стили для авторизации */
             .stApp {
-                padding: 0 !important;
-                margin: 0 !important;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
             }
             .block-container {
-                padding: 0 !important;
-                margin: 0 !important;
-                max-width: 100% !important;
+                padding-top: 2rem !important;
+                padding-bottom: 2rem !important;
             }
             
-            .auth-container {
+            /* Центрируем контент */
+            .css-1d391kg, .css-1y4p8pa {
                 display: flex;
                 flex-direction: column;
-                justify-content: flex-start;
                 align-items: center;
-                height: 100vh;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 0;
-                margin: 0;
-                overflow: hidden;
+                justify-content: center;
+                min-height: 100vh;
             }
-            .auth-logo {
-                margin-top: 50px;
-                margin-bottom: 30px;
+            
+            /* Стили для логотипа и поля ввода */
+            .logo-container {
+                margin-bottom: 2rem;
             }
-            .auth-input-container {
+            .input-container {
                 width: 547px;
-                height: 56px;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -61,7 +53,6 @@ def check_password():
                 border: 2px solid #e1e5e9 !important;
                 border-radius: 8px !important;
                 font-size: 16px !important;
-                margin: 0 !important;
             }
             .stTextInput input:focus {
                 border-color: #277EFF !important;
@@ -71,16 +62,13 @@ def check_password():
             </style>
         """, unsafe_allow_html=True)
         
-        # Контейнер авторизации
-        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-        
         # Логотип
-        st.markdown('<div class="auth-logo">', unsafe_allow_html=True)
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=484)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Поле ввода пароля
-        st.markdown('<div class="auth-input-container">', unsafe_allow_html=True)
+        st.markdown('<div class="input-container">', unsafe_allow_html=True)
         st.text_input(
             "Введите пароль",
             type="password",
@@ -91,48 +79,39 @@ def check_password():
         )
         st.markdown('</div>', unsafe_allow_html=True)
         
-        st.markdown('</div>', unsafe_allow_html=True)
         return False
     elif not st.session_state["password_correct"]:
         st.markdown("""
             <style>
-            /* Скрываем ВСЕ лишние элементы Streamlit */
-            #MainMenu, footer, header, .stDeployButton, #stDecoration {display: none !important;}
-            .stApp > header {display: none !important;}
-            [data-testid="stToolbar"] {display: none !important;}
-            [data-testid="stDecoration"] {display: none !important;}
-            [data-testid="stStatusWidget"] {display: none !important;}
-            [data-testid="stAppViewContainer"] > div:first-child {display: none !important;}
+            /* Скрываем только самые основные элементы */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            .stDeployButton {display: none;}
             
-            /* Убираем все отступы и паддинги */
+            /* Основные стили для авторизации */
             .stApp {
-                padding: 0 !important;
-                margin: 0 !important;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
             }
             .block-container {
-                padding: 0 !important;
-                margin: 0 !important;
-                max-width: 100% !important;
+                padding-top: 2rem !important;
+                padding-bottom: 2rem !important;
             }
             
-            .auth-container {
+            /* Центрируем контент */
+            .css-1d391kg, .css-1y4p8pa {
                 display: flex;
                 flex-direction: column;
-                justify-content: flex-start;
                 align-items: center;
-                height: 100vh;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 0;
-                margin: 0;
-                overflow: hidden;
+                justify-content: center;
+                min-height: 100vh;
             }
-            .auth-logo {
-                margin-top: 50px;
-                margin-bottom: 30px;
+            
+            /* Стили для логотипа и поля ввода */
+            .logo-container {
+                margin-bottom: 2rem;
             }
-            .auth-input-container {
+            .input-container {
                 width: 547px;
-                height: 56px;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -141,7 +120,6 @@ def check_password():
                 border: 2px solid #e1e5e9 !important;
                 border-radius: 8px !important;
                 font-size: 16px !important;
-                margin: 0 !important;
             }
             .stTextInput input:focus {
                 border-color: #277EFF !important;
@@ -151,15 +129,13 @@ def check_password():
             </style>
         """, unsafe_allow_html=True)
         
-        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-        
         # Логотип
-        st.markdown('<div class="auth-logo">', unsafe_allow_html=True)
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=484)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Поле ввода пароля
-        st.markdown('<div class="auth-input-container">', unsafe_allow_html=True)
+        st.markdown('<div class="input-container">', unsafe_allow_html=True)
         st.text_input(
             "Введите пароль",
             type="password",
@@ -172,7 +148,6 @@ def check_password():
         
         st.error("😕 Неверный пароль")
         
-        st.markdown('</div>', unsafe_allow_html=True)
         return False
     else:
         return True
@@ -916,6 +891,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
