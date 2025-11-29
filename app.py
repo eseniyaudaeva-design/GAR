@@ -28,7 +28,7 @@ def check_password():
             .block-container {
                 padding-top: 1rem !important;
                 padding-bottom: 1rem !important;
-                max-width: 600px !important;
+                max-width: 100% !important;
             }
             
             /* Центрируем и делаем компактным */
@@ -46,6 +46,7 @@ def check_password():
             .logo-container {
                 margin-bottom: 2rem;
                 text-align: center;
+                width: 100%;
             }
             
             /* Стили для поля ввода */
@@ -61,11 +62,26 @@ def check_password():
                 border-radius: 8px !important;
                 font-size: 16px !important;
                 background: white !important;
+                color: #3D4858 !important; /* Цвет текста как в основном приложении */
             }
-            .stTextInput input:focus {
-                border-color: #277EFF !important;
-                outline: none !important;
-                box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
+            .stTextInput input::placeholder {
+                color: #94a3b8 !important;
+            }
+            
+            /* Стили для кнопки */
+            .login-button {
+                width: 547px;
+                margin-top: 1rem;
+            }
+            .stButton button {
+                width: 100% !important;
+                height: 56px !important;
+                background-image: linear-gradient(to right, #277EFF, #1E63C4) !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                font-weight: 600 !important;
             }
             
             /* Убираем лишние отступы */
@@ -77,7 +93,7 @@ def check_password():
         
         # Логотип
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=200)
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Поле ввода пароля
@@ -90,6 +106,12 @@ def check_password():
             placeholder="Введите пароль",
             label_visibility="collapsed"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Кнопка Войти
+        st.markdown('<div class="login-button">', unsafe_allow_html=True)
+        if st.button("ВОЙТИ", type="primary", use_container_width=True, key="login_btn"):
+            password_entered()
         st.markdown('</div>', unsafe_allow_html=True)
         
         return False
@@ -108,7 +130,7 @@ def check_password():
             .block-container {
                 padding-top: 1rem !important;
                 padding-bottom: 1rem !important;
-                max-width: 600px !important;
+                max-width: 100% !important;
             }
             
             /* Центрируем и делаем компактным */
@@ -126,6 +148,7 @@ def check_password():
             .logo-container {
                 margin-bottom: 2rem;
                 text-align: center;
+                width: 100%;
             }
             
             /* Стили для поля ввода */
@@ -141,11 +164,26 @@ def check_password():
                 border-radius: 8px !important;
                 font-size: 16px !important;
                 background: white !important;
+                color: #3D4858 !important; /* Цвет текста как в основном приложении */
             }
-            .stTextInput input:focus {
-                border-color: #277EFF !important;
-                outline: none !important;
-                box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
+            .stTextInput input::placeholder {
+                color: #94a3b8 !important;
+            }
+            
+            /* Стили для кнопки */
+            .login-button {
+                width: 547px;
+                margin-top: 1rem;
+            }
+            .stButton button {
+                width: 100% !important;
+                height: 56px !important;
+                background-image: linear-gradient(to right, #277EFF, #1E63C4) !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                font-weight: 600 !important;
             }
             
             /* Убираем лишние отступы */
@@ -157,7 +195,7 @@ def check_password():
         
         # Логотип
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=200)
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Поле ввода пароля
@@ -170,6 +208,12 @@ def check_password():
             placeholder="Введите пароль",
             label_visibility="collapsed"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Кнопка Войти
+        st.markdown('<div class="login-button">', unsafe_allow_html=True)
+        if st.button("ВОЙТИ", type="primary", use_container_width=True, key="login_btn"):
+            password_entered()
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.error("😕 Неверный пароль")
@@ -913,6 +957,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
