@@ -49,23 +49,35 @@ st.markdown(f"""
    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* ГЛОБАЛЬНОЕ ПЕРЕОПРЕДЕЛЕНИЕ ТЕМЫ STREAMLIT ЧЕРЕЗ ПЕРЕМЕННЫЕ */
+        /* ПЕРЕМЕННЫЕ */
         :root {{
             --primary-color: {PRIMARY_COLOR};
             --text-color: {TEXT_COLOR};
         }}
         
-        html, body, [class*="stApp"], [class*="css"] {{
+        /* БАЗОВЫЕ НАСТРОЙКИ ШРИФТА И ФОНА */
+        html, body, .stApp {{
             font-family: 'Inter', sans-serif;
             background-color: #FFFFFF !important;
-            color: {TEXT_COLOR} !important; 
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        /* ЗАГОЛОВКИ И ОБЫЧНЫЙ ТЕКСТ */
+        h1, h2, h3, h4, h5, h6, p, li, .stMarkdown, div[data-testid="stMarkdownContainer"] p {{
+            color: {TEXT_COLOR} !important;
+        }}
+
+        .block-container {{
+            padding-top: 1rem !important;
+            padding-bottom: 2rem !important;
+            max-width: 100% !important; 
         }}
         
         /* ======================================================= */
-        /* ПОЛЯ ВВОДА - ЖЕСТКОЕ ПЕРЕОПРЕДЕЛЕНИЕ ЦВЕТОВ             */
+        /* ПОЛЯ ВВОДА (Input, Textarea, Selectbox)                 */
         /* ======================================================= */
         
-        /* 1. Стили в обычном состоянии */
+        /* 1. Обычное состояние (фон и рамка) */
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
@@ -75,23 +87,16 @@ st.markdown(f"""
             border-radius: 6px;
         }}
 
-        /* 2. Стили ПРИ НАЖАТИИ (FOCUS) - Убираем оранжевый, ставим синий */
-        
-        /* Используем очень специфичные селекторы, чтобы перебить стандартную тему */
-        .stTextInput > div > div[data-baseweb="input"] > div:focus-within,
-        .stTextArea > div > div[data-baseweb="textarea"] > div:focus-within,
-        .stSelectbox > div > div[data-baseweb="select"] > div:focus-within {{
+        /* 2. ФОКУС (СИНЯЯ РАМКА) */
+        /* Используем специфичные селекторы, чтобы перебить оранжевый */
+        div[data-baseweb="input"] > div:focus-within,
+        div[data-baseweb="textarea"] > div:focus-within,
+        div[data-baseweb="select"] > div:focus-within {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
-        
-        /* Дополнительная страховка для внутренних элементов */
-        div[data-baseweb="input"]:focus-within,
-        div[data-baseweb="textarea"]:focus-within {{
-             border-color: {PRIMARY_COLOR} !important;
-        }}
 
-        /* Убираем стандартную обводку самого инпута */
+        /* Убираем стандартную обводку */
         .stTextInput input:focus,
         .stTextArea textarea:focus {{
             outline: none !important;
@@ -99,59 +104,105 @@ st.markdown(f"""
             box-shadow: none !important;
         }}
         
-        /* Цвет мигающего курсора (каретки) */
+        /* Курсор и текст внутри полей */
         input, textarea {{
             caret-color: {PRIMARY_COLOR} !important;
+            color: {TEXT_COLOR} !important;
         }}
         
-        /* Цвет placeholder (подсказки) */
+        /* Placeholder (подсказка) - серый */
         ::placeholder {{
             color: #94a3b8 !important;
             opacity: 1;
         }}
+        
+        /* Иконки Selectbox */
+        .stSelectbox svg {{
+            fill: {TEXT_COLOR} !important;
+        }}
 
         /* ======================================================= */
-        /* ОСТАЛЬНЫЕ ЭЛЕМЕНТЫ                                      */
+        /* РАДИО-КНОПКИ (ИСПРАВЛЕНИЕ ТЕКСТА)                       */
         /* ======================================================= */
-
-        /* Радио-кнопки */
+        
+        /* Контейнер радио-кнопки */
         div[role="radiogroup"] label {{
             background-color: #FFFFFF !important;
             border: 1px solid {BORDER_COLOR};
+            margin-right: 5px;
         }}
+        
+        /* ТЕКСТ внутри радио-кнопки (Важное исправление) */
+        div[role="radiogroup"] label p {{
+            color: {TEXT_COLOR} !important;
+            font-weight: 400;
+        }}
+        
+        /* Кружок - не выбран */
         div[role="radiogroup"] label div[data-baseweb="radio"] > div {{
             background-color: #FFFFFF !important;
             border: 2px solid {DARK_BORDER} !important;
         }}
+        
+        /* Кружок - выбран */
         div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div {{
             background-color: {PRIMARY_COLOR} !important;
             border-color: {PRIMARY_COLOR} !important;
         }}
+        
+        /* Внутренняя точка */
         div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div > div {{
             background-color: #FFFFFF !important;
         }}
+        
+        /* Рамка вокруг выбранного элемента */
         div[role="radiogroup"] label:has(input:checked) {{
             border-color: {PRIMARY_COLOR} !important;
         }}
+        
+        /* Текст выбранной кнопки делаем чуть жирнее */
+        div[role="radiogroup"] label input:checked + div + div p {{
+             font-weight: 600 !important;
+             color: {TEXT_COLOR} !important;
+        }}
 
-        /* Чекбоксы */
+        /* ======================================================= */
+        /* ЧЕКБОКСЫ (ИСПРАВЛЕНИЕ ТЕКСТА)                           */
+        /* ======================================================= */
+        
+        /* Текст чекбокса */
+        div[data-baseweb="checkbox"] label {{
+            color: {TEXT_COLOR} !important;
+        }}
+        div[data-baseweb="checkbox"] p {{
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        /* Квадратик - не выбран */
         div[data-baseweb="checkbox"] > div:first-child {{
             background-color: #FFFFFF !important;
             border: 2px solid {DARK_BORDER} !important;
         }}
+        
+        /* Квадратик - выбран */
         div[data-baseweb="checkbox"] input:checked + div:first-child {{
             background-color: {PRIMARY_COLOR} !important;
             border-color: {PRIMARY_COLOR} !important;
         }}
+        
+        /* Галочка */
         div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
             fill: #FFFFFF !important;
         }}
-        /* Убираем красный ховер */
+        
+        /* Ховер эффект */
         div[data-baseweb="checkbox"]:hover > div:first-child {{
             border-color: {PRIMARY_COLOR} !important;
         }}
 
-        /* Кнопка */
+        /* ======================================================= */
+        /* КНОПКА ЗАПУСКА                                          */
+        /* ======================================================= */
         .stButton button {{
             background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
             color: white !important;
@@ -163,8 +214,14 @@ st.markdown(f"""
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
             color: white !important;
         }}
+        /* Текст внутри кнопки должен быть белым */
+        .stButton button p {{
+            color: white !important;
+        }}
 
-        /* Сайдбар */
+        /* ======================================================= */
+        /* САЙДБАР                                                 */
+        /* ======================================================= */
         .st-emotion-cache-1cpxwwu {{ 
             width: 65% !important;
             max-width: 65% !important;
@@ -183,7 +240,7 @@ st.markdown(f"""
             border-left: 1px solid {BORDER_COLOR};
         }}
         
-        /* Стили полей внутри сайдбара */
+        /* Поля внутри сайдбара */
         div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] > div,
         div[data-testid="column"]:nth-child(2) .stTextInput input,
         div[data-testid="column"]:nth-child(2) .stTextarea textarea {{
