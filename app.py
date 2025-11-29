@@ -18,18 +18,30 @@ st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 # Этот CSS делает ТОЛЬКО одно: принудительно ставит белый фон и черный текст,
 # чтобы исправить баг вашей темной темы. Никаких украшательств.
 st.markdown("""
-    <style>
-        /* Принудительная светлая тема для контейнера */
-        [data-testid="stAppViewContainer"] {
-            background-color: #ffffff;
-            color: #000000;
+   <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+        
+        /* Стилизация верхней панели ввода */
+        .main-input-container {
+            background-color: #F8FAFC;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #E2E8F0;
+            margin-bottom: 20px;
         }
         
-        /* Исправление полей ввода (чтобы не было черным) */
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
-            color: #000000 !important;
-            background-color: #ffffff !important;
-            border: 1px solid #cccccc !important;
+        /* Кнопка */
+        .stButton button {
+            background-color: #F97316;
+            color: white;
+            font-weight: bold;
+            border-radius: 6px;
+            height: 50px;
+            width: 100%;
+        }
+        .stButton button:hover { background-color: #EA580C; color: white; }
+        
         }
         
         /* Исправление выпадающих списков */
@@ -398,3 +410,4 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
         
     with st.expander("4. ТОП релевантности"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
