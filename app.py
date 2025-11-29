@@ -1,16 +1,6 @@
-# ==========================================
-# 🛑 ПРЕДУПРЕЖДЕНИЕ: ВЫПОЛНИТЕ ЭТОТ КОД КАК ЕДИНЫЙ БЛОК В COLAB/JUPYTER
-# !pip команды должны быть выполнены в режиме ноутбука, чтобы избежать SyntaxError
-# ==========================================
-
-# ==========================================
-# ШАГ 1: УСТАНОВКА И ГАРАНТИЯ РАБОТЫ PYMORPHY2
-# ==========================================
-print("⏳ Запуск установки необходимых библиотек...")
-# Установка библиотек:
-!pip install googlesearch-python beautifulsoup4 requests pandas numpy ipywidgets -q
-!pip install pymorphy2 --upgrade --force-reinstall -q
-
+import streamlit as st
+import pandas as pd
+import numpy as np
 import requests
 from bs4 import BeautifulSoup
 try:
@@ -18,654 +8,597 @@ try:
     USE_SEARCH = True
 except ImportError:
     USE_SEARCH = False
-
-import pandas as pd
-import numpy as np
+    
 import re
-import ipywidgets as widgets
-from IPython.display import display, clear_output
 from collections import Counter
 import math
-import warnings
 import inspect
-import sys
+import concurrent.futures
+from urllib.parse import urlparse
+import time 
 
 # --- ФИНАЛЬНЫЙ БРОНЕБОЙНЫЙ ПАТЧ ДЛЯ PYMORPHY2 ---
+# (Патч для обеспечения совместимости с некоторыми средами)
 try:
-    if sys.version_info >= (3, 10):
-        if not hasattr(inspect, 'getargspec'):
-            def getargspec(func):
-                spec = inspect.getfullargspec(func)
-                return spec.args, spec.varargs, spec.varkw, spec.defaults
-            inspect.getargspec = getargspec
+    if not hasattr(inspect, 'getargspec'):
+        def getargspec(func):
+            spec = inspect.getfullargspec(func)
+            return spec.args, spec.varargs, spec.varkw, spec.defaults
+        inspect.getargspec = getargspec
 
     import pymorphy2
     morph = pymorphy2.MorphAnalyzer()
-    print("✅ Pymorphy2 успешно инициализирован.")
-    USE_NLP = True
-except Exception as e:
-    print("❌ Критическая ошибка: Pymorphy2 не работает. Будет использовано простое токенизирование.")
-    morph = None
-    USE_NLP = False
-
-warnings.filterwarnings("ignore")
-
-# Домены для исключения по умолчанию (из гар код.txt)
-BLACKLIST_DOMAINS = [
-    'avito.ru', 'wikipedia.org', 'yandex.ru', 'ozon.ru', 'wildberries.ru', 'tiu.ru',
-    'beru.ru', 'aliexpress.com', 'youtube.com', 'dzen.ru', 'hh.ru',
-    'market.yandex.ru', 'sbermegamarket.ru', 'rutube.ru', 't.me', 'instagram.com',
-    'gosuslugi.ru', 'rambler.ru', '2gis.ru', 'sravni.ru', 'toshop.ru', 'price.ru',
-    'pandao.ru', 'banki.ru', 'regmarkets.ru', 'zoon.ru', 'pulscen.ru', 'prodoctorov.ru',
-    'blizko.ru', 'domclick.ru', 'satom.ru', 'quto.ru', 'edadeal.ru', 'cataloxy.ru', 
-    'irr.ru', 'onliner.by', 'shop.by', 'deal.by', 'yell.ru', 'profi.ru', 
-    'irecommend.ru', 'otzovik.com', 'auto.ru'
-]
+    USE_MORPH = True
+except ImportError:
+    USE_MORPH = False
+except Exception:
+    USE_MORPH = False
 
 
 # ==========================================
-# ШАГ 2: ЛОГИКА (BACKEND) - ВОССТАНОВЛЕНО ИЗ ФАЙЛА
+# 1. НАСТРОЙКА СТРАНИЦЫ И СТИЛИ
 # ==========================================
 
-def get_word_forms(lemma):
-    if not USE_NLP or not morph:
-        return f"Токен: {lemma}"
-    if not lemma: return ""
-    forms = []
-    parses = morph.parse(lemma)
-    if not parses: return ""
-    base_parse = parses[0]
-    for tag in base_parse.lexeme:
-        forms.append(tag.word)
-        if len(forms) >= 5:
-            break
-    return ", ".join(list(set(forms)))
-
-def process_words(word_list, settings):
-    base_stop_words = {
-        'и', 'в', 'на', 'с', 'к', 'по', 'за', 'от', 'до', 'это', 'мы', 'вы', 'он', 'она', 'они', 'их', 'ее', 'его', 'мне',
-        'тебе', 'себе', 'для', 'что', 'как', 'так', 'но', 'или', 'а', 'чтобы', 'же', 'бы', 'да', 'нет', 'у', 'без', 'под',
-        'над', 'перед', 'при', 'через', 'между', 'среди', 'после', 'вместо', 'около', 'вокруг', 'со', 'из', 'из-за', 'из-под',
-        'только', 'даже', 'хоть', 'ли', 'ни', 'разве', 'уже', 'еще', 'всё', 'все', 'когда', 'где', 'куда', 'откуда', 'почему',
-        'зачем', 'какой', 'который', 'кто', 'что', 'весь', 'свой', 'такой', 
-        'самый', 'много', 'мало', 'несколько', 'немного',
-        'очень', 'просто', 'совсем', 'опять', 'снова', 'здесь', 'там', 'сюда', 'туда', 'никогда', 'всегда', 'обычно', 'часто',
-        'редко', 'почти', 'поэтому', 'потом', 'раньше', 'позже', 'ранний', 'поздний', 'новый', 'старый', 'большой', 'маленький',
-        'хороший', 'плохой', 'лучший', 'худший', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять', 'десять',
-        'рублей', 'руб', 'стр', 'ул', 'шт', 'см', 'мм', 'мл', 'кг', 'кв', 'м', 'м2', 'см2', 'м²', 'см²'
-    }
-    
-    if settings.get('custom_stops'):
-        base_stop_words.update(set(settings['custom_stops']))
-
-    if not USE_NLP or not morph:
-        return [w.lower() for w in word_list if len(w) > 2 and w.lower() not in base_stop_words]
-
-    lemmas = []
-    for word in word_list:
-        word_lower = word.lower()
-        if len(word) > 2 and word_lower not in base_stop_words:
-            p = morph.parse(word_lower)[0]
-            if 'PREP' not in p.tag and 'CONJ' not in p.tag and 'NUMR' not in p.tag and 'PRCL' not in p.tag:
-                lemmas.append(p.normal_form)
-    return lemmas
-
-def clean_and_tokenize(html_content, settings):
-    soup = BeautifulSoup(html_content, 'html.parser')
-
-    if settings.get('noindex', True):
-        for noindex in soup.find_all('noindex'):
-            noindex.decompose()
-
-    for script in soup(["script", "style", "head", "footer", "nav", "header", "aside"]):
-        script.extract()
-
-    text_parts = [soup.get_text(separator=' ')]
-
-    if settings.get('alt_title', False):
-        for img in soup.find_all('img', alt=True):
-            text_parts.append(img['alt'])
-        for tag in soup.find_all(title=True):
-            text_parts.append(tag['title'])
-
-    full_text = " ".join(text_parts)
-
-    if settings.get('numbers', False):
-         words = re.findall(r'[а-яА-ЯёЁ0-9]+', full_text)
-    else:
-         words = re.findall(r'[а-яА-ЯёЁ]+', full_text)
-
-    return " ".join(process_words(words, settings))
-
-def clean_anchor_text(html_content, settings):
-    soup = BeautifulSoup(html_content, 'html.parser')
-    anchor_words = []
-    for a_tag in soup.find_all('a'):
-        text = a_tag.get_text(strip=True)
-        if text:
-            words = re.findall(r'[а-яА-ЯёЁ]+', text)
-            anchor_words.extend(process_words(words, settings))
-
-    return " ".join(anchor_words)
-
-def get_page_data(url, user_agent, settings):
-    headers = {'User-Agent': user_agent}
-    try:
-        response = requests.get(url.strip(), headers=headers, timeout=20)
-        response.raise_for_status() 
-        html = response.text
-        return clean_and_tokenize(html, settings), clean_anchor_text(html, settings) 
-    except Exception as e:
-        return "", ""
-
-def manual_vectorize_and_analyze(corpus_body, corpus_anchor, my_idx):
-
-    all_tokens_list = [token for doc in corpus_body for token in doc.split()]
-    feature_names = sorted(list(set(all_tokens_list)))
-
-    count_vectors = []
-    doc_freq = Counter()
-    N_docs = len(corpus_body)
-
-    for i, doc in enumerate(corpus_body):
-        counts = Counter(doc.split())
-        vector = [counts.get(token, 0) for token in feature_names]
-        count_vectors.append(vector)
-
-        for token in set(doc.split()):
-            doc_freq[token] += 1
-
-    anchor_vectors = []
-    for doc in corpus_anchor:
-        counts = Counter(doc.split())
-        vector = [counts.get(token, 0) for token in feature_names]
-        anchor_vectors.append(vector)
-
-
-    idf_values = {}
-    for token in feature_names:
-        df = doc_freq[token]
-        idf = math.log(N_docs / df) + 1
-        idf_values[token] = idf
-
-    tfidf_vectors = []
-    for count_vector, doc in zip(count_vectors, corpus_body):
-        doc_tokens = doc.split()
-        doc_len = len(doc_tokens)
-
-        tf_vector = [count / doc_len if doc_len > 0 else 0 for count in count_vector]
-        tfidf_vector = [tf * idf_values.get(token, 0) for tf, token in zip(tf_vector, feature_names)]
-        tfidf_vectors.append(tfidf_vector)
-
-    dense_tfidf = np.array(tfidf_vectors)
-    dense_count = np.array(count_vectors)
-    dense_anchor = np.array(anchor_vectors)
-
-    comp_tfidf_matrix = dense_tfidf[:my_idx]
-    my_tfidf_vector = dense_tfidf[my_idx]
-
-    comp_count_matrix = dense_count[:my_idx]
-    my_count_vector = dense_count[my_idx]
-
-    comp_anchor_matrix = dense_anchor[:my_idx]
-    my_anchor_vector = dense_anchor[my_idx]
-
-    return feature_names, comp_tfidf_matrix, my_tfidf_vector, comp_count_matrix, my_count_vector, comp_anchor_matrix, my_anchor_vector
-
-def run_analysis(my_url_id, competitors_urls, settings, my_body_content=None, my_anchor_content=None):
-    
-    if my_url_id == "No_Page_Mode":
-        my_body, my_anchor = "", ""
-    elif my_body_content is not None:
-        my_body, my_anchor = my_body_content, my_anchor_content
-    else:
-        print(f"📥 Скачивание Вашего сайта: {my_url_id}...")
-        my_body, my_anchor = get_page_data(my_url_id, settings['user_agent'], settings)
-    
-    if not my_body and my_url_id not in ["No_Page_Mode", "Manual_Code_Input"]:
-        print("❌ Ошибка: Не удалось получить контент вашего сайта. Проверьте URL или User-Agent.")
-        return None
-
-    corpus_body, corpus_anchor = [], []
-
-    print(f"📥 Обработка {len(competitors_urls)} конкурентов...")
-    for url in competitors_urls:
-        body_text, anchor_text = get_page_data(url, settings['user_agent'], settings)
-        if len(body_text) > 50:
-            corpus_body.append(body_text)
-            corpus_anchor.append(anchor_text)
-
-    if len(corpus_body) < 2:
-        print("❌ Недостаточно данных для сравнения (скачано менее 2 конкурентов).")
-        return None
-
-    my_idx = len(corpus_body)
-
-    my_body_len = len(my_body.split())
-    comp_body_lengths = [len(doc.split()) for doc in corpus_body] 
-    avg_comp_body_len = np.mean(comp_body_lengths) if comp_body_lengths else 1.0
-
-    length_normalization_factor = 1.0
-    if settings.get('normalize', False) and avg_comp_body_len > 0:
-        length_normalization_factor = my_body_len / avg_comp_body_len 
-        
-    corpus_body.append(my_body)
-    corpus_anchor.append(my_anchor)
-
-    feature_names, comp_tfidf_matrix, my_tfidf_vector, comp_count_matrix, my_count_vector, comp_anchor_matrix, my_anchor_vector = \
-        manual_vectorize_and_analyze(corpus_body, corpus_anchor, my_idx)
-
-    results = []
-    TARGET_FACTOR = 1.3
-    PERCENT_OUTPUT = settings.get('percent_output', False)
-
-    for col in range(len(feature_names)):
-        token = feature_names[col]
-
-        comp_tfidf_col = comp_tfidf_matrix[:, col]
-        comp_count_col = comp_count_matrix[:, col]
-        comp_anchor_col = comp_anchor_matrix[:, col]
-
-        median_tfidf = float(np.median(comp_tfidf_col)) if comp_tfidf_col.size > 0 else 0
-        median_count = float(np.median(comp_count_col)) if comp_count_col.size > 0 else 0
-        median_anchor_count = float(np.median(comp_anchor_col)) if comp_anchor_col.size > 0 else 0
-
-        my_tfidf = float(my_tfidf_vector[col])
-        my_count = float(my_count_vector[col])
-        my_anchor_count = float(my_anchor_vector[col])
-
-        # --- BODY COUNT CALCULATION ---
-        target_body_count = int(median_count * TARGET_FACTOR * length_normalization_factor)
-        rec_body_count = target_body_count - int(my_count)
-
-        rec_body_text = "0"
-        if PERCENT_OUTPUT:
-            if target_body_count > 0:
-                current_coverage_percent = (my_count / target_body_count) * 100
-                if current_coverage_percent < 100: rec_body_text = f" +{abs(100 - current_coverage_percent):.0f}%"
-                elif current_coverage_percent > 100: rec_body_text = f" -{abs(current_coverage_percent - 100):.0f}%"
-                else: rec_body_text = "0%"
-            elif my_count > 0: rec_body_text = f" -100%" 
-            else: rec_body_text = "0%"
-        else:
-            if rec_body_count > 0: rec_body_text = f" +{abs(rec_body_count)}"
-            elif rec_body_count < 0: rec_body_text = f" {rec_body_count}"
-            else: rec_body_text = "0"
-
-
-        # --- ANCHOR COUNT CALCULATION ---
-        target_anchor_count = int(median_anchor_count * TARGET_FACTOR * length_normalization_factor)
-        rec_anchor_count = target_anchor_count - int(my_anchor_count)
-
-        rec_anchor_text = "0"
-        if PERCENT_OUTPUT:
-            if target_anchor_count > 0:
-                current_coverage_percent = (my_anchor_count / target_anchor_count) * 100
-                if current_coverage_percent < 100: rec_anchor_text = f" +{abs(100 - current_coverage_percent):.0f}%"
-                elif current_coverage_percent > 100: rec_anchor_text = f" -{abs(current_coverage_percent - 100):.0f}%"
-                else: rec_anchor_text = "0%"
-            elif my_anchor_count > 0: rec_anchor_text = f" -100%" 
-            else: rec_anchor_text = "0%"
-        else:
-            if rec_anchor_count > 0: rec_anchor_text = f" +{abs(rec_anchor_count)}"
-            elif rec_anchor_count < 0: rec_anchor_text = f" {rec_anchor_count}"
-            else: rec_anchor_text = "0"
-
-
-        is_relevant = median_tfidf > 0.05
-        is_actionable = (rec_body_text != '0' and rec_body_text != '0%') or \
-                        (rec_anchor_text != '0' and rec_anchor_text != '0%')
-
-        if is_relevant or is_actionable:
-
-            lemma_name = token if USE_NLP else f"Токен: {token}"
-
-            results.append({
-                "Слово (Лемма)": lemma_name,
-                "Словоформы": get_word_forms(token),
-                "TF-IDF (Вы)": round(my_tfidf, 3),
-                "Медиана (ТОП)": round(median_tfidf, 3),
-                "Текст (Рек.)": rec_body_text,
-                "Текст (Повт.)": int(my_count),
-                "Тег <a> (Рек.)": rec_anchor_text,
-                "Тег <a> (Повт.)": int(my_anchor_count)
-            })
-
-    # 7. Финальная сортировка и фильтрация
-    df = pd.DataFrame(results)
-    if not df.empty:
-        def extract_abs_value(rec_str):
-            if rec_str == '0' or rec_str == '0%': return 0
-            return abs(float(re.sub(r'[+\- %]', '', rec_str)))
-
-        df['Sort_Body_Abs'] = df['Текст (Рек.)'].apply(extract_abs_value)
-        df['Sort_Anchor_Abs'] = df['Тег <a> (Рек.)'].apply(extract_abs_value)
-
-        df = df.sort_values(by=['Sort_Body_Abs', 'Sort_Anchor_Abs', 'Медиана (ТОП)'], ascending=[False, False, False])
-        df = df.drop(columns=['Sort_Body_Abs', 'Sort_Anchor_Abs'])
-
-        df_filtered = df[(df['Текст (Рек.)'] != '0') & (df['Текст (Рек.)'] != '0%') |
-                         (df['Тег <a> (Рек.)'] != '0') & (df['Тег <a> (Рек.)'] != '0%')]
-
-        return df_filtered
-    return None
-
-
-# ==========================================
-# ШАГ 3: АУТЕНТ. И ИНТЕРФЕЙС (UI) - УЛУЧШЕННЫЙ ДИЗАЙН
-# ==========================================
-
-# --- 0. АУТЕНТИФИКАЦИЯ ---
-CORRECT_PASSWORD = "garpro"
-
-password_input = widgets.Password(
-    placeholder='Введите пароль для доступа',
-    description='Пароль:',
-    layout=widgets.Layout(width='300px')
+st.set_page_config(
+    page_title="SEO Анализатор Релевантности",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
-login_button = widgets.Button(
-    description='Войти',
-    button_style='info',
-    layout=widgets.Layout(width='100px')
-)
-auth_output = widgets.Output()
 
-# Контейнер для основного UI
-main_ui_container = widgets.VBox([], layout=widgets.Layout(display='none', border='1px solid #CCC', padding='15px', background_color='#F7F7F7'))
-bn_run = widgets.Button(
-    description='АНАЛИЗИРОВАТЬ 🚀',
-    button_style='warning',
-    layout=widgets.Layout(width='99%', height='50px', margin='20px 0', display='none')
-)
-output_log = widgets.Output()
+# Внедряем CSS стили (шрифт Inter)
+st.markdown("""
+    <style>
+        /* Подключение шрифта Inter */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
 
-
-def check_password(b):
-    with auth_output:
-        clear_output()
-        if password_input.value == CORRECT_PASSWORD:
-            print("✅ Авторизация успешна. Загрузка интерфейса...")
-            
-            # Скрываем логин-форму
-            password_input.layout.display = 'none'
-            login_button.layout.display = 'none'
-            
-            # Отображаем основной UI и кнопку запуска
-            main_ui_container.layout.display = 'block'
-            bn_run.layout.display = 'block'
-            
-            # Выводим главный интерфейс
-            display(widgets.HTML("<h2>Гибридный Анализ Релевантности PRO</h2>"))
-            display(main_ui_container)
-            display(bn_run)
-            display(output_log)
-            
-        else:
-            print("❌ Неверный пароль. Попробуйте снова.")
-
-login_button.on_click(check_password)
-
-# Выводим сначала только форму логина
-display(widgets.HTML("<h2>Гибридный Анализ Релевантности PRO: Вход</h2>"))
-display(widgets.HBox([password_input, login_button]))
-display(auth_output)
-
-# --- Настройки UI ---
-style_header = "font-size: 16px; font-weight: bold; margin-top: 10px; margin-bottom: 5px; color: #1E293B;"
-w_layout = widgets.Layout(width='99%')
-w_half_layout = widgets.Layout(width='50%')
-
-# --- 1. Секция: Постановка задачи ---
-html_task = widgets.HTML(f"<div style='{style_header}'>1️⃣ Ваша страница и запрос</div>")
-r_input_type = widgets.RadioButtons(options=['Релевантная страница на вашем сайте', 'Исходный код страницы или текст', 'Без страницы'], value='Релевантная страница на вашем сайте', layout=widgets.Layout(width='100%'))
-w_my_url = widgets.Text(placeholder="https://site.ru/catalog/page", layout=w_layout) 
-w_source_code = widgets.Textarea(placeholder="Вставьте сюда HTML код страницы или текст статьи...", layout=widgets.Layout(width='99%', height='200px', display='none')) 
-w_query = widgets.Text(placeholder="Основной поисковой запрос", layout=w_layout)
-chk_extra_queries = widgets.Checkbox(value=False, description='Дополнительные запросы')
-w_extra_queries_text = widgets.Textarea(placeholder="Каждый запрос с новой строки", layout=widgets.Layout(width='99%', height='60px', display='none'))
-
-def toggle_input_mode(change):
-    mode = change['new']
-    w_my_url.layout.display = 'block' if mode == 'Релевантная страница на вашем сайте' else 'none'
-    w_source_code.layout.display = 'block' if mode == 'Исходный код страницы или текст' else 'none'
-    chk_norm.disabled = mode == 'Без страницы'
-    chk_norm.value = not chk_norm.disabled
-r_input_type.observe(toggle_input_mode, names='value')
-def toggle_extra_queries(change): w_extra_queries_text.layout.display = 'block' if change['new'] else 'none'
-chk_extra_queries.observe(toggle_extra_queries, names='value')
-
-task_box = widgets.VBox([
-    html_task, 
-    r_input_type, 
-    w_my_url, 
-    w_source_code, 
-    w_query,
-    chk_extra_queries,
-    w_extra_queries_text,
-    widgets.HTML("<hr style='border-top: 1px solid #DDD;'>")
-], layout=widgets.Layout(border='1px solid #CCC', padding='10px', margin='0 0 10px 0', background_color='#FFFFFF'))
-
-
-# --- 2. Секция: Конкуренты ---
-html_comp = widgets.HTML(f"<div style='{style_header}'>2️⃣ Источник данных и фильтры</div>")
-r_comp_source = widgets.RadioButtons(options=['Поиск', 'Список url-адресов ваших конкурентов'], value='Поиск', layout=widgets.Layout(width='100%'))
-w_engine = widgets.Dropdown(options=['Google', 'Яндекс (Не работает!)'], value='Google', description='Система:', layout=w_half_layout)
-w_region = widgets.Dropdown(options=['Москва', 'Санкт-Петербург', 'Россия', 'СНГ'], value='Москва', description='Регион:', layout=w_half_layout)
-w_device = widgets.Dropdown(options=['Desktop', 'Mobile'], value='Desktop', description='Устройство:', layout=w_half_layout)
-w_top_count = widgets.Dropdown(options=[5, 10, 15, 20, 30], value=10, description='ТОП:', layout=w_half_layout)
-w_exclude_domains = widgets.Textarea(value="\n".join(BLACKLIST_DOMAINS), description='Не учитывать:', placeholder='Домены для исключения', layout=w_layout)
-w_manual_comps = widgets.Textarea(placeholder="https://competitor1.ru\nhttps://competitor2.ru", layout=widgets.Layout(width='99%', height='150px', display='none'))
-
-comp_settings_col = widgets.VBox([
-    widgets.HTML("<b>Настройки поиска</b>"),
-    widgets.HBox([w_engine, w_region], layout=w_layout),
-    widgets.HBox([w_device, w_top_count], layout=w_layout),
-], layout=w_half_layout)
-
-comp_exclude_col = widgets.VBox([
-    widgets.HTML("<b>Домены для исключения (по домену/URL)</b>"),
-    w_exclude_domains,
-], layout=w_half_layout)
-
-comp_search_settings = widgets.VBox([
-    widgets.HBox([comp_settings_col, comp_exclude_col]),
-], layout=widgets.Layout(display='block'))
-
-def toggle_comp_source(change):
-    comp_search_settings.layout.display = 'block' if change['new'] == 'Поиск' else 'none'
-    w_manual_comps.layout.display = 'block' if change['new'] == 'Список url-адресов ваших конкурентов' else 'none'
-r_comp_source.observe(toggle_comp_source, names='value')
-
-comp_box = widgets.VBox([
-    html_comp, 
-    r_comp_source,
-    comp_search_settings,
-    w_manual_comps,
-    widgets.HTML("<hr style='border-top: 1px solid #DDD;'>")
-], layout=widgets.Layout(border='1px solid #CCC', padding='10px', margin='0 0 10px 0', background_color='#FFFFFF'))
-
-
-# --- 3. Секция: Настройки (ДВЕ КОЛОНКИ) ---
-html_settings = widgets.HTML(f"<div style='{style_header}'>3️⃣ Детализация и технические настройки</div>")
-w_perfect_url = widgets.Text(placeholder="https://site.ru/ (Главный конкурент)", layout=w_layout)
-chk_norm = widgets.Checkbox(value=True, description='Нормировать общие значения (Медиана, переспам)')
-chk_percent = widgets.Checkbox(value=False, description='Выводить общие значения в процентах')
-chk_aggr = widgets.Checkbox(value=True, description='Исключить агрегаторы и type-in трафик (список выше)')
-chk_noindex = widgets.Checkbox(value=True, description='Исключать текст в теге noindex')
-chk_alt = widgets.Checkbox(value=False, description='Учитывать атрибуты alt и title')
-chk_num = widgets.Checkbox(value=False, description='Учитывать числа')
-chk_stop_pos = widgets.Checkbox(value=True, description='Исключать служебные части речи') 
-chk_extra_data = widgets.Checkbox(value=False, description='Дополнительные данные (экспертные)')
-
-main_settings_col = widgets.VBox([
-    widgets.HTML("<b>Основные параметры</b>"),
-    w_perfect_url,
-    chk_norm, 
-    chk_percent,
-    chk_aggr,
-    chk_noindex, 
-    chk_alt, 
-    chk_num,
-    chk_extra_data,
-], layout=widgets.Layout(width='50%', padding='5px'))
-
-# Колонка Б: Технические и Стоп-слова
-w_user_agent = widgets.Text(value="Mozilla/5.0 (compatible; Artur2k/1.0;)", description='User-Agent:', layout=w_layout)
-chk_stop_custom = widgets.Checkbox(value=True, description='Исключать свой список слов')
-default_stops = "рублей\nруб\nстр\nул\nшт\nсм\nмм\nмл\nкг\nкв\nм²\nсм²\nм2\nсм2"
-w_stop_custom_text = widgets.Textarea(value=default_stops, layout=w_layout)
-chk_depth_formula = widgets.Checkbox(value=False, description='Параметры формулы глубины')
-w_depth_top = widgets.Dropdown(options=['ТОП3', 'ТОП5', 'ТОП10', 'ТОП20'], value='ТОП5', description='Слов:', layout=widgets.Layout(display='none', width='100%'))
-w_depth_count = widgets.Checkbox(value=True, description='Учитывать кол-во повторов', layout=widgets.Layout(display='none', width='100%'))
-
-def toggle_stop_custom(change): w_stop_custom_text.layout.display = 'block' if change['new'] else 'none'
-chk_stop_custom.observe(toggle_stop_custom, names='value')
-
-def toggle_depth(change):
-    vis = 'block' if change['new'] else 'none'
-    w_depth_top.layout.display = vis
-    w_depth_count.layout.display = vis
-chk_depth_formula.observe(toggle_depth, names='value')
-
-tech_settings_col = widgets.VBox([
-    widgets.HTML("<b>Технические настройки</b>"),
-    w_user_agent,
-    chk_stop_pos,
-    chk_stop_custom, 
-    w_stop_custom_text,
-    chk_depth_formula, 
-    w_depth_top, 
-    w_depth_count,
-], layout=widgets.Layout(width='50%', padding='5px'))
-
-settings_hbox = widgets.HBox([main_settings_col, tech_settings_col], layout=widgets.Layout(justify_content='space-between', width='100%'))
-
-settings_box = widgets.VBox([
-    html_settings,
-    settings_hbox
-], layout=widgets.Layout(border='1px solid #CCC', padding='10px', margin='0 0 10px 0', background_color='#FFFFFF'))
-
-
-# --- ФИНАЛЬНАЯ СБОРКА ИНТЕРФЕЙСА ---
-ui_elements = widgets.VBox([
-    task_box,
-    comp_box,
-    settings_box
-])
-
-main_ui_container.children = [ui_elements]
-
-# --- ОБРАБОТЧИК ЗАПУСКА ---
-
-def on_btn_click(b):
-    with output_log:
-        clear_output()
-        print("⚙️ Сбор данных задачи...")
-
-        # 1. Сбор настроек
-        settings = {
-            'top': w_top_count.value,
-            'noindex': chk_noindex.value,
-            'alt_title': chk_alt.value,
-            'numbers': chk_num.value,
-            'normalize': chk_norm.value,
-            'percent_output': chk_percent.value,
-            'user_agent': w_user_agent.value,
-            'exclude': [x.strip() for x in w_exclude_domains.value.split('\n') if x.strip()],
-            'custom_stops': [x.strip() for x in w_stop_custom_text.value.split('\n') if x.strip()] if chk_stop_custom.value else []
+        /* Основной шрифт приложения */
+        html, body, [class*="css"] {
+            font-family: 'Inter', sans-serif;
+            color: #171717;
         }
         
-        if chk_aggr.value: 
-            settings['exclude'].extend(BLACKLIST_DOMAINS)
-        settings['exclude'] = list(set([item for item in settings['exclude'] if item]))
+        /* Заголовки */
+        h1, h2, h3 {
+            font-weight: 700;
+            color: #0F172A;
+        }
 
-        # 2. Определение "Моей Страницы"
-        input_mode = r_input_type.value
-        my_body_content = None
-        my_anchor_content = None
-        my_url_id = "" 
+        /* Настройка контейнера приложения */
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            max-width: 1400px;
+        }
 
-        if input_mode == 'Релевантная страница на вашем сайте':
-            my_url_id = w_my_url.value
-            if not my_url_id:
-                print("❌ Ошибка: Введите URL вашего сайта!")
-                return
-        elif input_mode == 'Исходный код страницы или текст':
-            raw_code = w_source_code.value
-            if not raw_code:
-                print("❌ Ошибка: Вставьте HTML код или текст!")
-                return
-            my_url_id = "Manual_Code_Input"
-            my_body_content = clean_and_tokenize(raw_code, settings)
-            my_anchor_content = clean_anchor_text(raw_code, settings) 
-        elif input_mode == 'Без страницы':
-            my_url_id = "No_Page_Mode"
-            my_body_content = "" 
-            my_anchor_content = ""
+        /* Заголовок H1 */
+        h1 {
+            color: #1E40AF; /* Синий для акцента */
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Карточки ввода */
+        .stTextInput > div > div > input, .stTextArea > div > textarea, .stSelectbox > div > button {
+            border-radius: 0.5rem;
+            border: 1px solid #E5E7EB;
+            padding: 0.75rem 1rem;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        /* Кнопки */
+        .stButton>button {
+            background-color: #1E40AF;
+            color: white;
+            font-weight: 600;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            transition: all 0.2s;
+            border: none;
+        }
+        .stButton>button:hover {
+            background-color: #1D4ED8;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
         
-        # 3. Сбор конкурентов
-        competitors_urls = []
-        if r_comp_source.value == 'Поиск':
-            query = w_query.value
-            if not query:
-                print("❌ Ошибка: Введите поисковой запрос!")
-                return
+        /* Таблицы Pandas */
+        .stDataFrame {
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Подсветка для рекомендаций */
+        .dataframe td {
+             vertical-align: middle !important;
+        }
+
+    </style>
+""", unsafe_allow_html=True)
+
+
+# ==========================================
+# 2. ФУНКЦИИ БЭКЕНДА
+# ==========================================
+
+# 2.1. Извлечение контента
+def fetch_content(url):
+    """Получает HTML-контент страницы и извлекает текст и анкоры."""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    try:
+        # Устанавливаем таймаут 10 секунд
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status() # Проверка на ошибки HTTP
+
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        # Удаляем скрипты, стили, и другие ненужные элементы
+        for script_or_style in soup(["script", "style", "header", "footer", "nav", "aside", "form"]):
+            script_or_style.decompose()
+
+        # Извлечение анкоров
+        anchors = [a.get_text(separator=' ', strip=True).lower() for a in soup.find_all('a') if a.get_text(strip=True)]
+        
+        # Извлечение основного текста (теги p, h1-h6, li, td, span, div)
+        main_tags = soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'td', 'span', 'div'])
+        text_content = ' '.join([tag.get_text(separator=' ', strip=True) for tag in main_tags])
+        
+        # Удаление лишних пробелов и переносов строк
+        text_content = re.sub(r'\s+', ' ', text_content).strip()
+
+        return text_content, ' '.join(anchors)
+
+    except requests.exceptions.RequestException:
+        return None, None
+    except Exception:
+        return None, None
+
+# 2.2. Очистка и лемматизация текста
+def process_text(text):
+    """Очищает текст, удаляет стоп-слова и лемматизирует."""
+    if not text:
+        return []
+        
+    # Удаление небуквенных символов и перевод в нижний регистр
+    text = re.sub(r'[^а-яa-z\s]', ' ', text.lower())
+    words = text.split()
+    
+    # Очень простой список стоп-слов
+    stopwords = set([
+        'и', 'в', 'на', 'по', 'с', 'к', 'от', 'до', 'для', 'из', 'за', 'под', 
+        'не', 'да', 'это', 'то', 'как', 'так', 'же', 'мы', 'вы', 'он', 'она', 
+        'оно', 'они', 'их', 'все', 'что', 'который', 'при', 'у', 'я', 'но'
+    ])
+    
+    lemmas = []
+    if USE_MORPH:
+        for word in words:
+            if word in stopwords or len(word) < 3:
+                continue
+            p = morph.parse(word)[0]
+            # Лемматизируем только существительные, глаголы, прилагательные, наречия
+            if p.tag.POS in ('NOUN', 'VERB', 'ADJF', 'ADJS', 'ADVB'):
+                lemmas.append(p.normal_form)
+    else:
+        # Если pymorphy2 недоступен, просто фильтруем по стоп-словам
+        lemmas = [word for word in words if word not in stopwords and len(word) >= 3]
             
-            if USE_SEARCH and w_engine.value == 'Google':
-                try:
-                    print(f"🔎 Поиск в Google по запросу: {query}")
-                    # Устанавливаем запас, чтобы потом отфильтровать исключенные
-                    raw_urls = search(query, num_results=settings['top'] + 10, lang="ru") 
+    return lemmas
 
-                    count_collected = 0
-                    for u in raw_urls:
-                        if u == my_url_id or any(ex in u for ex in settings['exclude']):
-                            continue
+# 2.3. Расчет метрик (TF, IDF, BM25)
+def calculate_metrics(word_freqs, N, idf_db, D, avg_D, k1, b):
+    """
+    Рассчитывает метрики TF, TF-IDF, BM25 для каждого слова.
+    """
+    metrics = {}
+    
+    for word, freq in word_freqs.items():
+        if word not in idf_db:
+            # Если слово не найдено в IDF базе, используем максимальный IDF (min_doc_freq = 1)
+            idf_value = math.log(N / 1) if N > 0 else 0 
+        else:
+            idf_value = idf_db[word]
+            
+        # 1. Term Frequency (TF)
+        tf = freq / D if D > 0 else 0
 
-                        competitors_urls.append(u)
-                        count_collected += 1
+        # 2. TF-IDF
+        tfidf = tf * idf_value
 
-                        if count_collected >= settings['top']: break
-                    
-                    if not competitors_urls:
-                        print("❌ Google Search не вернул результатов.")
-                        return
+        # 3. BM25
+        # Расчет K
+        K = k1 * ( (1 - b) + b * (D / avg_D) )
+        # Формула BM25
+        bm25 = idf_value * ( (freq * (k1 + 1)) / (freq + K) )
 
-                except Exception as e:
-                    print(f"⚠️ Ошибка поиска Google: {e}.")
-                    return
+        metrics[word] = {
+            'tf': tf,
+            'tfidf': tfidf,
+            'bm25': bm25,
+            'idf': idf_value,
+            'count': freq, # частота слова в текущем документе
+        }
+    return metrics
+
+# 2.4. Основная функция анализа
+def run_analysis(my_url, competitors_urls, settings):
+    """
+    Запускает полный гибридный анализ релевантности.
+    """
+    # 1. Сбор контента в параллельном режиме
+    all_data = {}
+    
+    urls_to_fetch = [my_url] + competitors_urls
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_url = {executor.submit(fetch_content, url): url for url in urls_to_fetch}
+        
+        fetch_status = st.empty()
+        fetch_status.info("⏳ Идет сбор контента со страниц. Пожалуйста, подождите...")
+        
+        for i, future in enumerate(concurrent.futures.as_completed(future_to_url)):
+            url = future_to_url[future]
+            
+            try:
+                body_content, anchor_content = future.result()
+            except Exception:
+                body_content, anchor_content = None, None
+            
+            if body_content:
+                
+                # Задержка 1 секунда, чтобы снизить нагрузку на целевые сайты (кроме своего)
+                if url != my_url:
+                    time.sleep(1) 
+                
+                lemmas = process_text(body_content)
+                anchor_lemmas = process_text(anchor_content)
+                
+                all_data[url] = {
+                    'body_lemmas': lemmas,
+                    'anchor_lemmas': anchor_lemmas,
+                    'D_body': len(lemmas),
+                    'D_anchor': len(anchor_lemmas),
+                    'domain': urlparse(url).netloc
+                }
+                
+                fetch_status.text(f"✅ Обработано {i+1}/{len(urls_to_fetch)} страниц. Текущая: {urlparse(url).netloc}")
             else:
-                 print("❌ Поиск недоступен или Яндекс не поддерживается.")
-                 return
-
-        else: # Список URL вручную
-            raw_list = w_manual_comps.value.split('\n')
-            
-            for comp_url in [u.strip() for u in raw_list if u.strip()]:
-                if comp_url == my_url_id or any(ex in comp_url for ex in settings['exclude']):
-                    continue
-                competitors_urls.append(comp_url)
+                fetch_status.warning(f"❌ Не удалось обработать страницу: {url}")
 
 
-        if not competitors_urls:
-            print("❌ Список конкурентов пуст.")
-            return
+    if my_url not in all_data:
+        st.error("❌ Не удалось получить контент с вашего URL. Анализ невозможен.")
+        return None
 
-        # 4. Запуск анализа
-        print(f"\n🚀 Старт анализа. Будет обработано {len(competitors_urls)} URL.")
+    my_data = all_data.pop(my_url)
+    comp_data = all_data
+
+    N_comps = len(comp_data)
+    if N_comps == 0:
+        st.error("❌ Не удалось собрать данные ни с одного конкурента. Анализ невозможен.")
+        return None
+
+    # 2. База данных частоты документов (DF) и IDF
+    
+    all_comp_words = set()
+    for data in comp_data.values():
+        all_comp_words.update(set(data['body_lemmas']))
+
+    doc_freq = Counter()
+    for word in all_comp_words:
+        for data in comp_data.values():
+            if word in data['body_lemmas']:
+                doc_freq[word] += 1
+    
+    idf_db = {
+        word: math.log(N_comps / count) for word, count in doc_freq.items() if N_comps > 0 and count > 0
+    }
+    
+    comp_lengths = [data['D_body'] for data in comp_data.values()]
+    avg_D = np.mean(comp_lengths) if comp_lengths else 1
+
+    # 3. Расчет метрик
+    
+    all_word_metrics = {}
+    
+    # --- 3.1. Анализ конкурентов ---
+    for data in comp_data.values():
+        word_freqs = Counter(data['body_lemmas'])
         
-        df = run_analysis(
-            my_url_id, 
-            competitors_urls, 
-            settings, 
-            my_body_content=my_body_content, 
-            my_anchor_content=my_anchor_content
+        metrics = calculate_metrics(
+            word_freqs, N_comps, idf_db, data['D_body'], avg_D, 
+            settings['bm25_k1'], settings['bm25_b']
         )
 
-        if df is not None:
-            print("\n📊 РЕЗУЛЬТАТЫ ГИБРИДНОГО АНАЛИЗА:")
-            display(df)
-        else:
-            print("\n⚠️ Анализ не дал значимых результатов.")
+        for word, m in metrics.items():
+            if word not in all_word_metrics:
+                all_word_metrics[word] = {
+                    'tfidf_comp': [], 'bm25_comp': [], 'count_comp': [], 'count_sites': doc_freq.get(word, 0)
+                }
+            all_word_metrics[word]['tfidf_comp'].append(m['tfidf'])
+            all_word_metrics[word]['bm25_comp'].append(m['bm25'])
+            all_word_metrics[word]['count_comp'].append(m['count'])
 
-bn_run.on_click(on_btn_click)
+    # --- 3.2. Анализ нашего сайта ---
+    my_body_freqs = Counter(my_data['body_lemmas'])
+    my_anchor_freqs = Counter(my_data['anchor_lemmas'])
+    
+    my_body_metrics = calculate_metrics(
+        my_body_freqs, N_comps, idf_db, my_data['D_body'], avg_D, 
+        settings['bm25_k1'], settings['bm25_b']
+    )
+
+    # 4. Формирование финальной таблицы
+    
+    final_data = []
+    
+    all_words = set(all_word_metrics.keys()) | set(my_body_metrics.keys())
+    
+    for word in all_words:
+        
+        comp_data_word = all_word_metrics.get(word, {'tfidf_comp': [], 'bm25_comp': [], 'count_comp': [], 'count_sites': 0})
+        my_m = my_body_metrics.get(word, {})
+
+        # Метрики конкурентов (медианы)
+        tfidf_top_median = np.median(comp_data_word['tfidf_comp']) if comp_data_word['tfidf_comp'] else 0
+        bm25_top_median = np.median(comp_data_word['bm25_comp']) if comp_data_word['bm25_comp'] else 0
+        count_top_avg = np.mean(comp_data_word['count_comp']) if comp_data_word['count_comp'] else 0
+        
+        # Метрики нашего сайта
+        tfidf_my = my_m.get('tfidf', 0)
+        bm25_my = my_m.get('bm25', 0)
+        idf_val = my_m.get('idf', comp_data_word.get('idf', 0)) # Берем IDF из нашего словаря или из IDF базы конкурентов
+        count_my = my_m.get('count', 0)
+        
+        # Анкорные повторы
+        anchor_my = my_anchor_freqs.get(word, 0)
+        anchor_top_avg = 0 # Анкорный анализ у конкурентов отключен для упрощения
+
+        # 4.1. Фильтрация и Расчеты
+        
+        # Фильтрация по частоте у конкурентов
+        if comp_data_word['count_sites'] < settings['min_sites']:
+             continue
+
+        # Логика для подсветки и рекомендаций
+        # 1. Повторы в основном тексте
+        if count_my == 0 and count_top_avg > 0:
+            rec_text = f"Добавить {math.ceil(count_top_avg):.0f} (avg) - {comp_data_word['count_sites']}/{N_comps} сайтов"
+        elif count_my > count_top_avg * settings['max_spam_factor'] and count_top_avg > 0:
+            rec_text = f"Убрать {math.ceil(count_my - count_top_avg):.0f} (spam)"
+        else:
+            rec_text = "OK"
+
+        # 2. Повторы в анкорах
+        if anchor_my == 0 and anchor_top_avg > 0:
+             rec_anchor = f"Добавить {math.ceil(anchor_top_avg):.0f} (avg)"
+        elif anchor_my > anchor_top_avg * settings['max_spam_factor'] and anchor_top_avg > 0:
+             rec_anchor = f"Убрать {math.ceil(anchor_my - anchor_top_avg):.0f} (spam)"
+        else:
+             rec_anchor = "OK"
+             
+        # 3. Общая рекомендация (на основе BM25)
+        # Усилить BM25, если сильно отстает, и слово популярно у большинства
+        if (bm25_my < bm25_top_median * 0.5) and (comp_data_word['count_sites'] >= N_comps * 0.5):
+            rec_total = f"Добавить (BM25: {bm25_my:.2f} < {bm25_top_median:.2f})"
+        # Убрать, если сильно переспамлено по BM25
+        elif bm25_my > bm25_top_median * settings['max_spam_factor'] and bm25_top_median > 0:
+            rec_total = f"Убрать (BM25: {bm25_my:.2f} > {bm25_top_median:.2f})"
+        else:
+            rec_total = "OK"
+
+        
+        final_data.append({
+            'Слово': word,
+            'TF-IDF ТОП': tfidf_top_median,
+            'TF-IDF ваш сайт': tfidf_my,
+            'BM25 ТОП': bm25_top_median,
+            'BM25 ваш сайт': bm25_my,
+            'IDF': idf_val,
+            'Кол-во сайтов': comp_data_word['count_sites'],
+            'Медиана': np.median(comp_data_word['count_comp']) if comp_data_word['count_comp'] else 0, # Медиана повторов в тексте
+            'Переспам': rec_total, # Итоговая рекомендация
+            'Среднее по ТОПу (повт.)': count_top_avg,
+            'Ваш сайт (повт.)': count_my,
+            '<a/> по ТОПу (повт.)': anchor_top_avg,
+            '<a/> ваш сайт (повт.)': anchor_my,
+            'Текст Добавить/Убрать': rec_text,
+            'Тег A Добавить/Убрать': rec_anchor,
+        })
+
+
+    df = pd.DataFrame(final_data)
+    
+    # 5. Фильтрация и Сортировка
+    
+    if df.empty:
+        return None
+        
+    numeric_cols = [
+        'TF-IDF ТОП', 'TF-IDF ваш сайт', 'BM25 ТОП', 'BM25 ваш сайт', 'IDF', 
+        'Медиана', 'Среднее по ТОПу (повт.)', 'Ваш сайт (повт.)', '<a/> по ТОПу (повт.)', '<a/> ваш сайт (повт.)'
+    ]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+
+    df = df[df['TF-IDF ТОП'] > 0]
+    
+    df['Разница BM25'] = df['BM25 ТОП'] - df['BM25 ваш сайт']
+    
+    df_sorted = df.sort_values(
+        by=['BM25 ТОП', 'Разница BM25'], 
+        ascending=[False, False]
+    ).drop(columns=['Разница BM25'])
+
+    for col in numeric_cols:
+        df_sorted[col] = df_sorted[col].round(3)
+        
+    return df_sorted
+
+
+# ==========================================
+# 3. ИНТЕРФЕЙС STREAMLIT
+# ==========================================
+
+st.title("💎 Гибридный Анализ Релевантности PRO")
+st.markdown("""
+    Профессиональный SEO-инструмент для сравнения текстовых метрик (TF-IDF, BM25) 
+    вашего сайта с конкурентами из ТОПа.
+""")
+
+# --- 3.1. БЛОК ВВОДА ДАННЫХ ---
+with st.container(border=True):
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        my_url = st.text_input("🚀 Ваш URL для анализа", 
+                               placeholder="https://vash-site.ru/stranitsa",
+                               help="Введите URL страницы, которую вы хотите проанализировать.")
+    with col2:
+        mode = st.radio("Источник конкурентов", ["Google ТОП", "Ввести вручную"], 
+                        index=0, horizontal=True)
+
+    # Настройки
+    st.markdown("---")
+    st.subheader("⚙️ Настройки")
+    
+    col_set1, col_set2, col_set3 = st.columns(3)
+
+    with col_set1:
+        query = st.text_input("Поисковый запрос (для Google ТОПа)", 
+                              placeholder="купить дом в москве",
+                              disabled=(mode != "Google ТОП"))
+        
+        min_sites = st.slider("Мин. кол-во сайтов в ТОПе для слова", 
+                              min_value=1, max_value=10, value=2, step=1,
+                              help="Слово должно встречаться минимум на N сайтах конкурентов, чтобы попасть в анализ.")
+
+    with col_set2:
+        top_n = st.slider("Кол-во конкурентов из ТОПа", 
+                          min_value=5, max_value=20, value=10, step=1,
+                          disabled=(mode != "Google ТОП"),
+                          help="Сколько сайтов из ТОПа Google учитывать в расчете.")
+        
+        max_spam_factor = st.slider("Коэф. переспама", 
+                                    min_value=1.0, max_value=5.0, value=2.0, step=0.1,
+                                    help="Во сколько раз повторов вашего сайта должно превышать среднее ТОПа, чтобы считать это переспамом.")
+
+    with col_set3:
+        excludes = st.text_area("Список исключений (по домену/URL)", 
+                                placeholder="yandex.ru\nwikipedia.org\nprofi.ru", height=100,
+                                help="Укажите части URL или домены, которые нужно исключить из списка конкурентов.")
+        
+        st.caption("Параметры BM25 (k1=1.2, b=0.75)")
+
+
+    if mode == "Ввести вручную":
+        manual_urls = st.text_area("Список URL конкурентов (каждый с новой строки)", 
+                                   placeholder="https://comp1.ru/page\nhttps://comp2.ru/page\n...", 
+                                   height=150)
+    else:
+        manual_urls = ""
+
+# --- 3.2. БЛОК ЗАПУСКА И АНАЛИЗА ---
+
+if st.button("📈 Запустить анализ", type="primary", use_container_width=True):
+    
+    if not my_url:
+        st.error("⚠️ Введите Ваш URL для анализа!")
+        st.stop()
+        
+    if mode == "Google ТОП" and not query:
+        st.error("⚠️ Для поиска нужен поисковый запрос!")
+        st.stop()
+        
+    if mode == "Ввести вручную" and not manual_urls:
+        st.error("⚠️ Введите список URL конкурентов вручную!")
+        st.stop()
+
+
+    st.markdown("---")
+    st.subheader("🔍 Процесс анализа")
+
+    settings = {
+        'exclude': [x.strip() for x in excludes.split() if x.strip()],
+        'min_sites': min_sites,
+        'max_spam_factor': max_spam_factor,
+        'bm25_k1': 1.2,
+        'bm25_b': 0.75,
+    }
+    
+    # 1. Получение списка конкурентов
+    comps = []
+    
+    if mode == "Google ТОП":
+        if not USE_SEARCH:
+            st.error("❌ Библиотека googlesearch-python недоступна. Пожалуйста, используйте ручной ввод.")
+            st.stop()
+            
+        with st.spinner(f"Ищем {top_n} конкурентов по запросу '{query}' в Google..."):
+            try:
+                excl_list = settings['exclude']
+                # Ищем больше, чтобы отфильтровать ненужные
+                found = search(query, num_results=top_n * 2, lang="ru")
+                count = 0
+                for u in found:
+                    if u == my_url: continue 
+                    if any(x in u for x in excl_list): continue 
+                    comps.append(u)
+                    count += 1
+                    if count >= top_n: break
+            except Exception as e:
+                st.error(f"Ошибка поиска Google: {e}. Попробуйте ручной список.")
+                st.stop()
+    else:
+        if manual_urls:
+            comps_raw = [u.strip() for u in manual_urls.split('\n') if u.strip()]
+            for u in comps_raw:
+                if u == my_url: continue
+                if any(x in u for x in settings['exclude']): continue
+                comps.append(u)
+        
+    if not comps:
+        st.error("❌ Список конкурентов пуст или не удалось собрать данные.")
+        st.stop()
+    else:
+        st.success(f"✅ Найдены конкуренты ({len(comps)} URL):")
+        st.dataframe(pd.DataFrame({'URL': comps}), use_container_width=True, height=200)
+
+        # 2. ЗАПУСК БЭКЕНДА
+        with st.spinner("🚀 Запуск гибридного анализа..."):
+            df_res = run_analysis(my_url, comps, settings)
+        
+        if df_res is not None and not df_res.empty:
+            st.markdown("### 📊 Результаты анализа")
+            
+            # --- Логика для подсветки строк ---
+            def highlight_rec(val):
+                val_str = str(val)
+                # Зеленый - для "Добавить"
+                if "Добавить" in val_str: 
+                    return 'color: #166534; font-weight: bold; background-color: #DCFCE7' 
+                # Красный - для "Убрать"
+                if "Убрать" in val_str: 
+                    return 'color: #991B1B; font-weight: bold; background-color: #FEE2E2' 
+                return ''
+            
+            # Применяем стили к колонкам с рекомендациями
+            styled_df = df_res.style.applymap(highlight_rec, subset=['Переспам', 'Текст Добавить/Убрать', 'Тег A Добавить/Убрать'])
+            
+            st.dataframe(styled_df, use_container_width=True)
+            
+            csv = df_res.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="⬇️ Скачать результаты в CSV",
+                data=csv,
+                file_name=f'seo_relevance_analysis_{urlparse(my_url).netloc}.csv',
+                mime='text/csv',
+                type="secondary"
+            )
+
+        else:
+            st.warning("⚠️ Анализ не дал значимых результатов. Проверьте Ваш URL и список конкурентов.")
