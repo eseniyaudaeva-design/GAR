@@ -21,30 +21,37 @@ def check_password():
             footer {visibility: hidden;}
             .stDeployButton {display: none;}
             
-            /* Основные стили для авторизации */
+            /* Белый фон и компактный layout */
             .stApp {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+                background: white !important;
             }
             .block-container {
-                padding-top: 2rem !important;
-                padding-bottom: 2rem !important;
+                padding-top: 1rem !important;
+                padding-bottom: 1rem !important;
+                max-width: 600px !important;
             }
             
-            /* Центрируем контент */
-            .css-1d391kg, .css-1y4p8pa {
+            /* Центрируем и делаем компактным */
+            .main .block-container {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 min-height: 100vh;
+                padding: 0 !important;
+                margin: 0 auto !important;
             }
             
-            /* Стили для логотипа и поля ввода */
+            /* Стили для логотипа */
             .logo-container {
                 margin-bottom: 2rem;
+                text-align: center;
             }
+            
+            /* Стили для поля ввода */
             .input-container {
                 width: 547px;
+                text-align: center;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -53,11 +60,17 @@ def check_password():
                 border: 2px solid #e1e5e9 !important;
                 border-radius: 8px !important;
                 font-size: 16px !important;
+                background: white !important;
             }
             .stTextInput input:focus {
                 border-color: #277EFF !important;
                 outline: none !important;
                 box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
+            }
+            
+            /* Убираем лишние отступы */
+            .css-1d391kg {
+                padding: 0 !important;
             }
             </style>
         """, unsafe_allow_html=True)
@@ -88,30 +101,37 @@ def check_password():
             footer {visibility: hidden;}
             .stDeployButton {display: none;}
             
-            /* Основные стили для авторизации */
+            /* Белый фон и компактный layout */
             .stApp {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+                background: white !important;
             }
             .block-container {
-                padding-top: 2rem !important;
-                padding-bottom: 2rem !important;
+                padding-top: 1rem !important;
+                padding-bottom: 1rem !important;
+                max-width: 600px !important;
             }
             
-            /* Центрируем контент */
-            .css-1d391kg, .css-1y4p8pa {
+            /* Центрируем и делаем компактным */
+            .main .block-container {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 min-height: 100vh;
+                padding: 0 !important;
+                margin: 0 auto !important;
             }
             
-            /* Стили для логотипа и поля ввода */
+            /* Стили для логотипа */
             .logo-container {
                 margin-bottom: 2rem;
+                text-align: center;
             }
+            
+            /* Стили для поля ввода */
             .input-container {
                 width: 547px;
+                text-align: center;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -120,11 +140,17 @@ def check_password():
                 border: 2px solid #e1e5e9 !important;
                 border-radius: 8px !important;
                 font-size: 16px !important;
+                background: white !important;
             }
             .stTextInput input:focus {
                 border-color: #277EFF !important;
                 outline: none !important;
                 box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
+            }
+            
+            /* Убираем лишние отступы */
+            .css-1d391kg {
+                padding: 0 !important;
             }
             </style>
         """, unsafe_allow_html=True)
@@ -891,6 +917,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
