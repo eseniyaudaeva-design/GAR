@@ -33,7 +33,7 @@ DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\
 REGIONS = [
     "Москва", "Санкт-Петербург", "Екатеринбург", "Новосибирск", "Казань", 
     "Нижний Новгород", "Самара", "Челябинск", "Омск", "Краснодар", 
-    "Киев (UA)", "Минск (BY)", "Алматы (КЗ)" # <-- ИСПРАВЛЕНА ОШИБКА С КАВЫЧКАМИ
+    "Киев (UA)", "Минск (BY)", "Алматы (КЗ)" 
 ]
 
 # Цвета
@@ -45,7 +45,7 @@ BORDER_COLOR = "#E2E8F0"     # Цвет рамки
 DARK_BORDER = "#94a3b8"      # Темная рамка для невыбранных элементов
 MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
 
-# --- ДОБАВЛЕНИЕ/ИЗМЕНЕНИЕ CSS ДЛЯ РЕШЕНИЯ ЗАДАЧИ ---
+# --- CSS ДЛЯ СТИЛЕЙ (УДАЛЕНЫ ВСЕ КОММЕНТАРИИ ВНУТРИ CSS) ---
 st.markdown(f"""
    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -56,7 +56,7 @@ st.markdown(f"""
             --border-color: {BORDER_COLOR};
         }}
         
-        /* 1. БАЗОВЫЙ ТЕКСТ (Чтобы не ломались шрифты) */
+        /* 1. БАЗОВЫЙ ТЕКСТ */
         html, body, .stApp {{
             font-family: 'Inter', sans-serif;
             background-color: #FFFFFF !important;
@@ -77,7 +77,6 @@ st.markdown(f"""
         /* ПОЛЯ ВВОДА - ПРИНУДИТЕЛЬНЫЙ СИНИЙ ФОКУС                 */
         /* ======================================================= */
         
-        /* Стиль покоя. Теперь все поля используют LIGHT_BG_MAIN, который стал белым */
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
@@ -87,44 +86,35 @@ st.markdown(f"""
             border-radius: 6px;
         }}
 
-        /* !!!
-        ВАЖНО: СИНИЙ ФОКУС !!! */
-        /* Мы обращаемся к div с атрибутом data-baseweb, это перебивает оранжевый цвет Streamlit */
-        
-        /* Для обычных инпутов */
+        /* СИНИЙ ФОКУС */
         div[data-baseweb="input"]:focus-within {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
-        /* Для больших текстовых полей (Textarea) */
         div[data-baseweb="textarea"]:focus-within {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
-        /* Для селектов */
         div[data-baseweb="select"] > div:focus-within {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
-        /* --- НОВЫЙ CSS: Selectbox Dropdown (Requirement 1) --- */
-        /* Выпадающий список Selectbox */
+        /* Selectbox Dropdown */
         ul[data-testid="stSelectboxVirtualDropdown"] {
-            background-color: #FFFFFF !important; /* Белый фон для списка */
+            background-color: #FFFFFF !important; 
         }
-        /* Текст опций в выпадающем списке */
+        
         ul[data-testid="stSelectboxVirtualDropdown"] li p {
-            color: {TEXT_COLOR} !important; /* Цвет текста опций */
+            color: {TEXT_COLOR} !important; 
         }
-        /* Опция при наведении */
+        
         ul[data-testid="stSelectboxVirtualDropdown"] li:hover {
-            background-color: #f0f0f0 !important; /* Светло-серый фон при наведении */
+            background-color: #f0f0f0 !important; 
         }
-        /* --- КОНЕЦ НОВОГО CSS --- */
-
-
+        
         /* Убираем нативную обводку браузера */
         .stTextInput input:focus,
         .stTextArea textarea:focus {{
@@ -200,30 +190,30 @@ st.markdown(f"""
             border-color: {PRIMARY_COLOR} !important;
         }}
         
-        /* --- НОВЫЙ CSS: Expander (Requirement 3 visual style) --- */
-        /* Стиль для заголовка st.expander (выглядит как поле ввода) */
+        /* Стиль для заголовка st.expander */
         div[data-testid="stExpander"] > div:first-child {
-            /* Перекрытие дефолтных стилей Streamlit */
             background-color: #FFFFFF !important; 
             border: 1px solid {BORDER_COLOR} !important; 
             border-radius: 6px;
             padding: 0.5rem 1rem;
-            margin-bottom: 1rem; /* Отступ снизу */
+            margin-bottom: 1rem; 
         }
+        
         /* Изменение цвета текста заголовка Expander */
         div[data-testid="stExpander"] > div:first-child p {
             color: {TEXT_COLOR} !important; 
         }
+        
         /* Фокус на Expander */
         div[data-testid="stExpander"] > div:first-child:focus-within {
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }
+        
         /* Стиль содержимого Expander */
         div[data-testid="stExpanderContent"] {
             padding: 0 0 1rem 0 !important;
         }
-        /* --- КОНЕЦ НОВОГО CSS --- */
 
         /* ======================================================= */
         /* КНОПКА                                                  */
