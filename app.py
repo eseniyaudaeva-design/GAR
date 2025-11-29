@@ -11,48 +11,68 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ (МИНИМАЛЬНЫЙ CSS ДЛЯ ЧИТАЕМОСТИ)
+# 1. КОНФИГУРАЦИЯ (МИНИМАЛЬНЫЙ CSS ДЛЯ ЧИТАЕМОСТИ - ТЕМНАЯ ТЕМА)
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
-# Этот CSS делает ТОЛЬКО одно: принудительно ставит белый фон и черный текст,
-# чтобы исправить баг вашей темной темы. Никаких украшательств.
+# Обновленный CSS для принудительного использования ТЕМНОЙ темы и БЕЛОГО текста
 st.markdown("""
    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
         
+        /* 1. ОБЩИЕ НАСТРОЙКИ ДЛЯ ТЕМНОЙ ТЕМЫ */
+        html, body, [class*="stApp"], [class*="css"] {
+            font-family: 'Inter', sans-serif;
+            background-color: #1E293B !important; /* Темный фон */
+            color: #FFFFFF !important; /* Весь текст белый */
+        }
+        
+        /* Заголовки, текст, лейблы - все белое */
+        h1, h2, h3, p, label, span, div, a {
+            color: #FFFFFF !important; 
+        }
+
+        /* 2. Настройка контейнеров и полей ввода для темной темы */
         /* Стилизация верхней панели ввода */
         .main-input-container {
-            background-color: #F8FAFC;
+            background-color: #334155 !important; /* Более темный для контраста */
             padding: 20px;
             border-radius: 10px;
-            border: 1px solid #E2E8F0;
+            border: 1px solid #475569 !important;
             margin-bottom: 20px;
         }
         
-        /* Кнопка */
+        /* Поля ввода (фон и текст) */
+        .stTextInput input, .stTextArea textarea {
+            color: #FFFFFF !important;
+            background-color: #475569 !important; /* Еще более темный фон для полей */
+            border: 1px solid #64748B !important;
+        }
+
+        /* Кнопка (оставить яркой, текст белый) */
         .stButton button {
             background-color: #F97316;
-            color: white;
+            color: white !important;
             font-weight: bold;
             border-radius: 6px;
             height: 50px;
             width: 100%;
         }
-        .stButton button:hover { background-color: #EA580C; color: white; }
+        .stButton button:hover { background-color: #EA580C; color: white !important; }
         
+        /* 3. Исправление выпадающих списков и модальных окон */
+        div[data-baseweb="popover"], div[data-baseweb="menu"], li, div[role="listbox"] {
+            background-color: #334155 !important; /* Темный фон для элементов выбора */
+            color: #FFFFFF !important; /* Белый текст */
         }
         
-        /* Исправление выпадающих списков */
-        div[data-baseweb="popover"], div[data-baseweb="menu"], li {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-        }
-        
-        /* Заголовки и лейблы */
-        h1, h2, h3, p, label, span {
-            color: #000000 !important;
+        /* Заголовки таблиц */
+        .table-header { 
+            font-size: 18px; 
+            font-weight: bold; 
+            margin-top: 30px; 
+            margin-bottom: 10px; 
+            color: #FFFFFF !important; /* Белый */
         }
         
         /* Уменьшение отступов (убираем пустоту) */
@@ -60,8 +80,26 @@ st.markdown("""
             padding-top: 2rem !important;
             padding-bottom: 2rem !important;
         }
-                /* Заголовки таблиц */
-        .table-header { font-size: 18px; font-weight: bold; margin-top: 30px; margin-bottom: 10px; color: #0F172A; }
+        
+        /* Streamlit DataFrame: настройка для отображения белого текста на темном фоне */
+        .stDataFrame > div > div {
+            color: #FFFFFF !important;
+            background-color: #334155 !important;
+        }
+        /* Заголовки колонок */
+        .stDataFrame th {
+            color: #FFFFFF !important;
+            background-color: #475569 !important;
+        }
+        /* Ячейки */
+        .stDataFrame td {
+            color: #FFFFFF !important;
+            background-color: #334155 !important;
+        }
+        /* Текст в статусных сообщениях (success, error и т.д.) */
+        div[data-testid="stAlert"] * {
+            color: #FFFFFF !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -384,12 +422,13 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
             
         col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
         with col_p1:
-            if st.button("⬅️ Назад") and st.session_state.page_number > 1:
+            # Обновление: устанавливаем ключ 'page_number' в session_state
+            if st.button("⬅️ Назад", key="prev_page") and st.session_state.page_number > 1:
                 st.session_state.page_number -= 1
         with col_p2:
-            st.markdown(f"<div style='text-align: center; padding-top: 10px; color: with;'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; padding-top: 10px;'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
         with col_p3:
-            if st.button("Вперед ➡️") and st.session_state.page_number < total_pages:
+            if st.button("Вперед ➡️", key="next_page") and st.session_state.page_number < total_pages:
                 st.session_state.page_number += 1
                 
         start_idx = (st.session_state.page_number - 1) * rows_per_page
@@ -412,6 +451,3 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
         
     with st.expander("4. ТОП релевантности"):
         st.dataframe(results['relevance_top'], use_container_width=True)
-
-
-
