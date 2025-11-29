@@ -100,6 +100,33 @@ st.markdown("""
         div[data-testid="stAlert"] * {
             color: #FFFFFF !important;
         }
+        
+        /* Стилизация радио-кнопок для имитации вкладок */
+        div[data-testid="stRadio"] label {
+            background-color: #334155;
+            border-radius: 6px;
+            padding: 10px 15px;
+            margin-right: 5px;
+            color: #E2E8F0;
+            border: 1px solid #475569;
+            transition: all 0.2s;
+        }
+        div[data-testid="stRadio"] label:hover {
+            background-color: #475569;
+        }
+        /* Выбранный элемент */
+        div[data-testid="stRadio"] input:checked + div {
+            background-color: #F97316; 
+            color: #FFFFFF;
+            border-color: #F97316;
+        }
+        /* Скрытие исходных радио-точек */
+        div[data-testid="stRadio"] input[type="radio"] {
+            display: none;
+        }
+        div[data-testid="stRadio"] div[data-testid="stHorizontalBlock"] {
+            gap: 0.5rem; /* Уменьшение пробела между "вкладками" */
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -180,8 +207,17 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
-    my_lemmas = process_text(my_data['body_text'], settings)
-    my_anchors = process_text(my_data['anchor_text'], settings)
+    # Если my_data пуст (случай "Без страницы"), вернуть пустые метрики или обработать иначе
+    if not my_data or not my_data['body_text']:
+        # В этом случае можно вернуть только таблицу релевантности ТОПа, но основные таблицы будут пусты.
+        # Для упрощения я создам пустой набор лемм.
+        my_lemmas = []
+        my_anchors = []
+        my_len = 0
+    else:
+        my_lemmas = process_text(my_data['body_text'], settings)
+        my_anchors = process_text(my_data['anchor_text'], settings)
+        my_len = len(my_lemmas)
     
     comp_docs = []
     for p in comp_data:
@@ -189,8 +225,10 @@ def calculate_metrics(comp_data, my_data, settings):
         anchor = process_text(p['anchor_text'], settings)
         comp_docs.append({'body': body, 'anchor': anchor})
         
+    if not comp_docs:
+        return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}}
+
     avg_len = np.mean([len(d['body']) for d in comp_docs])
-    my_len = len(my_lemmas)
     norm_k = (my_len / avg_len) if (settings['norm'] and avg_len > 0) else 1.0
     
     vocab = set(my_lemmas)
@@ -229,7 +267,11 @@ def calculate_metrics(comp_data, my_data, settings):
             score = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (dl / avg_len)))
             bm25_scores.append(score)
         bm25_top = np.median(bm25_scores)
-        bm25_my = idf * (my_tf * (k1 + 1)) / (my_tf + k1 * (1 - b + b * (my_len / avg_len)))
+        
+        # BM25 для вашего сайта рассчитывается только если у вас есть контент
+        bm25_my = 0
+        if my_len > 0:
+            bm25_my = idf * (my_tf * (k1 + 1)) / (my_tf + k1 * (1 - b + b * (my_len / avg_len)))
         
         target_body = int(med_tf * 1.3 * norm_k)
         diff_body = target_body - my_tf
@@ -255,26 +297,29 @@ def calculate_metrics(comp_data, my_data, settings):
                 "<a> по ТОПу": round(med_anch, 1), "<a> ваш сайт": my_anch_tf
             })
 
-    my_bi = process_text(my_data['body_text'], settings, 2)
-    comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data]
-    all_bi = set(my_bi)
-    for c in comp_bi: all_bi.update(c)
-    bi_freqs = Counter()
-    for c in comp_bi:
-        for b_ in set(c): bi_freqs[b_] += 1
+    # Расчет N-грамм только если есть данные конкурентов
     table_ngrams = []
-    for bg in all_bi:
-        df = bi_freqs[bg]
-        if df < 2 and bg not in my_bi: continue
-        my_c = my_bi.count(bg)
-        comp_c = [c.count(bg) for c in comp_bi]
-        med_c = np.median(comp_c)
-        if med_c > 0 or my_c > 0:
-            table_ngrams.append({
-                "N-грамма": bg, "Кол-во сайтов": df, "Медианное вхождение": med_c,
-                "Среднее": round(np.mean(comp_c), 1), "На сайте": my_c,
-                "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
-            })
+    if comp_docs:
+        my_bi = process_text(my_data['body_text'], settings, 2) if my_data else []
+        comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data]
+        all_bi = set(my_bi)
+        for c in comp_bi: all_bi.update(c)
+        bi_freqs = Counter()
+        for c in comp_bi:
+            for b_ in set(c): bi_freqs[b_] += 1
+
+        for bg in all_bi:
+            df = bi_freqs[bg]
+            if df < 2 and bg not in my_bi: continue
+            my_c = my_bi.count(bg)
+            comp_c = [c.count(bg) for c in comp_bi]
+            med_c = np.median(comp_c)
+            if med_c > 0 or my_c > 0:
+                table_ngrams.append({
+                    "N-грамма": bg, "Кол-во сайтов": df, "Медианное вхождение": med_c,
+                    "Среднее": round(np.mean(comp_c), 1), "На сайте": my_c,
+                    "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
+                })
 
     table_rel = []
     for i, p in enumerate(comp_data):
@@ -297,31 +342,62 @@ def calculate_metrics(comp_data, my_data, settings):
 
 st.title("SEO Анализатор Релевантности")
 
-# 1. ВВОД
-c1, c2 = st.columns(2)
-with c1:
-    my_url = st.text_input("Ваш URL", placeholder="https://site.ru/page")
-with c2:
-    query = st.text_input("Поисковой запрос", placeholder="купить окна")
+# --- БЛОК ВВОДА (КОПИРОВАНИЕ ФУНКЦИОНАЛА СКРИНШОТОВ) ---
 
-# 2. ИСТОЧНИК
-st.markdown("##### 🕵️ Источник конкурентов")
-source_type = st.radio("Источник:", ["Google (Авто)", "Ручной список"], horizontal=True, label_visibility="collapsed")
+# 1. URL или код страницы Вашего сайта
+st.markdown("### URL или код страницы Вашего сайта")
+my_input_type = st.radio(
+    "Тип страницы", 
+    ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], 
+    horizontal=True,
+    label_visibility="collapsed",
+    key="my_page_source_radio"
+)
 
+my_url = ""
+my_page_content = ""
+
+if my_input_type == "Релевантная страница на вашем сайте":
+    my_url = st.text_input("URL страницы", placeholder="https://site.ru/", label_visibility="collapsed")
+elif my_input_type == "Исходный код страницы или текст":
+    my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML-код или чистый текст страницы")
+elif my_input_type == "Без страницы":
+    st.info("Выбран анализ без страницы вашего сайта. Результаты будут включать только метрики ТОПа.")
+
+# 2. Поисковой запрос
+st.markdown("### Поисковой запрос")
+query = st.text_input("Основной запрос", placeholder="Основной запрос", label_visibility="collapsed")
+st.checkbox("Дополнительные запросы", disabled=True, value=False) # Имитация чекбокса
+
+# 3. Поиск или URL страниц конкурентов
+st.markdown("### Поиск или URL страниц конкурентов")
+source_type_new = st.radio(
+    "Источник конкурентов", 
+    ["Поиск", "Список url-адресов ваших конкурентов"], 
+    horizontal=True,
+    label_visibility="collapsed",
+    key="competitor_source_radio"
+)
+
+source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
+
+# --- ИСТОЧНИК КОНКУРЕНТОВ: ДЕТАЛИ ---
 if source_type == "Google (Авто)":
     # Две колонки: Глубина (узкая) и Исключения (широкая)
     cl1, cl2 = st.columns([1, 4])
     with cl1:
         top_n = st.selectbox("Глубина ТОПа", [5, 10, 20], index=1)
     with cl2:
-        # ЗАМЕНА на text_area, чтобы было видно все домены
-        excludes = st.text_area("Исключить домены (через пробел)", DEFAULT_EXCLUDE, height=68)
+        # Увеличенная высота для соответствия полю Стоп-слов
+        excludes = st.text_area("Исключить домены (через пробел)", DEFAULT_EXCLUDE, height=150) 
 else:
     manual_urls = st.text_area("Список URL (каждый с новой строки)", height=150)
 
-# 3. НАСТРОЙКИ
+# --- 4. НАСТРОЙКИ (ПОСТОЯННО ОТКРЫТЫЙ БЛОК) ---
 st.markdown("##### ⚙️ Настройки")
-with st.expander("Открыть параметры", expanded=False):
+# Удален st.expander, чтобы сделать блок постоянно открытым. 
+# Используется st.container для сохранения структуры.
+with st.container():
     col_set1, col_set2 = st.columns([1, 1])
     
     with col_set1:
@@ -340,10 +416,14 @@ with st.expander("Открыть параметры", expanded=False):
 # Кнопка запуска
 if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True):
     
-    if not my_url:
+    if my_input_type == "Релевантная страница на вашем сайте" and not my_url:
         st.error("Введите URL!")
         st.stop()
         
+    if my_input_type == "Исходный код страницы или текст" and not my_page_content.strip():
+        st.error("Введите исходный код или текст!")
+        st.stop()
+
     settings = {
         'noindex': s_noindex, 'alt_title': s_alt, 'numbers': s_num,
         'norm': s_norm, 'ua': ua, 'custom_stops': c_stops.split()
@@ -361,93 +441,124 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
                 found = search(query, num_results=top_n*2, lang="ru")
                 cnt = 0
                 for u in found:
-                    if my_url in u: continue
+                    # Проверка на свой URL только если используется режим "Релевантная страница"
+                    if my_input_type == "Релевантная страница на вашем сайте" and my_url in u: continue
                     if any(x in u for x in excl): continue
                     target_urls.append(u)
                     cnt += 1
                     if cnt >= top_n: break
-        except:
-            st.error("Ошибка поиска.")
+        except Exception as e:
+            st.error(f"Ошибка поиска: {e}")
             st.stop()
-    else:
-        target_urls = [u.strip() for u in manual_urls.split('\n') if u.strip()]
+    else: # Ручной список
+        manual_urls = st.session_state.get('manual_urls_text', '').split('\n')
+        target_urls = [u.strip() for u in manual_urls if u.strip()]
         
     if not target_urls:
         st.error("Нет конкурентов.")
         st.stop()
         
-    prog = st.progress(0)
-    status = st.empty()
-    status.text("Скачиваем ваш сайт...")
-    my_data = parse_page(my_url, settings)
+    # --- ОБРАБОТКА ДАННЫХ ВАШЕГО САЙТА ---
+    my_data = None
+    if my_input_type == "Релевантная страница на вашем сайте":
+        prog = st.progress(0.0)
+        status = st.empty()
+        status.text("Скачиваем ваш сайт...")
+        my_data = parse_page(my_url, settings)
+        prog.progress(0.05)
+        if not my_data:
+            st.error("Ошибка доступа к сайту. Проверьте URL или попробуйте 'Исходный код'.")
+            st.stop()
+        prog.empty()
+        status.empty()
+    elif my_input_type == "Исходный код страницы или текст":
+        my_data = {
+            'url': 'Local Content', 
+            'domain': 'local.content', 
+            'body_text': my_page_content, 
+            'anchor_text': '' # Якоря не могут быть получены из чистого текста/кода
+        }
     
-    if not my_data:
-        st.error("Ошибка доступа к сайту.")
-        st.stop()
-        
+    # --- СКАЧИВАНИЕ КОНКУРЕНТОВ ---
     comp_data = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
         done = 0
+        total_tasks = len(target_urls)
+        prog_comp = st.progress(0)
+        status_comp = st.empty()
+        
         for f in concurrent.futures.as_completed(futures):
             res = f.result()
             if res: comp_data.append(res)
             done += 1
-            prog.progress(done / len(target_urls))
+            prog_comp.progress(done / total_tasks)
+            status_comp.text(f"Скачано {done} из {total_tasks} конкурентов...")
             
-    prog.empty()
-    status.empty()
+    prog_comp.empty()
+    status_comp.empty()
     
-    if len(comp_data) < 2:
-        st.error("Мало данных.")
-        st.stop()
-        
+    if len(comp_data) < 2 and my_input_type != "Без страницы":
+        st.warning("Мало данных конкурентов для надежного анализа (менее 2). Продолжаю только с доступными данными.")
+
+    if not my_data and my_input_type != "Без страницы":
+         st.error("Не удалось получить данные для сравнения.")
+         st.stop()
+
     results = calculate_metrics(comp_data, my_data, settings)
     st.success("Готово!")
     
     # 4. РЕЗУЛЬТАТЫ (С ПАГИНАЦИЕЙ)
     
-    st.markdown("### 1. Рекомендации по глубине")
-    df_d = results['depth']
-    if not df_d.empty:
-        df_d = df_d.sort_values(by="diff_abs", ascending=False)
-        
-        # --- ЛОГИКА ПАГИНАЦИИ ---
-        rows_per_page = 20
-        total_rows = len(df_d)
-        total_pages = math.ceil(total_rows / rows_per_page)
-        
-        if 'page_number' not in st.session_state:
-            st.session_state.page_number = 1
+    if my_data:
+        st.markdown("### 1. Рекомендации по глубине")
+        df_d = results['depth']
+        if not df_d.empty:
+            df_d = df_d.sort_values(by="diff_abs", ascending=False)
             
-        col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
-        with col_p1:
-            # Обновление: устанавливаем ключ 'page_number' в session_state
-            if st.button("⬅️ Назад", key="prev_page") and st.session_state.page_number > 1:
-                st.session_state.page_number -= 1
-        with col_p2:
-            st.markdown(f"<div style='text-align: center; padding-top: 10px;'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
-        with col_p3:
-            if st.button("Вперед ➡️", key="next_page") and st.session_state.page_number < total_pages:
-                st.session_state.page_number += 1
+            # --- ЛОГИКА ПАГИНАЦИИ ---
+            rows_per_page = 20
+            total_rows = len(df_d)
+            total_pages = math.ceil(total_rows / rows_per_page)
+            
+            if 'page_number' not in st.session_state:
+                st.session_state.page_number = 1
+            
+            # Сброс пагинации при новом запуске
+            if st.session_state.get('run_started', False) is True:
+                 st.session_state.page_number = 1
+
+            col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
+            with col_p1:
+                if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
+                    st.session_state.page_number -= 1
+            with col_p2:
+                st.markdown(f"<div style='text-align: center; padding-top: 10px;'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+            with col_p3:
+                if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
+                    st.session_state.page_number += 1
+                    
+            start_idx = (st.session_state.page_number - 1) * rows_per_page
+            end_idx = start_idx + rows_per_page
+            df_page = df_d.iloc[start_idx:end_idx]
+            
+            st.dataframe(
+                df_page,
+                column_config={"diff_abs": None}, 
+                use_container_width=True, 
+                height=800
+            )
+            st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
+            
+            with st.expander("2. Гибридный ТОП"):
+                st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
                 
-        start_idx = (st.session_state.page_number - 1) * rows_per_page
-        end_idx = start_idx + rows_per_page
-        df_page = df_d.iloc[start_idx:end_idx]
-        
-        st.dataframe(
-            df_page,
-            column_config={"diff_abs": None}, 
-            use_container_width=True, 
-            height=800
-        )
-        st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
+            with st.expander("3. N-граммы"):
+                st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
+
     
-    with st.expander("2. Гибридный ТОП"):
-        st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
-        
-    with st.expander("3. N-граммы"):
-        st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
-        
     with st.expander("4. ТОП релевантности"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
+    if not my_data:
+        st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы'.")
