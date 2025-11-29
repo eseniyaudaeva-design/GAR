@@ -624,7 +624,7 @@ if st.session_state.start_analysis_flag:
         st.stop()
     
     if source_type == "Google (Авто)" and st.session_state.settings_search_engine != "Google":
-        st.warning(f"Анализ ТОП-а для **{st.session_state.settings_search_engine}** пока не реализован.
+        st.warning(f"Анализ ТОП-а для **{st.session_state.settings_search_engine}** пока не реализован. Используется Google Search.")
         Используется Google Search.")
         if not st.session_state.get('query_input'):
             st.error("Введите запрос для поиска конкурентов!")
@@ -782,3 +782,4 @@ if st.session_state.start_analysis_flag:
             if not my_data:
                 st.warning("Основные таблицы не отображаются, 
                 так как был выбран режим 'Без страницы'.")
+
