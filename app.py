@@ -11,6 +11,78 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
+# 0. АВТОРИЗАЦИЯ
+# ==========================================
+def check_password():
+    """Проверка пароля перед показом основного приложения"""
+    
+    if st.session_state.get("authenticated"):
+        return True
+        
+    # Центрированный контейнер для авторизации
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("""
+            <style>
+            .auth-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 2rem;
+                background-color: white;
+                border-radius: 10px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                margin-top: 5rem;
+            }
+            .password-input {
+                width: 100%;
+                margin: 1rem 0;
+            }
+            .login-button {
+                width: 100%;
+                margin-top: 1rem;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
+        
+        # Логотип
+        try:
+            st.image("eseniyaudaeva-design/GAR/logo.png", width=200)
+        except:
+            st.markdown("### 📊 GAR PRO")
+        
+        st.markdown("### Вход в систему")
+        
+        # Поле ввода пароля
+        password = st.text_input(
+            "Пароль",
+            type="password",
+            key="password_input",
+            placeholder="Введите пароль для доступа",
+            label_visibility="collapsed"
+        )
+        
+        # Кнопка входа
+        if st.button("ВОЙТИ", type="primary", use_container_width=True):
+            if password == "jfV6Xel-Q7vp-_s2UYPO":
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Неверный пароль")
+                
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    return False
+
+# Если не авторизован, показываем только страницу входа
+if not check_password():
+    st.stop()
+
+# ==========================================
 # 1. КОНФИГУРАЦИЯ
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
@@ -737,3 +809,4 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
