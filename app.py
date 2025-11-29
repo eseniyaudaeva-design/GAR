@@ -21,35 +21,26 @@ def check_password():
             footer {visibility: hidden;}
             .stDeployButton {display: none;}
             
-            /* Жесткое центрирование */
+            /* Конкретные позиции в пикселях */
             .stApp {
                 background: white !important;
-                display: flex !important;
-                justify-content: center !important;
-                align-items: center !important;
             }
             
             .main .block-container {
                 padding: 0 !important;
                 margin: 0 !important;
-                width: 100% !important;
-                max-width: 100% !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-                justify-content: center !important;
-                min-height: 100vh !important;
             }
             
-            /* Центрирование логотипа */
+            /* Логотип - позиция 597px */
             [data-testid="stImage"] {
-                margin: 0 auto 30px auto !important;
+                margin-left: 597px !important;
+                margin-top: 50px !important;
+                margin-bottom: 30px !important;
             }
             
-            /* Центрирование поля ввода */
+            /* Поле ввода пароля - оставить как есть */
             .stTextInput {
-                width: 547px !important;
-                margin: 0 auto !important;
+                margin-left: 493px !important;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -71,10 +62,10 @@ def check_password():
                 padding: 0 !important;
             }
             
-            /* Центрирование кнопки Войти */
+            /* Кнопка Войти - позиция 488px */
             .stButton {
-                width: 547px !important;
-                margin: 20px auto !important;
+                margin-left: 488px !important;
+                margin-top: 20px !important;
             }
             .stButton > button {
                 width: 547px !important;
@@ -87,10 +78,11 @@ def check_password():
                 font-weight: 600 !important;
             }
             
-            /* Центрирование ошибки */
+            /* Ошибка - позиция 488px */
             .stAlert {
+                margin-left: 488px !important;
+                margin-top: 10px !important;
                 width: 547px !important;
-                margin: 10px auto !important;
             }
             </style>
         """, unsafe_allow_html=True)
@@ -121,35 +113,26 @@ def check_password():
             footer {visibility: hidden;}
             .stDeployButton {display: none;}
             
-            /* Жесткое центрирование */
+            /* Конкретные позиции в пикселях */
             .stApp {
                 background: white !important;
-                display: flex !important;
-                justify-content: center !important;
-                align-items: center !important;
             }
             
             .main .block-container {
                 padding: 0 !important;
                 margin: 0 !important;
-                width: 100% !important;
-                max-width: 100% !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-                justify-content: center !important;
-                min-height: 100vh !important;
             }
             
-            /* Центрирование логотипа */
+            /* Логотип - позиция 597px */
             [data-testid="stImage"] {
-                margin: 0 auto 30px auto !important;
+                margin-left: 597px !important;
+                margin-top: 50px !important;
+                margin-bottom: 30px !important;
             }
             
-            /* Центрирование поля ввода */
+            /* Поле ввода пароля - оставить как есть */
             .stTextInput {
-                width: 547px !important;
-                margin: 0 auto !important;
+                margin-left: 493px !important;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -171,10 +154,10 @@ def check_password():
                 padding: 0 !important;
             }
             
-            /* Центрирование кнопки Войти */
+            /* Кнопка Войти - позиция 488px */
             .stButton {
-                width: 547px !important;
-                margin: 20px auto !important;
+                margin-left: 488px !important;
+                margin-top: 20px !important;
             }
             .stButton > button {
                 width: 547px !important;
@@ -187,10 +170,11 @@ def check_password():
                 font-weight: 600 !important;
             }
             
-            /* Центрирование ошибки */
+            /* Ошибка - позиция 488px */
             .stAlert {
+                margin-left: 488px !important;
+                margin-top: 10px !important;
                 width: 547px !important;
-                margin: 10px auto !important;
             }
             </style>
         """, unsafe_allow_html=True)
@@ -963,6 +947,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
