@@ -51,25 +51,16 @@ st.markdown("""
         h1, h2, h3, p, label, span, div, a {
             color: #FFFFFF !important; 
         }
-
-        /* 2. Настройка контейнеров и полей ввода для темной темы */
-        /* Стилизация верхней панели ввода */
-        .main-input-container {
-            background-color: #334155 !important; /* Более темный для контраста */
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid #475569 !important;
-            margin-bottom: 20px;
-        }
         
-        /* Поля ввода (фон и текст) - Улучшенный темный фон для выпадающих списков и полей */
+        /* 2. Настройка контейнеров и полей ввода для темной темы */
+        /* Фон для селектов, инпутов, текстериа - более светлый, как на скриншотах */
         .stTextInput input, 
         .stTextArea textarea, 
-        div[data-baseweb="select"] > div:first-child, /* Выпадающие списки */
-        div[data-testid="stTextarea"] textarea { /* Стилизация text_area */
+        div[data-baseweb="select"] > div:first-child,
+        div[data-testid="stTextarea"] textarea {
             color: #FFFFFF !important;
-            background-color: #334155 !important; /* Более темный фон для полей ввода */
-            border: 1px solid #475569 !important;
+            background-color: #2D3748 !important; /* Фон как на скриншотах (чуть светлее основного) */
+            border: 1px solid #4A5568 !important;
         }
 
         /* Кнопка (оставить яркой, текст белый) */
@@ -85,25 +76,11 @@ st.markdown("""
         
         /* 3. Исправление выпадающих списков и модальных окон */
         div[data-baseweb="popover"], div[data-baseweb="menu"], li, div[role="listbox"] {
-            background-color: #334155 !important; /* Темный фон для элементов выбора */
+            background-color: #2D3748 !important; /* Темный фон для элементов выбора */
             color: #FFFFFF !important; /* Белый текст */
         }
         
-        /* Streamlit DataFrame: настройка для отображения белого текста на темном фоне */
-        .stDataFrame > div > div {
-            color: #FFFFFF !important;
-            background-color: #334155 !important;
-        }
-        .stDataFrame th {
-            color: #FFFFFF !important;
-            background-color: #475569 !important;
-        }
-        .stDataFrame td {
-            color: #FFFFFF !important;
-            background-color: #334155 !important;
-        }
-        
-        /* Стилизация радио-кнопок для имитации вкладок */
+        /* 4. Стилизация радио-кнопок для имитации вкладок */
         div[data-testid="stRadio"] label {
             background-color: #334155;
             border-radius: 6px;
@@ -124,6 +101,20 @@ st.markdown("""
         }
         div[data-testid="stRadio"] input[type="radio"] {
             display: none;
+        }
+        
+        /* Уменьшение вертикального отступа между st.selectbox/st.text_input */
+        .stSelectbox, .stTextInput {
+            margin-bottom: 5px !important; /* Уменьшаем отступ снизу */
+        }
+        div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
+            gap: 0px; /* Убираем гап в контейнере, где расположены селекты */
+        }
+        
+        /* Уменьшение отступов для подписей */
+        .stCaption {
+            margin-top: -5px; 
+            margin-bottom: 10px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -204,7 +195,7 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
-    # (Остальной код calculate_metrics остается без изменений, за исключением незначительных правок)
+    # (Остальной код calculate_metrics остается без изменений)
     if not my_data or not my_data['body_text']:
         my_lemmas = []
         my_anchors = []
@@ -286,7 +277,7 @@ def calculate_metrics(comp_data, my_data, settings):
                 "Слово": word, "TF-IDF ТОП": round(med_tf * idf, 2), "TF-IDF ваш сайт": round(my_tf * idf, 2),
                 "BM25 ТОП": round(bm25_top, 2), "BM25 ваш сайт": round(bm25_my, 2), "IDF": round(idf, 2),
                 "Кол-во сайтов": df, "Медиана": round(med_tf, 1), "Переспам": max_tf,
-                "Среднее по ТОПу": round(np.mean(c_body_tfs), 1), "Ваш сайт": my_tf,
+                "Среднее по ТОПу": round(np.mean(c_body_tfs) if c_body_tfs else 0, 1), "Ваш сайт": my_tf,
                 "<a> по ТОПу": round(med_anch, 1), "<a> ваш сайт": my_anch_tf
             })
 
@@ -304,7 +295,7 @@ def calculate_metrics(comp_data, my_data, settings):
             df = bi_freqs[bg]
             if df < 2 and bg not in my_bi: continue
             my_c = my_bi.count(bg)
-            comp_c = [c.count(bg) for c in comp_docs if 'body' in c] # Защита от пустых словарей
+            comp_c = [c.count(bg) for c in comp_docs if 'body' in c]
             med_c = np.median(comp_c) if comp_c else 0
             if med_c > 0 or my_c > 0:
                 table_ngrams.append({
@@ -359,7 +350,7 @@ elif my_input_type == "Без страницы":
 # 2. Поисковой запрос
 st.markdown("### Поисковой запрос")
 query = st.text_input("Основной запрос", placeholder="Основной запрос", label_visibility="collapsed")
-st.checkbox("Дополнительные запросы", disabled=True, value=False) # Имитация чекбокса
+st.checkbox("Дополнительные запросы", disabled=True, value=False)
 
 # 3. Поиск или URL страниц конкурентов
 st.markdown("### Поиск или URL страниц конкурентов")
@@ -378,39 +369,33 @@ st.markdown("##### ⚙️ Настройки")
 # Используем st.container для сохранения структуры без возможности свернуть
 with st.container(border=True): 
     
-    # --- Блок 1: Выпадающие списки и Text Inputs ---
+    # --- Блок 1: Выпадающие списки и Text Inputs (без колонок) ---
     st.markdown("###### Основные параметры")
     
-    # Строка 1: User-Agent
+    # User-Agent
     ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
     st.caption("Определяет, как будет скачиваться страница.")
-    st.markdown("---")
     
-    # Строка 2: Поисковая система
+    # Поисковая система
     search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
-    st.markdown("---")
     
-    # Строка 3: Яндекс / Регион
+    # Яндекс / Регион
     region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
-    st.markdown("---")
     
-    # Строка 4: Устройство
+    # Устройство
     device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-    st.markdown("---")
     
-    # Строка 5: Анализировать ТОП
+    # Анализировать ТОП (теперь после устройства)
     top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
-    st.markdown("---")
 
-    # Строка 6: Учитывать тип страниц по url
+    # Учитывать тип страниц по url
     st.selectbox(
         "Учитывать тип страниц по url", 
         ["Все страницы", "Главные страницы", "Внутренние страницы"],
         key="settings_url_type"
     )
-    st.markdown("---")
 
-    # Строка 7: Учитывать тип
+    # Учитывать тип
     st.selectbox(
         "Учитывать тип", 
         ["Все страницы", "Коммерческие", "Информационные"],
@@ -431,18 +416,20 @@ with st.container(border=True):
     # --- Блок 3: Флажки ---
     st.markdown("###### Переключатели")
     
+    # Все флажки идут друг под другом в двух колонках
     col_check1, col_check2 = st.columns(2)
     with col_check1:
-        s_noindex = st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
-        s_alt = st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+        st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
+        st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+        st.checkbox("Учитывать числа (0-9)", False, key="settings_numbers")
     with col_check2:
-        s_num = st.checkbox("Учитывать числа (0-9)", False, key="settings_numbers")
-        s_norm = st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
-        s_agg = st.checkbox("Исключать агрегаторы/маркетплейсы в поиске (дополнительно)", True, key="settings_agg')")
+        st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
+        st.checkbox("Исключать агрегаторы/маркетплейсы в поиске (дополнительно)", True, key="settings_agg")
 
 # Кнопка запуска
 if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True):
     
+    # (Логика запуска остается без изменений)
     if my_input_type == "Релевантная страница на вашем сайте" and not my_url:
         st.error("Введите URL!")
         st.stop()
@@ -458,16 +445,19 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
             st.stop()
 
     settings = {
-        'noindex': s_noindex, 'alt_title': s_alt, 'numbers': s_num,
-        'norm': s_norm, 'ua': ua, 'custom_stops': c_stops.split()
+        'noindex': st.session_state.settings_noindex, 
+        'alt_title': st.session_state.settings_alt, 
+        'numbers': st.session_state.settings_numbers,
+        'norm': st.session_state.settings_norm, 
+        'ua': st.session_state.settings_ua, 
+        'custom_stops': st.session_state.settings_stops.split()
     }
     
     target_urls = []
     if source_type == "Google (Авто)":
         
-        # Обновленный список исключений (из text_area)
-        excl = [d.strip() for d in excludes.split('\n') if d.strip()]
-        if s_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
+        excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
+        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
         
         try:
             with st.spinner(f"Сбор ТОПа {search_engine}..."):
@@ -482,12 +472,15 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
                     if any(x in urlparse(u).netloc for x in excl): continue
                     target_urls.append(u)
                     cnt += 1
-                    if cnt >= top_n: break
+                    if cnt >= st.session_state.settings_top_n: break
         except Exception as e:
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
-    else: # Ручной список
-        target_urls = [u.strip() for u in st.session_state.get('manual_urls', '').split('\n') if u.strip()]
+    else: 
+        # Добавлено использование session_state для ручного списка
+        if 'manual_urls' not in st.session_state:
+             st.session_state.manual_urls = ""
+        target_urls = [u.strip() for u in st.session_state.manual_urls.split('\n') if u.strip()]
         
     if not target_urls:
         st.error("Нет конкурентов для анализа.")
@@ -552,7 +545,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
         if not df_d.empty:
             df_d = df_d.sort_values(by="diff_abs", ascending=False)
             
-            # Логика пагинации (оставлена как есть)
+            # Логика пагинации
             rows_per_page = 20
             total_rows = len(df_d)
             total_pages = math.ceil(total_rows / rows_per_page)
