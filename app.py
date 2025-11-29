@@ -54,7 +54,7 @@ st.markdown(f"""
             --text-color: {TEXT_COLOR};
         }}
         
-        /* 1. БАЗОВЫЙ ТЕКСТ (Чтобы не ломались шрифты) */
+        /* 1. БАЗОВЫЙ ТЕКСТ */
         html, body, .stApp {{
             font-family: 'Inter', sans-serif;
             background-color: #FFFFFF !important;
@@ -72,10 +72,9 @@ st.markdown(f"""
         }}
         
         /* ======================================================= */
-        /* ПОЛЯ ВВОДА - ПРИНУДИТЕЛЬНЫЙ СИНИЙ ФОКУС                 */
+        /* ПОЛЯ ВВОДА                                              */
         /* ======================================================= */
         
-        /* Стиль покоя */
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
@@ -85,28 +84,13 @@ st.markdown(f"""
             border-radius: 6px;
         }}
 
-        /* !!! ВАЖНО: СИНИЙ ФОКУС !!! */
-        /* Мы обращаемся к div с атрибутом data-baseweb, это перебивает оранжевый цвет Streamlit */
-        
-        /* Для обычных инпутов */
-        div[data-baseweb="input"]:focus-within {{
-            border-color: {PRIMARY_COLOR} !important;
-            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
-        }}
-        
-        /* Для больших текстовых полей (Textarea) */
-        div[data-baseweb="textarea"]:focus-within {{
-            border-color: {PRIMARY_COLOR} !important;
-            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
-        }}
-        
-        /* Для селектов */
+        div[data-baseweb="input"]:focus-within,
+        div[data-baseweb="textarea"]:focus-within,
         div[data-baseweb="select"] > div:focus-within {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
 
-        /* Убираем нативную обводку браузера */
         .stTextInput input:focus,
         .stTextArea textarea:focus {{
             outline: none !important;
@@ -114,35 +98,70 @@ st.markdown(f"""
             box-shadow: none !important;
         }}
         
-        /* Цвет курсора и текста внутри */
         input, textarea {{
             caret-color: {PRIMARY_COLOR} !important;
             color: {TEXT_COLOR} !important;
         }}
         
-        /* Placeholder */
         ::placeholder {{
             color: #94a3b8 !important;
             opacity: 1;
         }}
         
-        /* Иконки Selectbox */
         .stSelectbox svg {{
             fill: {TEXT_COLOR} !important;
+        }}
+
+        /* ======================================================= */
+        /* !!! ИСПРАВЛЕНИЕ ВЫПАДАЮЩЕГО СПИСКА (POPOVER) !!!        */
+        /* ======================================================= */
+        
+        /* Фон самого выпадающего окна и списка */
+        div[data-baseweb="popover"],
+        div[data-baseweb="menu"],
+        div[data-baseweb="menu"] ul {{
+            background-color: #FFFFFF !important;
+        }}
+
+        /* Опции (строки) внутри списка */
+        div[data-baseweb="menu"] li {{
+            background-color: #FFFFFF !important;
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        /* Контейнер для текста опции */
+        div[data-baseweb="menu"] li span, 
+        div[data-baseweb="menu"] li div {{
+            color: {TEXT_COLOR} !important;
+        }}
+
+        /* При наведении курсора на опцию */
+        div[data-baseweb="menu"] li:hover {{
+            background-color: {LIGHT_BG_MAIN} !important;
+        }}
+
+        /* Выбранный элемент в списке (активный) */
+        div[data-baseweb="menu"] li[aria-selected="true"] {{
+            background-color: {LIGHT_BG_MAIN} !important;
+            color: {PRIMARY_COLOR} !important;
+            font-weight: 600;
+        }}
+        
+        /* Цвет текста выбранного элемента */
+        div[data-baseweb="menu"] li[aria-selected="true"] * {{
+            color: {PRIMARY_COLOR} !important;
         }}
 
         /* ======================================================= */
         /* РАДИО И ЧЕКБОКСЫ                                        */
         /* ======================================================= */
         
-        /* Радио */
         div[role="radiogroup"] label {{
             background-color: #FFFFFF !important;
             border: 1px solid {BORDER_COLOR};
             margin-right: 5px;
         }}
         
-        /* Текст внутри радио */
         div[role="radiogroup"] p {{
             color: {TEXT_COLOR} !important;
         }}
@@ -176,9 +195,6 @@ st.markdown(f"""
         }}
         div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
             fill: #FFFFFF !important;
-        }}
-        div[data-baseweb="checkbox"]:hover > div:first-child {{
-            border-color: {PRIMARY_COLOR} !important;
         }}
 
         /* ======================================================= */
@@ -683,3 +699,4 @@ if st.session_state.start_analysis_flag:
 
             if not my_data:
                 st.warning("Основные таблицы не отображаются, так как был выбран режим 'Без страницы'.")
+
