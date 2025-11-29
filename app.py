@@ -614,7 +614,7 @@ if st.session_state.start_analysis_flag:
         except Exception as e:
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
-   else: 
+        else: 
         # Мы просто берем данные из session_state по ключу, который задали выше
         raw_urls = st.session_state.get("manual_urls_ui", "")
         target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
@@ -713,6 +713,7 @@ if st.session_state.start_analysis_flag:
 
             if not my_data:
                 st.warning("Основные таблицы не отображаются, так как был выбран режим 'Без страницы'.")
+
 
 
 
