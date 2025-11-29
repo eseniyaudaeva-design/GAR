@@ -65,8 +65,11 @@ st.markdown(f"""
             max-width: 100% !important; 
         }}
         
-        /* 2. СТИЛИЗАЦИЯ ПОЛЕЙ ВВОДА (ГЛОБАЛЬНАЯ) */
-        /* Применяем ко всем input, textarea и selectbox */
+        /* ======================================================= */
+        /* 2. СТИЛИЗАЦИЯ ПОЛЕЙ ВВОДА (Input, Textarea, Selectbox)  */
+        /* ======================================================= */
+        
+        /* Базовое состояние */
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
@@ -75,18 +78,93 @@ st.markdown(f"""
             border: 1px solid {BORDER_COLOR} !important;
             border-radius: 6px;
         }}
+
+        /* == СОСТОЯНИЕ ФОКУСА (Когда нажали на поле) == */
+        /* Убираем красный/оранжевый цвет Streamlit и ставим синий */
         
-        /* Цвет текста внутри выпадающего списка */
-        .stSelectbox div[data-baseweb="select"] span {{
-            color: {TEXT_COLOR} !important;
+        div[data-baseweb="input"]:focus-within,
+        div[data-baseweb="textarea"]:focus-within,
+        div[data-baseweb="select"]:focus-within {{
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
-        /* Цвет иконки стрелочки в Selectbox */
+        /* Для input внутри полей */
+        .stTextInput input:focus,
+        .stTextArea textarea:focus {{
+             border-color: {PRIMARY_COLOR} !important;
+        }}
+
+        /* Цвет иконки стрелочки и текста в Selectbox */
+        .stSelectbox div[data-baseweb="select"] span,
         .stSelectbox div[data-baseweb="select"] svg {{
+            color: {TEXT_COLOR} !important;
             fill: {TEXT_COLOR} !important;
         }}
         
-        /* 3. Кнопка "ЗАПУСТИТЬ АНАЛИЗ" (Синий/Голубой с градиентом) */
+        /* ======================================================= */
+        /* 3. РАДИО-КНОПКИ И ЧЕКБОКСЫ (ЦВЕТА)                      */
+        /* ======================================================= */
+
+        /* -- Радио-кнопки (Вкладки/Выбор) -- */
+        
+        /* Контейнер радио-кнопки */
+        div[role="radiogroup"] > label {{
+            background-color: #FFFFFF; 
+            border: 1px solid {BORDER_COLOR};
+            border-radius: 6px;
+            padding: 10px 15px;
+            margin-right: 5px;
+            color: {TEXT_COLOR};
+        }}
+        
+        /* Кружок радио-кнопки (НЕ выбранный) -> Делаем БЕЛЫМ внутри */
+        div[role="radiogroup"] > label > div:first-child {{
+            background-color: #FFFFFF !important;
+            border-color: {BORDER_COLOR} !important; 
+        }}
+        
+        /* Кружок радио-кнопки (ВЫБРАННЫЙ) -> Синяя рамка, Белый фон */
+        div[role="radiogroup"] > label input:checked + div:first-child {{
+            border-color: {PRIMARY_COLOR} !important;
+            background-color: #FFFFFF !important;
+        }}
+        
+        /* Сама точка внутри выбранной радио-кнопки -> СИНЯЯ */
+        div[role="radiogroup"] > label input:checked + div:first-child > div {{
+            background-color: {PRIMARY_COLOR} !important;
+        }}
+
+        /* Текст выбранной радио-кнопки */
+        div[role="radiogroup"] input:checked + div {{
+            color: {TEXT_COLOR} !important; 
+            border-color: {PRIMARY_COLOR} !important; 
+            font-weight: 600;
+        }}
+
+        /* -- Чекбоксы (Галочки) -- */
+
+        /* Квадрат чекбокса (НЕ выбранный) -> БЕЛЫЙ внутри, Серая рамка */
+        div[data-baseweb="checkbox"] > div:first-child {{
+            background-color: #FFFFFF !important;
+            border-color: {BORDER_COLOR} !important; 
+        }}
+        
+        /* Квадрат чекбокса (ВЫБРАННЫЙ) -> СИНИЙ фон, Синяя рамка */
+        div[data-baseweb="checkbox"] input:checked + div:first-child {{
+            background-color: {PRIMARY_COLOR} !important;
+            border-color: {PRIMARY_COLOR} !important;
+        }}
+        
+        /* Галочка внутри (автоматически белая, но на всякий случай) */
+        div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
+            fill: #FFFFFF !important;
+        }}
+
+
+        /* ======================================================= */
+        /* 4. КНОПКА ЗАПУСКА                                       */
+        /* ======================================================= */
         .stButton button {{
             background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
             color: white !important;
@@ -97,49 +175,18 @@ st.markdown(f"""
             border: none;
             margin-top: 10px;
         }}
-        
-        /* 4. Радио-кнопки (Вкладки) */
-        div[data-testid="stRadio"] label {{
-            background-color: #FFFFFF; 
-            border-radius: 6px;
-            padding: 10px 15px;
-            margin-right: 5px;
-            color: {TEXT_COLOR};
-            border: 1px solid {BORDER_COLOR};
-            font-weight: 400;
+        /* Убираем красную рамку при фокусе на кнопке */
+        .stButton button:focus {{
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
+            color: white !important;
         }}
-        /* Выбранный элемент */
-        div[data-testid="stRadio"] input:checked + div {{
-            background-color: #FFFFFF !important; 
-            color: {TEXT_COLOR} !important; 
-            border-color: {PRIMARY_COLOR} !important; 
-            font-weight: 600;
-        }}
-        
-        /* Чекбоксы и Радио */
-        [data-testid="stCheckbox"] svg {{ 
-            color: {PRIMARY_COLOR} !important; 
-        }}
-        [data-testid="stCheckbox"] svg path {{ 
-            fill: {PRIMARY_COLOR} !important; 
-            stroke: {PRIMARY_COLOR} !important;
-        }}
-        [data-testid="stCheckbox"] input:not(:checked) + div svg path {{
-            stroke: {TEXT_COLOR} !important; 
-            fill: #FFFFFF !important; 
-        }}
-        
-        div[data-testid="stRadio"] input:checked + div svg circle:first-child {{ stroke: {PRIMARY_COLOR} !important; fill: {PRIMARY_COLOR} !important; }}
-        div[data-testid="stRadio"] input:not(:checked) + div svg circle:first-child {{ stroke: {PRIMARY_COLOR} !important; fill: #FFFFFF !important; }}
-        div[data-testid="stRadio"] input:not(:checked) + div svg circle:last-child {{ fill: #FFFFFF !important; }}
-        div[data-testid="stRadio"] input:checked + div svg circle:last-child {{ fill: #FFFFFF !important; }}
 
 
-        /* ========================================================= */
-        /* 5. ФИКСАЦИЯ ПРАВОЙ ПАНЕЛИ (САЙДБАР) */
-        /* ========================================================= */
+        /* ======================================================= */
+        /* 5. САЙДБАР (ФИКСАЦИЯ И ЦВЕТА)                           */
+        /* ======================================================= */
         
-        /* Установка ширины для контейнеров колонок */
         .st-emotion-cache-1cpxwwu {{ 
             width: 65% !important;
             padding-right: 20px; 
@@ -147,7 +194,6 @@ st.markdown(f"""
             padding-left: 0 !important;
         }}
         
-        /* Агрессивный хак для фиксации правой колонки */
         div[data-testid="column"]:nth-child(2) {{
             position: fixed !important;
             right: 0 !important;
@@ -155,36 +201,14 @@ st.markdown(f"""
             width: 35% !important; 
             height: 100vh !important;
             overflow-y: auto !important; 
-            background-color: #FFFFFF !important; /* Фон под сайдбаром белый */
+            background-color: #FFFFFF !important; 
             padding: 1rem 1rem 2rem 1.5rem !important; 
             z-index: 100;
-            box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; /* Тонкий красный разделитель */
+            box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; 
         }}
 
-        /* 
-           ИСПРАВЛЕНИЕ ЦВЕТОВ В САЙДБАРЕ
-           Принудительно делаем поля светлыми, как в основной части.
-        */
-        
-        /* Selectbox (выпадающий список) */
-        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] > div {{
-            background-color: {LIGHT_BG_MAIN} !important; /* Светло-серый фон */
-            color: {TEXT_COLOR} !important; /* Темный текст */
-            border: 1px solid {BORDER_COLOR} !important;
-        }}
-        
-        /* Текст внутри Selectbox */
-        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] span {{
-            color: {TEXT_COLOR} !important; 
-        }}
-        
-        /* Иконка стрелочки */
-        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] svg {{
-             fill: {TEXT_COLOR} !important;
-             color: {TEXT_COLOR} !important;
-        }}
-
-        /* Обычные текстовые поля (TextInput, TextArea) в сайдбаре */
+        /* Форсируем стили полей в сайдбаре такие же, как в основном блоке (светлые) */
+        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] > div,
         div[data-testid="column"]:nth-child(2) .stTextInput input,
         div[data-testid="column"]:nth-child(2) .stTextarea textarea {{
             background-color: {LIGHT_BG_MAIN} !important; 
@@ -192,8 +216,7 @@ st.markdown(f"""
             border: 1px solid {BORDER_COLOR} !important;
             box-shadow: none !important;
         }}
-        
-        /* Скрываем подписи в сайдбаре (они выглядят как лейблы) */
+
         div[data-testid="column"]:nth-child(2) .stCaption {{
             display: none;
         }}
