@@ -71,10 +71,11 @@ st.markdown(f"""
             max-width: 100% !important; 
         }}
         
-        /* ======================================================= */
-        /* 2. ПОЛЯ ВВОДА (Input, Textarea, Selectbox)              */
+       /* ======================================================= */
+        /* ПОЛЯ ВВОДА (Input, Textarea, Selectbox) - ИСПРАВЛЕНИЕ   */
         /* ======================================================= */
         
+        /* Базовый стиль полей */
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
@@ -84,17 +85,32 @@ st.markdown(f"""
             border-radius: 6px;
         }}
 
-        /* ФОКУС: СИНЯЯ РАМКА (перебиваем оранжевый) */
-        .stTextInput input:focus,
-        .stTextArea textarea:focus,
-        .stSelectbox div[data-baseweb="select"] > div:focus-within {{
+        /* ВАЖНО: Цвет рамки при нажатии (FOCUS) - СИНИЙ */
+        /* Используем focus-within для контейнера, чтобы перебить стандартный стиль */
+        div[data-baseweb="input"]:focus-within,
+        div[data-baseweb="select"] > div:focus-within,
+        div[data-baseweb="textarea"] > div:focus-within {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
-        /* Иконки Selectbox */
-        .stSelectbox svg {{
-            fill: {TEXT_COLOR} !important;
+        /* Убираем стандартный outline у самого input элемента */
+        .stTextInput input:focus,
+        .stTextArea textarea:focus {{
+            outline: none !important;
+            border-color: transparent !important; /* Рамку рисует контейнер выше */
+            box-shadow: none !important;
+        }}
+
+        /* Цвет курсора (палочки ввода) тоже синий */
+        input, textarea {{
+            caret-color: {PRIMARY_COLOR} !important;
+        }}
+        
+        /* Цвет текста подсказки (placeholder) */
+        ::placeholder {{
+            color: #94a3b8 !important;
+            opacity: 1;
         }}
         
         /* ======================================================= */
@@ -453,17 +469,26 @@ with col_main:
     my_url = ""
     my_page_content = ""
 
+   # ...
     if my_input_type == "Релевантная страница на вашем сайте":
-        my_url = st.text_input("URL страницы", placeholder="https://site.ru/", label_visibility="collapsed", key="my_url_input")
-    elif my_input_type == "Исходный код страницы или текст":
-        my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML-код или чистый текст страницы", key="my_content_input")
-    elif my_input_type == "Без страницы":
-        st.info("Выбран анализ без страницы вашего сайта.")
+        # ДОБАВЛЕН ЯВНЫЙ PLACEHOLDER
+        my_url = st.text_input(
+            "URL страницы", 
+            placeholder="Например: https://site.ru/catalog/tovar", 
+            label_visibility="collapsed", 
+            key="my_url_input"
+        )
+    # ...
 
     # 2. Поисковой запрос
     st.markdown("### Поисковой запрос")
-    query = st.text_input("Основной запрос", placeholder="Основной запрос", label_visibility="collapsed", key="query_input")
-    st.checkbox("Дополнительные запросы", disabled=True, value=False)
+    # ДОБАВЛЕН ЯВНЫЙ PLACEHOLDER
+    query = st.text_input(
+        "Основной запрос", 
+        placeholder="Например: купить пластиковые окна в москве", 
+        label_visibility="collapsed", 
+        key="query_input"
+    )
 
     # 3. Поиск или URL страниц конкурентов
     st.markdown("### Поиск или URL страниц конкурентов")
@@ -700,5 +725,6 @@ if st.session_state.start_analysis_flag:
 
             if not my_data:
                 st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы' или не удалось получить данные.")
+
 
 
