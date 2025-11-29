@@ -26,7 +26,7 @@ DEFAULT_EXCLUDE_DOMAINS = [
     "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", 
     "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by"
 ]
-DEFAULT_EXCLUDE = " ".join(DEFAULT_EXCLUDE_DOMAINS)
+DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
 
 # Список регионов для имитации
@@ -62,11 +62,14 @@ st.markdown("""
             margin-bottom: 20px;
         }
         
-        /* Поля ввода (фон и текст) */
-        .stTextInput input, .stTextArea textarea, .stSelectbox > div {
+        /* Поля ввода (фон и текст) - Улучшенный темный фон для выпадающих списков и полей */
+        .stTextInput input, 
+        .stTextArea textarea, 
+        div[data-baseweb="select"] > div:first-child, /* Выпадающие списки */
+        div[data-testid="stTextarea"] textarea { /* Стилизация text_area */
             color: #FFFFFF !important;
-            background-color: #475569 !important; /* Еще более темный фон для полей */
-            border: 1px solid #64748B !important;
+            background-color: #334155 !important; /* Более темный фон для полей ввода */
+            border: 1px solid #475569 !important;
         }
 
         /* Кнопка (оставить яркой, текст белый) */
@@ -86,21 +89,6 @@ st.markdown("""
             color: #FFFFFF !important; /* Белый текст */
         }
         
-        /* Заголовки таблиц */
-        .table-header { 
-            font-size: 18px; 
-            font-weight: bold; 
-            margin-top: 30px; 
-            margin-bottom: 10px; 
-            color: #FFFFFF !important; /* Белый */
-        }
-        
-        /* Уменьшение отступов (убираем пустоту) */
-        .block-container {
-            padding-top: 2rem !important;
-            padding-bottom: 2rem !important;
-        }
-        
         /* Streamlit DataFrame: настройка для отображения белого текста на темном фоне */
         .stDataFrame > div > div {
             color: #FFFFFF !important;
@@ -115,7 +103,7 @@ st.markdown("""
             background-color: #334155 !important;
         }
         
-        /* 4. Стилизация радио-кнопок для имитации вкладок (УБРАНА ОРАНЖЕВАЯ ЗАЛИВКА) */
+        /* Стилизация радио-кнопок для имитации вкладок */
         div[data-testid="stRadio"] label {
             background-color: #334155;
             border-radius: 6px;
@@ -130,21 +118,12 @@ st.markdown("""
         }
         /* Выбранный элемент: оранжевая рамка и оранжевый текст */
         div[data-testid="stRadio"] input:checked + div {
-            background-color: #334155 !important; /* Убран фон */
-            color: #F97316 !important; /* Оранжевый текст */
-            border-color: #F97316 !important; /* Оранжевая рамка */
+            background-color: #334155 !important; 
+            color: #F97316 !important; 
+            border-color: #F97316 !important; 
         }
-        /* Скрытие исходных радио-точек */
         div[data-testid="stRadio"] input[type="radio"] {
             display: none;
-        }
-        div[data-testid="stRadio"] div[data-testid="stHorizontalBlock"] {
-            gap: 0.5rem; /* Уменьшение пробела между "вкладками" */
-        }
-        
-        /* Исправление цвета заголовка "Настройки" */
-        .stContainer h5, .stContainer h6 {
-             color: #FFFFFF !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -225,7 +204,7 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
-    # (Остальной код функций остается без изменений)
+    # (Остальной код calculate_metrics остается без изменений, за исключением незначительных правок)
     if not my_data or not my_data['body_text']:
         my_lemmas = []
         my_anchors = []
@@ -325,12 +304,12 @@ def calculate_metrics(comp_data, my_data, settings):
             df = bi_freqs[bg]
             if df < 2 and bg not in my_bi: continue
             my_c = my_bi.count(bg)
-            comp_c = [c.count(bg) for c in comp_bi]
-            med_c = np.median(comp_c)
+            comp_c = [c.count(bg) for c in comp_docs if 'body' in c] # Защита от пустых словарей
+            med_c = np.median(comp_c) if comp_c else 0
             if med_c > 0 or my_c > 0:
                 table_ngrams.append({
                     "N-грамма": bg, "Кол-во сайтов": df, "Медианное вхождение": med_c,
-                    "Среднее": round(np.mean(comp_c), 1), "На сайте": my_c,
+                    "Среднее": round(np.mean(comp_c) if comp_c else 0, 1), "На сайте": my_c,
                     "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
                 })
 
@@ -355,7 +334,7 @@ def calculate_metrics(comp_data, my_data, settings):
 
 st.title("SEO Анализатор Релевантности")
 
-# --- БЛОК ВВОДА (КОПИРОВАНИЕ ФУНКЦИОНАЛА СКРИНШОТОВ) ---
+# --- БЛОК ВВОДА ---
 
 # 1. URL или код страницы Вашего сайта
 st.markdown("### URL или код страницы Вашего сайта")
@@ -391,66 +370,75 @@ source_type_new = st.radio(
     label_visibility="collapsed",
     key="competitor_source_radio"
 )
-
 source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
-
-# --- ИСТОЧНИК КОНКУРЕНТОВ: ДЕТАЛИ ---
-if source_type == "Google (Авто)":
-    # Новые поля настроек для поиска
-    col_search1, col_search2 = st.columns(2)
-    with col_search1:
-        search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"])
-        region = st.selectbox("Яндекс / Регион", REGIONS)
-        device = st.selectbox("Устройство", ["Desktop", "Mobile"])
-    with col_search2:
-        top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1)
-        # Пустая колонка для выравнивания
-        st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Поле "Не учитывать домены" - теперь отдельный text_area
-    excludes = st.text_area("Не учитывать домены (каждый с новой строки)", "\n".join(DEFAULT_EXCLUDE_DOMAINS), height=250)
-    
-else:
-    manual_urls = st.text_area("Список URL (каждый с новой строки)", height=250)
 
 # --- 4. НАСТРОЙКИ (ПОСТОЯННО ОТКРЫТЫЙ БЛОК) ---
 st.markdown("##### ⚙️ Настройки")
+
 # Используем st.container для сохранения структуры без возможности свернуть
 with st.container(border=True): 
-    # Основные настройки
-    st.markdown("###### Технические настройки")
-    col_set1, col_set2 = st.columns(2)
-    with col_set1:
-        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
-        st.caption("Определяет, как будет скачиваться страница.")
-    with col_set2:
-        s_noindex = st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
-        s_alt = st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
     
-    # NLP и расчеты
-    st.markdown("###### Настройки обработки текста")
-    col_set3, col_set4 = st.columns(2)
-    with col_set3:
-        c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=150, key="settings_stops")
-        st.caption("Слова, которые будут удалены перед лемматизацией.")
-    with col_set4:
-        st.write("") # Отступ
-        s_num = st.checkbox("Учитывать числа (0-9)", False, key="settings_numbers")
-        s_norm = st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
-        s_agg = st.checkbox("Исключать агрегаторы/маркетплейсы в поиске", True, key="settings_agg")
-        
-    # Настройки фильтрации результатов
-    st.markdown("###### Настройки фильтрации конкурентов (Post-Query)")
+    # --- Блок 1: Выпадающие списки и Text Inputs ---
+    st.markdown("###### Основные параметры")
+    
+    # Строка 1: User-Agent
+    ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
+    st.caption("Определяет, как будет скачиваться страница.")
+    st.markdown("---")
+    
+    # Строка 2: Поисковая система
+    search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
+    st.markdown("---")
+    
+    # Строка 3: Яндекс / Регион
+    region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
+    st.markdown("---")
+    
+    # Строка 4: Устройство
+    device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
+    st.markdown("---")
+    
+    # Строка 5: Анализировать ТОП
+    top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
+    st.markdown("---")
+
+    # Строка 6: Учитывать тип страниц по url
     st.selectbox(
         "Учитывать тип страниц по url", 
         ["Все страницы", "Главные страницы", "Внутренние страницы"],
         key="settings_url_type"
     )
+    st.markdown("---")
+
+    # Строка 7: Учитывать тип
     st.selectbox(
         "Учитывать тип", 
         ["Все страницы", "Коммерческие", "Информационные"],
         key="settings_content_type"
     )
+    
+    # --- Блок 2: Text Areas ---
+    st.markdown("###### Редактируемые списки")
+    
+    # Не учитывать домены
+    excludes = st.text_area("Не учитывать домены (каждый с новой строки)", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
+    st.caption("Домены, которые будут исключены из анализа конкурентов.")
+    
+    # Стоп-слова
+    c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=200, key="settings_stops")
+    st.caption("Слова, которые будут удалены перед лемматизацией.")
+    
+    # --- Блок 3: Флажки ---
+    st.markdown("###### Переключатели")
+    
+    col_check1, col_check2 = st.columns(2)
+    with col_check1:
+        s_noindex = st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
+        s_alt = st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+    with col_check2:
+        s_num = st.checkbox("Учитывать числа (0-9)", False, key="settings_numbers")
+        s_norm = st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
+        s_agg = st.checkbox("Исключать агрегаторы/маркетплейсы в поиске (дополнительно)", True, key="settings_agg')")
 
 # Кнопка запуска
 if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True):
@@ -483,7 +471,6 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
         
         try:
             with st.spinner(f"Сбор ТОПа {search_engine}..."):
-                # Используем Google Search для имитации, так как API Яндекса не доступен
                 if not USE_SEARCH:
                     st.error("Библиотека 'googlesearch' не найдена. Невозможно выполнить автоматический поиск ТОПа.")
                     st.stop()
@@ -491,9 +478,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
                 found = search(query, num_results=top_n * 2, lang="ru")
                 cnt = 0
                 for u in found:
-                    # Проверка на свой URL
                     if my_input_type == "Релевантная страница на вашем сайте" and my_url in u: continue
-                    # Проверка на исключаемые домены
                     if any(x in urlparse(u).netloc for x in excl): continue
                     target_urls.append(u)
                     cnt += 1
@@ -502,7 +487,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
     else: # Ручной список
-        target_urls = [u.strip() for u in manual_urls.split('\n') if u.strip()]
+        target_urls = [u.strip() for u in st.session_state.get('manual_urls', '').split('\n') if u.strip()]
         
     if not target_urls:
         st.error("Нет конкурентов для анализа.")
@@ -572,11 +557,9 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
             total_rows = len(df_d)
             total_pages = math.ceil(total_rows / rows_per_page)
             
-            # Инициализация и сброс пагинации при новом запуске
             if 'page_number' not in st.session_state:
                 st.session_state.page_number = 1
             
-            # --- Навигация пагинации ---
             col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
             with col_p1:
                 if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
