@@ -592,7 +592,7 @@ if st.session_state.start_analysis_flag:
         'custom_stops': st.session_state.settings_stops.split()
     }
     
-    target_urls = []
+target_urls = []
     if source_type == "Google (Авто)":
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
@@ -614,18 +614,10 @@ if st.session_state.start_analysis_flag:
         except Exception as e:
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
-else: 
-        # Добавьте отступ (Tab или 4 пробела) для строк ниже
-        # Мы просто берем данные из session_state по ключу, который задали выше
-# ... (Код, где target_urls уже определен, строка ~620)
     else: 
-        # ... (Код для ручного списка) ...
+        # Здесь мы используем данные из поля ввода, которое определено в интерфейсе
+        raw_urls = st.session_state.get("manual_urls_ui", "")
         target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
-
-    # ----------------------------------------------------
-    # ВЕСЬ СЛЕДУЮЩИЙ КОД ДОЛЖЕН БЫТЬ С ОДИНАКОВЫМ ОТСТУПОМ 
-    # ВНУТРИ if st.session_state.start_analysis_flag:
-    # ----------------------------------------------------
 
     if not target_urls:
         st.error("Нет конкурентов для анализа.")
@@ -640,4 +632,5 @@ else:
     # ... (дальше идет if len(comp_data) < 2)
     
     # ... (и так до самого конца файла)
+
 
