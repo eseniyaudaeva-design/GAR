@@ -11,7 +11,7 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ (ФИНАЛЬНЫЙ СВЕТЛЫЙ CSS С ДВУМЯ КОЛОНКАМИ И СИНИМ АКЦЕНТОМ)
+# 1. КОНФИГУРАЦИЯ (ФИНАЛЬНЫЙ СВЕТЛЫЙ CSS С ДВУМЯ КОЛОНКАМИ И ФИКСАЦИЕЙ)
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -110,29 +110,50 @@ st.markdown(f"""
         /* Чекбокс: Синий, Белый внутренний */
         [data-testid="stCheckbox"] svg {{ 
             color: {PRIMARY_COLOR} !important; 
-            stroke: {PRIMARY_COLOR} !important;
         }}
         [data-testid="stCheckbox"] svg path {{ 
             fill: {PRIMARY_COLOR} !important; 
+            stroke: {PRIMARY_COLOR} !important;
         }}
+        [data-testid="stCheckbox"] input:not(:checked) + div svg path {{
+            stroke: {TEXT_COLOR} !important; /* Невыбранный квадрат: Темно-серая рамка */
+            fill: #FFFFFF !important; /* Невыбранный квадрат: Белый фон */
+        }}
+        
         /* Радио: Синий/Белый */
         div[data-testid="stRadio"] input:checked + div svg circle:first-child {{ stroke: {PRIMARY_COLOR} !important; fill: {PRIMARY_COLOR} !important; }}
         div[data-testid="stRadio"] input:not(:checked) + div svg circle:first-child {{ stroke: {PRIMARY_COLOR} !important; fill: #FFFFFF !important; }} /* Невыбранный - Синяя рамка, белый фон */
         div[data-testid="stRadio"] input:not(:checked) + div svg circle:last-child {{ fill: #FFFFFF !important; }} /* Невыбранный - Белый внутренний кружок */
         div[data-testid="stRadio"] input:checked + div svg circle:last-child {{ fill: #FFFFFF !important; }} /* Выбранный - Белый внутренний кружок */
 
+
         /* ========================================================= */
-        /* 5. СТИЛИЗАЦИЯ ПРАВОЙ ПАНЕЛИ (САЙДБАР) */
+        /* 5. ФИКСАЦИЯ ПРАВОЙ ПАНЕЛИ (САЙДБАР) */
         /* ========================================================= */
         
-        /* Фон для правой колонки (имитация сайдбара) */
-        div[data-testid="column"]:nth-child(2) > div {{
-            padding-left: 20px; 
-            padding-right: 20px;
+        /* Установка ширины для контейнеров колонок */
+        .st-emotion-cache-1cpxwwu {{ 
+            width: 65% !important;
+            padding-right: 20px; 
+            max-width: 65% !important;
+            padding-left: 0 !important;
+        }}
+        
+        /* Агрессивный хак для фиксации правой колонки */
+        div[data-testid="column"]:nth-child(2) {{
+            position: fixed !important;
+            right: 0 !important;
+            top: 0 !important;
+            width: 35% !important; 
+            height: 100vh !important;
+            overflow-y: auto !important; 
+            background-color: #FFFFFF !important; /* Фон под сайдбаром */
+            padding: 1rem 1rem 2rem 1.5rem !important; 
+            z-index: 100;
             box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; /* Тонкий красный разделитель */
         }}
 
-        /* Стилизация полей ввода в САЙДБАРЕ (ПРАВАЯ КОЛОНКА) */
+        /* Стилизация полей ввода в САЙДБАРЕ */
         div[data-testid="column"]:nth-child(2) .stSelectbox > div:first-child,
         div[data-testid="column"]:nth-child(2) .stTextInput input,
         div[data-testid="column"]:nth-child(2) .stTextarea textarea
@@ -145,23 +166,11 @@ st.markdown(f"""
             padding: 10px 12px;
         }}
         
-        /* Устранение лишних отступов и сброс стандартного стиля */
-        div[data-testid="column"]:nth-child(2) .stSelectbox, 
-        div[data-testid="column"]:nth-child(2) .stTextInput {{
-            margin-bottom: 0px !important;
-        }}
-        
-        /* Уменьшение отступа заголовков в сайдбаре */
-        div[data-testid="column"]:nth-child(2) h6 {{
-             margin-top: 0.5rem;
-             margin-bottom: 0.5rem;
-        }}
-        
         /* Скрываем подписи в сайдбаре (они выглядят как лейблы) */
         div[data-testid="column"]:nth-child(2) .stCaption {{
             display: none;
         }}
-        
+
     </style>
 """, unsafe_allow_html=True)
 
@@ -371,7 +380,7 @@ col_main, col_sidebar = st.columns([65, 35])
 
 # --- ЛЕВАЯ КОЛОНКА (Основной контент) ---
 with col_main:
-    # 1. КНОПКА ЗАПУСКА НА САМОМ ВЕРХУ (как на скриншоте)
+    # 1. КНОПКА ЗАПУСКА НА САМОМ ВЕРХУ 
     if 'start_analysis_flag' not in st.session_state:
         st.session_state.start_analysis_flag = False
 
