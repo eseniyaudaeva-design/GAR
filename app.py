@@ -620,7 +620,7 @@ else:
         raw_urls = st.session_state.get("manual_urls_ui", "")
         target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
 
-    if not target_urls:
+if not target_urls:
         st.error("Нет конкурентов для анализа.")
         st.stop()
         
@@ -714,6 +714,7 @@ else:
 
             if not my_data:
                 st.warning("Основные таблицы не отображаются, так как был выбран режим 'Без страницы'.")
+
 
 
 
