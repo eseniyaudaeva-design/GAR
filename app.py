@@ -663,4 +663,41 @@ if st.session_state.start_analysis_flag:
         if my_data and len(comp_data) > 0:
             st.markdown("### 1. Рекомендации по глубине")
             df_d = results['depth']
-            i
+            if not df_d.empty:
+                df_d = df_d.sort_values(by="diff_abs", ascending=False)
+                
+                rows_per_page = 20
+                total_rows = len(df_d)
+                total_pages = math.ceil(total_rows / rows_per_page)
+                
+                if 'page_number' not in st.session_state: st.session_state.page_number = 1
+                
+                col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
+                with col_p1:
+                    if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
+                        st.session_state.page_number -= 1
+                with col_p2:
+                    st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+                with col_p3:
+                    if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
+                        st.session_state.page_number += 1
+                            
+                start_idx = (st.session_state.page_number - 1) * rows_per_page
+                end_idx = start_idx + rows_per_page
+                df_page = df_d.iloc[start_idx:end_idx]
+                
+                st.dataframe(df_page, column_config={"diff_abs": None}, use_container_width=True, height=800)
+                st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
+                
+                with st.expander("2. Гибридный ТОП"):
+                    st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
+                    
+                with st.expander("3. N-граммы"):
+                    st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
+
+            
+            with st.expander("4. ТОП релевантности"):
+                st.dataframe(results['relevance_top'], use_container_width=True)
+
+            if not my_data:
+                st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы' или не удалось получить данные.")
