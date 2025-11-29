@@ -1,14 +1,190 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import requests
-from bs4 import BeautifulSoup
-import re
-from collections import Counter
-import math
-import inspect
-import concurrent.futures
-from urllib.parse import urlparse
+
+# ==========================================
+# 0. АВТОРИЗАЦИЯ
+# ==========================================
+def check_password():
+    """Проверка пароля для доступа к приложению"""
+    def password_entered():
+        if st.session_state["password"] == "jfV6Xel-Q7vp-_s2UYPO":
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # Стили для окна авторизации
+        st.markdown("""
+            <style>
+            /* Скрываем только самые основные элементы */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            .stDeployButton {display: none;}
+            
+            /* Белый фон и компактный layout */
+            .stApp {
+                background: white !important;
+            }
+            .block-container {
+                padding-top: 1rem !important;
+                padding-bottom: 1rem !important;
+                max-width: 600px !important;
+            }
+            
+            /* Центрируем и делаем компактным */
+            .main .block-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                padding: 0 !important;
+                margin: 0 auto !important;
+            }
+            
+            /* Стили для логотипа */
+            .logo-container {
+                margin-bottom: 2rem;
+                text-align: center;
+            }
+            
+            /* Стили для поля ввода */
+            .input-container {
+                width: 547px;
+                text-align: center;
+            }
+            .stTextInput input {
+                width: 547px !important;
+                height: 56px !important;
+                padding: 10px 16px !important;
+                border: 2px solid #e1e5e9 !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                background: white !important;
+            }
+            .stTextInput input:focus {
+                border-color: #277EFF !important;
+                outline: none !important;
+                box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
+            }
+            
+            /* Убираем лишние отступы */
+            .css-1d391kg {
+                padding: 0 !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Логотип
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=484)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Поле ввода пароля
+        st.markdown('<div class="input-container">', unsafe_allow_html=True)
+        st.text_input(
+            "Введите пароль",
+            type="password",
+            on_change=password_entered, 
+            key="password",
+            placeholder="Введите пароль",
+            label_visibility="collapsed"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        return False
+    elif not st.session_state["password_correct"]:
+        st.markdown("""
+            <style>
+            /* Скрываем только самые основные элементы */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            .stDeployButton {display: none;}
+            
+            /* Белый фон и компактный layout */
+            .stApp {
+                background: white !important;
+            }
+            .block-container {
+                padding-top: 1rem !important;
+                padding-bottom: 1rem !important;
+                max-width: 600px !important;
+            }
+            
+            /* Центрируем и делаем компактным */
+            .main .block-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                padding: 0 !important;
+                margin: 0 auto !important;
+            }
+            
+            /* Стили для логотипа */
+            .logo-container {
+                margin-bottom: 2rem;
+                text-align: center;
+            }
+            
+            /* Стили для поля ввода */
+            .input-container {
+                width: 547px;
+                text-align: center;
+            }
+            .stTextInput input {
+                width: 547px !important;
+                height: 56px !important;
+                padding: 10px 16px !important;
+                border: 2px solid #e1e5e9 !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                background: white !important;
+            }
+            .stTextInput input:focus {
+                border-color: #277EFF !important;
+                outline: none !important;
+                box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
+            }
+            
+            /* Убираем лишние отступы */
+            .css-1d391kg {
+                padding: 0 !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Логотип
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=484)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Поле ввода пароля
+        st.markdown('<div class="input-container">', unsafe_allow_html=True)
+        st.text_input(
+            "Введите пароль",
+            type="password",
+            on_change=password_entered, 
+            key="password",
+            placeholder="Введите пароль",
+            label_visibility="collapsed"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.error("😕 Неверный пароль")
+        
+        return False
+    else:
+        return True
+
+# Проверяем авторизацию
+if not check_password():
+    st.stop()
+
+# ==========================================
+# ОСТАЛЬНОЙ КОД ПРИЛОЖЕНИЯ
+# ==========================================
 
 # ==========================================
 # 1. КОНФИГУРАЦИЯ
@@ -737,3 +913,4 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
