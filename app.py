@@ -387,7 +387,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
             if st.button("⬅️ Назад") and st.session_state.page_number > 1:
                 st.session_state.page_number -= 1
         with col_p2:
-            st.markdown(f"<div style='text-align: center; padding-top: 10px; color: black;'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; padding-top: 10px; color: with;'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
         with col_p3:
             if st.button("Вперед ➡️") and st.session_state.page_number < total_pages:
                 st.session_state.page_number += 1
@@ -412,5 +412,6 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
         
     with st.expander("4. ТОП релевантности"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
