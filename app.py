@@ -11,7 +11,7 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ (НОВЫЙ СВЕТЛЫЙ CSS И ДВЕ КОЛОНКИ)
+# 1. КОНФИГУРАЦИЯ (ФИНАЛЬНЫЙ СВЕТЛЫЙ CSS С ДВУМЯ КОЛОНКАМИ И СИНИМ АКЦЕНТОМ)
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -37,14 +37,13 @@ REGIONS = [
 ]
 
 # Цвета
-PRIMARY_COLOR = "#277EFF"    # Голубой/Синий для кнопки
-PRIMARY_DARK = "#1E63C4"     
+PRIMARY_COLOR = "#277EFF"    # Синий акцент
+PRIMARY_DARK = "#1E63C4"     # Темный синий
 TEXT_COLOR = "#3D4858"       # Темно-серый (Основной текст)
 LIGHT_BG_MAIN = "#F1F5F9"    # Светло-серый фон полей в левом блоке
-DARK_BG_SIDEBAR = "#334155"  # Темно-серый фон для полей в сайдбаре (как на скриншоте)
+DARK_BG_SIDEBAR = "#334155"  # Темно-серый фон для полей в сайдбаре
 SIDEBAR_TEXT_COLOR = "#FFFFFF" # Белый текст для полей в сайдбаре
 BORDER_COLOR = "#E2E8F0"     # Цвет рамки
-RED_ACCENT = "#DC3545"       # Красный (для маркера выбранной кнопки)
 MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
 
 st.markdown(f"""
@@ -99,13 +98,28 @@ st.markdown(f"""
             border: 1px solid {BORDER_COLOR};
             font-weight: 400;
         }}
-        /* Маркеры: Стиль согласно скриншоту */
-        [data-testid="stCheckbox"] svg {{ color: #000000 !important; }}
-        div[data-testid="stRadio"] input:checked + div {{ border-color: {RED_ACCENT} !important; font-weight: 600; }}
-        div[data-testid="stRadio"] input:checked + div svg circle:first-child {{ stroke: {RED_ACCENT} !important; fill: {RED_ACCENT} !important; }}
-        div[data-testid="stRadio"] input:not(:checked) + div svg circle:first-child {{ stroke: #000000 !important; fill: #FFFFFF !important; }}
-        div[data-testid="stRadio"] input:not(:checked) + div svg circle:last-child {{ fill: #000000 !important; }}
-        div[data-testid="stRadio"] input:checked + div svg circle:last-child {{ fill: #FFFFFF !important; }}
+        /* Выбранный элемент (Синяя рамка, Синий маркер) */
+        div[data-testid="stRadio"] input:checked + div {{
+            background-color: #FFFFFF !important; 
+            color: {TEXT_COLOR} !important; 
+            border-color: {PRIMARY_COLOR} !important; 
+            font-weight: 600;
+        }}
+        
+        /* Маркеры: Стиль согласно запросу (Синий акцент, Белый вместо Черного) */
+        /* Чекбокс: Синий, Белый внутренний */
+        [data-testid="stCheckbox"] svg {{ 
+            color: {PRIMARY_COLOR} !important; 
+            stroke: {PRIMARY_COLOR} !important;
+        }}
+        [data-testid="stCheckbox"] svg path {{ 
+            fill: {PRIMARY_COLOR} !important; 
+        }}
+        /* Радио: Синий/Белый */
+        div[data-testid="stRadio"] input:checked + div svg circle:first-child {{ stroke: {PRIMARY_COLOR} !important; fill: {PRIMARY_COLOR} !important; }}
+        div[data-testid="stRadio"] input:not(:checked) + div svg circle:first-child {{ stroke: {PRIMARY_COLOR} !important; fill: #FFFFFF !important; }} /* Невыбранный - Синяя рамка, белый фон */
+        div[data-testid="stRadio"] input:not(:checked) + div svg circle:last-child {{ fill: #FFFFFF !important; }} /* Невыбранный - Белый внутренний кружок */
+        div[data-testid="stRadio"] input:checked + div svg circle:last-child {{ fill: #FFFFFF !important; }} /* Выбранный - Белый внутренний кружок */
 
         /* ========================================================= */
         /* 5. СТИЛИЗАЦИЯ ПРАВОЙ ПАНЕЛИ (САЙДБАР) */
@@ -127,7 +141,7 @@ st.markdown(f"""
             color: {SIDEBAR_TEXT_COLOR} !important; /* Белый текст */
             border: none !important; 
             box-shadow: none !important;
-            border-radius: 0px; /* Убираем скругление */
+            border-radius: 0px; 
             padding: 10px 12px;
         }}
         
@@ -352,21 +366,21 @@ def calculate_metrics(comp_data, my_data, settings):
 # 3. ИНТЕРФЕЙС (МАКЕТ С ДВУМЯ КОЛОНКАМИ)
 # ==========================================
 
-# --- КНОПКА ЗАПУСКА НА САМОМ ВЕРХУ ---
-if 'start_analysis_flag' not in st.session_state:
-    st.session_state.start_analysis_flag = False
-
-if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-    st.session_state.start_analysis_flag = True
-
 # --- ОСНОВНОЙ МАКЕТ: ДВЕ КОЛОНКИ (65% / 35%) ---
 col_main, col_sidebar = st.columns([65, 35]) 
 
 # --- ЛЕВАЯ КОЛОНКА (Основной контент) ---
 with col_main:
+    # 1. КНОПКА ЗАПУСКА НА САМОМ ВЕРХУ (как на скриншоте)
+    if 'start_analysis_flag' not in st.session_state:
+        st.session_state.start_analysis_flag = False
+
+    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+        st.session_state.start_analysis_flag = True
+
     st.title("SEO Анализатор Релевантности")
 
-    # 1. URL или код страницы Вашего сайта
+    # 2. URL или код страницы Вашего сайта
     st.markdown("### URL или код страницы Вашего сайта")
     my_input_type = st.radio(
         "Тип страницы", 
@@ -386,12 +400,12 @@ with col_main:
     elif my_input_type == "Без страницы":
         st.info("Выбран анализ без страницы вашего сайта.")
 
-    # 2. Поисковой запрос
+    # 3. Поисковой запрос
     st.markdown("### Поисковой запрос")
     query = st.text_input("Основной запрос", placeholder="Основной запрос", label_visibility="collapsed", key="query_input")
     st.checkbox("Дополнительные запросы", disabled=True, value=False)
 
-    # 3. Поиск или URL страниц конкурентов
+    # 4. Поиск или URL страниц конкурентов
     st.markdown("### Поиск или URL страниц конкурентов")
     source_type_new = st.radio(
         "Источник конкурентов", 
@@ -402,7 +416,7 @@ with col_main:
     )
     source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
 
-    # --- 4. Редактируемые списки (Левая колонка) ---
+    # --- 5. Редактируемые списки (Левая колонка) ---
     st.markdown("### Редактируемые списки")
 
     # Не учитывать домены
