@@ -406,46 +406,46 @@ def calculate_metrics(comp_data, my_data, settings):
                 "<a> по ТОПу": round(med_anch, 1), "<a> ваш сайт": my_anch_tf
             })
 
-table_ngrams = []
-if comp_docs and my_data and 'body_text' in my_data:
-    try:
-        my_bi = process_text(my_data['body_text'], settings, 2)
-        comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data if p and 'body_text' in p]
-        
-        all_bi = set(my_bi)
-        for c in comp_bi:
-            if c:  # Проверяем, что список не пустой
-                all_bi.update(c)
-                
-        bi_freqs = Counter()
-        for c in comp_bi:
-            if c:  # Проверяем, что список не пустой
-                for b_ in set(c): 
-                    bi_freqs[b_] += 1
-
-        for bg in all_bi:
-            df = bi_freqs[bg]
-            if df < 2 and bg not in my_bi: 
-                continue
-                
-            my_c = my_bi.count(bg)
-            comp_c = [c['body'].count(bg) for c in comp_docs if 'body' in c]  # ИСПРАВЛЕННАЯ СТРОКА
+    table_ngrams = []
+    if comp_docs and my_data and 'body_text' in my_data:
+        try:
+            my_bi = process_text(my_data['body_text'], settings, 2)
+            comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data if p and 'body_text' in p]
             
-            if comp_c:  # Проверяем, что список не пустой
-                med_c = np.median(comp_c)
-                mean_c = np.mean(comp_c)
-            else:
-                med_c = 0
-                mean_c = 0
+            all_bi = set(my_bi)
+            for c in comp_bi:
+                if c:
+                    all_bi.update(c)
+                    
+            bi_freqs = Counter()
+            for c in comp_bi:
+                if c:
+                    for b_ in set(c): 
+                        bi_freqs[b_] += 1
+
+            for bg in all_bi:
+                df = bi_freqs[bg]
+                if df < 2 and bg not in my_bi: 
+                    continue
+                    
+                my_c = my_bi.count(bg)
+                comp_c = [c['body'].count(bg) for c in comp_docs if 'body' in c]
                 
-            if med_c > 0 or my_c > 0:
-                table_ngrams.append({
-                    "N-грамма": bg, "Кол-во сайтов": df, "Медианное вхождение": med_c,
-                    "Среднее": round(mean_c, 1), "На сайте": my_c,
-                    "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
-                })
-    except Exception as e:
-        st.error(f"Ошибка при обработке n-грамм: {e}")
+                if comp_c:
+                    med_c = np.median(comp_c)
+                    mean_c = np.mean(comp_c)
+                else:
+                    med_c = 0
+                    mean_c = 0
+                    
+                if med_c > 0 or my_c > 0:
+                    table_ngrams.append({
+                        "N-грамма": bg, "Кол-во сайтов": df, "Медианное вхождение": med_c,
+                        "Среднее": round(mean_c, 1), "На сайте": my_c,
+                        "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
+                    })
+        except Exception as e:
+            st.error(f"Ошибка при обработке n-грамм: {e}")
 
     table_rel = []
     for i, p in enumerate(comp_data):
@@ -609,8 +609,8 @@ if st.session_state.start_analysis_flag:
         'custom_stops': st.session_state.settings_stops.split()
     }
     
-    target_urls = [] # <-- ИСПРАВЛЕННЫЙ ОТСТУП
-    if source_type == "Google (Авто)": # <-- ИСПРАВЛЕННЫЙ ОТСТУП
+    target_urls = []
+    if source_type == "Google (Авто)":
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
         
@@ -631,12 +631,12 @@ if st.session_state.start_analysis_flag:
         except Exception as e:
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
-    else: # <-- ИСПРАВЛЕННЫЙ ОТСТУП
+    else:
         # Здесь мы используем данные из поля ввода, которое определено в интерфейсе
         raw_urls = st.session_state.get("manual_urls_ui", "")
         target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
 
-    if not target_urls: # <-- ИСПРАВЛЕННЫЙ ОТСТУП
+    if not target_urls:
         st.error("Нет конкурентов для анализа.")
         st.stop()
         
@@ -737,5 +737,3 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
-
-
