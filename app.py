@@ -762,4 +762,5 @@ if st.session_state.start_analysis_flag:
     # 6.1. Релевантность ТОПа
     if not results['relevance_top'].empty:
         st.markdown("## 4. Обзор ТОПа")
-        st.dataframe(results['relevance_top'], use_container
+        st.dataframe(results)['relevance_top'], use_container
+
