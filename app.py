@@ -11,81 +11,78 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
-# 1. СТИЛИЗАЦИЯ (Светлая тема + UI как на скрине)
+# 1. СТИЛИЗАЦИЯ (ПРОФЕССИОНАЛЬНЫЙ UI)
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO: SEO Analysis", page_icon="📈")
 
 st.markdown("""
     <style>
+        /* Шрифт Inter для профессионального вида */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
-        /* Общий фон и шрифт */
-        .stApp {
-            background-color: #F3F4F6;
+        html, body, [class*="css"] {
             font-family: 'Inter', sans-serif;
-            color: #1F2937;
         }
-        
-        /* Блоки ввода (Карточки) */
-        .input-card {
-            background-color: #FFFFFF;
-            padding: 24px;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            border: 1px solid #E5E7EB;
-        }
-        
-        /* Заголовки */
-        h1, h2, h3 {
-            color: #111827;
-            font-weight: 700;
-        }
-        
-        /* Поля ввода */
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
-            background-color: #F9FAFB;
-            border: 1px solid #D1D5DB;
-            border-radius: 6px;
-            color: #111827;
-        }
-        
-        /* Кнопка (Синяя, как на скрине) */
-        div.stButton > button {
-            background-color: #1D4ED8; /* Ярко-синий */
-            color: white;
-            font-weight: 600;
-            border-radius: 8px;
-            border: none;
-            padding: 12px 24px;
-            width: 100%;
-            font-size: 16px;
-            transition: all 0.2s;
-        }
-        div.stButton > button:hover {
-            background-color: #1E40AF;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-        
-        /* Таблицы */
-        div[data-testid="stDataFrame"] {
-            background-color: white;
-            border-radius: 8px;
-            padding: 10px;
-            border: 1px solid #E5E7EB;
-        }
-        
-        /* Убираем лишние отступы */
+
+        /* Убираем лишние отступы сверху */
         .block-container {
             padding-top: 2rem;
             padding-bottom: 5rem;
         }
+
+        /* Стилизация заголовков */
+        h1, h2, h3 {
+            font-weight: 700 !important;
+        }
         
-        /* Expander (Настройки) */
-        .streamlit-expanderHeader {
-            background-color: #FFFFFF;
+        /* КАРТОЧКИ (Input Card) */
+        /* Используем нейтральный фон, который работает и в темной теме */
+        div.stTextInput > div > div > input, 
+        div.stTextArea > div > div > textarea, 
+        div.stSelectbox > div > div > div {
             border-radius: 8px;
+            border: 1px solid #E5E7EB; /* Светло-серый бордюр */
+            padding: 8px 12px;
+        }
+        
+        /* Акцент на фокусе */
+        div.stTextInput > div > div > input:focus {
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 1px #3B82F6;
+        }
+
+        /* КНОПКА (Яркая, синяя) */
+        div.stButton > button {
+            background: linear-gradient(to right, #2563EB, #1D4ED8);
+            color: white !important;
+            font-weight: 600;
+            border-radius: 8px;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-size: 16px;
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+            transition: all 0.2s;
+            width: 100%;
+        }
+        div.stButton > button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 8px -1px rgba(37, 99, 235, 0.3);
+        }
+        
+        /* ТАБЛИЦЫ */
+        /* Делаем таблицы читаемыми */
+        div[data-testid="stDataFrame"] {
             border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        /* EXPANDER (Настройки) */
+        .streamlit-expanderHeader {
+            background-color: transparent;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            font-weight: 600;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -123,11 +120,9 @@ DEFAULT_STOPS = ["рублей", "руб", "купить", "цена", "шт", "
 
 def process_text(text, settings, n_gram=1):
     """Возвращает список лемм или n-грамм"""
-    # 1. Токенизация
     pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' if settings['numbers'] else r'[а-яА-ЯёЁa-zA-Z]+'
     words = re.findall(pattern, text.lower())
     
-    # 2. Стоп-слова
     stops = set(w.lower() for w in settings['custom_stops'])
     clean_words = []
     
@@ -135,16 +130,14 @@ def process_text(text, settings, n_gram=1):
         if len(w) < 2 or w in stops: continue
         
         lemma = w
-        if USE_NLP and n_gram == 1: # Лемматизируем только для униграм
+        if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
-            # Фильтр частей речи
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag:
                 continue
             lemma = p.normal_form
         
         clean_words.append(lemma)
     
-    # 3. Генерация N-грамм (если нужно)
     if n_gram > 1:
         ngrams = []
         for i in range(len(clean_words) - n_gram + 1):
@@ -162,27 +155,23 @@ def parse_page(url, settings):
         
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # Мета-теги
         title = soup.title.string.strip() if soup.title and soup.title.string else ""
         desc = ""
         meta_desc = soup.find("meta", attrs={"name": "description"})
         if meta_desc: desc = meta_desc.get("content", "").strip()
         h1 = soup.find("h1").get_text(strip=True) if soup.find("h1") else ""
         
-        # Удаление мусора (noindex и скрипты)
         if settings['noindex']:
             for t in soup.find_all(['noindex', 'script', 'style', 'head', 'footer', 'nav']): t.decompose()
         else:
             for t in soup(['script', 'style', 'head']): t.decompose()
             
-        # Анкоры (текст ссылок)
         anchors_list = []
         for a in soup.find_all('a'):
             txt = a.get_text(strip=True)
             if txt: anchors_list.append(txt)
         anchor_text = " ".join(anchors_list)
         
-        # Текст (Body) - добавляем alt и title
         extra_text = []
         if settings['alt_title']:
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
@@ -198,7 +187,7 @@ def parse_page(url, settings):
             'h1': h1,
             'body_text': body_text,
             'anchor_text': anchor_text,
-            'full_text': body_text + " " + anchor_text # Для общего анализа
+            'full_text': body_text + " " + anchor_text
         }
     except:
         return None
@@ -206,7 +195,6 @@ def parse_page(url, settings):
 # --- Математика (TF-IDF, BM25) ---
 def calculate_advanced_metrics(corpus_pages, my_page, settings):
     
-    # 1. Подготовка данных (Униграммы)
     my_lemmas = process_text(my_page['body_text'], settings)
     my_anchors = process_text(my_page['anchor_text'], settings)
     
@@ -216,17 +204,14 @@ def calculate_advanced_metrics(corpus_pages, my_page, settings):
         anchor = process_text(p['anchor_text'], settings)
         comp_docs.append({'body': body, 'anchor': anchor, 'full': body + anchor})
         
-    # Нормировка
     avg_len = np.mean([len(d['body']) for d in comp_docs])
     my_len = len(my_lemmas)
     norm_k = (my_len / avg_len) if (settings['norm'] and avg_len > 0) else 1.0
     
-    # Словарь
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
     
-    # --- БЛОК 1: Основные метрики (BM25, IDF) ---
     N = len(comp_docs)
     doc_freqs = Counter()
     for d in comp_docs:
@@ -234,18 +219,13 @@ def calculate_advanced_metrics(corpus_pages, my_page, settings):
         
     k1, b = 1.2, 0.75
     
-    # --- Генерация ТАБЛИЦ ---
-    
-    # Таблица 1: Глубина (Actionable)
     table_depth = []
-    # Таблица 2: Гибридный ТОП (Аналитика)
     table_hybrid = []
     
     for word in vocab:
         df = doc_freqs[word]
-        if df < 2 and word not in my_lemmas: continue # Отсекаем редкий шум
+        if df < 2 and word not in my_lemmas: continue 
         
-        # Счетчики
         my_tf = my_lemmas.count(word)
         my_anch_tf = my_anchors.count(word)
         
@@ -257,10 +237,8 @@ def calculate_advanced_metrics(corpus_pages, my_page, settings):
         max_tf = np.max(comp_tfs)
         med_anch = np.median(comp_anch_tfs)
         
-        # IDF
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
         
-        # BM25 для Топа (медиана)
         bm25_scores = []
         for i, d in enumerate(comp_docs):
             tf = comp_tfs[i]
@@ -269,16 +247,12 @@ def calculate_advanced_metrics(corpus_pages, my_page, settings):
             bm25_scores.append(score)
         bm25_top = np.median(bm25_scores)
         
-        # BM25 My
         bm25_my = idf * (my_tf * (k1 + 1)) / (my_tf + k1 * (1 - b + b * (my_len / avg_len)))
         
-        # Рекомендации
         target_body = int(med_tf * 1.3 * norm_k)
         diff_body = target_body - my_tf
         
-        # Заполнение таблиц
         if med_tf > 0.5 or my_tf > 0:
-            # 1. Глубина
             table_depth.append({
                 "Слово": word,
                 "Повторы у вас": my_tf,
@@ -294,7 +268,6 @@ def calculate_advanced_metrics(corpus_pages, my_page, settings):
                 "diff_abs": abs(diff_body)
             })
             
-            # 2. Гибридный ТОП
             table_hybrid.append({
                 "Слово": word,
                 "TF-IDF ТОП": round(med_tf * idf, 2),
@@ -309,14 +282,12 @@ def calculate_advanced_metrics(corpus_pages, my_page, settings):
                 "Ваш сайт": my_tf
             })
 
-    # Таблица 3: N-граммы (Биграммы)
     my_bigrams = process_text(my_page['body_text'], settings, n_gram=2)
     comp_bigrams_list = [process_text(p['body_text'], settings, n_gram=2) for p in corpus_pages]
     
     all_bigrams = set(my_bigrams)
     for cb in comp_bigrams_list: all_bigrams.update(cb)
     
-    # Считаем DF для биграмм
     bg_freqs = Counter()
     for cb in comp_bigrams_list:
         for bg in set(cb): bg_freqs[bg] += 1
@@ -340,11 +311,9 @@ def calculate_advanced_metrics(corpus_pages, my_page, settings):
                 "TF-IDF": round(my_cnt * math.log(N/df if df>0 else 1), 3)
             })
 
-    # Таблица 4: ТОП Релевантности (Сводная по конкурентам)
     table_relevance = []
     for i, p in enumerate(corpus_pages):
         p_lemmas = process_text(p['body_text'], settings)
-        # Ширина (сколько слов из общего словаря есть на странице)
         common_words = set(p_lemmas).intersection(vocab)
         width = len(common_words)
         depth = len(p_lemmas)
@@ -354,10 +323,9 @@ def calculate_advanced_metrics(corpus_pages, my_page, settings):
             "Позиция": i+1,
             "Ширина (Слов из ядра)": width,
             "Глубина (Всего слов)": depth,
-            "Общая": width + (depth / 100) # Условный скор
+            "Общая": width + (depth / 100)
         })
         
-    # Оценка моего сайта
     my_width = len(set(my_lemmas).intersection(vocab))
     my_depth = len(my_lemmas)
     
@@ -373,65 +341,58 @@ def calculate_advanced_metrics(corpus_pages, my_page, settings):
 # 3. ИНТЕРФЕЙС (FRONTEND)
 # ==========================================
 
-st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>SEO Анализатор Релевантности</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>SEO Анализатор Релевантности</h1>", unsafe_allow_html=True)
 
-# --- ВЕРХНИЙ БЛОК (ВСЕГДА ВИДЕН) ---
-with st.container():
-    st.markdown('<div class="input-card">', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
+# --- БЛОК ВВОДА ---
+st.markdown("### 📝 Постановка задачи")
+col1, col2 = st.columns(2)
+with col1:
+    my_url = st.text_input("URL вашей страницы", placeholder="https://site.ru/catalog")
+with col2:
+    query = st.text_input("Поисковой запрос", placeholder="пластиковые окна цена")
+
+st.markdown("### 🕵️ Конкуренты")
+source_type = st.radio("Источник:", ["Google Поиск (Авто)", "Список URL вручную"], horizontal=True, label_visibility="collapsed")
+
+if source_type == "Google Поиск (Авто)":
+    cl1, cl2 = st.columns(2)
+    with cl1:
+        top_n = st.selectbox("Глубина ТОПа:", [5, 10, 20], index=1)
+    with cl2:
+        excludes = st.text_input("Исключить домены:", " ".join(DEFAULT_EXCLUDE))
+else:
+    manual_urls = st.text_area("URLs конкурентов (с новой строки):", height=100)
+
+st.markdown("### ⚙️ Настройки")
+with st.expander("Расширенные настройки", expanded=True):
+    c1, c2, c3 = st.columns(3)
     with c1:
-        my_url = st.text_input("Ваш URL (Обязательно)", placeholder="https://site.ru/catalog")
+        s_noindex = st.checkbox("Исключать noindex", True)
+        s_alt = st.checkbox("Учитывать Alt/Title", False)
     with c2:
-        query = st.text_input("Поисковой запрос", placeholder="пластиковые окна цена")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# --- ИСТОЧНИК И НАСТРОЙКИ ---
-col_L, col_R = st.columns([2, 1])
-
-with col_L:
-    st.markdown("### 🕵️ Источник данных")
-    source_type = st.radio("Тип сбора:", ["Google Поиск (Авто)", "Список URL вручную"], horizontal=True, label_visibility="collapsed")
+        s_norm = st.checkbox("Нормировать по длине", True)
+        s_num = st.checkbox("Учитывать числа", False)
+    with c3:
+        s_agg = st.checkbox("Исключать агрегаторы", True)
     
-    if source_type == "Google Поиск (Авто)":
-        cl1, cl2 = st.columns(2)
-        with cl1:
-            top_n = st.selectbox("Глубина ТОПа:", [5, 10, 20], index=1)
-        with cl2:
-            excludes = st.text_input("Исключить домены:", " ".join(DEFAULT_EXCLUDE))
-        st.caption("Поиск эмулируется. Для точности используйте ручной список.")
-    else:
-        manual_urls = st.text_area("URLs конкурентов (с новой строки):", height=120)
-
-with col_R:
-    st.markdown("### ⚙️ Расширенные настройки")
-    with st.container():
-        # Используем тогглы для современного вида
-        s_noindex = st.toggle("Исключать noindex", True)
-        s_alt = st.toggle("Включать alt и title", False)
-        s_num = st.toggle("Обрабатывать цифры", False)
-        s_norm = st.toggle("Нормировать по длине", True)
-        s_agg = st.toggle("Исключать агрегаторы", True)
-    
-    with st.expander("Стоп-слова и User-Agent"):
-        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0", "Googlebot/2.1"])
-        c_stops = st.text_area("Доп. стоп-слова:", "\n".join(DEFAULT_STOPS), height=80)
+    st.markdown("---")
+    ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0", "Googlebot/2.1"])
+    c_stops = st.text_area("Доп. стоп-слова:", "\n".join(DEFAULT_STOPS), height=80)
 
 # --- КНОПКА ЗАПУСКА ---
 st.markdown("<br>", unsafe_allow_html=True)
-if st.button("Запустить анализ 🚀"):
+if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀", type="primary"):
     
     if not my_url:
         st.error("Укажите URL вашего сайта!")
         st.stop()
         
-    # Сбор настроек
     settings = {
         'noindex': s_noindex, 'alt_title': s_alt, 'numbers': s_num,
         'norm': s_norm, 'ua': ua, 'custom_stops': c_stops.split(),
-        'std_stops': True # Всегда вкл
+        'std_stops': True
     }
     
-    # 1. Получение списка URL
     target_urls = []
     if source_type == "Google Поиск (Авто)":
         if not query:
@@ -460,11 +421,9 @@ if st.button("Запустить анализ 🚀"):
         st.error("Нет конкурентов для анализа.")
         st.stop()
         
-    # 2. Парсинг
     progress_bar = st.progress(0)
     status_txt = st.empty()
     
-    # Мой сайт
     status_txt.text(f"Скачиваем ваш сайт: {my_url}...")
     my_page_data = parse_page(my_url, settings)
     
@@ -472,7 +431,6 @@ if st.button("Запустить анализ 🚀"):
         st.error("Не удалось скачать ваш сайт.")
         st.stop()
         
-    # Конкуренты
     comp_pages_data = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
@@ -491,13 +449,10 @@ if st.button("Запустить анализ 🚀"):
         st.error("Слишком мало данных от конкурентов.")
         st.stop()
         
-    # 3. Расчеты
     results = calculate_advanced_metrics(comp_pages_data, my_page_data, settings)
     
-    # 4. ВЫВОД РЕЗУЛЬТАТОВ
     st.success("Анализ завершен!")
     
-    # Метрики сайта
     st.markdown("### 🏆 Релевантность вашего сайта")
     m1, m2, m3 = st.columns(3)
     m1.metric("Ширина (Охват слов)", results['my_score']['width'])
@@ -506,7 +461,6 @@ if st.button("Запустить анализ 🚀"):
     
     st.divider()
     
-    # ТАБЛИЦА 1: РЕКОМЕНДАЦИИ (ГЛУБИНА)
     st.subheader("1. Рекомендации по глубине (LSI)")
     df_depth = results['depth']
     if not df_depth.empty:
@@ -524,19 +478,15 @@ if st.button("Запустить анализ 🚀"):
             use_container_width=True,
             height=500
         )
-        # CSV Download
         st.download_button("Скачать (CSV)", df_depth.to_csv().encode('utf-8'), "depth_recommendations.csv")
     else:
         st.info("Нет рекомендаций.")
 
-    # ТАБЛИЦА 2: ГИБРИДНЫЙ ТОП
     with st.expander("2. Гибридный ТОП униграм на основе конкурентов", expanded=False):
         st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
 
-    # ТАБЛИЦА 3: N-ГРАММЫ
     with st.expander("3. N-граммы (Биграммы)", expanded=False):
         st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
         
-    # ТАБЛИЦА 4: ТОП РЕЛЕВАНТНОСТИ
     with st.expander("4. ТОП релевантности документов (Сводная)", expanded=False):
         st.dataframe(results['relevance_top'], use_container_width=True)
