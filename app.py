@@ -77,7 +77,7 @@ def check_password():
         
         # Логотип
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=484)
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Поле ввода пароля
@@ -157,7 +157,7 @@ def check_password():
         
         # Логотип
         st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=484)
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Поле ввода пароля
@@ -913,4 +913,5 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
