@@ -1,65 +1,13 @@
 # ==========================================
-# ШАГ 0: АУТЕНТИФИКАЦИЯ
+# 🛑 ПРЕДУПРЕЖДЕНИЕ: ВЫПОЛНИТЕ ЭТОТ КОД КАК ЕДИНЫЙ БЛОК В COLAB/JUPYTER
+# !pip команды должны быть выполнены в режиме ноутбука, чтобы избежать SyntaxError
 # ==========================================
-
-CORRECT_PASSWORD = "garpro"
-
-password_input = widgets.Password(
-    placeholder='Введите пароль для доступа',
-    description='Пароль:',
-    layout=widgets.Layout(width='300px')
-)
-login_button = widgets.Button(
-    description='Войти',
-    button_style='info',
-    layout=widgets.Layout(width='100px')
-)
-auth_output = widgets.Output()
-
-# Контейнер для основного UI (изначально скрыт)
-main_ui_container = widgets.VBox([], layout=widgets.Layout(display='none', border='1px solid #CCC', padding='15px', background_color='#F7F7F7'))
-bn_run = widgets.Button(
-    description='АНАЛИЗИРОВАТЬ 🚀',
-    button_style='warning',
-    layout=widgets.Layout(width='99%', height='50px', margin='20px 0', display='none')
-)
-output_log = widgets.Output()
-
-
-def check_password(b):
-    with auth_output:
-        clear_output()
-        if password_input.value == CORRECT_PASSWORD:
-            print("✅ Авторизация успешна. Загрузка интерфейса...")
-            
-            # Скрываем логин-форму
-            password_input.layout.display = 'none'
-            login_button.layout.display = 'none'
-            
-            # Отображаем основной UI и кнопку запуска
-            main_ui_container.layout.display = 'block'
-            bn_run.layout.display = 'block'
-            
-            # Выводим главный интерфейс
-            display(widgets.HTML("<h2>Гибридный Анализ Релевантности PRO</h2>"))
-            display(main_ui_container)
-            display(bn_run)
-            display(output_log)
-            
-        else:
-            print("❌ Неверный пароль. Попробуйте снова.")
-
-login_button.on_click(check_password)
-
-# Выводим сначала только форму логина
-display(widgets.HTML("<h2>Гибридный Анализ Релевантности PRO: Вход</h2>"))
-display(widgets.HBox([password_input, login_button]))
-display(auth_output)
 
 # ==========================================
 # ШАГ 1: УСТАНОВКА И ГАРАНТИЯ РАБОТЫ PYMORPHY2
 # ==========================================
 print("⏳ Запуск установки необходимых библиотек...")
+# Установка библиотек:
 !pip install googlesearch-python beautifulsoup4 requests pandas numpy ipywidgets -q
 !pip install pymorphy2 --upgrade --force-reinstall -q
 
@@ -82,6 +30,7 @@ import warnings
 import inspect
 import sys
 
+# --- ФИНАЛЬНЫЙ БРОНЕБОЙНЫЙ ПАТЧ ДЛЯ PYMORPHY2 ---
 try:
     if sys.version_info >= (3, 10):
         if not hasattr(inspect, 'getargspec'):
@@ -101,6 +50,7 @@ except Exception as e:
 
 warnings.filterwarnings("ignore")
 
+# Домены для исключения по умолчанию (из гар код.txt)
 BLACKLIST_DOMAINS = [
     'avito.ru', 'wikipedia.org', 'yandex.ru', 'ozon.ru', 'wildberries.ru', 'tiu.ru',
     'beru.ru', 'aliexpress.com', 'youtube.com', 'dzen.ru', 'hh.ru',
@@ -112,9 +62,9 @@ BLACKLIST_DOMAINS = [
     'irecommend.ru', 'otzovik.com', 'auto.ru'
 ]
 
+
 # ==========================================
-# ШАГ 2: ЛОГИКА (BACKEND) - ИЗ ФАЙЛА
-# (Все функции с get_word_forms до run_analysis)
+# ШАГ 2: ЛОГИКА (BACKEND) - ВОССТАНОВЛЕНО ИЗ ФАЙЛА
 # ==========================================
 
 def get_word_forms(lemma):
@@ -362,7 +312,6 @@ def run_analysis(my_url_id, competitors_urls, settings, my_body_content=None, my
             else: rec_anchor_text = "0"
 
 
-        # 6. Фильтрация и сбор результатов
         is_relevant = median_tfidf > 0.05
         is_actionable = (rec_body_text != '0' and rec_body_text != '0%') or \
                         (rec_anchor_text != '0' and rec_anchor_text != '0%')
@@ -403,9 +352,65 @@ def run_analysis(my_url_id, competitors_urls, settings, my_body_content=None, my
 
 
 # ==========================================
-# ШАГ 3: ИНТЕРФЕЙС (UI) - УЛУЧШЕННЫЙ ДИЗАЙН
+# ШАГ 3: АУТЕНТ. И ИНТЕРФЕЙС (UI) - УЛУЧШЕННЫЙ ДИЗАЙН
 # ==========================================
 
+# --- 0. АУТЕНТИФИКАЦИЯ ---
+CORRECT_PASSWORD = "garpro"
+
+password_input = widgets.Password(
+    placeholder='Введите пароль для доступа',
+    description='Пароль:',
+    layout=widgets.Layout(width='300px')
+)
+login_button = widgets.Button(
+    description='Войти',
+    button_style='info',
+    layout=widgets.Layout(width='100px')
+)
+auth_output = widgets.Output()
+
+# Контейнер для основного UI
+main_ui_container = widgets.VBox([], layout=widgets.Layout(display='none', border='1px solid #CCC', padding='15px', background_color='#F7F7F7'))
+bn_run = widgets.Button(
+    description='АНАЛИЗИРОВАТЬ 🚀',
+    button_style='warning',
+    layout=widgets.Layout(width='99%', height='50px', margin='20px 0', display='none')
+)
+output_log = widgets.Output()
+
+
+def check_password(b):
+    with auth_output:
+        clear_output()
+        if password_input.value == CORRECT_PASSWORD:
+            print("✅ Авторизация успешна. Загрузка интерфейса...")
+            
+            # Скрываем логин-форму
+            password_input.layout.display = 'none'
+            login_button.layout.display = 'none'
+            
+            # Отображаем основной UI и кнопку запуска
+            main_ui_container.layout.display = 'block'
+            bn_run.layout.display = 'block'
+            
+            # Выводим главный интерфейс
+            display(widgets.HTML("<h2>Гибридный Анализ Релевантности PRO</h2>"))
+            display(main_ui_container)
+            display(bn_run)
+            display(output_log)
+            
+        else:
+            print("❌ Неверный пароль. Попробуйте снова.")
+
+login_button.on_click(check_password)
+
+# Выводим сначала только форму логина
+display(widgets.HTML("<h2>Гибридный Анализ Релевантности PRO: Вход</h2>"))
+display(widgets.HBox([password_input, login_button]))
+display(auth_output)
+
+# --- Настройки UI ---
 style_header = "font-size: 16px; font-weight: bold; margin-top: 10px; margin-bottom: 5px; color: #1E293B;"
 w_layout = widgets.Layout(width='99%')
 w_half_layout = widgets.Layout(width='50%')
@@ -425,7 +430,6 @@ def toggle_input_mode(change):
     w_source_code.layout.display = 'block' if mode == 'Исходный код страницы или текст' else 'none'
     chk_norm.disabled = mode == 'Без страницы'
     chk_norm.value = not chk_norm.disabled
-
 r_input_type.observe(toggle_input_mode, names='value')
 def toggle_extra_queries(change): w_extra_queries_text.layout.display = 'block' if change['new'] else 'none'
 chk_extra_queries.observe(toggle_extra_queries, names='value')
@@ -558,6 +562,7 @@ def on_btn_click(b):
         clear_output()
         print("⚙️ Сбор данных задачи...")
 
+        # 1. Сбор настроек
         settings = {
             'top': w_top_count.value,
             'noindex': chk_noindex.value,
@@ -609,6 +614,7 @@ def on_btn_click(b):
             if USE_SEARCH and w_engine.value == 'Google':
                 try:
                     print(f"🔎 Поиск в Google по запросу: {query}")
+                    # Устанавливаем запас, чтобы потом отфильтровать исключенные
                     raw_urls = search(query, num_results=settings['top'] + 10, lang="ru") 
 
                     count_collected = 0
