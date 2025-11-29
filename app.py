@@ -8,9 +8,10 @@ from collections import Counter
 import math
 import inspect
 import concurrent.futures
+from googlesearch import search # Импорт для поиска, хотя в интерфейсе не используется
 
 # ==========================================
-# 1. НАСТРОЙКА СТРАНИЦЫ И СТИЛИ (ОБНОВЛЕНО)
+# 1. НАСТРОЙКА СТРАНИЦЫ И СТИЛИ
 # ==========================================
 
 st.set_page_config(
@@ -45,12 +46,10 @@ st.markdown("""
         }
         
         /* --- 3. КАРТОЧКИ (БЕЛЫЕ БЛОКИ С ТЕНЬЮ) --- */
-        /* Применяется к основным блокам, как на скриншотах */
-        div[data-testid="stVerticalBlock"] > div:first-child > div:nth-child(2) > div:first-child,
-        div[data-testid="stVerticalBlock"] > div:first-child > div:nth-child(2) > div:nth-child(2),
-        div[data-testid="stVerticalBlock"] > div:first-child > div:nth-child(2) > div:nth-child(3) {
+        /* Универсальный класс для белых блоков */
+        .css-card {
             background-color: #FFFFFF;
-            padding: 24px;
+            padding: 30px;
             border-radius: 16px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.05);
             border: 1px solid #E2E8F0;
@@ -58,7 +57,7 @@ st.markdown("""
         }
         
         /* Карточки метрик (Результаты анализа) */
-        div[data-testid="stVerticalBlock"] > div:first-child > div:nth-child(2) > div:nth-child(1) > div > div > div[data-testid="stHorizontalBlock"] > div > div[data-testid="metric-container"] {
+        div[data-testid="metric-container"] {
             background-color: #FFFFFF !important;
             padding: 15px;
             border-radius: 16px;
@@ -98,13 +97,13 @@ st.markdown("""
             letter-spacing: 0.5px;
             box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4) !important;
             transition: all 0.3s ease !important;
-            width: 100% !important; /* Обеспечиваем полное соответствие */
+            width: 100% !important; 
         }
         div.stButton > button:hover {
             transform: translateY(-2px);
             box-shadow: 0 15px 30px -5px rgba(37, 99, 235, 0.5) !important;
         }
-        /* Другие кнопки (например, Войти в систему) */
+        /* Кнопка входа */
         div[data-testid="stForm"] div.stButton > button {
             box-shadow: none !important;
             padding: 0.6rem 1.2rem !important;
@@ -122,7 +121,7 @@ st.markdown("""
         }
         
         /* --- 7. ДОПОЛНИТЕЛЬНЫЕ ЭЛЕМЕНТЫ --- */
-        /* Заголовок-экспандер "Основные настройки" */
+        /* Заголовок-экспандер */
         .streamlit-expanderHeader {
             background-color: #FFFFFF !important;
             border: 1px solid #E2E8F0;
@@ -177,8 +176,8 @@ def check_password():
     # Центрируем форму входа
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        # Применяем класс 'css-card' для блока входа (нужно завернуть в st.markdown)
-        st.markdown(f'<div style="background-color: #FFFFFF; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #E2E8F0; margin-top: 50px;">'
+        # Применяем стили 'css-card' для блока входа
+        st.markdown(f'<div class="css-card" style="margin-top: 50px;">'
                     f"<h2 style='text-align: center; color: #0F172A !important; font-weight: 800 !important;'>🔒 Вход в систему</h2>", unsafe_allow_html=True)
         
         st.info("Введите пароль доступа к SEO Анализатору")
@@ -207,7 +206,7 @@ try:
     if not hasattr(inspect, 'getargspec'):
         def getargspec(func):
             spec = inspect.getfullargspec(func)
-            return spec.args, spec.varargs, spec.varkw, spec.defaults
+            return spec.args, spec.varargs, spec.varkw, inspect.getfullargspec(func).defaults
         inspect.getargspec = getargspec
     import pymorphy2
     morph = pymorphy2.MorphAnalyzer()
@@ -217,8 +216,9 @@ except Exception:
     USE_NLP = False
 
 # --- Поиск Google ---
+# Доступность поиска все еще полезна для бэкенд-логики, даже если не используется в UI
 try:
-    from googlesearch import search
+    #from googlesearch import search
     USE_SEARCH = True
 except ImportError:
     USE_SEARCH = False
@@ -337,7 +337,10 @@ def run_analysis(my_url, competitors, settings):
     medians = np.median(comp_vecs, axis=0)
     
     data = []
-    norm = len(my_text.split()) / np.mean([len(d.split()) for d in corpus]) if settings['norm'] else 1.0
+    # Исправлена логика расчета norm, чтобы избежать деления на ноль при пустом корпусе, хотя это уже обработано выше.
+    comp_lengths = [len(d.split()) for d in corpus]
+    avg_comp_len = np.mean(comp_lengths) if comp_lengths else 1
+    norm = len(my_text.split()) / avg_comp_len if settings['norm'] else 1.0
     
     for i, word in enumerate(all_words):
         med = medians[i]
@@ -374,66 +377,75 @@ def run_analysis(my_url, competitors, settings):
 
 st.title("SEO Анализатор Релевантности")
 st.markdown("Профессиональный инструмент TF-IDF анализа для оптимизации контента")
-st.markdown("---") # Добавляем разделитель для красоты
+st.markdown("---") 
 
-# Применяем класс 'css-card' к блоку вкладок, чтобы он выглядел как карточка
+# --- ЗАКРЕПЛЕННЫЙ ВЕРХНИЙ БЛОК: МОЙ URL И ЗАПРОС ---
+
 st.markdown('<div class="css-card">', unsafe_allow_html=True) 
+st.markdown("### 📋 URL и Ключевой Запрос")
+col1, col2 = st.columns(2)
+with col1:
+    my_url = st.text_input("URL вашей страницы", placeholder="https://site.ru/page", key="my_url_input")
+with col2:
+    query = st.text_input("Поисковой запрос", placeholder="Например: купить окна", key="query_input")
+st.markdown('</div>', unsafe_allow_html=True)
 
-# Создаем вкладки
-tab1, tab2, tab3 = st.tabs(["📋 Задача", "🕵️ Конкуренты", "⚙️ Настройки"])
+
+# --- БЛОКИ ВХОДНЫХ ДАННЫХ И НАСТРОЕК ---
+tab1, tab2 = st.tabs(["🕵️ Конкуренты", "⚙️ Настройки Парсинга"])
 
 with tab1:
-    st.markdown("### 🔍 Анализ релевантности")
-    col1, col2 = st.columns(2)
-    with col1:
-        my_url = st.text_input("URL вашей страницы", placeholder="https://example.com/your-page")
-    with col2:
-        query = st.text_input("Поисковой запрос", placeholder="Например: медный прокат")
+    st.markdown('<div class="css-card">', unsafe_allow_html=True) 
+    st.markdown("### Источник конкурентов")
     
-    st.info("💡 Введите URL страницы, которую нужно оптимизировать, и основной ключевой запрос.")
+    # Одно поле для ввода URL конкурентов
+    manual_urls = st.text_area(
+        "Список URL конкурентов (каждый с новой строки):", 
+        height=300, 
+        placeholder="https://comp1.ru\nhttps://comp2.ru\n..."
+    )
+
+    # --- НАСТРОЙКИ ПАРСИНГА - ЗАКРЕПЛЕНЫ ВНИЗУ БЛОКА ---
+    with st.expander("Расширенные настройки User-Agent и Нормирования"):
+        col_ua1, col_ua2 = st.columns(2)
+        with col_ua1:
+            ua = st.text_input("User-Agent бота:", "Mozilla/5.0 (compatible; Hybrid-Analyzer/1.0;)")
+        with col_ua2:
+            s_norm = st.checkbox(
+                "Нормировать по длине текста", 
+                True, 
+                help="Корректирует медиану, если ваш текст длиннее или короче среднего по ТОПу"
+            )
+
+    st.markdown('</div>', unsafe_allow_html=True) # Закрываем css-card
+
 
 with tab2:
-    st.markdown("### Источник конкурентов")
-    search_method = st.radio("Как собрать конкурентов?", ["Google Поиск (Авто)", "Свой список URL"], horizontal=True)
+    st.markdown('<div class="css-card">', unsafe_allow_html=True) 
+    st.markdown("### Параметры очистки текста (Content Filtering)")
     
-    competitors_list = []
-    
-    if search_method == "Google Поиск (Авто)":
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            top_n = st.selectbox("Глубина ТОПа:", [5, 10, 15, 20], index=1)
-        with col_s2:
-            st.warning("⚠️ Google может блокировать частые авто-запросы.")
-        excludes = st.text_area("Исключить домены (каждый с новой строки):", "\n".join(DEFAULT_EXCLUDE), height=100)
-    else:
-        manual_urls = st.text_area("Список URL конкурентов (каждый с новой строки):", height=200, placeholder="https://comp1.ru\nhttps://comp2.ru")
-
-with tab3:
-    st.markdown("### Параметры анализа")
-    
-    with st.expander("Основные настройки", expanded=True):
+    # --- НАСТРОЙКИ ОЧИСТКИ ТЕКСТА ---
+    with st.expander("Фильтрация контента", expanded=True):
         col_opt1, col_opt2 = st.columns(2)
         with col_opt1:
             s_noindex = st.checkbox("Исключать noindex", True)
             s_alt = st.checkbox("Учитывать Alt/Title", False)
-            s_num = st.checkbox("Учитывать числа", False)
         with col_opt2:
-            s_norm = st.checkbox("Нормировать по длине текста", True, help="Корректирует медиану, если ваш текст длиннее или короче среднего по ТОПу")
+            s_num = st.checkbox("Учитывать числа", False)
             s_std_stops = st.checkbox("Убирать предлоги/союзы", True)
     
-    with st.expander("Стоп-слова и User-Agent"):
-        custom_stops = st.text_area("Свои стоп-слова:", "\n".join(DEFAULT_STOPS))
-        ua = st.text_input("User-Agent бота:", "Mozilla/5.0 (compatible; Hybrid-Analyzer/1.0;)")
+    with st.expander("Управление Стоп-словами"):
+        custom_stops = st.text_area("Свои стоп-слова (каждое с новой строки):", "\n".join(DEFAULT_STOPS))
 
-# Закрываем div для блока вкладок
-st.markdown('</div>', unsafe_allow_html=True) 
+    st.markdown('</div>', unsafe_allow_html=True) # Закрываем css-card
+
 
 # Нижняя панель с кнопкой
 st.divider()
 
 if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
-    if not my_url:
-        st.error("❌ Вы не ввели URL своего сайта!")
+    if not my_url or not query:
+        st.error("❌ Вы не ввели URL своего сайта и/или Поисковой запрос!")
         st.stop()
         
     # Сбор настроек в словарь
@@ -444,30 +456,14 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
     }
     
     # Логика получения списка конкурентов
-    comps = []
-    if search_method == "Google Поиск (Авто)":
-        if not query:
-            st.error("❌ Для поиска нужен запрос!")
-            st.stop()
-        try:
-            excl_list = excludes.split()
-            # Пробуем искать
-            found = search(query, num_results=top_n*2, lang="ru")
-            count = 0
-            for u in found:
-                if u == my_url: continue
-                if any(x in u for x in excl_list): continue
-                comps.append(u)
-                count += 1
-                if count >= top_n: break
-        except Exception as e:
-            st.error(f"Ошибка поиска: {e}. Попробуйте ручной список.")
-    else:
-        if manual_urls:
-            comps = [u.strip() for u in manual_urls.split('\n') if u.strip()]
-        
+    comps = [u.strip() for u in manual_urls.split('\n') if u.strip()]
+    
+    # Здесь можно добавить логику Google Search, если пользователь захочет (закомментировано)
+    # Если вы хотите вернуть авто-поиск, добавьте radio-кнопку и соответствующую логику.
+    # Сейчас мы просто используем ручной список.
+    
     if not comps:
-        st.error("❌ Список конкурентов пуст.")
+        st.error("❌ Список конкурентов пуст. Введите URL конкурентов в соответствующее поле.")
     else:
         # ЗАПУСК БЭКЕНДА
         df_res = run_analysis(my_url, comps, settings)
