@@ -49,7 +49,7 @@ st.markdown(f"""
    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* ГЛОБАЛЬНОЕ ПЕРЕОПРЕДЕЛЕНИЕ ТЕМЫ STREAMLIT */
+        /* ГЛОБАЛЬНОЕ ПЕРЕОПРЕДЕЛЕНИЕ ТЕМЫ STREAMLIT ЧЕРЕЗ ПЕРЕМЕННЫЕ */
         :root {{
             --primary-color: {PRIMARY_COLOR};
             --text-color: {TEXT_COLOR};
@@ -60,21 +60,12 @@ st.markdown(f"""
             background-color: #FFFFFF !important;
             color: {TEXT_COLOR} !important; 
         }}
-        h1, h2, h3, p, label, span, div, a {{
-            color: {TEXT_COLOR} !important; 
-        }}
-
-        .block-container {{
-            padding-top: 1rem !important;
-            padding-bottom: 2rem !important;
-            max-width: 100% !important; 
-        }}
         
         /* ======================================================= */
-        /* ПОЛЯ ВВОДА (Input, Textarea, Selectbox)                 */
+        /* ПОЛЯ ВВОДА - ЖЕСТКОЕ ПЕРЕОПРЕДЕЛЕНИЕ ЦВЕТОВ             */
         /* ======================================================= */
         
-        /* 1. Базовый стиль (покой) */
+        /* 1. Стили в обычном состоянии */
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
@@ -84,23 +75,23 @@ st.markdown(f"""
             border-radius: 6px;
         }}
 
-        /* 2. ФОКУС (Синяя рамка при нажатии) */
-        /* Для обычных инпутов, больших текстовых полей и селектов */
+        /* 2. Стили ПРИ НАЖАТИИ (FOCUS) - Убираем оранжевый, ставим синий */
         
-        /* Input и Select */
-        div[data-baseweb="input"] > div:focus-within,
-        div[data-baseweb="select"] > div:focus-within {{
+        /* Используем очень специфичные селекторы, чтобы перебить стандартную тему */
+        .stTextInput > div > div[data-baseweb="input"] > div:focus-within,
+        .stTextArea > div > div[data-baseweb="textarea"] > div:focus-within,
+        .stSelectbox > div > div[data-baseweb="select"] > div:focus-within {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
-        /* Textarea (ваши списки) */
-        div[data-baseweb="textarea"] > div:focus-within {{
+        /* Дополнительная страховка для внутренних элементов */
+        div[data-baseweb="input"]:focus-within,
+        div[data-baseweb="textarea"]:focus-within {{
              border-color: {PRIMARY_COLOR} !important;
-             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
 
-        /* Убираем стандартный outline браузера */
+        /* Убираем стандартную обводку самого инпута */
         .stTextInput input:focus,
         .stTextArea textarea:focus {{
             outline: none !important;
@@ -108,7 +99,7 @@ st.markdown(f"""
             box-shadow: none !important;
         }}
         
-        /* Синий курсор ввода */
+        /* Цвет мигающего курсора (каретки) */
         input, textarea {{
             caret-color: {PRIMARY_COLOR} !important;
         }}
@@ -119,21 +110,14 @@ st.markdown(f"""
             opacity: 1;
         }}
 
-        /* Иконки Selectbox */
-        .stSelectbox svg {{
-            fill: {TEXT_COLOR} !important;
-        }}
-        
         /* ======================================================= */
-        /* РАДИО-КНОПКИ                                            */
+        /* ОСТАЛЬНЫЕ ЭЛЕМЕНТЫ                                      */
         /* ======================================================= */
+
+        /* Радио-кнопки */
         div[role="radiogroup"] label {{
             background-color: #FFFFFF !important;
             border: 1px solid {BORDER_COLOR};
-            border-radius: 6px;
-            padding: 10px 15px;
-            margin-right: 5px;
-            transition: border 0.2s;
         }}
         div[role="radiogroup"] label div[data-baseweb="radio"] > div {{
             background-color: #FFFFFF !important;
@@ -146,17 +130,11 @@ st.markdown(f"""
         div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div > div {{
             background-color: #FFFFFF !important;
         }}
-        div[role="radiogroup"] label input:checked + div {{
-             color: {TEXT_COLOR} !important;
-             font-weight: 600;
-        }}
         div[role="radiogroup"] label:has(input:checked) {{
             border-color: {PRIMARY_COLOR} !important;
         }}
 
-        /* ======================================================= */
-        /* ЧЕКБОКСЫ                                                */
-        /* ======================================================= */
+        /* Чекбоксы */
         div[data-baseweb="checkbox"] > div:first-child {{
             background-color: #FFFFFF !important;
             border: 2px solid {DARK_BORDER} !important;
@@ -168,22 +146,17 @@ st.markdown(f"""
         div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
             fill: #FFFFFF !important;
         }}
+        /* Убираем красный ховер */
         div[data-baseweb="checkbox"]:hover > div:first-child {{
             border-color: {PRIMARY_COLOR} !important;
         }}
 
-        /* ======================================================= */
-        /* КНОПКА ЗАПУСКА                                          */
-        /* ======================================================= */
+        /* Кнопка */
         .stButton button {{
             background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
             color: white !important;
-            font-weight: bold;
-            border-radius: 6px;
-            height: 50px;
-            width: 100%;
             border: none;
-            margin-top: 10px;
+            height: 50px;
         }}
         .stButton button:focus {{
             border-color: {PRIMARY_COLOR} !important;
@@ -191,16 +164,11 @@ st.markdown(f"""
             color: white !important;
         }}
 
-        /* ======================================================= */
-        /* САЙДБАР                                                 */
-        /* ======================================================= */
+        /* Сайдбар */
         .st-emotion-cache-1cpxwwu {{ 
             width: 65% !important;
-            padding-right: 20px; 
             max-width: 65% !important;
-            padding-left: 0 !important;
         }}
-        
         div[data-testid="column"]:nth-child(2) {{
             position: fixed !important;
             right: 0 !important;
@@ -212,6 +180,7 @@ st.markdown(f"""
             padding: 1rem 1rem 2rem 1.5rem !important; 
             z-index: 100;
             box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; 
+            border-left: 1px solid {BORDER_COLOR};
         }}
         
         /* Стили полей внутри сайдбара */
@@ -221,12 +190,8 @@ st.markdown(f"""
             background-color: {LIGHT_BG_MAIN} !important; 
             color: {TEXT_COLOR} !important;
             border: 1px solid {BORDER_COLOR} !important;
-            box-shadow: none !important;
         }}
-        
-        div[data-testid="column"]:nth-child(2) .stCaption {{
-            display: none;
-        }}
+        div[data-testid="column"]:nth-child(2) .stCaption {{ display: none; }}
 
     </style>
 """, unsafe_allow_html=True)
@@ -432,10 +397,10 @@ def calculate_metrics(comp_data, my_data, settings):
 # 3. ИНТЕРФЕЙС
 # ==========================================
 
-# --- ОСНОВНОЙ МАКЕТ: ДВЕ КОЛОНКИ (65% / 35%) ---
+# --- ОСНОВНОЙ МАКЕТ ---
 col_main, col_sidebar = st.columns([65, 35]) 
 
-# --- ЛЕВАЯ КОЛОНКА (Основной контент) ---
+# --- ЛЕВАЯ КОЛОНКА ---
 with col_main:
     
     st.title("SEO Анализатор Релевантности")
@@ -443,7 +408,7 @@ with col_main:
     if 'start_analysis_flag' not in st.session_state:
         st.session_state.start_analysis_flag = False
 
-    # 1. URL или код страницы Вашего сайта
+    # 1. URL или код страницы
     st.markdown("### URL или код страницы Вашего сайта")
     my_input_type = st.radio(
         "Тип страницы", 
@@ -457,10 +422,10 @@ with col_main:
     my_page_content = ""
 
     if my_input_type == "Релевантная страница на вашем сайте":
-        # ДОБАВЛЕН PLACEHOLDER
+        # С PLACEHOLDER
         my_url = st.text_input(
             "URL страницы", 
-            placeholder="https://site.ru/catalog/stranica", 
+            placeholder="https://site.ru/catalog/tovar", 
             label_visibility="collapsed", 
             key="my_url_input"
         )
@@ -471,16 +436,16 @@ with col_main:
 
     # 2. Поисковой запрос
     st.markdown("### Поисковой запрос")
-    # ДОБАВЛЕН PLACEHOLDER
+    # С PLACEHOLDER
     query = st.text_input(
         "Основной запрос", 
-        placeholder="Введите основной поисковой запрос", 
+        placeholder="Например: купить пластиковые окна", 
         label_visibility="collapsed", 
         key="query_input"
     )
     st.checkbox("Дополнительные запросы", disabled=True, value=False)
 
-    # 3. Поиск или URL страниц конкурентов
+    # 3. Источник конкурентов
     st.markdown("### Поиск или URL страниц конкурентов")
     source_type_new = st.radio(
         "Источник конкурентов", 
@@ -491,7 +456,7 @@ with col_main:
     )
     source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
 
-    # --- 4. Редактируемые списки (Левая колонка) ---
+    # --- 4. Редактируемые списки ---
     st.markdown("### Редактируемые списки")
 
     # Не учитывать домены
@@ -502,39 +467,30 @@ with col_main:
     c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=200, key="settings_stops")
     st.caption("Слова, которые будут удалены перед лемматизацией.")
 
-    # 5. КНОПКА ЗАПУСКА
+    # 5. КНОПКА
     st.markdown("---")
     if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
         st.session_state.start_analysis_flag = True
 
-# --- ПРАВАЯ КОЛОНКА (Настройки) ---
+# --- ПРАВАЯ КОЛОНКА ---
 with col_sidebar:
     with st.container(): 
         st.markdown("#####⚙️ Настройки")
 
-        # --- Блок 1: Основные параметры ---
         st.markdown("###### Основные параметры")
-        
         ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
         st.caption("Определяет, как будет скачиваться страница.")
         
         search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
-        
         region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
-        
         device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-        
         top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
-
         st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
-
         st.selectbox("Учитывать тип", ["Все страницы", "Коммерческие", "Информационные"], key="settings_content_type")
         
-        # --- ДУБЛИ СПИСКОВ УДАЛЕНЫ ---
+        # --- ДУБЛИ УДАЛЕНЫ ---
         
-        # --- Блок 3: Флажки ---
         st.markdown("###### Переключатели")
-        
         col_check1_s, col_check2_s = st.columns(2)
         with col_check1_s:
             st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
