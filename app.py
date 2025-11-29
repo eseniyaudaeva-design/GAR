@@ -27,7 +27,7 @@ DEFAULT_EXCLUDE_DOMAINS = [
     "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by"
 ]
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
-DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул\nмм\nкг\nкв\nм2\nстр\nул"
+DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
 
 # Список регионов для имитации
 REGIONS = [
@@ -40,10 +40,11 @@ REGIONS = [
 PRIMARY_COLOR = "#277EFF"  # Голубой/Синий для кнопки
 PRIMARY_DARK = "#1E63C4"   
 TEXT_COLOR = "#3D4858"     # Темно-серый (Основной текст)
-LIGHT_BG = "#F1F5F9"       # Светло-серый фон полей
+LIGHT_BG_INPUT = "#F1F5F9" # Светло-серый фон полей в левом блоке
+LIGHT_BG_SIDEBAR = "#E9EEF4" # Очень светло-серый фон для полей в сайдбаре (как на скриншоте)
 BORDER_COLOR = "#E2E8F0"   # Цвет рамки
 RED_ACCENT = "#DC3545"     # Красный (для маркера выбранной кнопки)
-MAROON_DIVIDER = "#8B0000" # Темно-бордовый для разделителя
+MAROON_DIVIDER = "#DC3545" # Темно-бордовый/красный для разделителя
 
 st.markdown(f"""
    <style>
@@ -64,21 +65,21 @@ st.markdown(f"""
             padding-top: 1rem !important;
             padding-bottom: 2rem !important;
             padding-left: 2rem !important;
-            padding-right: 0rem !important; /* Убираем правый отступ для сайдбара */
+            padding-right: 0rem !important;
+            max-width: 100% !important; 
         }}
         
-        /* 2. Стилизация полей ввода */
+        /* 2. Стилизация полей ввода (ЛЕВЫЙ БЛОК) */
         .stTextInput input, 
         .stTextArea textarea, 
-        div[data-baseweb="select"] > div:first-child,
         div[data-testid="stTextarea"] textarea {{
             color: {TEXT_COLOR} !important;
-            background-color: {LIGHT_BG} !important;
+            background-color: {LIGHT_BG_INPUT} !important;
             border: 1px solid {BORDER_COLOR} !important;
             border-radius: 6px;
         }}
         
-        /* 3. Кнопка (Синий/Голубой с градиентом) */
+        /* 3. Кнопка "ЗАПУСТИТЬ АНАЛИЗ" (Синий/Голубой с градиентом) */
         .stButton button {{
             background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
             color: white !important;
@@ -99,35 +100,19 @@ st.markdown(f"""
             border: 1px solid {BORDER_COLOR};
             font-weight: 400;
         }}
-        /* Выбранный элемент */
+        /* Выбранный элемент (Красная рамка, Черный/Красный маркер) */
         div[data-testid="stRadio"] input:checked + div {{
             background-color: #FFFFFF !important; 
             color: {TEXT_COLOR} !important; 
-            border-color: {RED_ACCENT} !important; /* Красная рамка для выбранной */
+            border-color: {RED_ACCENT} !important; 
             font-weight: 600;
         }}
-        
         /* Маркеры: Стиль согласно скриншоту */
-        /* Чекбокс */
-        [data-testid="stCheckbox"] svg {{
-            color: #000000 !important; /* Черный для чекбоксов */
-        }}
-        /* Радио: Красная точка (выбранный), Черная точка (невыбранный) */
-        div[data-testid="stRadio"] input:checked + div svg circle:first-child {{
-            stroke: {RED_ACCENT} !important; 
-            fill: {RED_ACCENT} !important; 
-        }}
-        div[data-testid="stRadio"] input:not(:checked) + div svg circle:first-child {{
-            stroke: #000000 !important; 
-            fill: #FFFFFF !important; 
-        }}
-        div[data-testid="stRadio"] input:not(:checked) + div svg circle:last-child {{
-            fill: #000000 !important; 
-        }}
-        div[data-testid="stRadio"] input:checked + div svg circle:last-child {{
-            fill: #FFFFFF !important; /* Белый маркер внутри Красного круга */
-        }}
-
+        [data-testid="stCheckbox"] svg {{ color: #000000 !important; }}
+        div[data-testid="stRadio"] input:checked + div svg circle:first-child {{ stroke: {RED_ACCENT} !important; fill: {RED_ACCENT} !important; }}
+        div[data-testid="stRadio"] input:not(:checked) + div svg circle:first-child {{ stroke: #000000 !important; fill: #FFFFFF !important; }}
+        div[data-testid="stRadio"] input:not(:checked) + div svg circle:last-child {{ fill: #000000 !important; }}
+        div[data-testid="stRadio"] input:checked + div svg circle:last-child {{ fill: #FFFFFF !important; }}
 
         /* ========================================================= */
         /* 5. ФИКСИРОВАННЫЙ САЙДБАР (СЛОЖНЫЙ CSS) */
@@ -136,46 +121,58 @@ st.markdown(f"""
         /* Основной контейнер, имитирующий левую часть. Занимает ~65% ширины. */
         .st-emotion-cache-1cpxwwu {{ 
             width: 65% !important;
-            padding-right: 30px; /* Отступ от разделителя */
+            padding-right: 40px; /* Отступ от разделителя */
+            padding-left: 0; /* Удаление левого отступа */
+            max-width: 65% !important;
         }}
-
+        /* Контейнер-обертка для предотвращения наложения */
+        div.st-emotion-cache-18e3th9:has(.st-emotion-cache-1cpxwwu) {{
+            max-width: 100% !important;
+        }}
+        
         /* Контейнер настроек - делаем его фиксированным на правом краю */
         div[data-testid="stVerticalBlock"]:has(h5[data-testid="stMarkdownContainer"]:contains("Настройки")) {{
             position: fixed !important;
             right: 0 !important;
             top: 0 !important;
-            width: 35% !important; /* Остальные ~35% */
+            width: 35% !important; 
             height: 100vh !important;
-            overflow-y: auto !important; /* Прокрутка только для сайдбара */
+            overflow-y: auto !important; 
             background-color: #FFFFFF !important;
-            padding: 2rem 1rem 2rem 2rem !important; 
+            padding: 1rem 1rem 2rem 1.5rem !important; 
             z-index: 100;
-            /* Разделитель */
             box-shadow: -2px 0 0 0 {MAROON_DIVIDER} inset; 
+            
+            /* Убедитесь, что все дочерние элементы используют стили сайдбара */
         }}
         
-        /* Стилизация заголовка Настроек (для имитации) */
-        h5[data-testid="stMarkdownContainer"]:contains("Настройки") {{
-            font-size: 1.5rem;
-            margin-top: 0;
-            padding-top: 0;
+        /* Стилизация полей ввода в САЙДБАРЕ */
+        div[data-testid="stVerticalBlock"]:has(h5[data-testid="stMarkdownContainer"]:contains("Настройки")) .stSelectbox > div:first-child,
+        div[data-testid="stVerticalBlock"]:has(h5[data-testid="stMarkdownContainer"]:contains("Настройки")) .stTextInput input,
+        div[data-testid="stVerticalBlock"]:has(h5[data-testid="stMarkdownContainer"]:contains("Настройки")) .stTextarea textarea
+        {{
+            background-color: {LIGHT_BG_SIDEBAR} !important; /* Светло-серый фон */
+            border: none !important; /* Без рамки */
+            box-shadow: none !important;
+            border-radius: 4px;
         }}
-
-        /* Дополнительный отступ для предотвращения наложения контента */
-        .st-emotion-cache-1oe6hri {{ /* Это может быть один из родительских div для сайдбара */
-            margin-left: 0; /* Сбросить стандартный отступ */
-        }}
-
-        /* Небольшой хак для заголовков сайдбара */
-        .stMarkdown:has(h6) {{ margin-top: 10px; margin-bottom: 5px; }}
         
+        /* Устранение излишних отступов в сайдбаре */
+        div[data-testid="stVerticalBlock"]:has(h5[data-testid="stMarkdownContainer"]:contains("Настройки")) .stSelectbox {{
+            margin-bottom: 15px !important;
+        }}
+        
+        /* Скрываем подписи в сайдбаре (они выглядят как лейблы) */
+        div[data-testid="stVerticalBlock"]:has(h5[data-testid="stMarkdownContainer"]:contains("Настройки")) .stCaption {{
+            display: none;
+        }}
+
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
 # 2. ЛОГИКА (БЭКЕНД - ВАШ РАБОЧИЙ КОД)
 # ==========================================
-# (Вся логика остается без изменений)
 
 try:
     if not hasattr(inspect, 'getargspec'):
@@ -247,7 +244,6 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
-    # (Остальной код calculate_metrics)
     if not my_data or not my_data['body_text']:
         my_lemmas = []
         my_anchors = []
@@ -375,224 +371,67 @@ def calculate_metrics(comp_data, my_data, settings):
 # 3. ИНТЕРФЕЙС (МАКЕТ С САЙДБАРОМ)
 # ==========================================
 
-# Определяем две колонки: Основной контент (шире) и Заглушка для Сайбдара (уже)
-# Заглушка нужна для того, чтобы основной контент не наезжал на фиксированный сайдбар
-col_main, col_sidebar_dummy = st.columns([65, 35]) 
-
 # --- ЛЕВАЯ КОЛОНКА (Основной контент) ---
-with col_main:
-    st.title("SEO Анализатор Релевантности")
+# Запускаем в главном потоке Streamlit
+# Добавляем кнопку "ЗАПУСТИТЬ АНАЛИЗ" на самый верх
+if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True):
+    pass # Логика будет выполнена ниже в основном теле скрипта
 
-    # 1. URL или код страницы Вашего сайта
-    st.markdown("### URL или код страницы Вашего сайта")
-    my_input_type = st.radio(
-        "Тип страницы", 
-        ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], 
-        horizontal=True,
-        label_visibility="collapsed",
-        key="my_page_source_radio"
-    )
+st.title("SEO Анализатор Релевантности")
 
-    my_url = ""
-    my_page_content = ""
+# 1. URL или код страницы Вашего сайта
+st.markdown("### URL или код страницы Вашего сайта")
+my_input_type = st.radio(
+    "Тип страницы", 
+    ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], 
+    horizontal=True,
+    label_visibility="collapsed",
+    key="my_page_source_radio"
+)
 
-    if my_input_type == "Релевантная страница на вашем сайте":
-        my_url = st.text_input("URL страницы", placeholder="https://site.ru/", label_visibility="collapsed")
-    elif my_input_type == "Исходный код страницы или текст":
-        my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML-код или чистый текст страницы")
-    elif my_input_type == "Без страницы":
-        st.info("Выбран анализ без страницы вашего сайта.")
+my_url = ""
+my_page_content = ""
 
-    # 2. Поисковой запрос
-    st.markdown("### Поисковой запрос")
-    query = st.text_input("Основной запрос", placeholder="Основной запрос", label_visibility="collapsed")
-    st.checkbox("Дополнительные запросы", disabled=True, value=False)
+if my_input_type == "Релевантная страница на вашем сайте":
+    my_url = st.text_input("URL страницы", placeholder="https://site.ru/", label_visibility="collapsed", key="my_url_input")
+elif my_input_type == "Исходный код страницы или текст":
+    my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML-код или чистый текст страницы", key="my_content_input")
+elif my_input_type == "Без страницы":
+    st.info("Выбран анализ без страницы вашего сайта.")
 
-    # 3. Поиск или URL страниц конкурентов
-    st.markdown("### Поиск или URL страниц конкурентов")
-    source_type_new = st.radio(
-        "Источник конкурентов", 
-        ["Поиск", "Список url-адресов ваших конкурентов"], 
-        horizontal=True,
-        label_visibility="collapsed",
-        key="competitor_source_radio"
-    )
-    source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
+# 2. Поисковой запрос
+st.markdown("### Поисковой запрос")
+query = st.text_input("Основной запрос", placeholder="Основной запрос", label_visibility="collapsed", key="query_input")
+st.checkbox("Дополнительные запросы", disabled=True, value=False)
 
-    # --- 4. Редактируемые списки (Левая колонка) ---
-    st.markdown("### Редактируемые списки")
-    
-    # Не учитывать домены
-    excludes = st.text_area("Не учитывать домены (каждый с новой строки)", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
-    st.caption("Домены, которые будут исключены из анализа конкурентов.")
-    
-    # Стоп-слова
-    c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=200, key="settings_stops")
-    st.caption("Слова, которые будут удалены перед лемматизацией.")
+# 3. Поиск или URL страниц конкурентов
+st.markdown("### Поиск или URL страниц конкурентов")
+source_type_new = st.radio(
+    "Источник конкурентов", 
+    ["Поиск", "Список url-адресов ваших конкурентов"], 
+    horizontal=True,
+    label_visibility="collapsed",
+    key="competitor_source_radio"
+)
+source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
 
-    # Кнопка запуска (должна быть в основном потоке)
-    st.markdown("---")
-    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True):
-        
-        # --- ЛОГИКА ЗАПУСКА И РАСЧЕТОВ ---
-        if my_input_type == "Релевантная страница на вашем сайте" and not my_url:
-            st.error("Введите URL!")
-            st.stop()
-            
-        if my_input_type == "Исходный код страницы или текст" and not my_page_content.strip():
-            st.error("Введите исходный код или текст!")
-            st.stop()
-        
-        if source_type == "Google (Авто)" and st.session_state.settings_search_engine != "Google":
-            st.warning(f"Анализ ТОП-а для **{st.session_state.settings_search_engine}** пока не реализован. Используется Google Search.")
-            if not query:
-                st.error("Введите запрос для поиска конкурентов!")
-                st.stop()
+# --- 4. Редактируемые списки (Левая колонка) ---
+st.markdown("### Редактируемые списки")
 
-        # Сбор настроек из session_state
-        settings = {
-            'noindex': st.session_state.settings_noindex, 
-            'alt_title': st.session_state.settings_alt, 
-            'numbers': st.session_state.settings_numbers,
-            'norm': st.session_state.settings_norm, 
-            'ua': st.session_state.settings_ua, 
-            'custom_stops': st.session_state.settings_stops.split()
-        }
-        
-        target_urls = []
-        if source_type == "Google (Авто)":
-            
-            excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-            if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
-            
-            try:
-                with st.spinner(f"Сбор ТОПа {st.session_state.settings_search_engine}..."):
-                    if not USE_SEARCH:
-                        st.error("Библиотека 'googlesearch' не найдена. Невозможно выполнить автоматический поиск ТОПа.")
-                        st.stop()
+# Не учитывать домены
+excludes = st.text_area("Не учитывать домены (каждый с новой строки)", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
+st.caption("Домены, которые будут исключены из анализа конкурентов.")
 
-                    found = search(query, num_results=st.session_state.settings_top_n * 2, lang="ru")
-                    cnt = 0
-                    for u in found:
-                        if my_input_type == "Релевантная страница на вашем сайте" and my_url in u: continue
-                        if any(x in urlparse(u).netloc for x in excl): continue
-                        target_urls.append(u)
-                        cnt += 1
-                        if cnt >= st.session_state.settings_top_n: break
-            except Exception as e:
-                st.error(f"Ошибка при поиске: {e}")
-                st.stop()
-        else: 
-            # Добавлено поле для ручного списка
-            manual_urls = st.text_area("Список URL (каждый с новой строки)", height=200, key="manual_urls_area_run_hidden")
-            target_urls = [u.strip() for u in manual_urls.split('\n') if u.strip()]
-
-        if not target_urls:
-            st.error("Нет конкурентов для анализа.")
-            st.stop()
-            
-        # --- ОБРАБОТКА ДАННЫХ ВАШЕГО САЙТА ---
-        my_data = None
-        if my_input_type == "Релевантная страница на вашем сайте":
-            prog = st.progress(0.0)
-            status = st.empty()
-            status.text("Скачиваем ваш сайт...")
-            my_data = parse_page(my_url, settings)
-            prog.progress(0.05)
-            if not my_data:
-                st.error("Ошибка доступа к сайту. Проверьте URL или попробуйте 'Исходный код'.")
-                st.stop()
-            prog.empty()
-            status.empty()
-        elif my_input_type == "Исходный код страницы или текст":
-            my_data = {
-                'url': 'Local Content', 
-                'domain': 'local.content', 
-                'body_text': my_page_content, 
-                'anchor_text': '' 
-            }
-        
-        # --- СКАЧИВАНИЕ КОНКУРЕНТОВ ---
-        comp_data = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
-            done = 0
-            total_tasks = len(target_urls)
-            prog_comp = st.progress(0)
-            status_comp = st.empty()
-            
-            for f in concurrent.futures.as_completed(futures):
-                res = f.result()
-                if res: comp_data.append(res)
-                done += 1
-                prog_comp.progress(done / total_tasks)
-                status_comp.text(f"Скачано {done} из {total_tasks} конкурентов...")
-                
-        prog_comp.empty()
-        status_comp.empty()
-        
-        if len(comp_data) < 2 and my_input_type != "Без страницы":
-            st.warning(f"Мало данных конкурентов для надежного анализа (менее 2). Продолжаю с {len(comp_data)} данными.")
-
-        if not my_data and my_input_type != "Без страницы":
-            st.error("Не удалось получить данные для сравнения.")
-            st.stop()
-            
-        # --- РАСЧЕТ МЕТРИК ---
-        results = calculate_metrics(comp_data, my_data, settings)
-        st.success("Готово! Результаты ниже.")
-        
-        # --- 4. РЕЗУЛЬТАТЫ (С ПАГИНАЦИЕЙ) ---
-        
-        if my_data and len(comp_data) > 0:
-            st.markdown("### 1. Рекомендации по глубине")
-            df_d = results['depth']
-            if not df_d.empty:
-                df_d = df_d.sort_values(by="diff_abs", ascending=False)
-                
-                rows_per_page = 20
-                total_rows = len(df_d)
-                total_pages = math.ceil(total_rows / rows_per_page)
-                
-                if 'page_number' not in st.session_state:
-                    st.session_state.page_number = 1
-                
-                col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
-                with col_p1:
-                    if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
-                        st.session_state.page_number -= 1
-                with col_p2:
-                    st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
-                with col_p3:
-                    if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
-                        st.session_state.page_number += 1
-                        
-                start_idx = (st.session_state.page_number - 1) * rows_per_page
-                end_idx = start_idx + rows_per_page
-                df_page = df_d.iloc[start_idx:end_idx]
-                
-                st.dataframe(df_page, column_config={"diff_abs": None}, use_container_width=True, height=800)
-                st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
-                
-                with st.expander("2. Гибридный ТОП"):
-                    st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
-                    
-                with st.expander("3. N-граммы"):
-                    st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
-
-        
-        with st.expander("4. ТОП релевантности"):
-            st.dataframe(results['relevance_top'], use_container_width=True)
-
-        if not my_data:
-            st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы' или не удалось получить данные.")
+# Стоп-слова
+c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=200, key="settings_stops")
+st.caption("Слова, которые будут удалены перед лемматизацией.")
 
 # --- ПРАВАЯ КОЛОНКА (Фиксированные Настройки) ---
 # Этот блок будет позиционирован CSS-ом как сайдбар
 with st.container(): 
     st.markdown("##### ⚙️ Настройки")
 
-    # --- Блок 1: Выпадающие списки и Text Inputs (без колонок) ---
+    # --- Блок 1: Основные параметры (SELECTS/TEXT INPUTS) ---
     st.markdown("###### Основные параметры")
     
     # User-Agent
@@ -625,15 +464,13 @@ with st.container():
         key="settings_content_type"
     )
     
-    # --- Блок 2: Редактируемые списки (временно тут, но они в левом блоке) ---
+    # --- Блок 2: Редактируемые списки (Заглушки для сайдбара) ---
     st.markdown("###### Редактируемые списки")
     
-    # Здесь просто пустые поля для сохранения внешнего вида сайдбара, 
-    # а рабочие поля находятся в левой колонке
     st.markdown("Не учитывать домены (каждый с новой строки)")
-    st.text_area("Пустое поле для вида", height=100, label_visibility="collapsed", disabled=True)
+    st.text_area("Пустое поле для вида", value=DEFAULT_EXCLUDE[:100], height=100, label_visibility="collapsed", disabled=True)
     st.markdown("Стоп-слова (каждое с новой строки)")
-    st.text_area("Пустое поле для вида", height=100, label_visibility="collapsed", disabled=True)
+    st.text_area("Пустое поле для вида", value=DEFAULT_STOPS[:50], height=100, label_visibility="collapsed", disabled=True)
 
     
     # --- Блок 3: Флажки ---
@@ -647,3 +484,163 @@ with st.container():
     with col_check2_s:
         st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
         st.checkbox("Исключать агрегаторы/маркетплейсы в поиске (дополнительно)", True, key="settings_agg")
+
+
+# --- ЛОГИКА ЗАПУСКА (ВЫПОЛНЯЕТСЯ ПРИ НАЖАТИИ КНОПКИ) ---
+if st.session_state.get('last_button_click') == 'ЗАПУСТИТЬ АНАЛИЗ':
+
+    # (Проверка ввода и сбор настроек)
+    if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.my_url_input:
+        st.error("Введите URL!")
+        st.stop()
+        
+    if my_input_type == "Исходный код страницы или текст" and not st.session_state.my_content_input.strip():
+        st.error("Введите исходный код или текст!")
+        st.stop()
+    
+    if source_type == "Google (Авто)" and st.session_state.settings_search_engine != "Google":
+        st.warning(f"Анализ ТОП-а для **{st.session_state.settings_search_engine}** пока не реализован. Используется Google Search.")
+        if not st.session_state.query_input:
+            st.error("Введите запрос для поиска конкурентов!")
+            st.stop()
+
+    settings = {
+        'noindex': st.session_state.settings_noindex, 
+        'alt_title': st.session_state.settings_alt, 
+        'numbers': st.session_state.settings_numbers,
+        'norm': st.session_state.settings_norm, 
+        'ua': st.session_state.settings_ua, 
+        'custom_stops': st.session_state.settings_stops.split()
+    }
+    
+    target_urls = []
+    if source_type == "Google (Авто)":
+        
+        excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
+        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
+        
+        try:
+            with st.spinner(f"Сбор ТОПа {st.session_state.settings_search_engine}..."):
+                if not USE_SEARCH:
+                    st.error("Библиотека 'googlesearch' не найдена. Невозможно выполнить автоматический поиск ТОПа.")
+                    st.stop()
+
+                found = search(st.session_state.query_input, num_results=st.session_state.settings_top_n * 2, lang="ru")
+                cnt = 0
+                for u in found:
+                    if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input in u: continue
+                    if any(x in urlparse(u).netloc for x in excl): continue
+                    target_urls.append(u)
+                    cnt += 1
+                    if cnt >= st.session_state.settings_top_n: break
+        except Exception as e:
+            st.error(f"Ошибка при поиске: {e}")
+            st.stop()
+    else: 
+        # Ручной список (из рабочего text_area)
+        target_urls = [u.strip() for u in st.session_state.settings_excludes.split('\n') if u.strip()]
+
+    if not target_urls:
+        st.error("Нет конкурентов для анализа.")
+        st.stop()
+        
+    # --- ОБРАБОТКА ДАННЫХ ВАШЕГО САЙТА ---
+    my_data = None
+    if my_input_type == "Релевантная страница на вашем сайте":
+        prog = st.progress(0.0)
+        status = st.empty()
+        status.text("Скачиваем ваш сайт...")
+        my_data = parse_page(st.session_state.my_url_input, settings)
+        prog.progress(0.05)
+        if not my_data:
+            st.error("Ошибка доступа к сайту. Проверьте URL или попробуйте 'Исходный код'.")
+            st.stop()
+        prog.empty()
+        status.empty()
+    elif my_input_type == "Исходный код страницы или текст":
+        my_data = {
+            'url': 'Local Content', 
+            'domain': 'local.content', 
+            'body_text': st.session_state.my_content_input, 
+            'anchor_text': '' 
+        }
+    
+    # --- СКАЧИВАНИЕ КОНКУРЕНТОВ ---
+    comp_data = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
+        done = 0
+        total_tasks = len(target_urls)
+        prog_comp = st.progress(0)
+        status_comp = st.empty()
+        
+        for f in concurrent.futures.as_completed(futures):
+            res = f.result()
+            if res: comp_data.append(res)
+            done += 1
+            prog_comp.progress(done / total_tasks)
+            status_comp.text(f"Скачано {done} из {total_tasks} конкурентов...")
+            
+    prog_comp.empty()
+    status_comp.empty()
+    
+    if len(comp_data) < 2 and my_input_type != "Без страницы":
+        st.warning(f"Мало данных конкурентов для надежного анализа (менее 2). Продолжаю с {len(comp_data)} данными.")
+
+    if not my_data and my_input_type != "Без страницы":
+         st.error("Не удалось получить данные для сравнения.")
+         st.stop()
+         
+    # --- РАСЧЕТ МЕТРИК И ВЫВОД РЕЗУЛЬТАТОВ ---
+    results = calculate_metrics(comp_data, my_data, settings)
+    st.success("Готово! Результаты ниже.")
+    
+    if my_data and len(comp_data) > 0:
+        st.markdown("### 1. Рекомендации по глубине")
+        df_d = results['depth']
+        if not df_d.empty:
+            df_d = df_d.sort_values(by="diff_abs", ascending=False)
+            
+            rows_per_page = 20
+            total_rows = len(df_d)
+            total_pages = math.ceil(total_rows / rows_per_page)
+            
+            if 'page_number' not in st.session_state: st.session_state.page_number = 1
+            
+            col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
+            with col_p1:
+                if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
+                    st.session_state.page_number -= 1
+            with col_p2:
+                st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+            with col_p3:
+                if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
+                    st.session_state.page_number += 1
+                        
+            start_idx = (st.session_state.page_number - 1) * rows_per_page
+            end_idx = start_idx + rows_per_page
+            df_page = df_d.iloc[start_idx:end_idx]
+            
+            st.dataframe(df_page, column_config={"diff_abs": None}, use_container_width=True, height=800)
+            st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
+            
+            with st.expander("2. Гибридный ТОП"):
+                st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
+                
+            with st.expander("3. N-граммы"):
+                st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
+
+        
+        with st.expander("4. ТОП релевантности"):
+            st.dataframe(results['relevance_top'], use_container_width=True)
+
+        if not my_data:
+            st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы' или не удалось получить данные.")
+
+# --- Сохраняем состояние кнопки для повторного запуска ---
+if 'last_button_click' not in st.session_state:
+    st.session_state.last_button_click = ''
+
+if st.session_state.get('start_analysis', False):
+    st.session_state.last_button_click = 'ЗАПУСТИТЬ АНАЛИЗ'
+    st.session_state.start_analysis = False
