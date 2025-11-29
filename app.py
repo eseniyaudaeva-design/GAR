@@ -1,4 +1,255 @@
 import streamlit as st
+import streamlit as st
+
+# ==========================================
+# 0. АВТОРИЗАЦИЯ
+# ==========================================
+def check_password():
+    """Проверка пароля для доступа к приложению"""
+    def password_entered():
+        if st.session_state["password"] == "jfV6Xel-Q7vp-_s2UYPO":
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # Стили для окна авторизации
+        st.markdown("""
+            <style>
+            /* Скрываем только самые основные элементы */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            .stDeployButton {display: none;}
+            
+            /* Жесткое центрирование всего контента */
+            .stApp {
+                background: white !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+            }
+            
+            .main .block-container {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                min-height: 100vh !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            
+            /* Центрирование логотипа */
+            [data-testid="stImage"] {
+                display: block !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+            }
+            
+            /* Центрирование поля ввода */
+            .stTextInput {
+                display: flex !important;
+                justify-content: center !important;
+            }
+            .stTextInput > div {
+                width: 547px !important;
+                margin: 0 auto !important;
+            }
+            .stTextInput input {
+                width: 547px !important;
+                height: 56px !important;
+                padding: 10px 16px !important;
+                border: 2px solid #e1e5e9 !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                background: white !important;
+                color: #3D4858 !important;
+            }
+            
+            /* Кнопка глазика */
+            button[data-testid="baseButton-secondary"] {
+                width: 40px !important;
+                height: 40px !important;
+                min-width: 40px !important;
+                min-height: 40px !important;
+                padding: 0 !important;
+            }
+            
+            /* Центрирование кнопки Войти */
+            .stButton {
+                display: flex !important;
+                justify-content: center !important;
+                width: 100% !important;
+            }
+            .stButton > button {
+                width: 547px !important;
+                height: 56px !important;
+                background-image: linear-gradient(to right, #277EFF, #1E63C4) !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                font-weight: 600 !important;
+                margin: 1rem auto !important;
+            }
+            
+            /* Центрирование ошибки */
+            .stAlert {
+                display: flex !important;
+                justify-content: center !important;
+            }
+            .stAlert > div {
+                width: 547px !important;
+                margin: 1rem auto !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Логотип
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
+        
+        # Поле ввода пароля
+        st.text_input(
+            "Введите пароль",
+            type="password",
+            on_change=password_entered, 
+            key="password",
+            placeholder="Введите пароль",
+            label_visibility="collapsed"
+        )
+        
+        # Кнопка Войти
+        if st.button("ВОЙТИ", type="primary", key="login_btn"):
+            password_entered()
+        
+        return False
+    elif not st.session_state["password_correct"]:
+        st.markdown("""
+            <style>
+            /* Скрываем только самые основные элементы */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            .stDeployButton {display: none;}
+            
+            /* Жесткое центрирование всего контента */
+            .stApp {
+                background: white !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+            }
+            
+            .main .block-container {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                min-height: 100vh !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            
+            /* Центрирование логотипа */
+            [data-testid="stImage"] {
+                display: block !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+            }
+            
+            /* Центрирование поля ввода */
+            .stTextInput {
+                display: flex !important;
+                justify-content: center !important;
+            }
+            .stTextInput > div {
+                width: 547px !important;
+                margin: 0 auto !important;
+            }
+            .stTextInput input {
+                width: 547px !important;
+                height: 56px !important;
+                padding: 10px 16px !important;
+                border: 2px solid #e1e5e9 !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                background: white !important;
+                color: #3D4858 !important;
+            }
+            
+            /* Кнопка глазика */
+            button[data-testid="baseButton-secondary"] {
+                width: 40px !important;
+                height: 40px !important;
+                min-width: 40px !important;
+                min-height: 40px !important;
+                padding: 0 !important;
+            }
+            
+            /* Центрирование кнопки Войти */
+            .stButton {
+                display: flex !important;
+                justify-content: center !important;
+                width: 100% !important;
+            }
+            .stButton > button {
+                width: 547px !important;
+                height: 56px !important;
+                background-image: linear-gradient(to right, #277EFF, #1E63C4) !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                font-weight: 600 !important;
+                margin: 1rem auto !important;
+            }
+            
+            /* Центрирование ошибки */
+            .stAlert {
+                display: flex !important;
+                justify-content: center !important;
+            }
+            .stAlert > div {
+                width: 547px !important;
+                margin: 1rem auto !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Логотип
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
+        
+        # Поле ввода пароля
+        st.text_input(
+            "Введите пароль",
+            type="password",
+            on_change=password_entered, 
+            key="password",
+            placeholder="Введите пароль",
+            label_visibility="collapsed"
+        )
+        
+        # Кнопка Войти
+        if st.button("ВОЙТИ", type="primary", key="login_btn"):
+            password_entered()
+        
+        st.error("😕 Неверный пароль")
+        
+        return False
+    else:
+        return True
+
+# Проверяем авторизацию
+if not check_password():
+    st.stop()
+
+# ==========================================
+# ОСТАЛЬНОЙ КОД ПРИЛОЖЕНИЯ
+# ==========================================
 import pandas as pd
 import numpy as np
 import requests
@@ -737,3 +988,4 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
