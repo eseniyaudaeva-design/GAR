@@ -65,7 +65,7 @@ def check_password():
         st.markdown('<div class="auth-box">', unsafe_allow_html=True)
         
         # Логотип (замените на вашу картинку)
-        st.markdown('<div class="auth-logo">🛡️</div>', unsafe_allow_html=True)
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=80)
         st.markdown('<div class="auth-title">Доступ к GAR PRO</div>', unsafe_allow_html=True)
         
         st.text_input(
@@ -890,6 +890,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
