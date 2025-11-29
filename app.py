@@ -496,26 +496,29 @@ with col_main:
     )
     st.checkbox("Дополнительные запросы", disabled=True, value=False)
 
-    # 3. Источник конкурентов
+# 3. Источник конкурентов
     st.markdown("### Поиск или URL страниц конкурентов")
-   source_type_new = st.radio(
+    
+    # !!! ВАЖНО: Эта строка должна быть на том же уровне отступа, что и st.markdown выше !!!
+    source_type_new = st.radio(
         "Источник конкурентов", 
         ["Поиск", "Список url-адресов ваших конкурентов"], 
         horizontal=True,
         label_visibility="collapsed",
         key="competitor_source_radio"
     )
+
     source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
 
-    # !!! ДОБАВЛЕННЫЙ БЛОК НАЧАЛО !!!
+    # Логика появления поля ввода (которую мы добавили ранее)
     manual_urls_input = ""
     if source_type == "Ручной список":
         st.markdown("### Введите список URL")
         manual_urls_input = st.text_area(
             "Вставьте ссылки здесь (каждая с новой строки)", 
             height=200, 
-            key="manual_urls_ui"  # Уникальный ключ для интерфейса
-        ) 
+            key="manual_urls_ui"
+        )
 
     # --- 4. Редактируемые списки ---
     st.markdown("### Редактируемые списки")
@@ -710,6 +713,7 @@ if st.session_state.start_analysis_flag:
 
             if not my_data:
                 st.warning("Основные таблицы не отображаются, так как был выбран режим 'Без страницы'.")
+
 
 
 
