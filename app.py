@@ -9,7 +9,6 @@ import math
 import inspect
 import concurrent.futures
 from urllib.parse import urlparse
-import base64
 
 # ==========================================
 # 0. АВТОРИЗАЦИЯ
@@ -17,7 +16,6 @@ import base64
 def check_password():
     """Проверка пароля перед показом основного приложения"""
     
-    # Если уже авторизован, показываем приложение
     if st.session_state.get("authenticated"):
         return True
         
@@ -53,14 +51,13 @@ def check_password():
         
         # Логотип
         try:
-            # Если файл доступен локально
             st.image("eseniyaudaeva-design/GAR/logo.png", width=200)
         except:
             st.markdown("### 📊 GAR PRO")
         
         st.markdown("### Вход в систему")
         
-        # Поле ввода пароля с иконкой глаза
+        # Поле ввода пароля
         password = st.text_input(
             "Пароль",
             type="password",
@@ -86,7 +83,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ (основное приложение)
+# 1. КОНФИГУРАЦИЯ
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -764,4 +761,5 @@ if st.session_state.start_analysis_flag:
 
     # 6.1. Релевантность ТОПа
     if not results['relevance_top'].empty:
-        st
+        st.markdown("## 4. Обзор ТОПа")
+        st.dataframe(results['relevance_top'], use_container
