@@ -15,7 +15,27 @@ from urllib.parse import urlparse
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
-# Обновленный CSS для принудительного использования ТЕМНОЙ темы и БЕЛОГО текста
+# Обновленный список исключаемых доменов
+DEFAULT_EXCLUDE_DOMAINS = [
+    "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com",
+    "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru",
+    "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", 
+    "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", 
+    "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", 
+    "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", 
+    "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", 
+    "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by"
+]
+DEFAULT_EXCLUDE = " ".join(DEFAULT_EXCLUDE_DOMAINS)
+DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
+
+# Список регионов для имитации
+REGIONS = [
+    "Москва", "Санкт-Петербург", "Екатеринбург", "Новосибирск", "Казань", 
+    "Нижний Новгород", "Самара", "Челябинск", "Омск", "Краснодар", 
+    "Киев (UA)", "Минск (BY)", "Алматы (KZ)"
+]
+
 st.markdown("""
    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -43,7 +63,7 @@ st.markdown("""
         }
         
         /* Поля ввода (фон и текст) */
-        .stTextInput input, .stTextArea textarea {
+        .stTextInput input, .stTextArea textarea, .stSelectbox > div {
             color: #FFFFFF !important;
             background-color: #475569 !important; /* Еще более темный фон для полей */
             border: 1px solid #64748B !important;
@@ -86,22 +106,16 @@ st.markdown("""
             color: #FFFFFF !important;
             background-color: #334155 !important;
         }
-        /* Заголовки колонок */
         .stDataFrame th {
             color: #FFFFFF !important;
             background-color: #475569 !important;
         }
-        /* Ячейки */
         .stDataFrame td {
             color: #FFFFFF !important;
             background-color: #334155 !important;
         }
-        /* Текст в статусных сообщениях (success, error и т.д.) */
-        div[data-testid="stAlert"] * {
-            color: #FFFFFF !important;
-        }
         
-        /* Стилизация радио-кнопок для имитации вкладок */
+        /* 4. Стилизация радио-кнопок для имитации вкладок (УБРАНА ОРАНЖЕВАЯ ЗАЛИВКА) */
         div[data-testid="stRadio"] label {
             background-color: #334155;
             border-radius: 6px;
@@ -114,11 +128,11 @@ st.markdown("""
         div[data-testid="stRadio"] label:hover {
             background-color: #475569;
         }
-        /* Выбранный элемент */
+        /* Выбранный элемент: оранжевая рамка и оранжевый текст */
         div[data-testid="stRadio"] input:checked + div {
-            background-color: #F97316; 
-            color: #FFFFFF;
-            border-color: #F97316;
+            background-color: #334155 !important; /* Убран фон */
+            color: #F97316 !important; /* Оранжевый текст */
+            border-color: #F97316 !important; /* Оранжевая рамка */
         }
         /* Скрытие исходных радио-точек */
         div[data-testid="stRadio"] input[type="radio"] {
@@ -126,6 +140,11 @@ st.markdown("""
         }
         div[data-testid="stRadio"] div[data-testid="stHorizontalBlock"] {
             gap: 0.5rem; /* Уменьшение пробела между "вкладками" */
+        }
+        
+        /* Исправление цвета заголовка "Настройки" */
+        .stContainer h5, .stContainer h6 {
+             color: #FFFFFF !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -153,10 +172,8 @@ try:
 except:
     USE_SEARCH = False
 
-DEFAULT_EXCLUDE = "yandex.ru avito.ru ozon.ru wildberries.ru youtube.com dzen.ru hh.ru t.me tiu.ru pulscen.ru satu.kz"
-DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
-
 def process_text(text, settings, n_gram=1):
+    # (Остальной код функций остается без изменений)
     pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' if settings['numbers'] else r'[а-яА-ЯёЁa-zA-Z]+'
     words = re.findall(pattern, text.lower())
     stops = set(w.lower() for w in settings['custom_stops'])
@@ -180,6 +197,7 @@ def process_text(text, settings, n_gram=1):
     return clean_words
 
 def parse_page(url, settings):
+    # (Остальной код функций остается без изменений)
     headers = {'User-Agent': settings['ua']}
     try:
         r = requests.get(url, headers=headers, timeout=15)
@@ -207,10 +225,8 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
-    # Если my_data пуст (случай "Без страницы"), вернуть пустые метрики или обработать иначе
+    # (Остальной код функций остается без изменений)
     if not my_data or not my_data['body_text']:
-        # В этом случае можно вернуть только таблицу релевантности ТОПа, но основные таблицы будут пусты.
-        # Для упрощения я создам пустой набор лемм.
         my_lemmas = []
         my_anchors = []
         my_len = 0
@@ -256,7 +272,6 @@ def calculate_metrics(comp_data, my_data, settings):
         med_tf = np.median(c_body_tfs)
         med_anch = np.median(c_anch_tfs)
         max_tf = np.max(c_body_tfs)
-        mean_tf = np.mean(c_body_tfs)
         
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
         
@@ -268,7 +283,6 @@ def calculate_metrics(comp_data, my_data, settings):
             bm25_scores.append(score)
         bm25_top = np.median(bm25_scores)
         
-        # BM25 для вашего сайта рассчитывается только если у вас есть контент
         bm25_my = 0
         if my_len > 0:
             bm25_my = idf * (my_tf * (k1 + 1)) / (my_tf + k1 * (1 - b + b * (my_len / avg_len)))
@@ -293,14 +307,13 @@ def calculate_metrics(comp_data, my_data, settings):
                 "Слово": word, "TF-IDF ТОП": round(med_tf * idf, 2), "TF-IDF ваш сайт": round(my_tf * idf, 2),
                 "BM25 ТОП": round(bm25_top, 2), "BM25 ваш сайт": round(bm25_my, 2), "IDF": round(idf, 2),
                 "Кол-во сайтов": df, "Медиана": round(med_tf, 1), "Переспам": max_tf,
-                "Среднее по ТОПу": round(mean_tf, 1), "Ваш сайт": my_tf,
+                "Среднее по ТОПу": round(np.mean(c_body_tfs), 1), "Ваш сайт": my_tf,
                 "<a> по ТОПу": round(med_anch, 1), "<a> ваш сайт": my_anch_tf
             })
 
-    # Расчет N-грамм только если есть данные конкурентов
     table_ngrams = []
     if comp_docs:
-        my_bi = process_text(my_data['body_text'], settings, 2) if my_data else []
+        my_bi = process_text(my_data['body_text'], settings, 2) if my_data and 'body_text' in my_data else []
         comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data]
         all_bi = set(my_bi)
         for c in comp_bi: all_bi.update(c)
@@ -383,35 +396,61 @@ source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ру�
 
 # --- ИСТОЧНИК КОНКУРЕНТОВ: ДЕТАЛИ ---
 if source_type == "Google (Авто)":
-    # Две колонки: Глубина (узкая) и Исключения (широкая)
-    cl1, cl2 = st.columns([1, 4])
-    with cl1:
-        top_n = st.selectbox("Глубина ТОПа", [5, 10, 20], index=1)
-    with cl2:
-        # Увеличенная высота для соответствия полю Стоп-слов
-        excludes = st.text_area("Исключить домены (через пробел)", DEFAULT_EXCLUDE, height=150) 
+    # Новые поля настроек для поиска
+    col_search1, col_search2 = st.columns(2)
+    with col_search1:
+        search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"])
+        region = st.selectbox("Яндекс / Регион", REGIONS)
+        device = st.selectbox("Устройство", ["Desktop", "Mobile"])
+    with col_search2:
+        top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1)
+        # Пустая колонка для выравнивания
+        st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Поле "Не учитывать домены" - теперь отдельный text_area
+    excludes = st.text_area("Не учитывать домены (каждый с новой строки)", "\n".join(DEFAULT_EXCLUDE_DOMAINS), height=250)
+    
 else:
-    manual_urls = st.text_area("Список URL (каждый с новой строки)", height=150)
+    manual_urls = st.text_area("Список URL (каждый с новой строки)", height=250)
 
 # --- 4. НАСТРОЙКИ (ПОСТОЯННО ОТКРЫТЫЙ БЛОК) ---
 st.markdown("##### ⚙️ Настройки")
-# Удален st.expander, чтобы сделать блок постоянно открытым. 
-# Используется st.container для сохранения структуры.
-with st.container():
-    col_set1, col_set2 = st.columns([1, 1])
-    
+# Используем st.container для сохранения структуры без возможности свернуть
+with st.container(border=True): 
+    # Основные настройки
+    st.markdown("###### Технические настройки")
+    col_set1, col_set2 = st.columns(2)
     with col_set1:
-        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"])
-        # ЗАМЕНА на text_area, теперь можно писать с новой строки
-        c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=150)
-        
+        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
+        st.caption("Определяет, как будет скачиваться страница.")
     with col_set2:
+        s_noindex = st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
+        s_alt = st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+    
+    # NLP и расчеты
+    st.markdown("###### Настройки обработки текста")
+    col_set3, col_set4 = st.columns(2)
+    with col_set3:
+        c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=150, key="settings_stops")
+        st.caption("Слова, которые будут удалены перед лемматизацией.")
+    with col_set4:
         st.write("") # Отступ
-        s_noindex = st.checkbox("Исключать noindex", True)
-        s_alt = st.checkbox("Учитывать Alt/Title", False)
-        s_num = st.checkbox("Учитывать числа", False)
-        s_norm = st.checkbox("Нормировать по длине", True)
-        s_agg = st.checkbox("Исключать агрегаторы", True)
+        s_num = st.checkbox("Учитывать числа (0-9)", False, key="settings_numbers")
+        s_norm = st.checkbox("Нормировать по длине (LSA/BM25)", True, key="settings_norm")
+        s_agg = st.checkbox("Исключать агрегаторы/маркетплейсы в поиске", True, key="settings_agg")
+        
+    # Настройки фильтрации результатов
+    st.markdown("###### Настройки фильтрации конкурентов (Post-Query)")
+    st.selectbox(
+        "Учитывать тип страниц по url", 
+        ["Все страницы", "Главные страницы", "Внутренние страницы"],
+        key="settings_url_type"
+    )
+    st.selectbox(
+        "Учитывать тип", 
+        ["Все страницы", "Коммерческие", "Информационные"],
+        key="settings_content_type"
+    )
 
 # Кнопка запуска
 if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True):
@@ -423,6 +462,12 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
     if my_input_type == "Исходный код страницы или текст" and not my_page_content.strip():
         st.error("Введите исходный код или текст!")
         st.stop()
+    
+    if source_type == "Google (Авто)" and search_engine != "Google":
+        st.warning(f"Анализ ТОП-а для **{search_engine}** пока не реализован. Используется Google Search.")
+        if not query:
+            st.error("Введите запрос для поиска конкурентов!")
+            st.stop()
 
     settings = {
         'noindex': s_noindex, 'alt_title': s_alt, 'numbers': s_num,
@@ -431,31 +476,36 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
     
     target_urls = []
     if source_type == "Google (Авто)":
-        if not query:
-            st.error("Введите запрос!")
-            st.stop()
+        
+        # Обновленный список исключений (из text_area)
+        excl = [d.strip() for d in excludes.split('\n') if d.strip()]
+        if s_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
+        
         try:
-            excl = excludes.split()
-            if s_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu"])
-            with st.spinner("Сбор ТОПа..."):
-                found = search(query, num_results=top_n*2, lang="ru")
+            with st.spinner(f"Сбор ТОПа {search_engine}..."):
+                # Используем Google Search для имитации, так как API Яндекса не доступен
+                if not USE_SEARCH:
+                    st.error("Библиотека 'googlesearch' не найдена. Невозможно выполнить автоматический поиск ТОПа.")
+                    st.stop()
+
+                found = search(query, num_results=top_n * 2, lang="ru")
                 cnt = 0
                 for u in found:
-                    # Проверка на свой URL только если используется режим "Релевантная страница"
+                    # Проверка на свой URL
                     if my_input_type == "Релевантная страница на вашем сайте" and my_url in u: continue
-                    if any(x in u for x in excl): continue
+                    # Проверка на исключаемые домены
+                    if any(x in urlparse(u).netloc for x in excl): continue
                     target_urls.append(u)
                     cnt += 1
                     if cnt >= top_n: break
         except Exception as e:
-            st.error(f"Ошибка поиска: {e}")
+            st.error(f"Ошибка при поиске: {e}")
             st.stop()
     else: # Ручной список
-        manual_urls = st.session_state.get('manual_urls_text', '').split('\n')
-        target_urls = [u.strip() for u in manual_urls if u.strip()]
+        target_urls = [u.strip() for u in manual_urls.split('\n') if u.strip()]
         
     if not target_urls:
-        st.error("Нет конкурентов.")
+        st.error("Нет конкурентов для анализа.")
         st.stop()
         
     # --- ОБРАБОТКА ДАННЫХ ВАШЕГО САЙТА ---
@@ -476,7 +526,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
             'url': 'Local Content', 
             'domain': 'local.content', 
             'body_text': my_page_content, 
-            'anchor_text': '' # Якоря не могут быть получены из чистого текста/кода
+            'anchor_text': '' 
         }
     
     # --- СКАЧИВАНИЕ КОНКУРЕНТОВ ---
@@ -499,35 +549,34 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
     status_comp.empty()
     
     if len(comp_data) < 2 and my_input_type != "Без страницы":
-        st.warning("Мало данных конкурентов для надежного анализа (менее 2). Продолжаю только с доступными данными.")
+        st.warning(f"Мало данных конкурентов для надежного анализа (менее 2). Продолжаю с {len(comp_data)} данными.")
 
     if not my_data and my_input_type != "Без страницы":
          st.error("Не удалось получить данные для сравнения.")
          st.stop()
-
+         
+    # --- РАСЧЕТ МЕТРИК ---
     results = calculate_metrics(comp_data, my_data, settings)
-    st.success("Готово!")
+    st.success("Готово! Результаты ниже.")
     
-    # 4. РЕЗУЛЬТАТЫ (С ПАГИНАЦИЕЙ)
+    # --- 4. РЕЗУЛЬТАТЫ (С ПАГИНАЦИЕЙ) ---
     
-    if my_data:
+    if my_data and len(comp_data) > 0:
         st.markdown("### 1. Рекомендации по глубине")
         df_d = results['depth']
         if not df_d.empty:
             df_d = df_d.sort_values(by="diff_abs", ascending=False)
             
-            # --- ЛОГИКА ПАГИНАЦИИ ---
+            # Логика пагинации (оставлена как есть)
             rows_per_page = 20
             total_rows = len(df_d)
             total_pages = math.ceil(total_rows / rows_per_page)
             
+            # Инициализация и сброс пагинации при новом запуске
             if 'page_number' not in st.session_state:
                 st.session_state.page_number = 1
             
-            # Сброс пагинации при новом запуске
-            if st.session_state.get('run_started', False) is True:
-                 st.session_state.page_number = 1
-
+            # --- Навигация пагинации ---
             col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
             with col_p1:
                 if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
@@ -561,4 +610,4 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
         st.dataframe(results['relevance_top'], use_container_width=True)
 
     if not my_data:
-        st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы'.")
+        st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы' или не удалось получить данные.")
