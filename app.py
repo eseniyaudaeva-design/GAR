@@ -40,9 +40,7 @@ REGIONS = [
 PRIMARY_COLOR = "#277EFF"    # Синий акцент
 PRIMARY_DARK = "#1E63C4"     # Темный синий
 TEXT_COLOR = "#3D4858"       # Темно-серый (Основной текст)
-LIGHT_BG_MAIN = "#F1F5F9"    # Светло-серый фон полей в левом блоке
-DARK_BG_SIDEBAR = "#334155"  # Темно-серый фон для полей в сайдбаре
-SIDEBAR_TEXT_COLOR = "#FFFFFF" # Белый текст для полей в сайдбаре
+LIGHT_BG_MAIN = "#F1F5F9"    # Светло-серый фон полей
 BORDER_COLOR = "#E2E8F0"     # Цвет рамки
 MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
 
@@ -67,10 +65,11 @@ st.markdown(f"""
             max-width: 100% !important; 
         }}
         
-        /* 2. Стилизация полей ввода (ЛЕВЫЙ БЛОК) */
+        /* 2. Стилизация полей ввода (Общая) */
         .stTextInput input, 
         .stTextArea textarea, 
-        div[data-testid="stTextarea"] textarea {{
+        div[data-testid="stTextarea"] textarea,
+        .stSelectbox > div:first-child {{
             color: {TEXT_COLOR} !important;
             background-color: {LIGHT_BG_MAIN} !important;
             border: 1px solid {BORDER_COLOR} !important;
@@ -86,6 +85,7 @@ st.markdown(f"""
             height: 50px;
             width: 100%;
             border: none;
+            margin-top: 10px;
         }}
         
         /* 4. Радио-кнопки (Вкладки) */
@@ -98,7 +98,7 @@ st.markdown(f"""
             border: 1px solid {BORDER_COLOR};
             font-weight: 400;
         }}
-        /* Выбранный элемент (Синяя рамка, Синий маркер) */
+        /* Выбранный элемент */
         div[data-testid="stRadio"] input:checked + div {{
             background-color: #FFFFFF !important; 
             color: {TEXT_COLOR} !important; 
@@ -106,8 +106,7 @@ st.markdown(f"""
             font-weight: 600;
         }}
         
-        /* Маркеры: Стиль согласно запросу (Синий акцент, Белый вместо Черного) */
-        /* Чекбокс: Синий, Белый внутренний */
+        /* Чекбоксы и Радио */
         [data-testid="stCheckbox"] svg {{ 
             color: {PRIMARY_COLOR} !important; 
         }}
@@ -116,15 +115,14 @@ st.markdown(f"""
             stroke: {PRIMARY_COLOR} !important;
         }}
         [data-testid="stCheckbox"] input:not(:checked) + div svg path {{
-            stroke: {TEXT_COLOR} !important; /* Невыбранный квадрат: Темно-серая рамка */
-            fill: #FFFFFF !important; /* Невыбранный квадрат: Белый фон */
+            stroke: {TEXT_COLOR} !important; 
+            fill: #FFFFFF !important; 
         }}
         
-        /* Радио: Синий/Белый */
         div[data-testid="stRadio"] input:checked + div svg circle:first-child {{ stroke: {PRIMARY_COLOR} !important; fill: {PRIMARY_COLOR} !important; }}
-        div[data-testid="stRadio"] input:not(:checked) + div svg circle:first-child {{ stroke: {PRIMARY_COLOR} !important; fill: #FFFFFF !important; }} /* Невыбранный - Синяя рамка, белый фон */
-        div[data-testid="stRadio"] input:not(:checked) + div svg circle:last-child {{ fill: #FFFFFF !important; }} /* Невыбранный - Белый внутренний кружок */
-        div[data-testid="stRadio"] input:checked + div svg circle:last-child {{ fill: #FFFFFF !important; }} /* Выбранный - Белый внутренний кружок */
+        div[data-testid="stRadio"] input:not(:checked) + div svg circle:first-child {{ stroke: {PRIMARY_COLOR} !important; fill: #FFFFFF !important; }}
+        div[data-testid="stRadio"] input:not(:checked) + div svg circle:last-child {{ fill: #FFFFFF !important; }}
+        div[data-testid="stRadio"] input:checked + div svg circle:last-child {{ fill: #FFFFFF !important; }}
 
 
         /* ========================================================= */
@@ -147,23 +145,26 @@ st.markdown(f"""
             width: 35% !important; 
             height: 100vh !important;
             overflow-y: auto !important; 
-            background-color: #FFFFFF !important; /* Фон под сайдбаром */
+            background-color: #FFFFFF !important; /* Фон под сайдбаром белый */
             padding: 1rem 1rem 2rem 1.5rem !important; 
             z-index: 100;
             box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; /* Тонкий красный разделитель */
         }}
 
-        /* Стилизация полей ввода в САЙДБАРЕ */
+        /* 
+           ИСПРАВЛЕНИЕ: Стилизация полей ввода в САЙДБАРЕ теперь такая же, как и везде.
+           Убрали темный фон и белый текст, поставили светлый фон и темный текст.
+        */
         div[data-testid="column"]:nth-child(2) .stSelectbox > div:first-child,
         div[data-testid="column"]:nth-child(2) .stTextInput input,
         div[data-testid="column"]:nth-child(2) .stTextarea textarea
         {{
-            background-color: {DARK_BG_SIDEBAR} !important; /* Темно-серый фон */
-            color: {SIDEBAR_TEXT_COLOR} !important; /* Белый текст */
-            border: none !important; 
+            background-color: {LIGHT_BG_MAIN} !important; /* Светлый фон */
+            color: {TEXT_COLOR} !important; /* Темный текст */
+            border: 1px solid {BORDER_COLOR} !important; /* Рамка */
             box-shadow: none !important;
-            border-radius: 0px; 
-            padding: 10px 12px;
+            border-radius: 6px; 
+            padding: 8px 12px;
         }}
         
         /* Скрываем подписи в сайдбаре (они выглядят как лейблы) */
@@ -380,16 +381,14 @@ col_main, col_sidebar = st.columns([65, 35])
 
 # --- ЛЕВАЯ КОЛОНКА (Основной контент) ---
 with col_main:
-    # 1. КНОПКА ЗАПУСКА НА САМОМ ВЕРХУ 
+    
+    st.title("SEO Анализатор Релевантности")
+
+    # Инициализация стейта для кнопки
     if 'start_analysis_flag' not in st.session_state:
         st.session_state.start_analysis_flag = False
 
-    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-        st.session_state.start_analysis_flag = True
-
-    st.title("SEO Анализатор Релевантности")
-
-    # 2. URL или код страницы Вашего сайта
+    # 1. URL или код страницы Вашего сайта
     st.markdown("### URL или код страницы Вашего сайта")
     my_input_type = st.radio(
         "Тип страницы", 
@@ -409,12 +408,12 @@ with col_main:
     elif my_input_type == "Без страницы":
         st.info("Выбран анализ без страницы вашего сайта.")
 
-    # 3. Поисковой запрос
+    # 2. Поисковой запрос
     st.markdown("### Поисковой запрос")
     query = st.text_input("Основной запрос", placeholder="Основной запрос", label_visibility="collapsed", key="query_input")
     st.checkbox("Дополнительные запросы", disabled=True, value=False)
 
-    # 4. Поиск или URL страниц конкурентов
+    # 3. Поиск или URL страниц конкурентов
     st.markdown("### Поиск или URL страниц конкурентов")
     source_type_new = st.radio(
         "Источник конкурентов", 
@@ -425,7 +424,7 @@ with col_main:
     )
     source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
 
-    # --- 5. Редактируемые списки (Левая колонка) ---
+    # --- 4. Редактируемые списки (Левая колонка) ---
     st.markdown("### Редактируемые списки")
 
     # Не учитывать домены
@@ -435,6 +434,11 @@ with col_main:
     # Стоп-слова
     c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=200, key="settings_stops")
     st.caption("Слова, которые будут удалены перед лемматизацией.")
+
+    # 5. КНОПКА ЗАПУСКА (ПЕРЕМЕЩЕНА ВНИЗ)
+    st.markdown("---")
+    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+        st.session_state.start_analysis_flag = True
 
 # --- ПРАВАЯ КОЛОНКА (Настройки) ---
 with col_sidebar:
