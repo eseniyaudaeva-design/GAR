@@ -11,7 +11,7 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ (МИНИМАЛЬНЫЙ CSS ДЛЯ ЧИТАЕМОСТИ - ТЕМНАЯ ТЕМА)
+# 1. КОНФИГУРАЦИЯ (НОВЫЙ СВЕТЛЫЙ CSS С СИНИМ АКЦЕНТОМ)
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -36,86 +36,105 @@ REGIONS = [
     "Киев (UA)", "Минск (BY)", "Алматы (KZ)"
 ]
 
-st.markdown("""
+# Цвета
+PRIMARY_COLOR = "#277EFF"  # Синий
+PRIMARY_DARK = "#1E63C4"   # Темно-синий для градиента
+TEXT_COLOR = "#3D4858"     # Темно-серый (Museo)
+LIGHT_BG = "#F1F5F9"       # Светло-серый фон полей
+BORDER_COLOR = "#E2E8F0"   # Цвет рамки
+
+st.markdown(f"""
    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* 1. ОБЩИЕ НАСТРОЙКИ ДЛЯ ТЕМНОЙ ТЕМЫ */
-        html, body, [class*="stApp"], [class*="css"] {
-            font-family: 'Inter', sans-serif;
-            background-color: #1E293B !important; /* Темный фон */
-            color: #FFFFFF !important; /* Весь текст белый */
-        }
+        /* 1. ОСНОВНАЯ СВЕТЛАЯ ТЕМА И ТИПОГРАФИКА */
+        html, body, [class*="stApp"], [class*="css"] {{
+            font-family: 'Inter', sans-serif; /* Используем Inter как бесплатную альтернативу Museo */
+            background-color: #FFFFFF !important;
+            color: {TEXT_COLOR} !important; 
+        }}
         
-        /* Заголовки, текст, лейблы - все белое */
-        h1, h2, h3, p, label, span, div, a {
-            color: #FFFFFF !important; 
-        }
-        
-        /* 2. Настройка контейнеров и полей ввода для темной темы */
-        /* Фон для селектов, инпутов, текстериа - более светлый, как на скриншотах */
+        /* Заголовки, текст, лейблы */
+        h1, h2, h3, p, label, span, div, a {{
+            color: {TEXT_COLOR} !important; 
+        }}
+
+        /* 2. Стилизация полей ввода (Inputs/Selects/TextAreas) */
         .stTextInput input, 
         .stTextArea textarea, 
         div[data-baseweb="select"] > div:first-child,
-        div[data-testid="stTextarea"] textarea {
-            color: #FFFFFF !important;
-            background-color: #2D3748 !important; /* Фон как на скриншотах (чуть светлее основного) */
-            border: 1px solid #4A5568 !important;
-        }
-
-        /* Кнопка (оставить яркой, текст белый) */
-        .stButton button {
-            background-color: #F97316;
+        div[data-testid="stTextarea"] textarea {{
+            color: {TEXT_COLOR} !important;
+            background-color: {LIGHT_BG} !important;
+            border: 1px solid {BORDER_COLOR} !important;
+            border-radius: 6px;
+        }}
+        
+        /* 3. Кнопка и Акцентный цвет (СИНИЙ с ГРАДИЕНТОМ) */
+        .stButton button {{
+            background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
             color: white !important;
             font-weight: bold;
             border-radius: 6px;
             height: 50px;
             width: 100%;
-        }
-        .stButton button:hover { background-color: #EA580C; color: white !important; }
+            border: none;
+        }}
+        .stButton button:hover {{ 
+            background-image: linear-gradient(to right, {PRIMARY_DARK}, {PRIMARY_COLOR});
+            color: white !important; 
+            opacity: 0.9;
+        }}
         
-        /* 3. Исправление выпадающих списков и модальных окон */
-        div[data-baseweb="popover"], div[data-baseweb="menu"], li, div[role="listbox"] {
-            background-color: #2D3748 !important; /* Темный фон для элементов выбора */
-            color: #FFFFFF !important; /* Белый текст */
-        }
+        /* 4. Выпадающие списки (Dropdowns) */
+        div[data-baseweb="popover"], div[data-baseweb="menu"], li, div[role="listbox"] {{
+            background-color: #FFFFFF !important; 
+            color: {TEXT_COLOR} !important; 
+            border: 1px solid {BORDER_COLOR} !important;
+            border-radius: 6px;
+        }}
         
-        /* 4. Стилизация радио-кнопок для имитации вкладок */
-        div[data-testid="stRadio"] label {
-            background-color: #334155;
+        /* 5. Радио-кнопки (Тип страницы, Источник конкурентов) */
+        div[data-testid="stRadio"] label {{
+            background-color: #F8FAFC; 
             border-radius: 6px;
             padding: 10px 15px;
             margin-right: 5px;
-            color: #E2E8F0;
-            border: 1px solid #475569;
+            color: {TEXT_COLOR};
+            border: 1px solid {BORDER_COLOR};
             transition: all 0.2s;
-        }
-        div[data-testid="stRadio"] label:hover {
-            background-color: #475569;
-        }
-        /* Выбранный элемент: оранжевая рамка и оранжевый текст */
-        div[data-testid="stRadio"] input:checked + div {
-            background-color: #334155 !important; 
-            color: #F97316 !important; 
-            border-color: #F97316 !important; 
-        }
-        div[data-testid="stRadio"] input[type="radio"] {
-            display: none;
-        }
+        }}
+        /* Выбранный элемент: Синий текст, рамка и точка */
+        div[data-testid="stRadio"] input:checked + div {{
+            background-color: #FFFFFF !important; 
+            color: {PRIMARY_COLOR} !important; 
+            border-color: {PRIMARY_COLOR} !important; 
+            font-weight: 600;
+        }}
         
+        /* 6. Общие отступы и контейнеры */
+        .stContainer[data-testid="stVerticalBlock"] {{
+            background-color: #FFFFFF; 
+            border-radius: 8px;
+            padding: 15px; 
+            border: 1px solid {BORDER_COLOR};
+            margin-bottom: 20px;
+        }}
         /* Уменьшение вертикального отступа между st.selectbox/st.text_input */
-        .stSelectbox, .stTextInput {
-            margin-bottom: 5px !important; /* Уменьшаем отступ снизу */
-        }
-        div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
-            gap: 0px; /* Убираем гап в контейнере, где расположены селекты */
-        }
-        
-        /* Уменьшение отступов для подписей */
-        .stCaption {
+        .stSelectbox, .stTextInput {{
+            margin-bottom: 5px !important;
+        }}
+        /* Подписи */
+        .stCaption {{
             margin-top: -5px; 
             margin-bottom: 10px;
-        }
+            color: #64748B !important;
+        }}
+        
+        /* Чекбоксы и радио-кнопки акцентного цвета */
+        [data-testid="stCheckbox"] svg, [data-testid="stRadio"] svg {{
+            color: {PRIMARY_COLOR} !important; /* Синий цвет для маркеров */
+        }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -143,7 +162,6 @@ except:
     USE_SEARCH = False
 
 def process_text(text, settings, n_gram=1):
-    # (Остальной код функций остается без изменений)
     pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' if settings['numbers'] else r'[а-яА-ЯёЁa-zA-Z]+'
     words = re.findall(pattern, text.lower())
     stops = set(w.lower() for w in settings['custom_stops'])
@@ -167,7 +185,6 @@ def process_text(text, settings, n_gram=1):
     return clean_words
 
 def parse_page(url, settings):
-    # (Остальной код функций остается без изменений)
     headers = {'User-Agent': settings['ua']}
     try:
         r = requests.get(url, headers=headers, timeout=15)
@@ -195,7 +212,6 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
-    # (Остальной код calculate_metrics остается без изменений)
     if not my_data or not my_data['body_text']:
         my_lemmas = []
         my_anchors = []
@@ -320,53 +336,55 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ИНТЕРФЕЙС (ИСПРАВЛЕННЫЙ)
+# 3. ИНТЕРФЕЙС (ФИНАЛЬНЫЙ СВЕТЛЫЙ СТИЛЬ С СИНИМ АКЦЕНТОМ)
 # ==========================================
 
 st.title("SEO Анализатор Релевантности")
 
 # --- БЛОК ВВОДА ---
+# Создаем контейнер для имитации "карточки" ввода
+with st.container(border=False):
 
-# 1. URL или код страницы Вашего сайта
-st.markdown("### URL или код страницы Вашего сайта")
-my_input_type = st.radio(
-    "Тип страницы", 
-    ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], 
-    horizontal=True,
-    label_visibility="collapsed",
-    key="my_page_source_radio"
-)
+    # 1. URL или код страницы Вашего сайта
+    st.markdown("### URL или код страницы Вашего сайта")
+    my_input_type = st.radio(
+        "Тип страницы", 
+        ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], 
+        horizontal=True,
+        label_visibility="collapsed",
+        key="my_page_source_radio"
+    )
 
-my_url = ""
-my_page_content = ""
+    my_url = ""
+    my_page_content = ""
 
-if my_input_type == "Релевантная страница на вашем сайте":
-    my_url = st.text_input("URL страницы", placeholder="https://site.ru/", label_visibility="collapsed")
-elif my_input_type == "Исходный код страницы или текст":
-    my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML-код или чистый текст страницы")
-elif my_input_type == "Без страницы":
-    st.info("Выбран анализ без страницы вашего сайта. Результаты будут включать только метрики ТОПа.")
+    if my_input_type == "Релевантная страница на вашем сайте":
+        my_url = st.text_input("URL страницы", placeholder="https://site.ru/", label_visibility="collapsed")
+    elif my_input_type == "Исходный код страницы или текст":
+        my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML-код или чистый текст страницы")
+    elif my_input_type == "Без страницы":
+        st.info("Выбран анализ без страницы вашего сайта. Результаты будут включать только метрики ТОПа.")
 
-# 2. Поисковой запрос
-st.markdown("### Поисковой запрос")
-query = st.text_input("Основной запрос", placeholder="Основной запрос", label_visibility="collapsed")
-st.checkbox("Дополнительные запросы", disabled=True, value=False)
+    # 2. Поисковой запрос
+    st.markdown("### Поисковой запрос")
+    query = st.text_input("Основной запрос", placeholder="Основной запрос", label_visibility="collapsed")
+    st.checkbox("Дополнительные запросы", disabled=True, value=False)
 
-# 3. Поиск или URL страниц конкурентов
-st.markdown("### Поиск или URL страниц конкурентов")
-source_type_new = st.radio(
-    "Источник конкурентов", 
-    ["Поиск", "Список url-адресов ваших конкурентов"], 
-    horizontal=True,
-    label_visibility="collapsed",
-    key="competitor_source_radio"
-)
-source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
+    # 3. Поиск или URL страниц конкурентов
+    st.markdown("### Поиск или URL страниц конкурентов")
+    source_type_new = st.radio(
+        "Источник конкурентов", 
+        ["Поиск", "Список url-адресов ваших конкурентов"], 
+        horizontal=True,
+        label_visibility="collapsed",
+        key="competitor_source_radio"
+    )
+    source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
 
 # --- 4. НАСТРОЙКИ (ПОСТОЯННО ОТКРЫТЫЙ БЛОК) ---
 st.markdown("##### ⚙️ Настройки")
 
-# Используем st.container для сохранения структуры без возможности свернуть
+# Используем st.container с border=True для "карточки" настроек
 with st.container(border=True): 
     
     # --- Блок 1: Выпадающие списки и Text Inputs (без колонок) ---
@@ -385,7 +403,7 @@ with st.container(border=True):
     # Устройство
     device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
     
-    # Анализировать ТОП (теперь после устройства)
+    # Анализировать ТОП
     top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
 
     # Учитывать тип страниц по url
@@ -416,7 +434,6 @@ with st.container(border=True):
     # --- Блок 3: Флажки ---
     st.markdown("###### Переключатели")
     
-    # Все флажки идут друг под другом в двух колонках
     col_check1, col_check2 = st.columns(2)
     with col_check1:
         st.checkbox("Исключать noindex/script/style/head/footer/nav", True, key="settings_noindex")
@@ -444,6 +461,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
             st.error("Введите запрос для поиска конкурентов!")
             st.stop()
 
+    # Сбор настроек из session_state
     settings = {
         'noindex': st.session_state.settings_noindex, 
         'alt_title': st.session_state.settings_alt, 
@@ -465,7 +483,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
                     st.error("Библиотека 'googlesearch' не найдена. Невозможно выполнить автоматический поиск ТОПа.")
                     st.stop()
 
-                found = search(query, num_results=top_n * 2, lang="ru")
+                found = search(query, num_results=st.session_state.settings_top_n * 2, lang="ru")
                 cnt = 0
                 for u in found:
                     if my_input_type == "Релевантная страница на вашем сайте" and my_url in u: continue
@@ -477,11 +495,10 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
     else: 
-        # Добавлено использование session_state для ручного списка
-        if 'manual_urls' not in st.session_state:
-             st.session_state.manual_urls = ""
-        target_urls = [u.strip() for u in st.session_state.manual_urls.split('\n') if u.strip()]
-        
+        # Добавлено поле для ручного списка, если выбрана эта опция
+        manual_urls = st.text_area("Список URL (каждый с новой строки)", height=200, key="manual_urls_area_run")
+        target_urls = [u.strip() for u in manual_urls.split('\n') if u.strip()]
+
     if not target_urls:
         st.error("Нет конкурентов для анализа.")
         st.stop()
@@ -558,7 +575,8 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
                 if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
                     st.session_state.page_number -= 1
             with col_p2:
-                st.markdown(f"<div style='text-align: center; padding-top: 10px;'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+                # Обновленный цвет текста пагинации
+                st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
             with col_p3:
                 if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
                     st.session_state.page_number += 1
