@@ -11,283 +11,115 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ И СТИЛИ
+# 1. СТИЛЬ (СВЕТЛЫЙ / СИНИЙ / ЧИТАЕМЫЙ)
 # ==========================================
-st.set_page_config(
-    layout="wide", 
-    page_title="ГАР PRO: Анализ", 
-    page_icon="📊",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="💎")
 
-# Глобальные переменные
-DEFAULT_EXCLUDE = ["yandex.ru", "avito.ru", "ozon.ru", "wildberries.ru", "youtube.com", "dzen.ru", "hh.ru", "t.me"]
-DEFAULT_STOPS = ["рублей", "руб", "купить", "цена", "шт", "см", "мм", "кг", "кв", "м2", "стр", "ул"]
-
-# ЧИСТЫЙ БЕЛЫЙ ДИЗАЙН С СИНИМИ АКЦЕНТАМИ
 st.markdown("""
     <style>
-        /* ПОЛНОСТЬЮ БЕЛЫЙ ФОН */
-        .stApp {
-            background: #ffffff !important;
-            color: #333333 !important;
+        /* ИМПОРТ ШРИФТА */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        /* 1. ГЛОБАЛЬНЫЙ ФОН (Светло-голубой) */
+        [data-testid="stAppViewContainer"] {
+            background-color: #F0F4F8 !important;
             font-family: 'Inter', sans-serif !important;
         }
-        
-        /* ГРАДИЕНТНЫЕ ЗАГОЛОВКИ */
-        .gradient-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-            -webkit-background-clip: text !important;
-            -webkit-text-fill-color: transparent !important;
-            background-clip: text !important;
-            font-weight: 700 !important;
-            margin-bottom: 1rem !important;
+        [data-testid="stHeader"] {
+            background-color: transparent !important;
         }
         
-        .gradient-subheader {
-            background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%) !important;
-            -webkit-background-clip: text !important;
-            -webkit-text-fill-color: transparent !important;
-            background-clip: text !important;
-            font-weight: 600 !important;
+        /* 2. ТЕКСТ (ТЕМНО-СИНИЙ, НЕ ЧЕРНЫЙ) */
+        h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
+            color: #1E293B !important; /* Slate 800 - мягкий темный цвет */
         }
-        
         h1 {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-            -webkit-background-clip: text !important;
-            -webkit-text-fill-color: transparent !important;
-            background-clip: text !important;
-            font-weight: 700 !important;
-            font-size: 2.5rem !important;
-            text-align: center !important;
-            margin-bottom: 2rem !important;
+            color: #1D4ED8 !important; /* Ярко-синий заголовок */
         }
         
-        h2 {
-            background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%) !important;
-            -webkit-background-clip: text !important;
-            -webkit-text-fill-color: transparent !important;
-            background-clip: text !important;
-            font-weight: 600 !important;
-            font-size: 1.5rem !important;
-            margin: 1.5rem 0 1rem 0 !important;
+        /* 3. УБИРАЕМ ЛИШНИЕ ОТСТУПЫ (ПУСТОТУ) */
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 3rem !important;
+            max-width: 1400px !important;
         }
         
-        h3 {
-            color: #2c5282 !important;
-            font-weight: 600 !important;
-            font-size: 1.2rem !important;
+        /* 4. ПОЛЯ ВВОДА (БЕЛЫЕ, СИНЯЯ ОБВОДКА) */
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
+            background-color: #FFFFFF !important;
+            color: #1E293B !important;
+            border: 1px solid #CBD5E1 !important;
+            border-radius: 6px !important;
         }
         
-        /* ОСНОВНЫЕ ЭЛЕМЕНТЫ */
-        .main .block-container {
-            background: #ffffff !important;
-            padding-top: 2rem !important;
+        /* Исправление ВЫПАДАЮЩИХ СПИСКОВ (Убираем черный фон) */
+        ul[data-baseweb="menu"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+        }
+        li[data-baseweb="option"] {
+            color: #1E293B !important;
+            background-color: #FFFFFF !important;
+        }
+        li[data-baseweb="option"]:hover {
+            background-color: #EFF6FF !important; /* Голубой при наведении */
+        }
+        div[data-baseweb="popover"] {
+            background-color: #FFFFFF !important;
         }
         
-        p, div, span, label {
-            color: #333333 !important;
-            font-family: 'Inter', sans-serif !important;
-        }
-        
-        /* КАРТОЧКИ И КОНТЕЙНЕРЫ */
-        .main-input-container {
-            background: #ffffff !important;
-            padding: 25px !important;
-            border-radius: 12px !important;
-            border: 2px solid #e2e8f0 !important;
-            margin-bottom: 25px !important;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
-        }
-        
-        /* КНОПКИ С ГРАДИЕНТОМ */
-        .stButton button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-            color: white !important;
-            font-weight: 600 !important;
-            border-radius: 10px !important;
-            height: 55px !important;
-            width: 100% !important;
+        /* 5. КНОПКА (СИНЯЯ) */
+        div.stButton > button {
+            background-color: #2563EB !important;
+            color: #FFFFFF !important;
             border: none !important;
-            font-size: 16px !important;
-            transition: all 0.3s ease !important;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
-        }
-        
-        .stButton button:hover {
-            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important;
-            transform: translateY(-2px) !important;
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
-            color: white !important;
-        }
-        
-        /* ТЕКСТОВЫЕ ПОЛЯ */
-        .stTextInput input, .stTextArea textarea {
-            background-color: #ffffff !important;
-            color: #333333 !important;
-            border: 2px solid #e2e8f0 !important;
             border-radius: 8px !important;
-            padding: 12px !important;
-            font-size: 14px !important;
+            font-weight: 600 !important;
+            padding: 0.5rem 1rem !important;
+            transition: all 0.2s;
+        }
+        div.stButton > button:hover {
+            background-color: #1D4ED8 !important;
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
         }
         
-        .stTextInput input:focus, .stTextArea textarea:focus {
-            border-color: #667eea !important;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+        /* 6. ТАБЛИЦЫ (ЧИСТЫЕ) */
+        div[data-testid="stDataFrame"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 8px;
+        }
+        [data-testid="stDataFrame"] th {
+            background-color: #F8FAFC !important;
+            color: #1E293B !important;
+        }
+        [data-testid="stDataFrame"] td {
+            color: #334155 !important;
+            background-color: #FFFFFF !important;
         }
         
-        /* РАДИО КНОПКИ */
-        .stRadio > div {
-            background-color: #ffffff !important;
-            padding: 15px !important;
-            border-radius: 10px !important;
-            border: 2px solid #e2e8f0 !important;
-            margin-bottom: 10px !important;
-        }
+        /* 7. УБИРАЕМ "ПУСТЫЕ БЕЛЫЕ ПОЛЯ" ИЗ ПРОШЛОЙ ВЕРСИИ */
+        .css-card { display: none; } /* Скрываем старый класс если остался */
         
-        .stRadio label {
-            color: #333333 !important;
-            font-weight: 500 !important;
-        }
-        
-        /* СЕЛЕКТЫ */
-        .stSelectbox select {
-            background-color: #ffffff !important;
-            color: #333333 !important;
-            border: 2px solid #e2e8f0 !important;
-            border-radius: 8px !important;
-        }
-        
-        /* ЧЕКБОКСЫ */
-        .stCheckbox {
-            color: #333333 !important;
-        }
-        
-        .stCheckbox > label {
-            color: #2c5282 !important;
-            font-weight: 500 !important;
-        }
-        
-        /* EXPANDER */
+        /* Expander (Настройки) */
         .streamlit-expanderHeader {
-            background: #ffffff !important;
-            color: #2c5282 !important;
-            font-weight: 600 !important;
-            border-radius: 8px !important;
-            border: 2px solid #e2e8f0 !important;
-            padding: 15px !important;
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
         }
         
-        .streamlit-expanderContent {
-            background-color: #ffffff !important;
-            border-radius: 0 0 8px 8px !important;
-            border: 2px solid #e2e8f0 !important;
-            border-top: none !important;
-        }
-        
-        /* ПРОГРЕСС БАР */
-        .stProgress > div > div > div {
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
-        }
-        
-        /* ТАБЛИЦЫ */
-        .dataframe {
-            border-radius: 8px !important;
-            border: 1px solid #e2e8f0 !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
-        }
-        
-        /* DIVIDER */
-        hr {
-            border-color: #e2e8f0 !important;
-            margin: 2rem 0 !important;
-        }
-        
-        /* SPINNER */
-        .stSpinner > div {
-            border-color: #667eea !important;
-        }
-        
-        /* ALERTS */
-        .stAlert {
-            border-radius: 8px !important;
-            border: 1px solid !important;
-        }
-        
-        /* LABELS */
-        .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label {
-            color: #2c5282 !important;
-            font-weight: 600 !important;
-            font-size: 14px !important;
-        }
-        
-        /* УБИРАЕМ ЛЮБЫЕ СЛЕДЫ ТЕМНОЙ ТЕМЫ */
-        .css-1d391kg, .css-1lcbmhc, .css-1outwn7 {
-            background-color: #ffffff !important;
-        }
-        
-        /* УЛУЧШЕННЫЕ РАДИО КНОПКИ */
-        .st-cc, .st-cd, .st-ce, .st-cf, .st-cg {
-            color: #333333 !important;
+        /* Тогглы */
+        label[data-testid="stLabel"] {
+            font-size: 14px;
+            font-weight: 600;
         }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. АВТОРИЗАЦИЯ
-# ==========================================
-def check_password():
-    if "password_correct" not in st.session_state:
-        st.session_state["password_correct"] = False
-    if st.session_state["password_correct"]: 
-        return True
-    
-    st.markdown("""
-        <div style='
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            min-height: 80vh;
-            background: #ffffff;
-        '>
-    """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        st.markdown("""
-            <div style='
-                background: #ffffff; 
-                padding: 40px; 
-                border-radius: 15px; 
-                border: 2px solid #e2e8f0; 
-                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-                text-align: center;
-            '>
-                <h2 style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 30px;'>🔐 Авторизация</h2>
-        """, unsafe_allow_html=True)
-        
-        pwd = st.text_input("Пароль доступа", type="password", key="auth_password")
-        
-        if st.button("Войти", key="auth_btn"):
-            if pwd == "admin123":
-                st.session_state["password_correct"] = True
-                st.rerun()
-            else: 
-                st.error("❌ Неверный пароль")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    return False
-
-if not check_password(): 
-    st.stop()
-
-# ==========================================
-# 3. БЭКЕНД (ЛОГИКА) - БЕЗ ИЗМЕНЕНИЙ
+# 2. БЭКЕНД
 # ==========================================
 
-# --- Патч NLP ---
 try:
     if not hasattr(inspect, 'getargspec'):
         def getargspec(func):
@@ -301,401 +133,325 @@ except:
     morph = None
     USE_NLP = False
 
-# --- Поиск ---
 try:
     from googlesearch import search
     USE_SEARCH = True
 except:
     USE_SEARCH = False
 
-# --- Парсинг ---
-def get_domain(url):
-    try: 
-        return urlparse(url).netloc
-    except: 
-        return url
+DEFAULT_EXCLUDE = ["yandex.ru", "avito.ru", "ozon.ru", "wildberries.ru", "youtube.com", "dzen.ru", "hh.ru", "t.me", "tiu.ru"]
+DEFAULT_STOPS = ["рублей", "руб", "купить", "цена", "шт", "см", "мм", "кг", "кв", "м2", "стр", "ул"]
+
+def process_text(text, settings, n_gram=1):
+    pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' if settings['numbers'] else r'[а-яА-ЯёЁa-zA-Z]+'
+    words = re.findall(pattern, text.lower())
+    stops = set(w.lower() for w in settings['custom_stops'])
+    clean_words = []
+    
+    for w in words:
+        if len(w) < 2 or w in stops: continue
+        lemma = w
+        if USE_NLP and n_gram == 1: 
+            p = morph.parse(w)[0]
+            if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
+            lemma = p.normal_form
+        clean_words.append(lemma)
+    
+    if n_gram > 1:
+        ngrams = []
+        for i in range(len(clean_words) - n_gram + 1):
+            phrase = " ".join(clean_words[i:i+n_gram])
+            ngrams.append(phrase)
+        return ngrams
+    return clean_words
 
 def parse_page(url, settings):
     headers = {'User-Agent': settings['ua']}
     try:
-        r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code != 200: 
-            return None
-        
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code != 200: return None
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # Мета-теги
-        title = soup.title.string if soup.title else ""
+        title = soup.title.string.strip() if soup.title and soup.title.string else ""
         desc = ""
         meta_desc = soup.find("meta", attrs={"name": "description"})
-        if meta_desc: 
-            desc = meta_desc.get("content", "")
+        if meta_desc: desc = meta_desc.get("content", "").strip()
         h1 = soup.find("h1").get_text(strip=True) if soup.find("h1") else ""
         
-        # Очистка
         if settings['noindex']:
-            for t in soup.find_all(['noindex', 'script', 'style']): 
-                t.decompose()
+            for t in soup.find_all(['noindex', 'script', 'style', 'head', 'footer', 'nav']): t.decompose()
         else:
-            for t in soup(['script', 'style']): 
-                t.decompose()
+            for t in soup(['script', 'style', 'head']): t.decompose()
             
-        # Анкоры
-        anchors_list = []
-        for a in soup.find_all('a'):
-            txt = a.get_text(strip=True)
-            if txt: 
-                anchors_list.append(txt)
+        anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
         
-        # Текст (Body)
-        body_text = soup.get_text(separator=' ')
+        extra_text = []
         if settings['alt_title']:
-            for img in soup.find_all('img', alt=True): 
-                body_text += " " + img['alt']
-            
+            for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
+            for t in soup.find_all(title=True): extra_text.append(t['title'])
+        body_text = soup.get_text(separator=' ') + " " + " ".join(extra_text)
+        
         return {
-            'url': url,
-            'domain': get_domain(url),
-            'title': title,
-            'desc': desc,
-            'h1': h1,
-            'body_text': body_text,
-            'anchor_text': anchor_text,
-            'status': 200
+            'url': url, 'domain': urlparse(url).netloc, 'title': title, 'desc': desc, 'h1': h1,
+            'body_text': body_text, 'anchor_text': anchor_text
         }
-    except:
-        return None
+    except: return None
 
-def process_lemmas(text, settings):
-    # Токенизация
-    pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' if settings['numbers'] else r'[а-яА-ЯёЁa-zA-Z]+'
-    words = re.findall(pattern, text)
+def calculate_metrics(comp_data, my_data, settings):
+    my_lemmas = process_text(my_data['body_text'], settings)
+    my_anchors = process_text(my_data['anchor_text'], settings)
     
-    lemmas = []
-    forms_map = {} # лемма -> список форм
+    comp_docs = []
+    for p in comp_data:
+        body = process_text(p['body_text'], settings)
+        anchor = process_text(p['anchor_text'], settings)
+        comp_docs.append({'body': body, 'anchor': anchor})
+        
+    avg_len = np.mean([len(d['body']) for d in comp_docs])
+    my_len = len(my_lemmas)
+    norm_k = (my_len / avg_len) if (settings['norm'] and avg_len > 0) else 1.0
     
-    stops = set(w.lower() for w in settings['custom_stops'])
+    vocab = set(my_lemmas)
+    for d in comp_docs: vocab.update(d['body'])
+    vocab = sorted(list(vocab))
     
-    for w in words:
-        w_lower = w.lower()
-        if len(w) < 2 or w_lower in stops: 
-            continue
+    N = len(comp_docs)
+    doc_freqs = Counter()
+    for d in comp_docs:
+        for w in set(d['body']): doc_freqs[w] += 1
         
-        lemma = w_lower
-        if USE_NLP:
-            p = morph.parse(w_lower)[0]
-            if settings['std_stops'] and ('PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag):
-                continue
-            lemma = p.normal_form
-            
-        lemmas.append(lemma)
+    k1, b = 1.2, 0.75
+    table_depth, table_hybrid = [], []
+    
+    for word in vocab:
+        df = doc_freqs[word]
+        if df < 2 and word not in my_lemmas: continue 
         
-        if lemma not in forms_map: 
-            forms_map[lemma] = set()
-        forms_map[lemma].add(w_lower)
+        my_tf = my_lemmas.count(word)
+        my_anch_tf = my_anchors.count(word)
         
-    return lemmas, forms_map
+        c_body_tfs = [d['body'].count(word) for d in comp_docs]
+        c_anch_tfs = [d['anchor'].count(word) for d in comp_docs]
+        
+        med_tf = np.median(c_body_tfs)
+        med_anch = np.median(c_anch_tfs)
+        max_tf = np.max(c_body_tfs)
+        mean_tf = np.mean(c_body_tfs)
+        
+        idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
+        
+        bm25_scores = []
+        for i, d in enumerate(comp_docs):
+            tf = c_body_tfs[i]
+            dl = len(d['body'])
+            score = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (dl / avg_len)))
+            bm25_scores.append(score)
+        bm25_top = np.median(bm25_scores)
+        bm25_my = idf * (my_tf * (k1 + 1)) / (my_tf + k1 * (1 - b + b * (my_len / avg_len)))
+        
+        target_body = int(med_tf * 1.3 * norm_k)
+        diff_body = target_body - my_tf
+        target_anch = int(med_anch * norm_k)
+        diff_anch = target_anch - my_anch_tf
+        
+        if med_tf > 0.5 or my_tf > 0:
+            table_depth.append({
+                "Слово": word, "Словоформы": word, "Повторы у вас": my_tf, 
+                "Минимум": np.min(c_body_tfs), "Максимум": int(max_tf * norm_k),
+                "Общее Добавить/Убрать": diff_body,
+                "Тег A у вас": my_anch_tf, "Тег A рекомендации": target_anch,
+                "Тег A Добавить/Убрать": diff_anch,
+                "Текст у вас": my_tf, "Текст рекомендации": target_body, "Текст Добавить/Убрать": diff_body,
+                "Переспам": int(max_tf * norm_k), "Переспам*IDF": round(max_tf * norm_k * idf, 1),
+                "diff_abs": abs(diff_body)
+            })
+            table_hybrid.append({
+                "Слово": word, "TF-IDF ТОП": round(med_tf * idf, 2), "TF-IDF ваш сайт": round(my_tf * idf, 2),
+                "BM25 ТОП": round(bm25_top, 2), "BM25 ваш сайт": round(bm25_my, 2), "IDF": round(idf, 2),
+                "Кол-во сайтов": df, "Медиана": round(med_tf, 1), "Переспам": max_tf,
+                "Среднее по ТОПу": round(mean_tf, 1), "Ваш сайт": my_tf,
+                "<a> по ТОПу": round(med_anch, 1), "<a> ваш сайт": my_anch_tf
+            })
+
+    my_bi = process_text(my_data['body_text'], settings, 2)
+    comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data]
+    all_bi = set(my_bi)
+    for c in comp_bi: all_bi.update(c)
+    
+    bi_freqs = Counter()
+    for c in comp_bi:
+        for b_ in set(c): bi_freqs[b_] += 1
+        
+    table_ngrams = []
+    for bg in all_bi:
+        df = bi_freqs[bg]
+        if df < 2 and bg not in my_bi: continue
+        my_c = my_bi.count(bg)
+        comp_c = [c.count(bg) for c in comp_bi]
+        med_c = np.median(comp_c)
+        if med_c > 0 or my_c > 0:
+            table_ngrams.append({
+                "N-грамма": bg, "Кол-во сайтов": df, "Медианное вхождение": med_c,
+                "Среднее": round(np.mean(comp_c), 1), "На нашем сайте": my_c,
+                "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
+            })
+
+    table_rel = []
+    for i, p in enumerate(comp_data):
+        p_lemmas = process_text(p['body_text'], settings)
+        w = len(set(p_lemmas).intersection(vocab))
+        table_rel.append({
+            "Домен": p['domain'], "Позиция": i+1, "URL": p['url'],
+            "Ширина": w, "Глубина": len(p_lemmas)
+        })
+        
+    return {
+        "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
+        "ngrams": pd.DataFrame(table_ngrams), "relevance_top": pd.DataFrame(table_rel),
+        "my_metrics": {"words": len(my_lemmas), "unique": len(set(my_lemmas))}
+    }
 
 # ==========================================
-# 4. ИНТЕРФЕЙС
+# 3. ИНТЕРФЕЙС
 # ==========================================
 
-st.markdown('<h1>🎯 ГАР PRO: Анализатор Релевантности</h1>', unsafe_allow_html=True)
+st.markdown("<h1>SEO Анализатор Релевантности</h1>", unsafe_allow_html=True)
 
-# ГЛАВНЫЙ БЛОК ВВОДА
-with st.container():
-    st.markdown('<div class="main-input-container">', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1:
-        my_url = st.text_input(
-            "Ваш URL (Обязательно)", 
-            placeholder="https://mysite.ru/catalog/page",
-            key="my_url"
-        )
-    with c2:
-        query = st.text_input(
-            "Поисковой запрос", 
-            placeholder="купить товар москва",
-            key="query"
-        )
-    st.markdown('</div>', unsafe_allow_html=True)
+# 1. ОСНОВНОЙ ВВОД (URL и ЗАПРОС)
+col_in1, col_in2 = st.columns(2)
+with col_in1:
+    my_url = st.text_input("Ваш URL (Обязательно)", placeholder="https://site.ru/catalog")
+with col_in2:
+    query = st.text_input("Поисковой запрос", placeholder="пластиковые окна купить")
 
-# ИСТОЧНИК КОНКУРЕНТОВ
-st.markdown('<h2>📊 Источник конкурентов</h2>', unsafe_allow_html=True)
-source_mode = st.radio(
-    "Выберите источник:",
-    ["Google Поиск (Авто)", "Ручной список"], 
-    horizontal=True, 
-    key="source_mode"
-)
+# 2. ИСТОЧНИК КОНКУРЕНТОВ
+st.markdown("#### 🕵️ Конкуренты")
+source_type = st.radio("Источник:", ["Google Поиск (Авто)", "Список URL вручную"], horizontal=True, label_visibility="collapsed")
 
-competitors_final = []
-
-if source_mode == "Google Поиск (Авто)":
-    c_s1, c_s2 = st.columns([1, 3])
+if source_type == "Google Поиск (Авто)":
+    c_s1, c_s2 = st.columns([1, 4])
     with c_s1:
-        top_count = st.selectbox("Анализировать ТОП:", [5, 10, 20], index=1, key="top_count")
+        top_n = st.selectbox("Глубина ТОПа", [5, 10, 20], index=1)
     with c_s2:
-        exclude_domains = st.text_input(
-            "Исключить домены (через пробел)", 
-            " ".join(DEFAULT_EXCLUDE),
-            key="exclude_domains"
-        )
+        excludes = st.text_input("Исключить домены (через пробел)", " ".join(DEFAULT_EXCLUDE))
 else:
-    manual_urls = st.text_area(
-        "Список URL конкурентов (каждый с новой строки)", 
-        height=150,
-        key="manual_urls",
-        placeholder="https://competitor1.com\nhttps://competitor2.com\nhttps://competitor3.com"
-    )
+    manual_urls = st.text_area("Список URL (каждый с новой строки)", height=150)
 
-# НАСТРОЙКИ
-with st.expander("⚙️ Настройки анализа", expanded=True):
-    col_set1, col_set2, col_set3 = st.columns(3)
-    with col_set1:
-        s_noindex = st.checkbox("Исключать noindex", True, key="s_noindex")
-        s_alt = st.checkbox("Учитывать Alt/Title", False, key="s_alt")
-    with col_set2:
-        s_norm = st.checkbox("Нормировать по длине", True, key="s_norm")
-        s_num = st.checkbox("Учитывать числа", False, key="s_num")
-    with col_set3:
-        s_std_stops = st.checkbox("Убирать предлоги", True, key="s_std_stops")
+# 3. НАСТРОЙКИ (2 колонки: слева текст, справа галочки)
+st.markdown("#### ⚙️ Настройки")
+with st.expander("Открыть настройки", expanded=True):
+    col_left, col_right = st.columns([2, 1])
     
-    custom_stops_text = st.text_area(
-        "Стоп-слова (каждое с новой строки)", 
-        "\n".join(DEFAULT_STOPS), 
-        height=100,
-        key="custom_stops"
-    )
-    user_agent = st.text_input(
-        "User-Agent", 
-        "Mozilla/5.0 (compatible; Hybrid-Analyzer/1.0;)",
-        key="user_agent"
-    )
+    with col_left:
+        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0", "Googlebot/2.1"])
+        c_stops = st.text_area("Стоп-слова (каждое с новой строки)", "\n".join(DEFAULT_STOPS), height=100)
+    
+    with col_right:
+        st.write("") # Отступ сверху
+        s_noindex = st.checkbox("Исключать noindex", True)
+        s_alt = st.checkbox("Учитывать Alt/Title", False)
+        s_num = st.checkbox("Учитывать числа", False)
+        s_norm = st.checkbox("Нормировать по длине", True)
+        s_agg = st.checkbox("Исключать агрегаторы", True)
 
-# КНОПКА ЗАПУСКА
-if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ", key="analyze_btn"):
+st.markdown("---")
+
+# 4. КНОПКА ЗАПУСКА
+if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
+    
     if not my_url:
-        st.error("❌ Вы не ввели URL вашего сайта!")
+        st.error("Введите URL вашего сайта!")
         st.stop()
         
     settings = {
-        'noindex': s_noindex, 
-        'alt_title': s_alt, 
-        'numbers': s_num,
-        'norm': s_norm, 
-        'std_stops': s_std_stops,
-        'custom_stops': custom_stops_text.split(), 
-        'ua': user_agent
+        'noindex': s_noindex, 'alt_title': s_alt, 'numbers': s_num,
+        'norm': s_norm, 'ua': ua, 'custom_stops': c_stops.split()
     }
     
-    # 1. Сбор URL
+    # ЛОГИКА
     target_urls = []
-    if source_mode == "Google Поиск (Авто)":
+    if source_type == "Google Поиск (Авто)":
         if not query:
-            st.error("❌ Введите поисковый запрос!")
+            st.error("Введите запрос!")
             st.stop()
         try:
-            excl = exclude_domains.split()
-            found = search(query, num_results=top_count*2, lang="ru")
-            cnt = 0
-            for u in found:
-                if my_url in u: 
-                    continue
-                if any(x in u for x in excl): 
-                    continue
-                target_urls.append(u)
-                cnt += 1
-                if cnt >= top_count: 
-                    break
+            excl = excludes.split()
+            if s_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu"])
+            with st.spinner("Сбор ТОПа..."):
+                found = search(query, num_results=top_n*2, lang="ru")
+                cnt = 0
+                for u in found:
+                    if my_url in u: continue
+                    if any(x in u for x in excl): continue
+                    target_urls.append(u)
+                    cnt += 1
+                    if cnt >= top_n: break
         except Exception as e:
-            st.error(f"❌ Ошибка поиска: {e}")
+            st.error(f"Ошибка: {e}")
             st.stop()
     else:
         target_urls = [u.strip() for u in manual_urls.split('\n') if u.strip()]
         
     if not target_urls:
-        st.error("❌ Список конкурентов пуст!")
+        st.error("Нет конкурентов.")
         st.stop()
         
-    # 2. Сбор данных
-    all_pages_data = []
+    # ПАРСИНГ
+    prog = st.progress(0)
+    status = st.empty()
     
-    # Сначала мой сайт
-    with st.spinner("🔍 Анализ вашего сайта..."):
-        my_page = parse_page(my_url, settings)
-        if not my_page:
-            st.error("❌ Ваш сайт недоступен!")
-            st.stop()
-            
-    # Конкуренты
-    progress_bar = st.progress(0)
-    comp_pages = []
-    
+    status.text("Скачиваем ваш сайт...")
+    my_data = parse_page(my_url, settings)
+    if not my_data:
+        st.error("Ошибка доступа к вашему сайту.")
+        st.stop()
+        
+    comp_data = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
         done = 0
         for f in concurrent.futures.as_completed(futures):
             res = f.result()
-            if res: 
-                comp_pages.append(res)
+            if res: comp_data.append(res)
             done += 1
-            progress_bar.progress(done / len(target_urls))
+            prog.progress(done / len(target_urls))
             
-    if len(comp_pages) < 2:
-        st.error("❌ Мало данных (нужно хотя бы 2 конкурента).")
+    prog.empty()
+    status.empty()
+    
+    if len(comp_data) < 2:
+        st.error("Мало данных.")
         st.stop()
         
-    # ==========================================
-    # 5. МАТЕМАТИКА И ТАБЛИЦЫ
-    # ==========================================
+    # ВЫВОД
+    results = calculate_metrics(comp_data, my_data, settings)
+    st.success("Готово!")
     
-    # Лемматизация
-    my_body_lemmas, my_body_forms = process_lemmas(my_page['body_text'], settings)
-    my_anchor_lemmas, my_anchor_forms = process_lemmas(my_page['anchor_text'], settings)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Ширина (Охват)", results['my_score']['width'])
+    m2.metric("Глубина (Слов)", results['my_score']['depth'])
+    m3.metric("Конкурентов", len(comp_data))
     
-    comp_stats = [] # Список словарей с леммами конкурентов
-    for p in comp_pages:
-        bl, _ = process_lemmas(p['body_text'], settings)
-        al, _ = process_lemmas(p['anchor_text'], settings)
-        comp_stats.append({'body': bl, 'anchor': al, 'len': len(bl)})
-        
-    # Нормировка
-    avg_len = np.mean([c['len'] for c in comp_stats])
-    my_len = len(my_body_lemmas)
-    norm_k = (my_len / avg_len) if (settings['norm'] and avg_len > 0) else 1.0
-    
-    # Собираем все уникальные слова (Словарь)
-    vocab = set(my_body_lemmas)
-    for c in comp_stats: 
-        vocab.update(c['body'])
-    vocab = sorted(list(vocab))
-    
-    # Сборка главной таблицы (Рекомендации по глубине)
-    rows = []
-    
-    # Для IDF
-    N = len(comp_stats)
-    doc_freqs = Counter()
-    for c in comp_stats:
-        for w in set(c['body']): 
-            doc_freqs[w] += 1
-    
-    for word in vocab:
-        # У меня
-        my_body_tf = my_body_lemmas.count(word)
-        my_anchor_tf = my_anchor_lemmas.count(word)
-        
-        # У конкурентов (массивы)
-        c_body_tfs = [c['body'].count(word) for c in comp_stats]
-        c_anchor_tfs = [c['anchor'].count(word) for c in comp_stats]
-        
-        # Статистика
-        median_body = np.median(c_body_tfs)
-        median_anchor = np.median(c_anchor_tfs)
-        max_spam = np.max(c_body_tfs)
-        
-        # Целевые значения (с учетом нормировки)
-        target_body = int(median_body * 1.3 * norm_k)
-        target_anchor = int(median_anchor * 1.3 * norm_k)
-        
-        diff_body = target_body - my_body_tf
-        diff_anchor = target_anchor - my_anchor_tf
-        
-        # IDF
-        df = doc_freqs[word]
-        idf = math.log((N / (df if df>0 else 1)) + 1)
-        
-        # Фильтр мусора (если слово есть только у одного или незначимо)
-        if (median_body > 0.5 or my_body_tf > 0):
-            # Сбор словоформ для отображения
-            forms = []
-            if word in my_body_forms: 
-                forms.extend(my_body_forms[word])
-            forms_str = ", ".join(list(set(forms))[:3])
-            
-            rows.append({
-                "Слово": word,
-                "Словоформы": forms_str,
-                "Повторы у вас": my_body_tf,
-                "Общее Добавить/Убрать": diff_body,
-                
-                "Тег A у вас": my_anchor_tf,
-                "Тег A рекомендации": target_anchor,
-                "Тег A Добавить/Убрать": diff_anchor,
-                
-                "Текст у вас": my_body_tf,
-                "Текст рекомендации": target_body,
-                "Текст Добавить/Убрать": diff_body,
-                
-                "Переспам": int(max_spam * norm_k),
-                "Переспам*IDF": round(max_spam * norm_k * idf, 1),
-                
-                "diff_abs": abs(diff_body) # Скрытое поле для сортировки
-            })
-            
-    df_main = pd.DataFrame(rows)
-    
-    # --- ВЫВОД РЕЗУЛЬТАТОВ ---
-    
-    st.divider()
-    
-    # 1. ТАБЛИЦА: РЕКОМЕНДАЦИИ ПО ГЛУБИНЕ
-    st.markdown('<h2>📈 Рекомендации по глубине</h2>', unsafe_allow_html=True)
-    if not df_main.empty:
-        df_main = df_main.sort_values(by="diff_abs", ascending=False)
-        
-        # Стилизация (подсветка)
-        def color_diff(val):
-            if val > 0: 
-                return 'background-color: #f0fff4; color: #22543d; border-left: 4px solid #38a169;'
-            if val < 0: 
-                return 'background-color: #fff5f5; color: #742a2a; border-left: 4px solid #e53e3e;'
+    st.markdown("### 1. Рекомендации по глубине")
+    df_d = results['depth']
+    if not df_d.empty:
+        df_d = df_d.sort_values(by="diff_abs", ascending=False)
+        def color(v):
+            if isinstance(v, (int, float)):
+                if v > 0: return 'background-color: #DCFCE7; color: #14532D' # Green
+                if v < 0: return 'background-color: #FEE2E2; color: #7F1D1D' # Red
             return ''
-            
         st.dataframe(
-            df_main.style.map(color_diff, subset=['Общее Добавить/Убрать', 'Тег A Добавить/Убрать', 'Текст Добавить/Убрать']),
-            column_config={"diff_abs": None},
-            use_container_width=True,
-            height=600
+            df_d.style.map(color, subset=['Общее Добавить/Убрать', 'Тег A Добавить/Убрать', 'Текст Добавить/Убрать']),
+            column_config={"diff_abs": None}, use_container_width=True, height=600
         )
-    else:
-        st.warning("Нет данных.")
-
-    # 2. ТАБЛИЦА: МЕТА-ТЕГИ
-    st.markdown('<h2>🔍 Информация по мета-тегам</h2>', unsafe_allow_html=True)
-    meta_data = []
-    # Мой сайт
-    meta_data.append({
-        "Тип": "Ваш сайт",
-        "Title": my_page['title'],
-        "Description": my_page['desc'],
-        "H1": my_page['h1']
-    })
-    # Конкуренты (первые 5)
-    for i, p in enumerate(comp_pages[:5]):
-        meta_data.append({
-            "Тип": f"Конкурент {i+1} ({p['domain']})",
-            "Title": p['title'],
-            "Description": p['desc'],
-            "H1": p['h1']
-        })
-    st.dataframe(pd.DataFrame(meta_data), use_container_width=True)
-
-    # 3. ТАБЛИЦА: ТОП РЕЛЕВАНТНОСТИ ДОКУМЕНТОВ
-    st.markdown('<h2>🏆 ТОП релевантности документов</h2>', unsafe_allow_html=True)
-    top_rows = []
-    for i, p in enumerate(comp_pages):
-        # Простой расчет релевантности (кол-во слов из общего словаря)
-        p_lemmas, _ = process_lemmas(p['body_text'], settings)
-        coverage = len(set(p_lemmas).intersection(vocab))
+    
+    with st.expander("2. Гибридный ТОП униграм"):
+        st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
         
-        top_rows.append({
-            "Домен": p['domain'],
-            "Позиция": i+1,
-            "URL": p['url'],
-            "Ширина (Охват)": coverage,
-            "Глубина (Всего слов)": len(p_lemmas)
-        })
-    st.dataframe(pd.DataFrame(top_rows), use_container_width=True)
+    with st.expander("3. N-граммы"):
+        st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
+        
+    with st.expander("4. ТОП релевантности"):
+        st.dataframe(results['relevance_top'], use_container_width=True)
