@@ -46,13 +46,12 @@ DARK_BORDER = "#222222"      # Почти черный для контуров
 MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
 
 # ==========================================
-# CSS СТИЛИ (ИСПРАВЛЕННЫЕ - ЖЕСТКОЕ ПЕРЕОПРЕДЕЛЕНИЕ ЦВЕТОВ)
+# CSS СТИЛИ (ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ КРУЖКОВ)
 # ==========================================
 st.markdown(f"""
    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* ГЛОБАЛЬНОЕ ПЕРЕОПРЕДЕЛЕНИЕ ТЕМЫ STREAMLIT */
         :root {{
             --primary-color: {PRIMARY_COLOR};
             --text-color: {TEXT_COLOR};
@@ -70,9 +69,7 @@ st.markdown(f"""
             max-width: 100% !important; 
         }}
         
-        /* ======================================================= */
-        /* ПОЛЯ ВВОДА                                              */
-        /* ======================================================= */
+        /* ПОЛЯ ВВОДА */
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
@@ -87,9 +84,7 @@ st.markdown(f"""
         }}
         .stSelectbox svg {{ fill: {TEXT_COLOR} !important; }}
 
-        /* ======================================================= */
-        /* ВЫПАДАЮЩИЕ СПИСКИ (Белый фон)                           */
-        /* ======================================================= */
+        /* ВЫПАДАЮЩИЕ СПИСКИ */
         div[data-baseweb="popover"], ul[data-baseweb="menu"] {{
             background-color: #FFFFFF !important;
             border: 1px solid {BORDER_COLOR} !important;
@@ -105,10 +100,30 @@ st.markdown(f"""
         }}
         
         /* ======================================================= */
-        /* РАДИО-КНОПКИ (ИСПРАВЛЕНИЕ: БЕЛЫЙ ПУСТОЙ, СИНИЙ ПОЛНЫЙ)  */
+        /* !!! КРУЖКИ (RADIO ICONS) - ЖЕСТКОЕ ИСПРАВЛЕНИЕ !!!      */
         /* ======================================================= */
 
-        /* 1. Контейнер самой радио-кнопки */
+        /* 1. Находим "внешний" круг у НЕВЫБРАННОГО элемента.
+           Он обычно наследует цвет. Делаем его БЕЛЫМ с ЧЕРНОЙ рамкой. */
+        div[role="radiogroup"] div[data-baseweb="radio"] > div {{
+            background-color: #FFFFFF !important;  /* БЕЛЫЙ ФОН */
+            border: 1px solid #000000 !important;  /* ЧЕРНАЯ РАМКА */
+        }}
+        
+        /* 2. Находим "внешний" круг у ВЫБРАННОГО (checked) элемента.
+           Делаем его СИНИМ. */
+        div[role="radiogroup"] input:checked + div[data-baseweb="radio"] > div {{
+            background-color: {PRIMARY_COLOR} !important; /* СИНИЙ ФОН */
+            border: 1px solid {PRIMARY_COLOR} !important; /* СИНЯЯ РАМКА */
+        }}
+
+        /* 3. Внутренняя точка у ВЫБРАННОГО элемента.
+           Делаем её БЕЛОЙ. */
+        div[role="radiogroup"] input:checked + div[data-baseweb="radio"] > div > div {{
+            background-color: #FFFFFF !important;
+        }}
+
+        /* 4. Контейнер радио-кнопки (прямоугольник вокруг) */
         div[role="radiogroup"] label {{
             background-color: transparent !important;
             border: 1px solid {BORDER_COLOR};
@@ -116,36 +131,15 @@ st.markdown(f"""
             padding: 10px 15px;
             margin-right: 5px;
         }}
-
-        /* 2. КРУЖОК - НЕ ВЫБРАН */
-        /* Принудительно ставим БЕЛЫЙ фон и ЧЕРНУЮ (темную) рамку */
-        div[role="radiogroup"] label div[data-baseweb="radio"] > div {{
-            background-color: #FFFFFF !important;  /* БЕЛЫЙ ФОН */
-            border: 1px solid #000000 !important;  /* ЧЕРНАЯ РАМКА */
-        }}
-
-        /* 3. КРУЖОК - ВЫБРАН */
-        /* Когда input:checked, красим круг в СИНИЙ */
-        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div {{
-            background-color: {PRIMARY_COLOR} !important; /* СИНИЙ ФОН */
-            border-color: {PRIMARY_COLOR} !important;     /* СИНЯЯ РАМКА */
-            border-width: 1px !important;
-        }}
         
-        /* 4. ВНУТРЕННЯЯ ТОЧКА при выборе */
-        /* Делаем её белой, чтобы было видно, что выбрано (Синий круг с белой точкой) */
-        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div > div {{
-            background-color: #FFFFFF !important; 
-        }}
-        
-        /* 5. Подсветка рамки всего блока при выборе */
+        /* 5. Подсветка прямоугольника, когда выбрано */
         div[role="radiogroup"] label:has(input:checked) {{
             border-color: {PRIMARY_COLOR} !important;
-            background-color: #F0F7FF !important; /* Легкий синий фон для всего блока */
+            background-color: #F0F7FF !important; 
         }}
 
         /* ======================================================= */
-        /* ЧЕКБОКСЫ (АНАЛОГИЧНО)                                   */
+        /* ЧЕКБОКСЫ (КВАДРАТИКИ)                                   */
         /* ======================================================= */
         
         /* НЕ ВЫБРАН: Белый квадрат, Черная рамка */
@@ -154,25 +148,16 @@ st.markdown(f"""
             border: 1px solid #000000 !important;
         }}
         
-        /* ВЫБРАН: Синий квадрат, Синяя рамка */
+        /* ВЫБРАН: Синий квадрат */
         div[data-baseweb="checkbox"] input:checked + div:first-child {{
             background-color: {PRIMARY_COLOR} !important;
             border-color: {PRIMARY_COLOR} !important;
         }}
-        
-        /* Галочка внутри белая */
         div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
             fill: #FFFFFF !important;
         }}
         
-        /* Убираем красный ховер */
-        div[data-baseweb="checkbox"]:hover > div:first-child {{
-            border-color: {PRIMARY_COLOR} !important;
-        }}
-
-        /* ======================================================= */
-        /* КНОПКА                                                  */
-        /* ======================================================= */
+        /* КНОПКА */
         .stButton button {{
             background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
             color: white !important;
@@ -181,9 +166,7 @@ st.markdown(f"""
             height: 50px;
         }}
         
-        /* ======================================================= */
-        /* САЙДБАР                                                 */
-        /* ======================================================= */
+        /* САЙДБАР */
         .st-emotion-cache-1cpxwwu {{ 
             width: 65% !important; max-width: 65% !important;
         }}
