@@ -21,41 +21,41 @@ def check_password():
             footer {visibility: hidden;}
             .stDeployButton {display: none;}
             
-            /* Белый фон и компактный layout */
+            /* Жесткое центрирование всего контента */
             .stApp {
                 background: white !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
             }
-            .block-container {
-                padding-top: 1rem !important;
-                padding-bottom: 1rem !important;
+            
+            .main .block-container {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                min-height: 100vh !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
                 max-width: 100% !important;
             }
             
-            /* Центрируем и делаем компактным */
-            .main .block-container {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                min-height: 100vh;
-                padding: 0 !important;
+            /* Центрирование логотипа */
+            [data-testid="stImage"] {
+                display: block !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+            }
+            
+            /* Центрирование поля ввода */
+            .stTextInput {
+                display: flex !important;
+                justify-content: center !important;
+            }
+            .stTextInput > div {
+                width: 547px !important;
                 margin: 0 auto !important;
-            }
-            
-            /* Стили для логотипа */
-            .logo-container {
-                margin-bottom: 2rem;
-                text-align: center;
-                width: 100%;
-                display: flex;
-                justify-content: center;
-            }
-            
-            /* Стили для поля ввода */
-            .input-container {
-                width: 547px;
-                text-align: center;
-                margin: 0 auto;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -67,9 +67,6 @@ def check_password():
                 background: white !important;
                 color: #3D4858 !important;
             }
-            .stTextInput input::placeholder {
-                color: #94a3b8 !important;
-            }
             
             /* Кнопка глазика */
             button[data-testid="baseButton-secondary"] {
@@ -78,17 +75,16 @@ def check_password():
                 min-width: 40px !important;
                 min-height: 40px !important;
                 padding: 0 !important;
-                margin-right: 8px !important;
             }
             
-            /* Стили для кнопки Войти */
-            .login-button {
-                width: 547px;
-                margin: 1rem auto 0 auto;
-                text-align: center;
-            }
-            .stButton button {
+            /* Центрирование кнопки Войти */
+            .stButton {
+                display: flex !important;
+                justify-content: center !important;
                 width: 100% !important;
+            }
+            .stButton > button {
+                width: 547px !important;
                 height: 56px !important;
                 background-image: linear-gradient(to right, #277EFF, #1E63C4) !important;
                 color: white !important;
@@ -96,22 +92,25 @@ def check_password():
                 border-radius: 8px !important;
                 font-size: 16px !important;
                 font-weight: 600 !important;
+                margin: 1rem auto !important;
             }
             
-            /* Убираем лишние отступы */
-            .css-1d391kg {
-                padding: 0 !important;
+            /* Центрирование ошибки */
+            .stAlert {
+                display: flex !important;
+                justify-content: center !important;
+            }
+            .stAlert > div {
+                width: 547px !important;
+                margin: 1rem auto !important;
             }
             </style>
         """, unsafe_allow_html=True)
         
         # Логотип
-        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
-        st.markdown('</div>', unsafe_allow_html=True)
         
         # Поле ввода пароля
-        st.markdown('<div class="input-container">', unsafe_allow_html=True)
         st.text_input(
             "Введите пароль",
             type="password",
@@ -120,13 +119,10 @@ def check_password():
             placeholder="Введите пароль",
             label_visibility="collapsed"
         )
-        st.markdown('</div>', unsafe_allow_html=True)
         
         # Кнопка Войти
-        st.markdown('<div class="login-button">', unsafe_allow_html=True)
-        if st.button("ВОЙТИ", type="primary", use_container_width=True, key="login_btn"):
+        if st.button("ВОЙТИ", type="primary", key="login_btn"):
             password_entered()
-        st.markdown('</div>', unsafe_allow_html=True)
         
         return False
     elif not st.session_state["password_correct"]:
@@ -137,41 +133,41 @@ def check_password():
             footer {visibility: hidden;}
             .stDeployButton {display: none;}
             
-            /* Белый фон и компактный layout */
+            /* Жесткое центрирование всего контента */
             .stApp {
                 background: white !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
             }
-            .block-container {
-                padding-top: 1rem !important;
-                padding-bottom: 1rem !important;
+            
+            .main .block-container {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                min-height: 100vh !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
                 max-width: 100% !important;
             }
             
-            /* Центрируем и делаем компактным */
-            .main .block-container {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                min-height: 100vh;
-                padding: 0 !important;
+            /* Центрирование логотипа */
+            [data-testid="stImage"] {
+                display: block !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+            }
+            
+            /* Центрирование поля ввода */
+            .stTextInput {
+                display: flex !important;
+                justify-content: center !important;
+            }
+            .stTextInput > div {
+                width: 547px !important;
                 margin: 0 auto !important;
-            }
-            
-            /* Стили для логотипа */
-            .logo-container {
-                margin-bottom: 2rem;
-                text-align: center;
-                width: 100%;
-                display: flex;
-                justify-content: center;
-            }
-            
-            /* Стили для поля ввода */
-            .input-container {
-                width: 547px;
-                text-align: center;
-                margin: 0 auto;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -183,9 +179,6 @@ def check_password():
                 background: white !important;
                 color: #3D4858 !important;
             }
-            .stTextInput input::placeholder {
-                color: #94a3b8 !important;
-            }
             
             /* Кнопка глазика */
             button[data-testid="baseButton-secondary"] {
@@ -194,17 +187,16 @@ def check_password():
                 min-width: 40px !important;
                 min-height: 40px !important;
                 padding: 0 !important;
-                margin-right: 8px !important;
             }
             
-            /* Стили для кнопки Войти */
-            .login-button {
-                width: 547px;
-                margin: 1rem auto 0 auto;
-                text-align: center;
-            }
-            .stButton button {
+            /* Центрирование кнопки Войти */
+            .stButton {
+                display: flex !important;
+                justify-content: center !important;
                 width: 100% !important;
+            }
+            .stButton > button {
+                width: 547px !important;
                 height: 56px !important;
                 background-image: linear-gradient(to right, #277EFF, #1E63C4) !important;
                 color: white !important;
@@ -212,22 +204,25 @@ def check_password():
                 border-radius: 8px !important;
                 font-size: 16px !important;
                 font-weight: 600 !important;
+                margin: 1rem auto !important;
             }
             
-            /* Убираем лишние отступы */
-            .css-1d391kg {
-                padding: 0 !important;
+            /* Центрирование ошибки */
+            .stAlert {
+                display: flex !important;
+                justify-content: center !important;
+            }
+            .stAlert > div {
+                width: 547px !important;
+                margin: 1rem auto !important;
             }
             </style>
         """, unsafe_allow_html=True)
         
         # Логотип
-        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
-        st.markdown('</div>', unsafe_allow_html=True)
         
         # Поле ввода пароля
-        st.markdown('<div class="input-container">', unsafe_allow_html=True)
         st.text_input(
             "Введите пароль",
             type="password",
@@ -236,13 +231,10 @@ def check_password():
             placeholder="Введите пароль",
             label_visibility="collapsed"
         )
-        st.markdown('</div>', unsafe_allow_html=True)
         
         # Кнопка Войти
-        st.markdown('<div class="login-button">', unsafe_allow_html=True)
-        if st.button("ВОЙТИ", type="primary", use_container_width=True, key="login_btn"):
+        if st.button("ВОЙТИ", type="primary", key="login_btn"):
             password_entered()
-        st.markdown('</div>', unsafe_allow_html=True)
         
         st.error("😕 Неверный пароль")
         
@@ -984,6 +976,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
