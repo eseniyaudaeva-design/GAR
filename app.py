@@ -1,6 +1,32 @@
 import streamlit as st
 
 # ==========================================
+# АВТОРИЗАЦИЯ
+# ==========================================
+
+def check_auth():
+    """Проверка авторизации"""
+    if not st.session_state.get('authenticated'):
+        # Показываем страницу авторизации
+        try:
+            with open('login.html', 'r', encoding='utf-8') as f:
+                login_html = f.read()
+            st.markdown(login_html, unsafe_allow_html=True)
+            
+            # Кнопка для входа
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("ВОЙТИ", key="auth_button", use_container_width=True):
+                    st.session_state.authenticated = True
+                    st.rerun()
+            st.stop()
+        except FileNotFoundError:
+            st.error("Файл авторизации не найден")
+            st.stop()
+
+# Проверяем авторизацию при запуске
+check_auth()
+# ==========================================
 # 0. АВТОРИЗАЦИЯ
 # ==========================================
 def check_password():
@@ -947,6 +973,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
