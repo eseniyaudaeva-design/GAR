@@ -16,6 +16,14 @@ def check_password():
         # Стили для окна авторизации
         st.markdown("""
             <style>
+            /* Скрываем ВСЕ лишние элементы Streamlit */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            .stDeployButton {display: none;}
+            #stDecoration {display: none;}
+            .stApp > header {display: none;}
+            
             .auth-container {
                 display: flex;
                 flex-direction: column;
@@ -48,13 +56,6 @@ def check_password():
                 outline: none !important;
                 box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
             }
-            /* Скрываем все лишнее */
-            .main > div:first-child {
-                padding-top: 0 !important;
-            }
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
             </style>
         """, unsafe_allow_html=True)
         
@@ -83,6 +84,14 @@ def check_password():
     elif not st.session_state["password_correct"]:
         st.markdown("""
             <style>
+            /* Скрываем ВСЕ лишние элементы Streamlit */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            .stDeployButton {display: none;}
+            #stDecoration {display: none;}
+            .stApp > header {display: none;}
+            
             .auth-container {
                 display: flex;
                 flex-direction: column;
@@ -115,13 +124,6 @@ def check_password():
                 outline: none !important;
                 box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
             }
-            /* Скрываем все лишнее */
-            .main > div:first-child {
-                padding-top: 0 !important;
-            }
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
             </style>
         """, unsafe_allow_html=True)
         
@@ -890,6 +892,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
