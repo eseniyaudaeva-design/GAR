@@ -11,7 +11,7 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ (ФИНАЛЬНЫЙ СВЕТЛЫЙ CSS С ДВУМЯ КОЛОНКАМИ И ФИКСАЦИЕЙ)
+# 1. КОНФИГУРАЦИЯ
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -65,15 +65,25 @@ st.markdown(f"""
             max-width: 100% !important; 
         }}
         
-        /* 2. Стилизация полей ввода (Общая) */
+        /* 2. СТИЛИЗАЦИЯ ПОЛЕЙ ВВОДА (ГЛОБАЛЬНАЯ) */
+        /* Применяем ко всем input, textarea и selectbox */
         .stTextInput input, 
         .stTextArea textarea, 
-        div[data-testid="stTextarea"] textarea,
-        .stSelectbox > div:first-child {{
+        .stSelectbox div[data-baseweb="select"] > div {{
             color: {TEXT_COLOR} !important;
             background-color: {LIGHT_BG_MAIN} !important;
             border: 1px solid {BORDER_COLOR} !important;
             border-radius: 6px;
+        }}
+        
+        /* Цвет текста внутри выпадающего списка */
+        .stSelectbox div[data-baseweb="select"] span {{
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        /* Цвет иконки стрелочки в Selectbox */
+        .stSelectbox div[data-baseweb="select"] svg {{
+            fill: {TEXT_COLOR} !important;
         }}
         
         /* 3. Кнопка "ЗАПУСТИТЬ АНАЛИЗ" (Синий/Голубой с градиентом) */
@@ -152,19 +162,35 @@ st.markdown(f"""
         }}
 
         /* 
-           ИСПРАВЛЕНИЕ: Стилизация полей ввода в САЙДБАРЕ теперь такая же, как и везде.
-           Убрали темный фон и белый текст, поставили светлый фон и темный текст.
+           ИСПРАВЛЕНИЕ ЦВЕТОВ В САЙДБАРЕ
+           Принудительно делаем поля светлыми, как в основной части.
         */
-        div[data-testid="column"]:nth-child(2) .stSelectbox > div:first-child,
-        div[data-testid="column"]:nth-child(2) .stTextInput input,
-        div[data-testid="column"]:nth-child(2) .stTextarea textarea
-        {{
-            background-color: {LIGHT_BG_MAIN} !important; /* Светлый фон */
+        
+        /* Selectbox (выпадающий список) */
+        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] > div {{
+            background-color: {LIGHT_BG_MAIN} !important; /* Светло-серый фон */
             color: {TEXT_COLOR} !important; /* Темный текст */
-            border: 1px solid {BORDER_COLOR} !important; /* Рамка */
+            border: 1px solid {BORDER_COLOR} !important;
+        }}
+        
+        /* Текст внутри Selectbox */
+        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] span {{
+            color: {TEXT_COLOR} !important; 
+        }}
+        
+        /* Иконка стрелочки */
+        div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] svg {{
+             fill: {TEXT_COLOR} !important;
+             color: {TEXT_COLOR} !important;
+        }}
+
+        /* Обычные текстовые поля (TextInput, TextArea) в сайдбаре */
+        div[data-testid="column"]:nth-child(2) .stTextInput input,
+        div[data-testid="column"]:nth-child(2) .stTextarea textarea {{
+            background-color: {LIGHT_BG_MAIN} !important; 
+            color: {TEXT_COLOR} !important;
+            border: 1px solid {BORDER_COLOR} !important;
             box-shadow: none !important;
-            border-radius: 6px; 
-            padding: 8px 12px;
         }}
         
         /* Скрываем подписи в сайдбаре (они выглядят как лейблы) */
@@ -435,7 +461,7 @@ with col_main:
     c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=200, key="settings_stops")
     st.caption("Слова, которые будут удалены перед лемматизацией.")
 
-    # 5. КНОПКА ЗАПУСКА (ПЕРЕМЕЩЕНА ВНИЗ)
+    # 5. КНОПКА ЗАПУСКА (РАСПОЛОЖЕНА ВНИЗУ)
     st.markdown("---")
     if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
         st.session_state.start_analysis_flag = True
