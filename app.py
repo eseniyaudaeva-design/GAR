@@ -1,14 +1,144 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import requests
-from bs4 import BeautifulSoup
-import re
-from collections import Counter
-import math
-import inspect
-import concurrent.futures
-from urllib.parse import urlparse
+
+# ==========================================
+# 0. АВТОРИЗАЦИЯ
+# ==========================================
+def check_password():
+    """Проверка пароля для доступа к приложению"""
+    def password_entered():
+        if st.session_state["password"] == "jfV6Xel-Q7vp-_s2UYPO":
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # Стили для окна авторизации
+        st.markdown("""
+            <style>
+            .auth-container {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .auth-box {
+                background: white;
+                padding: 3rem;
+                border-radius: 15px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                text-align: center;
+                min-width: 400px;
+            }
+            .auth-title {
+                color: #333;
+                font-size: 24px;
+                font-weight: 600;
+                margin-bottom: 1.5rem;
+            }
+            .auth-input {
+                width: 100%;
+                padding: 12px;
+                margin: 10px 0;
+                border: 2px solid #e1e5e9;
+                border-radius: 8px;
+                font-size: 16px;
+            }
+            .auth-input:focus {
+                border-color: #277EFF;
+                outline: none;
+                box-shadow: 0 0 0 3px rgba(39, 126, 255, 0.1);
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Контейнер авторизации
+        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
+        st.markdown('<div class="auth-box">', unsafe_allow_html=True)
+        st.markdown('<div class="auth-title">🔐 Доступ к GAR PRO</div>', unsafe_allow_html=True)
+        
+        st.text_input(
+            "Введите пароль для доступа", 
+            type="password",
+            on_change=password_entered, 
+            key="password",
+            label_visibility="collapsed"
+        )
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        return False
+    elif not st.session_state["password_correct"]:
+        st.markdown("""
+            <style>
+            .auth-container {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .auth-box {
+                background: white;
+                padding: 3rem;
+                border-radius: 15px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                text-align: center;
+                min-width: 400px;
+            }
+            .auth-title {
+                color: #333;
+                font-size: 24px;
+                font-weight: 600;
+                margin-bottom: 1.5rem;
+            }
+            .auth-input {
+                width: 100%;
+                padding: 12px;
+                margin: 10px 0;
+                border: 2px solid #e1e5e9;
+                border-radius: 8px;
+                font-size: 16px;
+            }
+            .auth-input:focus {
+                border-color: #277EFF;
+                outline: none;
+                box-shadow: 0 0 0 3px rgba(39, 126, 255, 0.1);
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
+        st.markdown('<div class="auth-box">', unsafe_allow_html=True)
+        st.markdown('<div class="auth-title">🔐 Доступ к GAR PRO</div>', unsafe_allow_html=True)
+        
+        st.text_input(
+            "Введите пароль для доступа", 
+            type="password",
+            on_change=password_entered, 
+            key="password",
+            label_visibility="collapsed"
+        )
+        st.error("😕 Неверный пароль")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        return False
+    else:
+        return True
+
+# Проверяем авторизацию
+if not check_password():
+    st.stop()
+
+# ==========================================
+# ОСТАЛЬНОЙ КОД ПРИЛОЖЕНИЯ (ваш существующий код)
+# ==========================================
+
+st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
+
+# ... ваш остальной код ...
 
 # ==========================================
 # 1. КОНФИГУРАЦИЯ
@@ -737,4 +867,5 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
