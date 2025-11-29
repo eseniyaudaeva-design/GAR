@@ -19,126 +19,131 @@ st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
-        /* Основные стили */
-        .main {
-            background: linear-gradient(135deg, #E6F3FF 0%, #F0F9FF 50%, #E6F7FF 100%);
+        /* Полная смена фона */
+        .stApp {
+            background: linear-gradient(135deg, #E6F3FF 0%, #F0F9FF 50%, #E6F7FF 100%) !important;
+        }
+        
+        /* Основные элементы */
+        .main .block-container {
+            background: transparent !important;
         }
         
         html, body, [class*="css"] { 
-            font-family: 'Inter', sans-serif;
-            background: #f8fcff;
+            font-family: 'Inter', sans-serif !important;
+            background: transparent !important;
         }
         
         /* Стилизация верхней панели ввода */
         .main-input-container {
-            background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%);
-            padding: 25px;
-            border-radius: 15px;
-            border: 1px solid #e1f0ff;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 12px rgba(0, 120, 215, 0.08);
+            background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%) !important;
+            padding: 25px !important;
+            border-radius: 15px !important;
+            border: 1px solid #e1f0ff !important;
+            margin-bottom: 25px !important;
+            box-shadow: 0 4px 12px rgba(0, 120, 215, 0.08) !important;
         }
         
         /* Кнопка с градиентом */
         .stButton button {
-            background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
-            color: white;
-            font-weight: 600;
-            border-radius: 10px;
-            height: 55px;
-            width: 100%;
-            border: none;
-            font-size: 16px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+            background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%) !important;
+            color: white !important;
+            font-weight: 600 !important;
+            border-radius: 10px !important;
+            height: 55px !important;
+            width: 100% !important;
+            border: none !important;
+            font-size: 16px !important;
+            transition: all 0.3s ease !important;
+            box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3) !important;
         }
         
         .stButton button:hover {
-            background: linear-gradient(135deg, #096dd9 0%, #0050b3 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
+            background: linear-gradient(135deg, #096dd9 0%, #0050b3 100%) !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4) !important;
         }
         
         /* Заголовки */
         h1 {
-            color: #1890ff;
-            font-weight: 700;
-            margin-bottom: 20px;
+            color: #1890ff !important;
+            font-weight: 700 !important;
+            margin-bottom: 20px !important;
         }
         
         h2, h3 {
-            color: #096dd9;
-            font-weight: 600;
+            color: #096dd9 !important;
+            font-weight: 600 !important;
         }
         
         /* Заголовки таблиц */
         .table-header { 
-            font-size: 20px; 
-            font-weight: 600; 
-            margin-top: 35px; 
-            margin-bottom: 15px; 
-            color: #096dd9;
-            padding: 10px 0;
-            border-bottom: 2px solid #e6f7ff;
+            font-size: 20px !important; 
+            font-weight: 600 !important; 
+            margin-top: 35px !important; 
+            margin-bottom: 15px !important; 
+            color: #096dd9 !important;
+            padding: 10px 0 !important;
+            border-bottom: 2px solid #e6f7ff !important;
         }
         
         /* Радио кнопки */
         .stRadio > div {
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            border: 1px solid #e1f0ff;
+            background: white !important;
+            padding: 15px !important;
+            border-radius: 10px !important;
+            border: 1px solid #e1f0ff !important;
         }
         
         /* Expander */
         .streamlit-expanderHeader {
-            background: linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%);
-            color: #096dd9;
-            font-weight: 600;
-            border-radius: 10px;
-            border: 1px solid #bae7ff;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%) !important;
+            color: #096dd9 !important;
+            font-weight: 600 !important;
+            border-radius: 10px !important;
+            border: 1px solid #bae7ff !important;
         }
         
         /* Прогресс бар */
         .stProgress > div > div > div {
-            background: linear-gradient(90deg, #1890ff 0%, #36cfc9 100%);
+            background: linear-gradient(90deg, #1890ff 0%, #36cfc9 100%) !important;
         }
         
         /* Таблицы */
         .dataframe {
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0, 120, 215, 0.1);
+            border-radius: 10px !important;
+            box-shadow: 0 4px 12px rgba(0, 120, 215, 0.1) !important;
         }
         
         /* Улучшенные текстовые поля */
         .stTextInput input, .stTextArea textarea {
-            border: 1px solid #bae7ff;
-            border-radius: 8px;
-            padding: 12px;
-            background: #fafdff;
+            border: 1px solid #bae7ff !important;
+            border-radius: 8px !important;
+            padding: 12px !important;
+            background: #fafdff !important;
         }
         
         .stTextInput input:focus, .stTextArea textarea:focus {
-            border-color: #1890ff;
-            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+            border-color: #1890ff !important;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
         }
         
         /* Селекты */
         .stSelectbox select {
-            border: 1px solid #bae7ff;
-            border-radius: 8px;
-            background: #fafdff;
+            border: 1px solid #bae7ff !important;
+            border-radius: 8px !important;
+            background: #fafdff !important;
         }
         
         /* Чекбоксы */
         .stCheckbox > label {
-            color: #096dd9;
-            font-weight: 500;
+            color: #096dd9 !important;
+            font-weight: 500 !important;
         }
         
         /* Успешные сообщения */
         .stAlert {
-            border-radius: 10px;
+            border-radius: 10px !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -538,3 +543,4 @@ if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ"):
             "Глубина (Всего слов)": len(p_lemmas)
         })
     st.dataframe(pd.DataFrame(top_rows), use_container_width=True)
+
