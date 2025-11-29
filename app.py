@@ -17,22 +17,34 @@ def check_password():
         st.markdown("""
             <style>
             /* Скрываем ВСЕ лишние элементы Streamlit */
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            .stDeployButton {display: none;}
-            #stDecoration {display: none;}
-            .stApp > header {display: none;}
+            #MainMenu, footer, header, .stDeployButton, #stDecoration {display: none !important;}
+            .stApp > header {display: none !important;}
+            [data-testid="stToolbar"] {display: none !important;}
+            [data-testid="stDecoration"] {display: none !important;}
+            [data-testid="stStatusWidget"] {display: none !important;}
+            [data-testid="stAppViewContainer"] > div:first-child {display: none !important;}
+            
+            /* Убираем все отступы и паддинги */
+            .stApp {
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .block-container {
+                padding: 0 !important;
+                margin: 0 !important;
+                max-width: 100% !important;
+            }
             
             .auth-container {
                 display: flex;
                 flex-direction: column;
                 justify-content: flex-start;
                 align-items: center;
-                min-height: 100vh;
+                height: 100vh;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 padding: 0;
                 margin: 0;
+                overflow: hidden;
             }
             .auth-logo {
                 margin-top: 50px;
@@ -85,22 +97,34 @@ def check_password():
         st.markdown("""
             <style>
             /* Скрываем ВСЕ лишние элементы Streamlit */
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            .stDeployButton {display: none;}
-            #stDecoration {display: none;}
-            .stApp > header {display: none;}
+            #MainMenu, footer, header, .stDeployButton, #stDecoration {display: none !important;}
+            .stApp > header {display: none !important;}
+            [data-testid="stToolbar"] {display: none !important;}
+            [data-testid="stDecoration"] {display: none !important;}
+            [data-testid="stStatusWidget"] {display: none !important;}
+            [data-testid="stAppViewContainer"] > div:first-child {display: none !important;}
+            
+            /* Убираем все отступы и паддинги */
+            .stApp {
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .block-container {
+                padding: 0 !important;
+                margin: 0 !important;
+                max-width: 100% !important;
+            }
             
             .auth-container {
                 display: flex;
                 flex-direction: column;
                 justify-content: flex-start;
                 align-items: center;
-                min-height: 100vh;
+                height: 100vh;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 padding: 0;
                 margin: 0;
+                overflow: hidden;
             }
             .auth-logo {
                 margin-top: 50px;
@@ -892,6 +916,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
