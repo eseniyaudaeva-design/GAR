@@ -1,215 +1,4 @@
 import streamlit as st
-import streamlit as st
-
-# ==========================================
-# 0. АВТОРИЗАЦИЯ
-# ==========================================
-def check_password():
-    """Проверка пароля для доступа к приложению"""
-    def password_entered():
-        if st.session_state["password"] == "jfV6Xel-Q7vp-_s2UYPO":
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
-        # Стили для окна авторизации
-        st.markdown("""
-            <style>
-            /* Скрываем только самые основные элементы */
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            .stDeployButton {display: none;}
-            
-            /* Конкретные позиции в пикселях */
-            .stApp {
-                background: white !important;
-            }
-            
-            .main .block-container {
-                padding: 0 !important;
-                margin: 0 !important;
-            }
-            
-            /* Логотип - позиция 597px */
-            [data-testid="stImage"] {
-                margin-left: 597px !important;
-                margin-top: 50px !important;
-                margin-bottom: 30px !important;
-            }
-            
-            /* Поле ввода пароля - оставить как есть */
-            .stTextInput {
-                margin-left: 493px !important;
-            }
-            .stTextInput input {
-                width: 547px !important;
-                height: 56px !important;
-                padding: 10px 16px !important;
-                border: 2px solid #e1e5e9 !important;
-                border-radius: 8px !important;
-                font-size: 16px !important;
-                background: white !important;
-                color: #3D4858 !important;
-            }
-            
-            /* Кнопка глазика */
-            button[data-testid="baseButton-secondary"] {
-                width: 40px !important;
-                height: 40px !important;
-                min-width: 40px !important;
-                min-height: 40px !important;
-                padding: 0 !important;
-            }
-            
-            /* Кнопка Войти - позиция 488px */
-            .stButton {
-                margin-left: 488px !important;
-                margin-top: 20px !important;
-            }
-            .stButton > button {
-                width: 547px !important;
-                height: 56px !important;
-                background-image: linear-gradient(to right, #277EFF, #1E63C4) !important;
-                color: white !important;
-                border: none !important;
-                border-radius: 8px !important;
-                font-size: 16px !important;
-                font-weight: 600 !important;
-            }
-            
-            /* Ошибка - позиция 488px */
-            .stAlert {
-                margin-left: 488px !important;
-                margin-top: 10px !important;
-                width: 547px !important;
-            }
-            </style>
-        """, unsafe_allow_html=True)
-        
-        # Логотип
-        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
-        
-        # Поле ввода пароля
-        st.text_input(
-            "Введите пароль",
-            type="password",
-            on_change=password_entered, 
-            key="password",
-            placeholder="Введите пароль",
-            label_visibility="collapsed"
-        )
-        
-        # Кнопка Войти
-        if st.button("ВОЙТИ", type="primary", key="login_btn"):
-            password_entered()
-        
-        return False
-    elif not st.session_state["password_correct"]:
-        st.markdown("""
-            <style>
-            /* Скрываем только самые основные элементы */
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            .stDeployButton {display: none;}
-            
-            /* Конкретные позиции в пикселях */
-            .stApp {
-                background: white !important;
-            }
-            
-            .main .block-container {
-                padding: 0 !important;
-                margin: 0 !important;
-            }
-            
-            /* Логотип - позиция 597px */
-            [data-testid="stImage"] {
-                margin-left: 597px !important;
-                margin-top: 50px !important;
-                margin-bottom: 30px !important;
-            }
-            
-            /* Поле ввода пароля - оставить как есть */
-            .stTextInput {
-                margin-left: 493px !important;
-            }
-            .stTextInput input {
-                width: 547px !important;
-                height: 56px !important;
-                padding: 10px 16px !important;
-                border: 2px solid #e1e5e9 !important;
-                border-radius: 8px !important;
-                font-size: 16px !important;
-                background: white !important;
-                color: #3D4858 !important;
-            }
-            
-            /* Кнопка глазика */
-            button[data-testid="baseButton-secondary"] {
-                width: 40px !important;
-                height: 40px !important;
-                min-width: 40px !important;
-                min-height: 40px !important;
-                padding: 0 !important;
-            }
-            
-            /* Кнопка Войти - позиция 488px */
-            .stButton {
-                margin-left: 488px !important;
-                margin-top: 20px !important;
-            }
-            .stButton > button {
-                width: 547px !important;
-                height: 56px !important;
-                background-image: linear-gradient(to right, #277EFF, #1E63C4) !important;
-                color: white !important;
-                border: none !important;
-                border-radius: 8px !important;
-                font-size: 16px !important;
-                font-weight: 600 !important;
-            }
-            
-            /* Ошибка - позиция 488px */
-            .stAlert {
-                margin-left: 488px !important;
-                margin-top: 10px !important;
-                width: 547px !important;
-            }
-            </style>
-        """, unsafe_allow_html=True)
-        
-        # Логотип
-        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=300)
-        
-        # Поле ввода пароля
-        st.text_input(
-            "Введите пароль",
-            type="password",
-            on_change=password_entered, 
-            key="password",
-            placeholder="Введите пароль",
-            label_visibility="collapsed"
-        )
-        
-        # Кнопка Войти
-        if st.button("ВОЙТИ", type="primary", key="login_btn"):
-            password_entered()
-        
-        st.error("😕 Неверный пароль")
-        
-        return False
-    else:
-        return True
-
-# Проверяем авторизацию
-if not check_password():
-    st.stop()
-
-# ==========================================
-# ОСТАЛЬНОЙ КОД ПРИЛОЖЕНИЯ
-# ==========================================
 import pandas as pd
 import numpy as np
 import requests
@@ -618,45 +407,27 @@ def calculate_metrics(comp_data, my_data, settings):
             })
 
     table_ngrams = []
-    if comp_docs and my_data and 'body_text' in my_data:
-        try:
-            my_bi = process_text(my_data['body_text'], settings, 2)
-            comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data if p and 'body_text' in p]
-            
-            all_bi = set(my_bi)
-            for c in comp_bi:
-                if c:
-                    all_bi.update(c)
-                    
-            bi_freqs = Counter()
-            for c in comp_bi:
-                if c:
-                    for b_ in set(c): 
-                        bi_freqs[b_] += 1
+    if comp_docs:
+        my_bi = process_text(my_data['body_text'], settings, 2) if my_data and 'body_text' in my_data else []
+        comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data]
+        all_bi = set(my_bi)
+        for c in comp_bi: all_bi.update(c)
+        bi_freqs = Counter()
+        for c in comp_bi:
+            for b_ in set(c): bi_freqs[b_] += 1
 
-            for bg in all_bi:
-                df = bi_freqs[bg]
-                if df < 2 and bg not in my_bi: 
-                    continue
-                    
-                my_c = my_bi.count(bg)
-                comp_c = [c['body'].count(bg) for c in comp_docs if 'body' in c]
-                
-                if comp_c:
-                    med_c = np.median(comp_c)
-                    mean_c = np.mean(comp_c)
-                else:
-                    med_c = 0
-                    mean_c = 0
-                    
-                if med_c > 0 or my_c > 0:
-                    table_ngrams.append({
-                        "N-грамма": bg, "Кол-во сайтов": df, "Медианное вхождение": med_c,
-                        "Среднее": round(mean_c, 1), "На сайте": my_c,
-                        "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
-                    })
-        except Exception as e:
-            st.error(f"Ошибка при обработке n-грамм: {e}")
+        for bg in all_bi:
+            df = bi_freqs[bg]
+            if df < 2 and bg not in my_bi: continue
+            my_c = my_bi.count(bg)
+            comp_c = [c.count(bg) for c in comp_docs if 'body' in c]
+            med_c = np.median(comp_c) if comp_c else 0
+            if med_c > 0 or my_c > 0:
+                table_ngrams.append({
+                    "N-грамма": bg, "Кол-во сайтов": df, "Медианное вхождение": med_c,
+                    "Среднее": round(np.mean(comp_c) if comp_c else 0, 1), "На сайте": my_c,
+                    "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
+                })
 
     table_rel = []
     for i, p in enumerate(comp_data):
@@ -820,8 +591,8 @@ if st.session_state.start_analysis_flag:
         'custom_stops': st.session_state.settings_stops.split()
     }
     
-    target_urls = []
-    if source_type == "Google (Авто)":
+    target_urls = [] # <-- ИСПРАВЛЕННЫЙ ОТСТУП
+    if source_type == "Google (Авто)": # <-- ИСПРАВЛЕННЫЙ ОТСТУП
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
         
@@ -842,12 +613,12 @@ if st.session_state.start_analysis_flag:
         except Exception as e:
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
-    else:
+    else: # <-- ИСПРАВЛЕННЫЙ ОТСТУП
         # Здесь мы используем данные из поля ввода, которое определено в интерфейсе
         raw_urls = st.session_state.get("manual_urls_ui", "")
         target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
 
-    if not target_urls:
+    if not target_urls: # <-- ИСПРАВЛЕННЫЙ ОТСТУП
         st.error("Нет конкурентов для анализа.")
         st.stop()
         
