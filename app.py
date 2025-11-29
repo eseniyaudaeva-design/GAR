@@ -47,12 +47,15 @@ def check_password():
                 margin-bottom: 2rem;
                 text-align: center;
                 width: 100%;
+                display: flex;
+                justify-content: center;
             }
             
             /* Стили для поля ввода */
             .input-container {
                 width: 547px;
                 text-align: center;
+                margin: 0 auto;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -62,16 +65,27 @@ def check_password():
                 border-radius: 8px !important;
                 font-size: 16px !important;
                 background: white !important;
-                color: #3D4858 !important; /* Цвет текста как в основном приложении */
+                color: #3D4858 !important;
             }
             .stTextInput input::placeholder {
                 color: #94a3b8 !important;
             }
             
-            /* Стили для кнопки */
+            /* Кнопка глазика */
+            button[data-testid="baseButton-secondary"] {
+                width: 40px !important;
+                height: 40px !important;
+                min-width: 40px !important;
+                min-height: 40px !important;
+                padding: 0 !important;
+                margin-right: 8px !important;
+            }
+            
+            /* Стили для кнопки Войти */
             .login-button {
                 width: 547px;
-                margin-top: 1rem;
+                margin: 1rem auto 0 auto;
+                text-align: center;
             }
             .stButton button {
                 width: 100% !important;
@@ -149,12 +163,15 @@ def check_password():
                 margin-bottom: 2rem;
                 text-align: center;
                 width: 100%;
+                display: flex;
+                justify-content: center;
             }
             
             /* Стили для поля ввода */
             .input-container {
                 width: 547px;
                 text-align: center;
+                margin: 0 auto;
             }
             .stTextInput input {
                 width: 547px !important;
@@ -164,16 +181,27 @@ def check_password():
                 border-radius: 8px !important;
                 font-size: 16px !important;
                 background: white !important;
-                color: #3D4858 !important; /* Цвет текста как в основном приложении */
+                color: #3D4858 !important;
             }
             .stTextInput input::placeholder {
                 color: #94a3b8 !important;
             }
             
-            /* Стили для кнопки */
+            /* Кнопка глазика */
+            button[data-testid="baseButton-secondary"] {
+                width: 40px !important;
+                height: 40px !important;
+                min-width: 40px !important;
+                min-height: 40px !important;
+                padding: 0 !important;
+                margin-right: 8px !important;
+            }
+            
+            /* Стили для кнопки Войти */
             .login-button {
                 width: 547px;
-                margin-top: 1rem;
+                margin: 1rem auto 0 auto;
+                text-align: center;
             }
             .stButton button {
                 width: 100% !important;
@@ -957,6 +985,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
