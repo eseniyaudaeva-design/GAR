@@ -617,107 +617,27 @@ if st.session_state.start_analysis_flag:
 else: 
         # Добавьте отступ (Tab или 4 пробела) для строк ниже
         # Мы просто берем данные из session_state по ключу, который задали выше
-        raw_urls = st.session_state.get("manual_urls_ui", "")
+# ... (Код, где target_urls уже определен, строка ~620)
+    else: 
+        # ... (Код для ручного списка) ...
         target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
 
-if not target_urls:
+    # ----------------------------------------------------
+    # ВЕСЬ СЛЕДУЮЩИЙ КОД ДОЛЖЕН БЫТЬ С ОДИНАКОВЫМ ОТСТУПОМ 
+    # ВНУТРИ if st.session_state.start_analysis_flag:
+    # ----------------------------------------------------
+
+    if not target_urls:
         st.error("Нет конкурентов для анализа.")
         st.stop()
         
-    my_data = None
+    my_data = None  # <-- Убедитесь, что здесь 4 пробела
     if my_input_type == "Релевантная страница на вашем сайте":
-        prog = st.progress(0.0)
-        status = st.empty()
-        status.text("Скачиваем ваш сайт...")
-        my_data = parse_page(st.session_state.my_url_input, settings)
-        prog.progress(0.05)
-        if not my_data:
-            st.error("Ошибка доступа к сайту. Проверьте URL или попробуйте 'Исходный код'.")
-            st.stop()
-        prog.empty()
-        status.empty()
-    elif my_input_type == "Исходный код страницы или текст":
-        my_data = {
-            'url': 'Local Content', 
-            'domain': 'local.content', 
-            'body_text': st.session_state.my_content_input, 
-            'anchor_text': '' 
-        }
+    # ... (весь код внутри этого if)
     
-    comp_data = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
-        done = 0
-        total_tasks = len(target_urls)
-        prog_comp = st.progress(0)
-        status_comp = st.empty()
-        
-        for f in concurrent.futures.as_completed(futures):
-            res = f.result()
-            if res: comp_data.append(res)
-            done += 1
-            prog_comp.progress(done / total_tasks)
-            status_comp.text(f"Скачано {done} из {total_tasks} конкурентов...")
-            
-    prog_comp.empty()
-    status_comp.empty()
+    # ... (дальше идет comp_data = [])
     
-    if len(comp_data) < 2 and my_input_type != "Без страницы":
-        st.warning(f"Мало данных конкурентов (менее 2). Продолжаю с {len(comp_data)} данными.")
-
-    if not my_data and my_input_type != "Без страницы":
-         st.error("Не удалось получить данные для сравнения.")
-         st.stop()
-         
-    results = calculate_metrics(comp_data, my_data, settings)
-    st.success("Готово! Результаты ниже.")
+    # ... (дальше идет if len(comp_data) < 2)
     
-    with col_main:
-        if my_data and len(comp_data) > 0:
-            st.markdown("### 1. Рекомендации по глубине")
-            df_d = results['depth']
-            if not df_d.empty:
-                df_d = df_d.sort_values(by="diff_abs", ascending=False)
-                
-                rows_per_page = 20
-                total_rows = len(df_d)
-                total_pages = math.ceil(total_rows / rows_per_page)
-                
-                if 'page_number' not in st.session_state: st.session_state.page_number = 1
-                
-                col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
-                with col_p1:
-                    if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
-                        st.session_state.page_number -= 1
-                with col_p2:
-                    st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
-                with col_p3:
-                    if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
-                        st.session_state.page_number += 1
-                            
-                start_idx = (st.session_state.page_number - 1) * rows_per_page
-                end_idx = start_idx + rows_per_page
-                df_page = df_d.iloc[start_idx:end_idx]
-                
-                st.dataframe(df_page, column_config={"diff_abs": None}, use_container_width=True, height=800)
-                st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
-                
-                with st.expander("2. Гибридный ТОП"):
-                    st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
-                    
-                with st.expander("3. N-граммы"):
-                    st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
-
-            
-            with st.expander("4. ТОП релевантности"):
-                st.dataframe(results['relevance_top'], use_container_width=True)
-
-            if not my_data:
-                st.warning("Основные таблицы не отображаются, так как был выбран режим 'Без страницы'.")
-
-
-
-
-
-
+    # ... (и так до самого конца файла)
 
