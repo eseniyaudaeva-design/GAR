@@ -18,56 +18,56 @@ def check_password():
             <style>
             .auth-container {
                 display: flex;
-                justify-content: center;
+                flex-direction: column;
+                justify-content: flex-start;
                 align-items: center;
                 min-height: 100vh;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 20px;
-            }
-            .auth-box {
-                background: white;
-                padding: 2rem;
-                border-radius: 12px;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-                text-align: center;
-                width: 100%;
-                max-width: 320px;
-            }
-            .auth-title {
-                color: #333;
-                font-size: 20px;
-                font-weight: 600;
-                margin-bottom: 1rem;
-                margin-top: 0.5rem;
+                padding: 0;
+                margin: 0;
             }
             .auth-logo {
-                margin-bottom: 0.5rem;
+                margin-top: 50px;
+                margin-bottom: 30px;
+            }
+            .auth-input-container {
+                width: 547px;
+                height: 56px;
             }
             .stTextInput input {
-                width: 100% !important;
-                max-width: 280px !important;
-                margin: 0 auto !important;
-                padding: 10px 12px !important;
+                width: 547px !important;
+                height: 56px !important;
+                padding: 10px 16px !important;
                 border: 2px solid #e1e5e9 !important;
-                border-radius: 6px !important;
-                font-size: 14px !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                margin: 0 !important;
             }
             .stTextInput input:focus {
                 border-color: #277EFF !important;
                 outline: none !important;
                 box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
             }
+            /* Скрываем все лишнее */
+            .main > div:first-child {
+                padding-top: 0 !important;
+            }
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
             </style>
         """, unsafe_allow_html=True)
         
         # Контейнер авторизации
         st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-        st.markdown('<div class="auth-box">', unsafe_allow_html=True)
         
-        # Логотип (замените на вашу картинку)
-        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=80)
-        st.markdown('<div class="auth-title">Доступ к GAR PRO</div>', unsafe_allow_html=True)
+        # Логотип
+        st.markdown('<div class="auth-logo">', unsafe_allow_html=True)
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=484)
+        st.markdown('</div>', unsafe_allow_html=True)
         
+        # Поле ввода пароля
+        st.markdown('<div class="auth-input-container">', unsafe_allow_html=True)
         st.text_input(
             "Введите пароль",
             type="password",
@@ -76,8 +76,8 @@ def check_password():
             placeholder="Введите пароль",
             label_visibility="collapsed"
         )
-        
         st.markdown('</div>', unsafe_allow_html=True)
+        
         st.markdown('</div>', unsafe_allow_html=True)
         return False
     elif not st.session_state["password_correct"]:
@@ -85,55 +85,55 @@ def check_password():
             <style>
             .auth-container {
                 display: flex;
-                justify-content: center;
+                flex-direction: column;
+                justify-content: flex-start;
                 align-items: center;
                 min-height: 100vh;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 20px;
-            }
-            .auth-box {
-                background: white;
-                padding: 2rem;
-                border-radius: 12px;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-                text-align: center;
-                width: 100%;
-                max-width: 320px;
-            }
-            .auth-title {
-                color: #333;
-                font-size: 20px;
-                font-weight: 600;
-                margin-bottom: 1rem;
-                margin-top: 0.5rem;
+                padding: 0;
+                margin: 0;
             }
             .auth-logo {
-                margin-bottom: 0.5rem;
+                margin-top: 50px;
+                margin-bottom: 30px;
+            }
+            .auth-input-container {
+                width: 547px;
+                height: 56px;
             }
             .stTextInput input {
-                width: 100% !important;
-                max-width: 280px !important;
-                margin: 0 auto !important;
-                padding: 10px 12px !important;
+                width: 547px !important;
+                height: 56px !important;
+                padding: 10px 16px !important;
                 border: 2px solid #e1e5e9 !important;
-                border-radius: 6px !important;
-                font-size: 14px !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                margin: 0 !important;
             }
             .stTextInput input:focus {
                 border-color: #277EFF !important;
                 outline: none !important;
                 box-shadow: 0 0 0 2px rgba(39, 126, 255, 0.1) !important;
             }
+            /* Скрываем все лишнее */
+            .main > div:first-child {
+                padding-top: 0 !important;
+            }
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
             </style>
         """, unsafe_allow_html=True)
         
         st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-        st.markdown('<div class="auth-box">', unsafe_allow_html=True)
         
-        # Логотип (замените на вашу картинку)
-        st.markdown('<div class="auth-logo">🛡️</div>', unsafe_allow_html=True)
-        st.markdown('<div class="auth-title">Доступ к GAR PRO</div>', unsafe_allow_html=True)
+        # Логотип
+        st.markdown('<div class="auth-logo">', unsafe_allow_html=True)
+        st.image("https://raw.githubusercontent.com/eseniyaudaeva-design/GAR/main/logo.png", width=484)
+        st.markdown('</div>', unsafe_allow_html=True)
         
+        # Поле ввода пароля
+        st.markdown('<div class="auth-input-container">', unsafe_allow_html=True)
         st.text_input(
             "Введите пароль",
             type="password",
@@ -142,9 +142,10 @@ def check_password():
             placeholder="Введите пароль",
             label_visibility="collapsed"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
         st.error("😕 Неверный пароль")
         
-        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         return False
     else:
@@ -154,9 +155,8 @@ def check_password():
 if not check_password():
     st.stop()
 
-
 # ==========================================
-# ОСТАЛЬНОЙ КОД ПРИЛОЖЕНИЯ (ваш существующий код)
+# ОСТАЛЬНОЙ КОД ПРИЛОЖЕНИЯ
 # ==========================================
 
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
@@ -890,6 +890,7 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
 
