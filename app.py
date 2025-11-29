@@ -17,31 +17,129 @@ st.set_page_config(layout="wide", page_title="ГАР PRO: Анализ", page_ic
 
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        /* Основные стили */
+        .main {
+            background: linear-gradient(135deg, #E6F3FF 0%, #F0F9FF 50%, #E6F7FF 100%);
+        }
+        
+        html, body, [class*="css"] { 
+            font-family: 'Inter', sans-serif;
+            background: #f8fcff;
+        }
         
         /* Стилизация верхней панели ввода */
         .main-input-container {
-            background-color: #F8FAFC;
-            padding: 20px;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%);
+            padding: 25px;
+            border-radius: 15px;
+            border: 1px solid #e1f0ff;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 12px rgba(0, 120, 215, 0.08);
+        }
+        
+        /* Кнопка с градиентом */
+        .stButton button {
+            background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+            color: white;
+            font-weight: 600;
             border-radius: 10px;
-            border: 1px solid #E2E8F0;
+            height: 55px;
+            width: 100%;
+            border: none;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+        }
+        
+        .stButton button:hover {
+            background: linear-gradient(135deg, #096dd9 0%, #0050b3 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
+        }
+        
+        /* Заголовки */
+        h1 {
+            color: #1890ff;
+            font-weight: 700;
             margin-bottom: 20px;
         }
         
-        /* Кнопка */
-        .stButton button {
-            background-color: #F97316;
-            color: white;
-            font-weight: bold;
-            border-radius: 6px;
-            height: 50px;
-            width: 100%;
+        h2, h3 {
+            color: #096dd9;
+            font-weight: 600;
         }
-        .stButton button:hover { background-color: #EA580C; color: white; }
         
         /* Заголовки таблиц */
-        .table-header { font-size: 18px; font-weight: bold; margin-top: 30px; margin-bottom: 10px; color: #0F172A; }
+        .table-header { 
+            font-size: 20px; 
+            font-weight: 600; 
+            margin-top: 35px; 
+            margin-bottom: 15px; 
+            color: #096dd9;
+            padding: 10px 0;
+            border-bottom: 2px solid #e6f7ff;
+        }
+        
+        /* Радио кнопки */
+        .stRadio > div {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #e1f0ff;
+        }
+        
+        /* Expander */
+        .streamlit-expanderHeader {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%);
+            color: #096dd9;
+            font-weight: 600;
+            border-radius: 10px;
+            border: 1px solid #bae7ff;
+        }
+        
+        /* Прогресс бар */
+        .stProgress > div > div > div {
+            background: linear-gradient(90deg, #1890ff 0%, #36cfc9 100%);
+        }
+        
+        /* Таблицы */
+        .dataframe {
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 120, 215, 0.1);
+        }
+        
+        /* Улучшенные текстовые поля */
+        .stTextInput input, .stTextArea textarea {
+            border: 1px solid #bae7ff;
+            border-radius: 8px;
+            padding: 12px;
+            background: #fafdff;
+        }
+        
+        .stTextInput input:focus, .stTextArea textarea:focus {
+            border-color: #1890ff;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+        }
+        
+        /* Селекты */
+        .stSelectbox select {
+            border: 1px solid #bae7ff;
+            border-radius: 8px;
+            background: #fafdff;
+        }
+        
+        /* Чекбоксы */
+        .stCheckbox > label {
+            color: #096dd9;
+            font-weight: 500;
+        }
+        
+        /* Успешные сообщения */
+        .stAlert {
+            border-radius: 10px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -55,18 +153,25 @@ def check_password():
     
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
+        st.markdown("""
+            <div style='text-align: center; padding: 30px; background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%); 
+                     border-radius: 15px; border: 1px solid #e1f0ff; box-shadow: 0 4px 12px rgba(0, 120, 215, 0.08);'>
+                <h2 style='color: #1890ff; margin-bottom: 30px;'>🔐 Авторизация</h2>
+        """, unsafe_allow_html=True)
         pwd = st.text_input("Пароль доступа", type="password")
-        if st.button("Войти"):
+        if st.button("Войти", key="auth_btn"):
             if pwd == "admin123":
                 st.session_state["password_correct"] = True
                 st.rerun()
-            else: st.error("Неверный пароль")
+            else: 
+                st.error("Неверный пароль")
+        st.markdown('</div>', unsafe_allow_html=True)
     return False
 
 if not check_password(): st.stop()
 
 # ==========================================
-# 3. БЭКЕНД (ЛОГИКА)
+# 3. БЭКЕНД (ЛОГИКА) - БЕЗ ИЗМЕНЕНИЙ
 # ==========================================
 
 # --- Патч NLP ---
@@ -176,7 +281,7 @@ def process_lemmas(text, settings):
 # 4. ИНТЕРФЕЙС: ВВОД ДАННЫХ (ВСЕГДА ВИДЕН)
 # ==========================================
 
-st.title("ГАР PRO: Анализатор Релевантности")
+st.title("🎯 ГАР PRO: Анализатор Релевантности")
 
 # ГЛАВНЫЙ БЛОК ВВОДА
 with st.container():
@@ -189,7 +294,7 @@ with st.container():
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ИСТОЧНИК КОНКУРЕНТОВ
-st.subheader("Источник конкурентов")
+st.subheader("📊 Источник конкурентов")
 source_mode = st.radio("", ["Google Поиск (Авто)", "Ручной список"], horizontal=True, label_visibility="collapsed")
 
 competitors_final = []
@@ -219,7 +324,7 @@ with st.expander("⚙️ Настройки анализа", expanded=True):
     user_agent = st.text_input("User-Agent", "Mozilla/5.0 (compatible; Hybrid-Analyzer/1.0;)")
 
 # КНОПКА ЗАПУСКА
-if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
+if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ"):
     if not my_url:
         st.error("❌ Вы не ввели URL вашего сайта!")
         st.stop()
@@ -260,10 +365,10 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
     all_pages_data = []
     
     # Сначала мой сайт
-    with st.spinner("Анализ вашего сайта..."):
+    with st.spinner("🔍 Анализ вашего сайта..."):
         my_page = parse_page(my_url, settings)
         if not my_page:
-            st.error("Ваш сайт недоступен!")
+            st.error("❌ Ваш сайт недоступен!")
             st.stop()
             
     # Конкуренты
@@ -280,7 +385,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
             progress_bar.progress(done / len(target_urls))
             
     if len(comp_pages) < 2:
-        st.error("Мало данных (нужно хотя бы 2 конкурента).")
+        st.error("❌ Мало данных (нужно хотя бы 2 конкурента).")
         st.stop()
         
     # ==========================================
@@ -378,14 +483,14 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
     st.divider()
     
     # 1. ТАБЛИЦА: РЕКОМЕНДАЦИИ ПО ГЛУБИНЕ (Main Table)
-    st.markdown('<div class="table-header">Рекомендации по глубине</div>', unsafe_allow_html=True)
+    st.markdown('<div class="table-header">📈 Рекомендации по глубине</div>', unsafe_allow_html=True)
     if not df_main.empty:
         df_main = df_main.sort_values(by="diff_abs", ascending=False)
         
         # Стилизация (подсветка)
         def color_diff(val):
-            if val > 0: return 'background-color: #dcfce7; color: #166534' # Green
-            if val < 0: return 'background-color: #fee2e2; color: #991b1b' # Red
+            if val > 0: return 'background-color: #e6fffb; color: #006d75' # Сине-зеленый
+            if val < 0: return 'background-color: #fff2e8; color: #ad4e00' # Оранжевый
             return ''
             
         st.dataframe(
@@ -398,7 +503,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
         st.warning("Нет данных.")
 
     # 2. ТАБЛИЦА: МЕТА-ТЕГИ
-    st.markdown('<div class="table-header">Информация по мета-тегам</div>', unsafe_allow_html=True)
+    st.markdown('<div class="table-header">🔍 Информация по мета-тегам</div>', unsafe_allow_html=True)
     meta_data = []
     # Мой сайт
     meta_data.append({
@@ -418,7 +523,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
     st.dataframe(pd.DataFrame(meta_data), use_container_width=True)
 
     # 3. ТАБЛИЦА: ТОП РЕЛЕВАНТНОСТИ ДОКУМЕНТОВ
-    st.markdown('<div class="table-header">ТОП релевантности документов</div>', unsafe_allow_html=True)
+    st.markdown('<div class="table-header">🏆 ТОП релевантности документов</div>', unsafe_allow_html=True)
     top_rows = []
     for i, p in enumerate(comp_pages):
         # Простой расчет релевантности (кол-во слов из общего словаря)
