@@ -11,42 +11,6 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
-# 0. АВТОРИЗАЦИЯ
-# ==========================================
-def check_password():
-    """Проверка пароля для доступа к приложению"""
-    def password_entered():
-        if st.session_state["password"] == "jfV6Xel-Q7vp-_s2UYPO":
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
-        st.text_input(
-            "Введите пароль для доступа", 
-            type="password",
-            on_change=password_entered, 
-            key="password"
-        )
-        return False
-    elif not st.session_state["password_correct"]:
-        st.text_input(
-            "Введите пароль для доступа", 
-            type="password",
-            on_change=password_entered, 
-            key="password"
-        )
-        st.error("😕 Неверный пароль")
-        return False
-    else:
-        return True
-
-# Проверяем авторизацию
-if not check_password():
-    st.stop()
-
-# ==========================================
 # 1. КОНФИГУРАЦИЯ
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
@@ -745,4 +709,32 @@ if st.session_state.start_analysis_flag:
         total_pages = math.ceil(len(df_d) / rows_per_page)
         
         if 'page_number' not in st.session_state:
-            st.session_state.page_number =
+            st.session_state.page_number = 1
+            
+        col_p1, col_p2, col_p3 = st.columns([1, 2, 1])
+        with col_p1:
+            if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
+                st.session_state.page_number -= 1
+        with col_p2:
+            st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+        with col_p3:
+            if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
+                st.session_state.page_number += 1
+                    
+        start_idx = (st.session_state.page_number - 1) * rows_per_page
+        end_idx = start_idx + rows_per_page
+        df_page = df_d.iloc[start_idx:end_idx]
+        
+        st.dataframe(df_page, column_config={"diff_abs": None}, use_container_width=True, height=800)
+        st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
+        
+        with st.expander("2. Гибридный ТОП"):
+            st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
+            
+        with st.expander("3. N-граммы"):
+            st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
+
+    
+    with st.expander("4. ТОП релевантных страниц конкурентов"):
+        st.dataframe(results['relevance_top'], use_container_width=True)
+
