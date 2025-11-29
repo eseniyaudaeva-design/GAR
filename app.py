@@ -60,6 +60,8 @@ st.markdown("""
             padding-top: 2rem !important;
             padding-bottom: 2rem !important;
         }
+                /* Заголовки таблиц */
+        .table-header { font-size: 18px; font-weight: bold; margin-top: 30px; margin-bottom: 10px; color: #0F172A; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -410,4 +412,5 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_wi
         
     with st.expander("4. ТОП релевантности"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
