@@ -808,7 +808,7 @@ try:
                     target_urls.append(u)
                     cnt += 1
                     if cnt >= st.session_state.settings_top_n: break
-        except Exception as e:
+except Exception as e:
             st.error(f"Ошибка при поиске: {e}")
             st.stop()
     else:
@@ -917,3 +917,4 @@ try:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
