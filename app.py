@@ -42,6 +42,7 @@ PRIMARY_DARK = "#1E63C4"     # Темный синий
 TEXT_COLOR = "#3D4858"       # Темно-серый (Основной текст)
 LIGHT_BG_MAIN = "#F1F5F9"    # Светло-серый фон полей
 BORDER_COLOR = "#E2E8F0"     # Цвет рамки
+DARK_BORDER = "#475569"      # Тонкая темная рамка для невыбранных элементов
 MAROON_DIVIDER = "#990000"   # Темно-бордовый для разделителя
 
 st.markdown(f"""
@@ -69,7 +70,6 @@ st.markdown(f"""
         /* 2. СТИЛИЗАЦИЯ ПОЛЕЙ ВВОДА (Input, Textarea, Selectbox)  */
         /* ======================================================= */
         
-        /* Базовое состояние */
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
@@ -79,9 +79,7 @@ st.markdown(f"""
             border-radius: 6px;
         }}
 
-        /* == СОСТОЯНИЕ ФОКУСА (Когда нажали на поле) == */
-        /* Убираем красный/оранжевый цвет Streamlit и ставим синий */
-        
+        /* ФОКУС (СИНИЙ ЦВЕТ) - Делает рамку синей при нажатии */
         div[data-baseweb="input"]:focus-within,
         div[data-baseweb="textarea"]:focus-within,
         div[data-baseweb="select"]:focus-within {{
@@ -89,13 +87,7 @@ st.markdown(f"""
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
         
-        /* Для input внутри полей */
-        .stTextInput input:focus,
-        .stTextArea textarea:focus {{
-             border-color: {PRIMARY_COLOR} !important;
-        }}
-
-        /* Цвет иконки стрелочки и текста в Selectbox */
+        /* Selectbox иконки и текст */
         .stSelectbox div[data-baseweb="select"] span,
         .stSelectbox div[data-baseweb="select"] svg {{
             color: {TEXT_COLOR} !important;
@@ -103,67 +95,75 @@ st.markdown(f"""
         }}
         
         /* ======================================================= */
-        /* 3. РАДИО-КНОПКИ И ЧЕКБОКСЫ (ЦВЕТА)                      */
+        /* 3. РАДИО-КНОПКИ (КРУЖОЧКИ)                              */
         /* ======================================================= */
 
-        /* -- Радио-кнопки (Вкладки/Выбор) -- */
-        
-        /* Контейнер радио-кнопки */
-        div[role="radiogroup"] > label {{
-            background-color: #FFFFFF; 
+        /* Контейнер радио-группы */
+        div[role="radiogroup"] label {{
+            background-color: #FFFFFF !important;
             border: 1px solid {BORDER_COLOR};
             border-radius: 6px;
             padding: 10px 15px;
             margin-right: 5px;
-            color: {TEXT_COLOR};
         }}
-        
-        /* Кружок радио-кнопки (НЕ выбранный) -> Делаем БЕЛЫМ внутри */
-        div[role="radiogroup"] > label > div:first-child {{
+
+        /* 1. НЕ ВЫБРАННЫЙ КРУЖОК -> БЕЛЫЙ с ТЕМНОЙ ОКОНТОВКОЙ */
+        div[role="radiogroup"] label div[data-baseweb="radio"] > div:first-child {{
             background-color: #FFFFFF !important;
-            border-color: {BORDER_COLOR} !important; 
+            border: 1px solid {DARK_BORDER} !important; /* Тонкая темная обводка */
         }}
         
-        /* Кружок радио-кнопки (ВЫБРАННЫЙ) -> Синяя рамка, Белый фон */
-        div[role="radiogroup"] > label input:checked + div:first-child {{
+        /* 2. ВЫБРАННЫЙ КРУЖОК -> СИНЯЯ ОБВОДКА, БЕЛЫЙ ФОН */
+        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div:first-child {{
             border-color: {PRIMARY_COLOR} !important;
             background-color: #FFFFFF !important;
         }}
         
-        /* Сама точка внутри выбранной радио-кнопки -> СИНЯЯ */
-        div[role="radiogroup"] > label input:checked + div:first-child > div {{
+        /* 3. ВНУТРЕННЯЯ ТОЧКА -> СИНЯЯ */
+        div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div:first-child > div {{
             background-color: {PRIMARY_COLOR} !important;
         }}
 
         /* Текст выбранной радио-кнопки */
-        div[role="radiogroup"] input:checked + div {{
-            color: {TEXT_COLOR} !important; 
-            border-color: {PRIMARY_COLOR} !important; 
-            font-weight: 600;
+        div[role="radiogroup"] label input:checked + div {{
+             color: {TEXT_COLOR} !important;
+             font-weight: 600;
+        }}
+        /* Рамка активного контейнера радио (делаем синей) */
+        div[role="radiogroup"] label:has(input:checked) {{
+            border-color: {PRIMARY_COLOR} !important;
         }}
 
-        /* -- Чекбоксы (Галочки) -- */
 
-        /* Квадрат чекбокса (НЕ выбранный) -> БЕЛЫЙ внутри, Серая рамка */
+        /* ======================================================= */
+        /* 4. ЧЕКБОКСЫ (КВАДРАТИКИ)                                */
+        /* ======================================================= */
+
+        /* 1. НЕ ВЫБРАННЫЙ ЧЕКБОКС -> БЕЛЫЙ с ТЕМНОЙ ОКОНТОВКОЙ */
         div[data-baseweb="checkbox"] > div:first-child {{
             background-color: #FFFFFF !important;
-            border-color: {BORDER_COLOR} !important; 
+            border: 1px solid {DARK_BORDER} !important; /* Тонкая темная обводка */
         }}
-        
-        /* Квадрат чекбокса (ВЫБРАННЫЙ) -> СИНИЙ фон, Синяя рамка */
+
+        /* 2. ВЫБРАННЫЙ ЧЕКБОКС -> СИНИЙ ФОН */
         div[data-baseweb="checkbox"] input:checked + div:first-child {{
             background-color: {PRIMARY_COLOR} !important;
             border-color: {PRIMARY_COLOR} !important;
         }}
         
-        /* Галочка внутри (автоматически белая, но на всякий случай) */
+        /* ГАЛОЧКА внутри -> БЕЛАЯ */
         div[data-baseweb="checkbox"] input:checked + div:first-child svg {{
             fill: #FFFFFF !important;
+        }}
+        
+        /* Убираем эффекты наведения стандартной темы */
+        div[data-baseweb="checkbox"]:hover > div:first-child {{
+            border-color: {PRIMARY_COLOR} !important;
         }}
 
 
         /* ======================================================= */
-        /* 4. КНОПКА ЗАПУСКА                                       */
+        /* 5. КНОПКА ЗАПУСКА                                       */
         /* ======================================================= */
         .stButton button {{
             background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
@@ -175,7 +175,6 @@ st.markdown(f"""
             border: none;
             margin-top: 10px;
         }}
-        /* Убираем красную рамку при фокусе на кнопке */
         .stButton button:focus {{
             border-color: {PRIMARY_COLOR} !important;
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
@@ -184,9 +183,8 @@ st.markdown(f"""
 
 
         /* ======================================================= */
-        /* 5. САЙДБАР (ФИКСАЦИЯ И ЦВЕТА)                           */
+        /* 6. САЙДБАР                                              */
         /* ======================================================= */
-        
         .st-emotion-cache-1cpxwwu {{ 
             width: 65% !important;
             padding-right: 20px; 
@@ -207,7 +205,6 @@ st.markdown(f"""
             box-shadow: -1px 0 0 0 {MAROON_DIVIDER} inset; 
         }}
 
-        /* Форсируем стили полей в сайдбаре такие же, как в основном блоке (светлые) */
         div[data-testid="column"]:nth-child(2) .stSelectbox div[data-baseweb="select"] > div,
         div[data-testid="column"]:nth-child(2) .stTextInput input,
         div[data-testid="column"]:nth-child(2) .stTextarea textarea {{
@@ -666,41 +663,4 @@ if st.session_state.start_analysis_flag:
         if my_data and len(comp_data) > 0:
             st.markdown("### 1. Рекомендации по глубине")
             df_d = results['depth']
-            if not df_d.empty:
-                df_d = df_d.sort_values(by="diff_abs", ascending=False)
-                
-                rows_per_page = 20
-                total_rows = len(df_d)
-                total_pages = math.ceil(total_rows / rows_per_page)
-                
-                if 'page_number' not in st.session_state: st.session_state.page_number = 1
-                
-                col_p1, col_p2, col_p3 = st.columns([1, 3, 1])
-                with col_p1:
-                    if st.button("⬅️ Назад", key="prev_page_button") and st.session_state.page_number > 1:
-                        st.session_state.page_number -= 1
-                with col_p2:
-                    st.markdown(f"<div style='text-align: center; padding-top: 10px; color: {TEXT_COLOR};'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
-                with col_p3:
-                    if st.button("Вперед ➡️", key="next_page_button") and st.session_state.page_number < total_pages:
-                        st.session_state.page_number += 1
-                            
-                start_idx = (st.session_state.page_number - 1) * rows_per_page
-                end_idx = start_idx + rows_per_page
-                df_page = df_d.iloc[start_idx:end_idx]
-                
-                st.dataframe(df_page, column_config={"diff_abs": None}, use_container_width=True, height=800)
-                st.download_button("Скачать ВСЮ таблицу (CSV)", df_d.to_csv().encode('utf-8'), "depth.csv")
-                
-                with st.expander("2. Гибридный ТОП"):
-                    st.dataframe(results['hybrid'].sort_values(by="TF-IDF ТОП", ascending=False), use_container_width=True)
-                    
-                with st.expander("3. N-граммы"):
-                    st.dataframe(results['ngrams'].sort_values(by="TF-IDF", ascending=False), use_container_width=True)
-
-            
-            with st.expander("4. ТОП релевантности"):
-                st.dataframe(results['relevance_top'], use_container_width=True)
-
-            if not my_data:
-                st.warning("Основные таблицы (Рекомендации, Гибридный ТОП, N-граммы) не отображаются, так как был выбран режим 'Без страницы' или не удалось получить данные.")
+            i
