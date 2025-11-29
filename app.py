@@ -54,6 +54,29 @@ st.markdown(f"""
             --text-color: {TEXT_COLOR};
         }}
         
+        /* 1. Стилизация самого выпадающего списка (Dropdown Menu) */
+div[role="listbox"] ul {
+    /* Фон выпадающего меню */
+    background-color: #f0f2f6; /* Установите свой цвет (например, светлый серый для светлой темы) */
+    /* Цвет текста в выпадающем меню */
+    color: #0e1117; /* Установите свой цвет (например, темный для светлой темы) */
+}
+
+/* 2. Стилизация опции при наведении курсора (Hover effect) */
+div[role="listbox"] ul li:hover {
+    /* Фон при наведении */
+    background-color: #4CAF50; /* Например, зеленый */
+    /* Цвет текста при наведении */
+    color: white; /* Например, белый */
+}
+
+/* 3. Стилизация выбранной опции */
+div[role="listbox"] ul li[data-selected="true"] {
+    /* Фон выбранной опции */
+    background-color: #2196F3; /* Например, синий */
+    /* Цвет текста выбранной опции */
+    color: white;
+}
         /* 1. БАЗОВЫЙ ТЕКСТ */
         html, body, .stApp {{
             font-family: 'Inter', sans-serif;
@@ -719,3 +742,4 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
