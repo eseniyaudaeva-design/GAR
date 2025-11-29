@@ -11,95 +11,50 @@ import concurrent.futures
 from urllib.parse import urlparse
 
 # ==========================================
-# 1. СТИЛЬ (MANROPE / PROFESSIONAL WHITE)
+# 1. КОНФИГУРАЦИЯ (МИНИМАЛЬНЫЙ CSS ДЛЯ ЧИТАЕМОСТИ)
 # ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
+# Этот CSS делает ТОЛЬКО одно: принудительно ставит белый фон и черный текст,
+# чтобы исправить баг вашей темной темы. Никаких украшательств.
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap');
-        
-        /* 1. ГЛОБАЛЬНЫЙ ФОН */
+        /* Принудительная светлая тема для контейнера */
         [data-testid="stAppViewContainer"] {
-            background-color: #F3F6F9 !important;
-            font-family: 'Manrope', sans-serif;
-        }
-        [data-testid="stHeader"] { background-color: transparent !important; }
-        
-        /* 2. ТЕКСТ (ЧЕРНЫЙ/СЕРЫЙ) */
-        h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
-            color: #1E293B !important;
-        }
-        h1 {
-            color: #0F172A !important;
-            font-weight: 800 !important;
-            text-align: center;
-            margin-bottom: 2rem;
+            background-color: #ffffff;
+            color: #000000;
         }
         
-        /* 3. ПОЛЯ ВВОДА (ИСПРАВЛЕНО: БЕЛЫЙ ФОН, ЧЕРНЫЙ ТЕКСТ) */
-        .stTextInput input, .stTextArea textarea {
-            background-color: #FFFFFF !important;
+        /* Исправление полей ввода (чтобы не было черным) */
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
             color: #000000 !important;
-            border: 1px solid #CBD5E1 !important;
-            border-radius: 8px !important;
+            background-color: #ffffff !important;
+            border: 1px solid #cccccc !important;
         }
-        /* Исправление выпадающих списков (чтобы не было черным) */
-        .stSelectbox div[data-baseweb="select"] > div {
-            background-color: #FFFFFF !important;
-            color: #000000 !important;
-            border: 1px solid #CBD5E1 !important;
-        }
-        ul[data-baseweb="menu"] {
-            background-color: #FFFFFF !important;
-        }
-        li[data-baseweb="option"] {
+        
+        /* Исправление выпадающих списков */
+        div[data-baseweb="popover"], div[data-baseweb="menu"], li {
+            background-color: #ffffff !important;
             color: #000000 !important;
         }
         
-        /* 4. КНОПКА (ЯРКАЯ) */
-        div.stButton > button {
-            background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            border-radius: 8px !important;
-            padding: 12px 24px !important;
-            font-weight: 700 !important;
-            font-size: 16px !important;
-            width: 100%;
-            margin-top: 10px;
+        /* Заголовки и лейблы */
+        h1, h2, h3, p, label, span {
+            color: #000000 !important;
         }
         
-        /* 5. КАРТОЧКИ (БЕЛЫЕ БЛОКИ) */
-        .input-card {
-            background-color: #FFFFFF;
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #E2E8F0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
-        }
-        
-        /* 6. ТАБЛИЦЫ */
-        div[data-testid="stDataFrame"] {
-            background-color: #FFFFFF !important;
-            border: 1px solid #E2E8F0 !important;
-            border-radius: 8px;
-        }
-        
-        /* Исправление чекбоксов */
-        label[data-testid="stLabel"] {
-            font-size: 14px;
-            font-weight: 600;
+        /* Уменьшение отступов (убираем пустоту) */
+        .block-container {
+            padding-top: 2rem !important;
+            padding-bottom: 2rem !important;
         }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. БЭКЕНД
+# 2. ЛОГИКА (БЭКЕНД - ВАШ РАБОЧИЙ КОД)
 # ==========================================
 
-# --- Патч NLP ---
 try:
     if not hasattr(inspect, 'getargspec'):
         def getargspec(func):
@@ -113,14 +68,13 @@ except:
     morph = None
     USE_NLP = False
 
-# --- Поиск ---
 try:
     from googlesearch import search
     USE_SEARCH = True
 except:
     USE_SEARCH = False
 
-DEFAULT_EXCLUDE = "yandex.ru avito.ru ozon.ru wildberries.ru youtube.com dzen.ru hh.ru t.me tiu.ru"
+DEFAULT_EXCLUDE = "yandex.ru avito.ru ozon.ru wildberries.ru youtube.com dzen.ru hh.ru t.me tiu.ru pulscen.ru satu.kz"
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
 
 def process_text(text, settings, n_gram=1):
@@ -286,63 +240,53 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ИНТЕРФЕЙС
+# 3. ИНТЕРФЕЙС (ИСПРАВЛЕННЫЙ)
 # ==========================================
 
 st.title("SEO Анализатор Релевантности")
 
-# --- БЛОК 1: ДАННЫЕ ---
-st.markdown('<div class="input-card">', unsafe_allow_html=True)
-st.markdown("#### 📝 Ввод данных")
+# 1. ВВОД
 c1, c2 = st.columns(2)
 with c1:
-    my_url = st.text_input("Ваш URL", placeholder="https://site.ru/catalog")
+    my_url = st.text_input("Ваш URL", placeholder="https://site.ru/page")
 with c2:
-    query = st.text_input("Запрос", placeholder="купить окна")
-st.markdown('</div>', unsafe_allow_html=True)
+    query = st.text_input("Поисковой запрос", placeholder="купить окна")
 
-# --- БЛОК 2: КОНКУРЕНТЫ ---
-st.markdown('<div class="input-card">', unsafe_allow_html=True)
-st.markdown("#### 🕵️ Источник конкурентов")
-
-# Радиокнопки (Pills Style)
+# 2. ИСТОЧНИК
+st.markdown("##### 🕵️ Источник конкурентов")
 source_type = st.radio("Источник:", ["Google (Авто)", "Ручной список"], horizontal=True, label_visibility="collapsed")
 
 if source_type == "Google (Авто)":
-    cl1, cl2 = st.columns([1, 2])
+    # Две колонки: Глубина (узкая) и Исключения (широкая)
+    cl1, cl2 = st.columns([1, 4])
     with cl1:
         top_n = st.selectbox("Глубина ТОПа", [5, 10, 20], index=1)
     with cl2:
-        # Убрал text_input, заменил на компактный text_area для удобства редактирования списка
-        excludes = st.text_area("Исключить домены (через пробел)", DEFAULT_EXCLUDE, height=70)
+        # ЗАМЕНА на text_area, чтобы было видно все домены
+        excludes = st.text_area("Исключить домены (через пробел)", DEFAULT_EXCLUDE, height=68)
 else:
-    manual_urls = st.text_area("URL конкурентов (с новой строки)", height=150)
-st.markdown('</div>', unsafe_allow_html=True)
+    manual_urls = st.text_area("Список URL (каждый с новой строки)", height=150)
 
-# --- БЛОК 3: НАСТРОЙКИ ---
-st.markdown('<div class="input-card">', unsafe_allow_html=True)
-st.markdown("#### ⚙️ Настройки")
+# 3. НАСТРОЙКИ
+st.markdown("##### ⚙️ Настройки")
+with st.expander("Открыть параметры", expanded=False):
+    col_set1, col_set2 = st.columns([1, 1])
+    
+    with col_set1:
+        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"])
+        # ЗАМЕНА на text_area, теперь можно писать с новой строки
+        c_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=150)
+        
+    with col_set2:
+        st.write("") # Отступ
+        s_noindex = st.checkbox("Исключать noindex", True)
+        s_alt = st.checkbox("Учитывать Alt/Title", False)
+        s_num = st.checkbox("Учитывать числа", False)
+        s_norm = st.checkbox("Нормировать по длине", True)
+        s_agg = st.checkbox("Исключать агрегаторы", True)
 
-# Делим на 2 колонки: Слева селекты, Справа чекбоксы
-col_left, col_right = st.columns([1, 1])
-
-with col_left:
-    ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0", "Googlebot/2.1"])
-    # Сделал поле стоп-слов уже и выше
-    c_stops = st.text_area("Стоп-слова (с новой строки)", DEFAULT_STOPS, height=100)
-
-with col_right:
-    st.write("") # Отступ для выравнивания
-    s_noindex = st.checkbox("Исключать noindex", True)
-    s_alt = st.checkbox("Учитывать Alt/Title", False)
-    s_num = st.checkbox("Учитывать числа", False)
-    s_norm = st.checkbox("Нормировать по длине", True)
-    s_agg = st.checkbox("Исключать агрегаторы", True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# --- КНОПКА ЗАПУСКА ---
-if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
+# Кнопка запуска
+if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True):
     
     if not my_url:
         st.error("Введите URL!")
@@ -411,7 +355,6 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
     
     # 4. РЕЗУЛЬТАТЫ (С ПАГИНАЦИЕЙ)
     
-    # Рекомендации по глубине (С ПАГИНАЦИЕЙ)
     st.markdown("### 1. Рекомендации по глубине")
     df_d = results['depth']
     if not df_d.empty:
@@ -430,7 +373,7 @@ if st.button("ЗАПУСТИТЬ АНАЛИЗ 🚀"):
             if st.button("⬅️ Назад") and st.session_state.page_number > 1:
                 st.session_state.page_number -= 1
         with col_p2:
-            st.markdown(f"<div style='text-align: center; padding-top: 10px;'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; padding-top: 10px; color: black;'>Страница <b>{st.session_state.page_number}</b> из {total_pages}</div>", unsafe_allow_html=True)
         with col_p3:
             if st.button("Вперед ➡️") and st.session_state.page_number < total_pages:
                 st.session_state.page_number += 1
