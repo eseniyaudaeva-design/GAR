@@ -330,7 +330,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     st.markdown(f"### {title_text}")
     
     # --- БЛОК СОРТИРОВКИ ---
-    # Меню сортировки важно, чтобы сортировать ВЕСЬ список перед нарезкой на страницы
     if f'{key_prefix}_sort_col' not in st.session_state:
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
     if f'{key_prefix}_sort_order' not in st.session_state:
@@ -400,10 +399,15 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     styled_df = df_view.style.apply(highlight_rows, axis=1)
     
-    # ВАЖНО: Убрали height (убирает скролл, показывает все 20 строк)
+    # --- ВЫВОД ТАБЛИЦЫ (ДИНАМИЧЕСКАЯ ВЫСОТА) ---
+    # Расчет высоты: 35px на строку + 40px шапка + 3px запас
+    # Это гарантирует отсутствие скроллбара, таблица будет длинной
+    dynamic_height = (len(df_view) * 35) + 40 
+    
     st.dataframe(
         styled_df,
         use_container_width=True,
+        height=dynamic_height, # <-- Фиксируем высоту под кол-во строк
         column_config={c: None for c in cols_to_hide}
     )
     
