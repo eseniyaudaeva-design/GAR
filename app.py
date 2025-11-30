@@ -102,17 +102,17 @@ st.markdown(f"""
             border-bottom: 1px solid {BORDER_COLOR} !important;
         }}
         
+        /* Убираем лишние отступы вокруг таблицы */
+        div[data-testid="stDataFrame"] {{
+            width: 100%;
+        }}
+
         .legend-box {{
             padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
         }}
         .text-red {{ color: #D32F2F; font-weight: bold; }}
         .text-bold {{ font-weight: 600; }}
         
-        /* Контейнер сортировки */
-        .sort-container {{
-            background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR};
-        }}
-
         section[data-testid="stSidebar"] {{ background-color: #FFFFFF; border-left: 1px solid {BORDER_COLOR}; }}
     </style>
 """, unsafe_allow_html=True)
@@ -319,75 +319,30 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ С ГЛОБАЛЬНОЙ СОРТИРОВКОЙ
+# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (SCROLLABLE TABLE)
 # ==========================================
 
-def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
+def render_scrollable_table(df, title_text, sort_by_col=None, use_abs_sort=False):
     if df.empty:
         st.info(f"{title_text}: Нет данных.")
         return
 
     st.markdown(f"### {title_text}")
-    
-    # --- БЛОК СОРТИРОВКИ ---
-    if f'{key_prefix}_sort_col' not in st.session_state:
-        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
-    if f'{key_prefix}_sort_order' not in st.session_state:
-        st.session_state[f'{key_prefix}_sort_order'] = "Убывание" 
 
-    with st.container():
-        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
-        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
-        with col_s1:
-            sort_col = st.selectbox(
-                "🗂 Сортировать весь список по:", 
-                df.columns, 
-                key=f"{key_prefix}_sort_box",
-                index=list(df.columns).index(st.session_state[f'{key_prefix}_sort_col']) if st.session_state[f'{key_prefix}_sort_col'] in df.columns else 0
-            )
-            st.session_state[f'{key_prefix}_sort_col'] = sort_col
-        with col_s2:
-            sort_order = st.radio(
-                "Порядок:", 
-                ["Убывание", "Возрастание"], 
-                horizontal=True,
-                key=f"{key_prefix}_order_box",
-                index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
-            )
-            st.session_state[f'{key_prefix}_sort_order'] = sort_order
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # --- СОРТИРОВКА ПОЛНОГО ДАТАСЕТА ---
-    ascending = (sort_order == "Возрастание")
-    
-    # Если столбец "Добавить/Убрать" или похожий - сортируем по модулю
-    if "Добавить" in sort_col or "+/-" in sort_col:
-        df['_temp_sort'] = df[sort_col].abs()
-        df = df.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
-    else:
-        df = df.sort_values(by=sort_col, ascending=ascending)
-
-    # --- ПАГИНАЦИЯ ---
+    # 1. Начальная сортировка (По умолчанию)
+    # Это выполняется один раз при загрузке. Дальше пользователь может кликать по шапке.
+    if sort_by_col and sort_by_col in df.columns:
+        if use_abs_sort:
+            df['_abs_sort'] = df[sort_by_col].abs()
+            df = df.sort_values(by='_abs_sort', ascending=False).drop(columns=['_abs_sort'])
+        else:
+            df = df.sort_values(by=sort_by_col, ascending=False)
+            
+    # 2. Индексация с 1
     df = df.reset_index(drop=True)
     df.index = df.index + 1
-    
-    ROWS_PER_PAGE = 10 
-    if f'{key_prefix}_page' not in st.session_state:
-        st.session_state[f'{key_prefix}_page'] = 1
-        
-    total_rows = len(df)
-    total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
-    current_page = st.session_state[f'{key_prefix}_page']
-    
-    if current_page > total_pages: current_page = total_pages
-    if current_page < 1: current_page = 1
-    
-    start_idx = (current_page - 1) * ROWS_PER_PAGE
-    end_idx = start_idx + ROWS_PER_PAGE
-    
-    df_view = df.iloc[start_idx:end_idx]
 
-    # --- ПОКРАСКА ---
+    # 3. Покраска
     def highlight_rows(row):
         styles = [''] * len(row)
         if 'is_missing' in row and row['is_missing']:
@@ -398,26 +353,16 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     cols_to_hide = ["diff_abs", "is_missing"]
     
-    styled_df = df_view.style.apply(highlight_rows, axis=1)
+    styled_df = df.style.apply(highlight_rows, axis=1)
     
+    # 4. ВЫВОД ПОЛНОЙ ТАБЛИЦЫ СО СКРОЛЛОМ
+    # height=500 включает вертикальный скролл, заголовки фиксируются
     st.dataframe(
         styled_df,
         use_container_width=True,
+        height=600, 
         column_config={c: None for c in cols_to_hide}
     )
-    
-    # Кнопки
-    c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
-    with c_btn_prev:
-        if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
-            st.session_state[f'{key_prefix}_page'] -= 1
-            st.rerun()
-    with c_info:
-        st.markdown(f"<div style='text-align: center; margin-top: 10px; color:{TEXT_COLOR}'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
-    with c_btn_next:
-        if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
-            st.session_state[f'{key_prefix}_page'] += 1
-            st.rerun()
     st.markdown("---")
 
 # ==========================================
@@ -457,8 +402,6 @@ with col_main:
     st.markdown("---")
     
     if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-        for key in list(st.session_state.keys()):
-            if key.endswith('_page'): st.session_state[key] = 1
         st.session_state.start_analysis_flag = True
 
 with col_sidebar:
@@ -524,57 +467,4 @@ if st.session_state.get('start_analysis_flag'):
             st.stop()
     else:
         raw_urls = st.session_state.get("manual_urls_ui", "")
-        target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
-
-    if not target_urls:
-        st.error("Нет конкурентов.")
-        st.stop()
-        
-    my_data = None
-    if my_input_type == "Релевантная страница на вашем сайте":
-        with st.spinner("Скачивание вашей страницы..."):
-            my_data = parse_page(st.session_state.my_url_input, settings)
-    elif my_input_type == "Исходный код страницы или текст":
-        my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
-
-    comp_data = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
-        done = 0
-        total = len(target_urls)
-        prog = st.progress(0)
-        stat = st.empty()
-        for f in concurrent.futures.as_completed(futures):
-            res = f.result()
-            if res: comp_data.append(res)
-            done += 1
-            prog.progress(done / total)
-            stat.text(f"Загрузка конкурентов: {done}/{total}")
-    prog.empty()
-    stat.empty()
-
-    with st.spinner("Анализ данных..."):
-        st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings)
-        st.session_state.analysis_done = True
-        st.rerun()
-
-if st.session_state.analysis_done and st.session_state.analysis_results:
-    results = st.session_state.analysis_results
-    st.success("Анализ готов!")
-    
-    st.markdown(f"""
-        <div style='background-color: {LIGHT_BG_MAIN}; padding: 15px; border-radius: 8px; border: 1px solid {BORDER_COLOR}; margin-bottom: 20px;'>
-            <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта</h4>
-            <p style='margin:5px 0 0 0;'>Ширина (уникальные слова): <b>{results['my_score']['width']}</b> | Глубина (всего слов): <b>{results['my_score']['depth']}</b></p>
-        </div>
-        <div class="legend-box">
-            <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
-            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона. <br>
-            ℹ️ <b>ВНИМАНИЕ:</b> Клик по шапке таблицы сортирует <u>только видимую страницу</u>. Чтобы отсортировать <b>ВЕСЬ СПИСОК</b>, используйте выпадающее меню ниже.
-        </div>
-    """, unsafe_allow_html=True)
-
-    render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
-    render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
-    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="TF-IDF", use_abs_sort_default=False)
-    render_paginated_table(results['relevance_top'], "5. ТОП релевантности", "tbl_rel", default_sort_col="Ширина", use_abs_sort_default=False)
+        target_urls = [u.strip() for u in raw_urls.split('\n')
