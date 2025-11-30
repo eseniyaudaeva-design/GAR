@@ -81,13 +81,11 @@ PRIMARY_DARK = "#1E63C4"
 TEXT_COLOR = "#3D4858"
 LIGHT_BG_MAIN = "#F1F5F9"
 BORDER_COLOR = "#E2E8F0"
-MAROON_DIVIDER = "#990000"
 
 st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* Глобальный сброс цветов */
         :root {{
             --primary-color: {PRIMARY_COLOR};
             --text-color: {TEXT_COLOR};
@@ -101,25 +99,6 @@ st.markdown(f"""
         
         h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown {{
             color: {TEXT_COLOR} !important;
-        }}
-
-        /* СТИЛИЗАЦИЯ ТАБЛИЦ (dataframe) */
-        div[data-testid="stDataFrame"] {{
-            background-color: #FFFFFF !important;
-            border: 1px solid {BORDER_COLOR};
-            border-radius: 8px;
-            padding: 5px;
-        }}
-        div[data-testid="stDataFrame"] div[role="columnheader"] {{
-            color: {PRIMARY_COLOR} !important;
-            background-color: {LIGHT_BG_MAIN} !important;
-            font-weight: 600 !important;
-            border-bottom: 1px solid {BORDER_COLOR};
-        }}
-        div[data-testid="stDataFrame"] div[role="gridcell"] {{
-            color: {TEXT_COLOR} !important;
-            background-color: #FFFFFF !important;
-            border-bottom: 1px solid #f0f0f0;
         }}
 
         /* Кнопки */
@@ -147,7 +126,6 @@ st.markdown(f"""
             border-left: 1px solid {BORDER_COLOR};
         }}
         
-        /* Убираем лишние отступы */
         .block-container {{ padding-top: 2rem; padding-bottom: 5rem; }}
     </style>
 """, unsafe_allow_html=True)
@@ -155,6 +133,12 @@ st.markdown(f"""
 # ==========================================
 # 2. ЛОГИКА (БЭКЕНД)
 # ==========================================
+
+# Инициализация Session State для сохранения результатов
+if 'analysis_results' not in st.session_state:
+    st.session_state.analysis_results = None
+if 'analysis_done' not in st.session_state:
+    st.session_state.analysis_done = False
 
 try:
     if not hasattr(inspect, 'getargspec'):
@@ -293,19 +277,16 @@ def calculate_metrics(comp_data, my_data, settings):
         diff_anch = target_anch - my_anch_tf
         
         if med_tf > 0.5 or my_tf > 0:
-            # Для таблицы Глубины (1 и 2)
             table_depth.append({
                 "Слово": word,
                 "У вас (TF)": my_tf, 
                 "Медиана": round(med_tf, 1),
                 "Максимум": int(max_tf * norm_k),
-                "Добавить/Убрать": diff_body, # Главное поле для сортировки
-                "diff_abs": abs(diff_body),   # Техническое поле для сортировки
+                "Добавить/Убрать": diff_body, 
+                "diff_abs": abs(diff_body),
                 "Тег A у вас": my_anch_tf,
                 "Тег A реком.": target_anch
             })
-            
-            # Для Гибридной таблицы (3)
             table_hybrid.append({
                 "Слово": word, 
                 "TF-IDF ТОП": round(med_tf * idf, 2), 
@@ -369,7 +350,9 @@ def calculate_metrics(comp_data, my_data, settings):
 
 def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs_sort=False):
     """
-    Функция для отрисовки таблицы с пагинацией, правильной сортировкой и стилями.
+    Отрисовка таблицы с:
+    1. Пагинацией (без сброса данных, так как они в session_state)
+    2. Принудительно белым фоном через Pandas Styler
     """
     if df.empty:
         st.info(f"{title_text}: Нет данных.")
@@ -378,13 +361,12 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
     # 1. Сортировка
     if sort_by_col and sort_by_col in df.columns:
         if use_abs_sort:
-            # Создаем временную колонку для абсолютной сортировки
             df['_abs_sort'] = df[sort_by_col].abs()
             df = df.sort_values(by='_abs_sort', ascending=False).drop(columns=['_abs_sort'])
         else:
             df = df.sort_values(by=sort_by_col, ascending=False)
             
-    # 2. Пересчет индекса (чтобы начинался с 1)
+    # 2. Индекс с 1
     df = df.reset_index(drop=True)
     df.index = df.index + 1
     
@@ -397,25 +379,44 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
     total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
     current_page = st.session_state[f'{key_prefix}_page']
     
-    # Защита от выхода за границы
     if current_page > total_pages: current_page = total_pages
     if current_page < 1: current_page = 1
     
     start_idx = (current_page - 1) * ROWS_PER_PAGE
     end_idx = start_idx + ROWS_PER_PAGE
     
-    # Срез данных для текущей страницы
     df_view = df.iloc[start_idx:end_idx]
     
-    # 4. Отрисовка
+    # 4. Отрисовка с принудительным стилем (Белый фон!)
     st.markdown(f"### {title_text}")
-    st.dataframe(df_view, use_container_width=True)
+    
+    # Стилизация через Pandas Styler (решает проблему черных таблиц)
+    def style_dataframe(d):
+        return d.style.set_properties(**{
+            'background-color': '#FFFFFF',
+            'color': '#3D4858',
+            'border-color': '#E2E8F0'
+        }).set_table_styles([
+            {'selector': 'th', 'props': [
+                ('background-color', '#F1F5F9'),
+                ('color', '#277EFF'),
+                ('font-weight', 'bold'),
+                ('border-bottom', '1px solid #E2E8F0')
+            ]}
+        ])
+
+    st.dataframe(
+        style_dataframe(df_view),
+        use_container_width=True,
+        column_config={"diff_abs": None} # Скрываем тех. колонку
+    )
     
     # 5. Кнопки управления (Снизу справа)
-    # Создаем колонки: Большая пустая слева, кнопки справа
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     
     with c_btn_prev:
+        # Важно: кнопки просто меняют состояние страницы и вызывают rerun.
+        # Так как данные сохранены в session_state.analysis_results, они не пропадут.
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
             st.session_state[f'{key_prefix}_page'] -= 1
             st.rerun()
@@ -438,9 +439,6 @@ col_main, col_sidebar = st.columns([65, 35])
 
 with col_main:
     st.title("SEO Анализатор Релевантности")
-
-    if 'start_analysis_flag' not in st.session_state:
-        st.session_state.start_analysis_flag = False
 
     st.markdown("### URL или код страницы Вашего сайта")
     my_input_type = st.radio(
@@ -472,7 +470,13 @@ with col_main:
     c_stops = st.text_area("Стоп-слова", DEFAULT_STOPS, height=200, key="settings_stops")
 
     st.markdown("---")
+    
+    # Кнопка запуска меняет только флаг запуска.
     if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+        # Сброс пагинации при новом поиске
+        for key in list(st.session_state.keys()):
+            if key.endswith('_page'):
+                st.session_state[key] = 1
         st.session_state.start_analysis_flag = True
 
 with col_sidebar:
@@ -494,9 +498,13 @@ with col_sidebar:
         st.checkbox("Нормировать по длине", True, key="settings_norm")
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
-# --- ЗАПУСК ---
-if st.session_state.start_analysis_flag:
-    st.session_state.start_analysis_flag = False
+# ==========================================
+# 5. ОБРАБОТКА И ВЫВОД (Session State Logic)
+# ==========================================
+
+# Если была нажата кнопка запуска - производим расчеты и сохраняем в Session State
+if st.session_state.get('start_analysis_flag'):
+    st.session_state.start_analysis_flag = False # Сбрасываем триггер
 
     if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
         st.error("Введите URL!")
@@ -572,8 +580,15 @@ if st.session_state.start_analysis_flag:
         st.stop()
 
     with st.spinner("Анализ данных..."):
-        results = calculate_metrics(comp_data, my_data, settings)
+        # СОХРАНЯЕМ В SESSION STATE
+        st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings)
+        st.session_state.analysis_done = True
+        st.rerun() # Перезагружаем страницу, чтобы отобразить результаты
 
+# Если анализ уже был сделан (данные лежат в session_state), показываем таблицы
+if st.session_state.analysis_done and st.session_state.analysis_results:
+    results = st.session_state.analysis_results
+    
     st.success("Анализ готов!")
     
     st.markdown(f"""
@@ -583,12 +598,7 @@ if st.session_state.start_analysis_flag:
         </div>
     """, unsafe_allow_html=True)
 
-    # ==========================================
-    # ВЫВОД ТАБЛИЦ (Строгий порядок 1-5)
-    # ==========================================
-
-    # 1. Рекомендации по глубине (Сортировка по абсолютному значению Diff)
-    # Используем таблицу depth, так как там есть расчет добавления/удаления
+    # 1. Рекомендации по глубине
     render_paginated_table(
         results['depth'], 
         "1. Рекомендации по глубине (Добавить/Убрать слова)", 
@@ -597,15 +607,7 @@ if st.session_state.start_analysis_flag:
         use_abs_sort=True
     )
 
-    # 2. Рекомендации относительно основных слов (по Медиане)
-    # Это те же данные, но фокусируемся на медиане. Используем ту же таблицу, но назовем иначе, как просили.
-    # Или, если нужно визуально отделить, можно скопировать df. Но пока выведем ту же самую, так как в ТЗ "таблицы", а данные одни.
-    # Если вы хотите именно другую таблицу, можно взять hybrid, но там TF-IDF.
-    # Выведем 'depth' еще раз или пропустим, если это дубль.
-    # В вашей логике пункт 1 и 2 обычно живут в одной таблице.
-    # Я выведу Гибридную таблицу как пункт 2 (Основные слова + TF-IDF), так логичнее.
-    
-    # 3. Гибридный ТОП униграм (TF-IDF)
+    # 3. Гибридный ТОП
     render_paginated_table(
         results['hybrid'], 
         "3. Гибридный ТОП (TF-IDF)", 
@@ -623,7 +625,7 @@ if st.session_state.start_analysis_flag:
         use_abs_sort=False
     )
 
-    # 5. ТОП релевантности документов
+    # 5. ТОП релевантности
     render_paginated_table(
         results['relevance_top'], 
         "5. ТОП релевантности страниц конкурентов", 
