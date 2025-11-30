@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import inspect
 
 # ==========================================
-# 0. ПАТЧ СОВМЕСТИМОСТИ (Исправление ошибки NLP)
+# 0. ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
 # ==========================================
 if not hasattr(inspect, 'getargspec'):
     def getargspec(func):
@@ -20,7 +20,12 @@ if not hasattr(inspect, 'getargspec'):
     inspect.getargspec = getargspec
 
 # ==========================================
-# 1. АВТОРИЗАЦИЯ
+# 1. КОНФИГУРАЦИЯ СТРАНИЦЫ (ДОЛЖНА БЫТЬ ПЕРВОЙ)
+# ==========================================
+st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
+
+# ==========================================
+# 2. АВТОРИЗАЦИЯ
 # ==========================================
 def check_password():
     if st.session_state.get("authenticated"):
@@ -56,10 +61,8 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 2. КОНФИГУРАЦИЯ И СТИЛИ
+# 3. СТИЛИ И КОНСТАНТЫ
 # ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
-
 DEFAULT_EXCLUDE_DOMAINS = [
     "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com",
     "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru",
@@ -81,15 +84,15 @@ TEXT_COLOR = "#3D4858"
 LIGHT_BG_MAIN = "#F1F5F9"
 BORDER_COLOR = "#E2E8F0"
 HEADER_BG = "#F0F7FF"
-ROW_BORDER_COLOR = "#DBEAFE" # Светло-голубой разделитель строк
+ROW_BORDER_COLOR = "#DBEAFE" 
 
 st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* Глобальный стиль */
+        /* Основной фон и текст */
         .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
-        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
+        html, body, p, li, h1, h2, h3, h4, label, span, div {{ font-family: 'Inter', sans-serif !important; color: {TEXT_COLOR}; }}
 
         /* Кнопки */
         .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
@@ -100,16 +103,14 @@ st.markdown(f"""
             background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
 
-        /* === СТИЛИ ТАБЛИЦЫ (ГЛОБАЛЬНЫЕ) === */
-        
-        /* Внешний контейнер таблицы - Синяя рамка */
+        /* === ТАБЛИЦЫ === */
+        /* Внешняя рамка таблицы */
         div[data-testid="stDataFrame"] {{
             border: 2px solid {PRIMARY_COLOR} !important;
             border-radius: 8px !important;
-            overflow: hidden !important;
         }}
-
-        /* Заголовки (Шапка) - Голубой фон, Синий текст */
+        
+        /* Заголовки (th) */
         div[data-testid="stDataFrame"] div[role="columnheader"] {{
             background-color: {HEADER_BG} !important;
             color: {PRIMARY_COLOR} !important;
@@ -117,7 +118,7 @@ st.markdown(f"""
             border-bottom: 2px solid {PRIMARY_COLOR} !important;
         }}
         
-        /* Ячейки данных - Белый фон */
+        /* Ячейки (td) */
         div[data-testid="stDataFrame"] div[role="gridcell"] {{
             background-color: #FFFFFF !important;
             color: {TEXT_COLOR} !important;
@@ -131,17 +132,18 @@ st.markdown(f"""
         .text-red {{ color: #D32F2F; font-weight: bold; }}
         .text-bold {{ font-weight: 600; }}
         
-        /* Контейнер сортировки */
+        /* Сортировка */
         .sort-container {{
             background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR};
         }}
 
-        section[data-testid="stSidebar"] {{ background-color: #FFFFFF; border-left: 1px solid {BORDER_COLOR}; }}
+        /* Сайдбар */
+        section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-left: 1px solid {BORDER_COLOR} !important; }}
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. ЛОГИКА (БЭКЕНД)
+# 4. ЛОГИКА (БЭКЕНД)
 # ==========================================
 
 # Инициализация NLP
@@ -308,4 +310,194 @@ def calculate_metrics(comp_data, my_data, settings):
         abs_diff = abs(diff_total)
 
         if med_total > 0.5 or my_tf_total > 0:
-            table_
+            table_depth.append({
+                "Слово": word, "Словоформы": forms_str, "Повторы у вас": my_tf_total,
+                "Повторов в ТОПе": sum_in_top, "Минимум (рек)": rec_min, "Максимум (рек)": rec_max,
+                "Добавить/Убрать": diff_total, "Тег A у вас": my_tf_anchor, "Тег A (рек)": rec_anchor,
+                "Тег A +/-": diff_anchor, "Текст у вас": my_tf_text, "Текст (рек)": rec_text_min,
+                "Текст +/-": diff_text, "Переспам %": spam_percent, "Переспам*IDF": spam_idf,
+                "diff_abs": abs_diff, "is_missing": (my_tf_total == 0)
+            })
+            table_hybrid.append({
+                "Слово": word, "TF-IDF ТОП": round(med_total * idf, 2), "TF-IDF у вас": round(my_tf_total * idf, 2),
+                "Сайтов": df, "Переспам": max_total
+            })
+
+    table_ngrams = []
+    if comp_docs and my_data:
+        try:
+            my_bi, _ = process_text_detailed(my_data['body_text'], settings, 2)
+            comp_bi = [process_text_detailed(p['body_text'], settings, 2)[0] for p in comp_data]
+            all_bi = set(my_bi)
+            for c in comp_bi: all_bi.update(c)
+            bi_freqs = Counter()
+            for c in comp_bi: 
+                for b_ in set(c): bi_freqs[b_] += 1
+            for bg in all_bi:
+                df = bi_freqs[bg]
+                if df < 2 and bg not in my_bi: continue
+                my_c = my_bi.count(bg)
+                comp_c = [c.count(bg) for c in comp_bi]
+                med_c = np.median(comp_c) if comp_c else 0
+                if med_c > 0 or my_c > 0:
+                    table_ngrams.append({
+                        "N-грамма": bg, "Сайтов": df, "Медиана": med_c, "На сайте": my_c,
+                        "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
+                    })
+        except: pass
+
+    table_rel = []
+    for i, p in enumerate(comp_data):
+        p_lemmas, _ = process_text_detailed(p['body_text'], settings)
+        w = len(set(p_lemmas).intersection(vocab))
+        table_rel.append({"Домен": p['domain'], "Позиция": i+1, "URL": p['url'], "Ширина": w, "Глубина": len(p_lemmas)})
+        
+    return {
+        "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
+        "ngrams": pd.DataFrame(table_ngrams), "relevance_top": pd.DataFrame(table_rel),
+        "my_score": {"width": len(set(my_lemmas).intersection(vocab)), "depth": len(my_lemmas)}
+    }
+
+# ==========================================
+# 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (FINAL)
+# ==========================================
+
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
+    if df.empty:
+        st.info(f"{title_text}: Нет данных.")
+        return
+
+    st.markdown(f"### {title_text}")
+    
+    # БЛОК СОРТИРОВКИ
+    if f'{key_prefix}_sort_col' not in st.session_state:
+        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
+    if f'{key_prefix}_sort_order' not in st.session_state:
+        st.session_state[f'{key_prefix}_sort_order'] = "Убывание" 
+
+    with st.container():
+        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
+        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
+        with col_s1:
+            sort_col = st.selectbox(
+                "🗂 Сортировать весь список по:", 
+                df.columns, 
+                key=f"{key_prefix}_sort_box",
+                index=list(df.columns).index(st.session_state[f'{key_prefix}_sort_col']) if st.session_state[f'{key_prefix}_sort_col'] in df.columns else 0
+            )
+            st.session_state[f'{key_prefix}_sort_col'] = sort_col
+        with col_s2:
+            sort_order = st.radio(
+                "Порядок:", 
+                ["Убывание", "Возрастание"], 
+                horizontal=True,
+                key=f"{key_prefix}_order_box",
+                index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
+            )
+            st.session_state[f'{key_prefix}_sort_order'] = sort_order
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # СОРТИРОВКА
+    ascending = (sort_order == "Возрастание")
+    if "Добавить" in sort_col or "+/-" in sort_col:
+        df['_temp_sort'] = df[sort_col].abs()
+        df = df.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
+    else:
+        df = df.sort_values(by=sort_col, ascending=ascending)
+
+    # ПАГИНАЦИЯ (20 строк)
+    df = df.reset_index(drop=True)
+    df.index = df.index + 1
+    
+    ROWS_PER_PAGE = 20
+    if f'{key_prefix}_page' not in st.session_state:
+        st.session_state[f'{key_prefix}_page'] = 1
+        
+    total_rows = len(df)
+    total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
+    current_page = st.session_state[f'{key_prefix}_page']
+    
+    if current_page > total_pages: current_page = total_pages
+    if current_page < 1: current_page = 1
+    
+    start_idx = (current_page - 1) * ROWS_PER_PAGE
+    end_idx = start_idx + ROWS_PER_PAGE
+    
+    df_view = df.iloc[start_idx:end_idx]
+
+    # ПОКРАСКА
+    def highlight_rows(row):
+        styles = [''] * len(row)
+        base_style = 'background-color: #FFFFFF; color: #3D4858;' # Основной стиль
+        
+        if 'is_missing' in row and row['is_missing']:
+            # Красный для отсутствующих
+            for i in range(len(row)):
+                styles[i] = base_style + 'color: #D32F2F; font-weight: bold;'
+        else:
+            # Жирный для присутствующих
+            for i in range(len(row)):
+                styles[i] = base_style + 'font-weight: 600;'
+                
+        return styles
+    
+    cols_to_hide = ["diff_abs", "is_missing"]
+    
+    styled_df = df_view.style.apply(highlight_rows, axis=1)
+    
+    # ДИНАМИЧЕСКАЯ ВЫСОТА (чтобы не было скролла внутри, но была таблица целиком)
+    # 35px на строку + 40px шапка + запас
+    dynamic_height = (len(df_view) * 35) + 40 
+    
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        height=dynamic_height, 
+        column_config={c: None for c in cols_to_hide}
+    )
+    
+    # КНОПКИ ПЕРЕКЛЮЧЕНИЯ
+    c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
+    with c_btn_prev:
+        if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] -= 1
+            st.rerun()
+    with c_info:
+        st.markdown(f"<div style='text-align: center; margin-top: 10px; color:{TEXT_COLOR}'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
+    with c_btn_next:
+        if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] += 1
+            st.rerun()
+    st.markdown("---")
+
+# ==========================================
+# 6. ИНТЕРФЕЙС
+# ==========================================
+
+col_main, col_sidebar = st.columns([65, 35]) 
+
+with col_main:
+    st.title("SEO Анализатор Релевантности")
+
+    st.markdown("### URL или код страницы Вашего сайта")
+    my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
+
+    my_url = ""
+    my_page_content = ""
+    if my_input_type == "Релевантная страница на вашем сайте":
+        my_url = st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input")
+    elif my_input_type == "Исходный код страницы или текст":
+        my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML", key="my_content_input")
+
+    st.markdown("### Поисковой запрос")
+    query = st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
+
+    st.markdown("### Поиск или URL страниц конкурентов")
+    source_type_new = st.radio("Источник конкурентов", ["Поиск", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
+    source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
+
+    if source_type == "Ручной список":
+        st.markdown("### Введите список URL")
+        st.text_area("Вставьте ссылки здесь (каждая с новой строки)", height=200, key="manual_urls_ui")
+
+    st.markdown("### Редактируемые списки
