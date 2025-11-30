@@ -6,12 +6,23 @@ from bs4 import BeautifulSoup, Comment
 import re
 from collections import Counter, defaultdict
 import math
-import inspect
 import concurrent.futures
 from urllib.parse import urlparse
+import inspect
 
 # ==========================================
-# 0. АВТОРИЗАЦИЯ
+# 0. ПАТЧ СОВМЕСТИМОСТИ (Исправление ошибки NLP)
+# ==========================================
+# Python 3.11+ удалил inspect.getargspec, который нужен для pymorphy2.
+# Мы возвращаем его принудительно.
+if not hasattr(inspect, 'getargspec'):
+    def getargspec(func):
+        spec = inspect.getfullargspec(func)
+        return (spec.args, spec.varargs, spec.varkw, spec.defaults)
+    inspect.getargspec = getargspec
+
+# ==========================================
+# 1. АВТОРИЗАЦИЯ
 # ==========================================
 def check_password():
     if st.session_state.get("authenticated"):
@@ -47,7 +58,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ И СТИЛИ
+# 2. КОНФИГУРАЦИЯ И СТИЛИ
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -118,19 +129,18 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. ЛОГИКА (БЭКЕНД)
+# 3. ЛОГИКА (БЭКЕНД)
 # ==========================================
 
-# Инициализация NLP
+# Инициализация NLP (теперь безопасно после патча)
 try:
     import pymorphy2
     morph = pymorphy2.MorphAnalyzer()
     USE_NLP = True
 except Exception as e:
-    # Если библиотека не загрузилась - выведем ошибку в сайдбар, чтобы вы знали
     morph = None
     USE_NLP = False
-    st.sidebar.error(f"⚠️ Ошибка NLP: {e}. Проверьте requirements.txt")
+    st.sidebar.error(f"Ошибка загрузки NLP: {e}. Проверьте requirements.txt")
 
 try:
     from googlesearch import search
@@ -144,7 +154,6 @@ if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
 def process_text_detailed(text, settings, n_gram=1):
-    # 1. Чистка текста
     if settings['numbers']:
         pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
     else:
@@ -161,15 +170,14 @@ def process_text_detailed(text, settings, n_gram=1):
         if w in stops: continue
         
         lemma = w
-        # 2. Лемматизация (приведение к начальной форме)
+        # Лемматизация
         if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
-            # Фильтр предлогов и союзов
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
             lemma = p.normal_form
         
         lemmas.append(lemma)
-        forms_map[lemma].add(w) # Сохраняем оригинальную форму для леммы
+        forms_map[lemma].add(w)
     
     if n_gram > 1:
         ngrams = []
@@ -217,7 +225,6 @@ def calculate_metrics(comp_data, my_data, settings):
         my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
         my_len = len(my_lemmas)
         
-        # Записываем ваши формы
         for k, v in my_forms.items():
             all_forms_map[k].update(v)
     
@@ -228,7 +235,6 @@ def calculate_metrics(comp_data, my_data, settings):
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
         comp_docs.append({'body': body, 'anchor': anchor})
         
-        # Записываем формы конкурентов
         for k, v in c_forms.items():
             all_forms_map[k].update(v)
     
@@ -238,27 +244,23 @@ def calculate_metrics(comp_data, my_data, settings):
     avg_len = np.mean([len(d['body']) for d in comp_docs])
     norm_k = (my_len / avg_len) if (settings['norm'] and my_len > 0 and avg_len > 0) else 1.0
     
-    # Словарный запас (ЛЕММЫ)
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
-    
     N = len(comp_docs)
     doc_freqs = Counter()
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
         
     table_depth, table_hybrid = [], []
-    for word in vocab: # word здесь - это ЛЕММА (например "алюминиевый")
+    for word in vocab:
         df = doc_freqs[word]
         if df < 2 and word not in my_lemmas: continue 
         
-        # TF считаем по лемме
         my_tf_total = my_lemmas.count(word)        
         my_tf_anchor = my_anchors.count(word)      
         my_tf_text = max(0, my_tf_total - my_tf_anchor) 
         
-        # Формы берем из ОБЩЕГО словаря
         forms_set = all_forms_map.get(word, set())
         forms_str = ", ".join(sorted(list(forms_set))) if forms_set else word
         
@@ -346,7 +348,7 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (БЕЗ СКРОЛЛА, 20 СТРОК)
+# 4. ФУНКЦИЯ ОТОБРАЖЕНИЯ (БЕЗ СКРОЛЛА, 20 СТРОК)
 # ==========================================
 
 def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
@@ -450,7 +452,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     st.markdown("---")
 
 # ==========================================
-# 4. ИНТЕРФЕЙС
+# 5. ИНТЕРФЕЙС
 # ==========================================
 
 col_main, col_sidebar = st.columns([65, 35]) 
@@ -510,7 +512,7 @@ with col_sidebar:
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
 # ==========================================
-# 5. ВЫПОЛНЕНИЕ
+# 6. ВЫПОЛНЕНИЕ
 # ==========================================
 if st.session_state.get('start_analysis_flag'):
     st.session_state.start_analysis_flag = False
