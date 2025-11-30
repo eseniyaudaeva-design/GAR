@@ -516,3 +516,81 @@ with col_main:
 
     st.markdown("### Поисковой запрос")
     query = st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
+
+    st.markdown("### Поиск или URL страниц конкурентов")
+    source_type_new = st.radio("Источник конкурентов", ["Поиск", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
+    source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
+
+    if source_type == "Ручной список":
+        st.markdown("### Введите список URL")
+        st.text_area("Вставьте ссылки здесь (каждая с новой строки)", height=200, key="manual_urls_ui")
+
+    st.markdown("### Редактируемые списки")
+    excludes = st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
+    c_stops = st.text_area("Стоп-слова", DEFAULT_STOPS, height=200, key="settings_stops")
+
+    st.markdown("---")
+    
+    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+        for key in list(st.session_state.keys()):
+            if key.endswith('_page'): st.session_state[key] = 1
+        st.session_state.start_analysis_flag = True
+
+with col_sidebar:
+    st.markdown("#####⚙️ Настройки")
+    ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
+    search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
+    region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
+    device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
+    top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
+    st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
+    st.selectbox("Учитывать тип", ["Все страницы", "Коммерческие", "Информационные"], key="settings_content_type")
+    
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        st.checkbox("Исключать noindex/script", True, key="settings_noindex")
+        st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+        st.checkbox("Учитывать числа", False, key="settings_numbers")
+    with col_c2:
+        st.checkbox("Нормировать по длине", True, key="settings_norm")
+        st.checkbox("Исключать агрегаторы", True, key="settings_agg")
+
+# ==========================================
+# 7. ВЫПОЛНЕНИЕ
+# ==========================================
+if st.session_state.get('start_analysis_flag'):
+    st.session_state.start_analysis_flag = False
+
+    if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
+        st.error("Введите URL!")
+        st.stop()
+    if my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
+        st.error("Введите исходный код!")
+        st.stop()
+
+    settings = {
+        'noindex': st.session_state.settings_noindex, 
+        'alt_title': st.session_state.settings_alt, 
+        'numbers': st.session_state.settings_numbers,
+        'norm': st.session_state.settings_norm, 
+        'ua': st.session_state.settings_ua, 
+        'custom_stops': st.session_state.settings_stops.split()
+    }
+    
+    target_urls = []
+    if source_type == "Google (Авто)":
+        excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
+        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
+        try:
+            with st.spinner(f"Сбор ТОПа..."):
+                if not USE_SEARCH:
+                    st.error("Нет библиотеки googlesearch")
+                    st.stop()
+                found = search(st.session_state.query_input, num_results=st.session_state.settings_top_n * 2, lang="ru")
+                cnt = 0
+                for u in found:
+                    if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input in u: continue
+                    if any(x in urlparse(u).netloc for x in excl): continue
+                    target_urls.append(u)
+                    cnt += 1
+                    if cnt >= st.session_state.settings_top_n: break
