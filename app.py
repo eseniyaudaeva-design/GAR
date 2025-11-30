@@ -325,7 +325,6 @@ def calculate_metrics(comp_data, my_data, settings):
             bi_freqs = Counter()
             for c in comp_bi: 
                 for b_ in set(c): bi_freqs[b_] += 1
-            
             for bg in all_bi:
                 df = bi_freqs[bg]
                 if df < 2 and bg not in my_bi: continue
@@ -348,10 +347,11 @@ def calculate_metrics(comp_data, my_data, settings):
                     })
         except: pass
 
-    # --- ТОП РЕЛЕВАНТНОСТИ (ЦЕЛЫЕ ЧИСЛА) ---
+    # --- ТОП РЕЛЕВАНТНОСТИ ---
     table_rel = []
     competitor_stats = []
     
+    # 1. Сбор конкурентов
     for i, p in enumerate(comp_data):
         p_lemmas, _ = process_text_detailed(p['body_text'], settings)
         relevant_lemmas = [w for w in p_lemmas if w in vocab]
@@ -360,28 +360,42 @@ def calculate_metrics(comp_data, my_data, settings):
         raw_depth = len(relevant_lemmas)
         
         competitor_stats.append({
-            "domain": p['domain'], "url": p['url'], "pos": i + 1,
+            "domain": p['domain'], "pos": i + 1,
             "raw_w": raw_width, "raw_d": raw_depth
         })
         
+    # 2. Максимумы (Эталон)
     max_width_top = max([c['raw_w'] for c in competitor_stats]) if competitor_stats else 1
     max_depth_top = max([c['raw_d'] for c in competitor_stats]) if competitor_stats else 1
     
+    # 3. Баллы конкурентов
     for c in competitor_stats:
         score_w = int(round((c['raw_w'] / max_width_top) * 100))
         score_d = int(round((c['raw_d'] / max_depth_top) * 100))
         
         table_rel.append({
-            "Домен": c['domain'], "Позиция": c['pos'], "URL": c['url'],
+            "Домен": c['domain'], "Позиция": c['pos'],
             "Ширина (балл)": score_w, "Глубина (балл)": score_d
         })
         
+    # 4. Баллы для ВАШЕГО сайта
     my_relevant = [w for w in my_lemmas if w in vocab]
     my_raw_w = len(set(my_relevant))
     my_raw_d = len(my_relevant)
     
     my_score_w = int(round((my_raw_w / max_width_top) * 100))
     my_score_d = int(round((my_raw_d / max_depth_top) * 100))
+    
+    # Добавляем ВАШ сайт в таблицу
+    if my_data and my_data.get('domain'):
+        my_label = f"{my_data['domain']} (Вы)"
+    else:
+        my_label = "Ваш сайт"
+        
+    table_rel.append({
+        "Домен": my_label, "Позиция": 0, # Позиция 0 чтобы был сверху при сортировке
+        "Ширина (балл)": my_score_w, "Глубина (балл)": my_score_d
+    })
         
     return {
         "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
@@ -456,7 +470,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     df_view = df.iloc[start_idx:end_idx]
 
-    # ПОКРАСКА
+    # ПОКРАСКА ЯЧЕЕК
     def highlight_rows(row):
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
@@ -481,7 +495,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         column_config={c: None for c in cols_to_hide}
     )
     
-    # КНОПКИ
+    # КНОПКИ ПЕРЕКЛЮЧЕНИЯ
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     with c_btn_prev:
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
