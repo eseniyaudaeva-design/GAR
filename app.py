@@ -500,4 +500,134 @@ with col_main:
         st.markdown("### Введите список URL")
         st.text_area("Вставьте ссылки здесь (каждая с новой строки)", height=200, key="manual_urls_ui")
 
-    st.markdown("### Редактируемые списки
+    st.markdown("### Редактируемые списки")
+    excludes = st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
+    c_stops = st.text_area("Стоп-слова", DEFAULT_STOPS, height=200, key="settings_stops")
+
+    st.markdown("---")
+    
+    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+        for key in list(st.session_state.keys()):
+            if key.endswith('_page'): st.session_state[key] = 1
+        st.session_state.start_analysis_flag = True
+
+with col_sidebar:
+    st.markdown("#####⚙️ Настройки")
+    ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
+    search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
+    region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
+    device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
+    top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
+    st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
+    st.selectbox("Учитывать тип", ["Все страницы", "Коммерческие", "Информационные"], key="settings_content_type")
+    
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        st.checkbox("Исключать noindex/script", True, key="settings_noindex")
+        st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+        st.checkbox("Учитывать числа", False, key="settings_numbers")
+    with col_c2:
+        st.checkbox("Нормировать по длине", True, key="settings_norm")
+        st.checkbox("Исключать агрегаторы", True, key="settings_agg")
+
+# ==========================================
+# 7. ВЫПОЛНЕНИЕ
+# ==========================================
+if st.session_state.get('start_analysis_flag'):
+    st.session_state.start_analysis_flag = False
+
+    if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
+        st.error("Введите URL!")
+        st.stop()
+    if my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
+        st.error("Введите исходный код!")
+        st.stop()
+
+    settings = {
+        'noindex': st.session_state.settings_noindex, 
+        'alt_title': st.session_state.settings_alt, 
+        'numbers': st.session_state.settings_numbers,
+        'norm': st.session_state.settings_norm, 
+        'ua': st.session_state.settings_ua, 
+        'custom_stops': st.session_state.settings_stops.split()
+    }
+    
+    target_urls = []
+    if source_type == "Google (Авто)":
+        excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
+        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
+        try:
+            with st.spinner(f"Сбор ТОПа..."):
+                if not USE_SEARCH:
+                    st.error("Нет библиотеки googlesearch")
+                    st.stop()
+                found = search(st.session_state.query_input, num_results=st.session_state.settings_top_n * 2, lang="ru")
+                cnt = 0
+                for u in found:
+                    if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input in u: continue
+                    if any(x in urlparse(u).netloc for x in excl): continue
+                    target_urls.append(u)
+                    cnt += 1
+                    if cnt >= st.session_state.settings_top_n: break
+        except Exception as e:
+            st.error(f"Ошибка поиска: {e}")
+            st.stop()
+    else:
+        raw_urls = st.session_state.get("manual_urls_ui", "")
+        if raw_urls:
+            target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
+        else:
+            target_urls = []
+
+    if not target_urls:
+        st.error("Нет конкурентов.")
+        st.stop()
+        
+    my_data = None
+    if my_input_type == "Релевантная страница на вашем сайте":
+        with st.spinner("Скачивание вашей страницы..."):
+            my_data = parse_page(st.session_state.my_url_input, settings)
+    elif my_input_type == "Исходный код страницы или текст":
+        my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
+
+    comp_data = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
+        done = 0
+        total = len(target_urls)
+        prog = st.progress(0)
+        stat = st.empty()
+        for f in concurrent.futures.as_completed(futures):
+            res = f.result()
+            if res: comp_data.append(res)
+            done += 1
+            prog.progress(done / total)
+            stat.text(f"Загрузка конкурентов: {done}/{total}")
+    prog.empty()
+    stat.empty()
+
+    with st.spinner("Анализ данных..."):
+        st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings)
+        st.session_state.analysis_done = True
+        st.rerun()
+
+if st.session_state.analysis_done and st.session_state.analysis_results:
+    results = st.session_state.analysis_results
+    st.success("Анализ готов!")
+    
+    st.markdown(f"""
+        <div style='background-color: {LIGHT_BG_MAIN}; padding: 15px; border-radius: 8px; border: 1px solid {BORDER_COLOR}; margin-bottom: 20px;'>
+            <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта</h4>
+            <p style='margin:5px 0 0 0;'>Ширина (уникальные слова): <b>{results['my_score']['width']}</b> | Глубина (всего слов): <b>{results['my_score']['depth']}</b></p>
+        </div>
+        <div class="legend-box">
+            <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
+            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона. <br>
+            ℹ️ Для сортировки всего списка используйте меню над таблицей.
+        </div>
+    """, unsafe_allow_html=True)
+
+    render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
+    render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
+    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="TF-IDF", use_abs_sort_default=False)
+    render_paginated_table(results['relevance_top'], "5. ТОП релевантности", "tbl_rel", default_sort_col="Ширина", use_abs_sort_default=False)
