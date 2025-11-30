@@ -400,6 +400,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     styled_df = df_view.style.apply(highlight_rows, axis=1)
     
+    # ВАЖНО: Убрали height (убирает скролл, показывает все 20 строк)
     st.dataframe(
         styled_df,
         use_container_width=True,
