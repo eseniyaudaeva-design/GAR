@@ -329,8 +329,7 @@ def render_scrollable_table(df, title_text, sort_by_col=None, use_abs_sort=False
 
     st.markdown(f"### {title_text}")
 
-    # 1. Начальная сортировка (По умолчанию)
-    # Это выполняется один раз при загрузке. Дальше пользователь может кликать по шапке.
+    # 1. Начальная сортировка
     if sort_by_col and sort_by_col in df.columns:
         if use_abs_sort:
             df['_abs_sort'] = df[sort_by_col].abs()
@@ -356,7 +355,6 @@ def render_scrollable_table(df, title_text, sort_by_col=None, use_abs_sort=False
     styled_df = df.style.apply(highlight_rows, axis=1)
     
     # 4. ВЫВОД ПОЛНОЙ ТАБЛИЦЫ СО СКРОЛЛОМ
-    # height=500 включает вертикальный скролл, заголовки фиксируются
     st.dataframe(
         styled_df,
         use_container_width=True,
@@ -441,30 +439,4 @@ if st.session_state.get('start_analysis_flag'):
         'alt_title': st.session_state.settings_alt, 
         'numbers': st.session_state.settings_numbers,
         'norm': st.session_state.settings_norm, 
-        'ua': st.session_state.settings_ua, 
-        'custom_stops': st.session_state.settings_stops.split()
-    }
-    
-    target_urls = []
-    if source_type == "Google (Авто)":
-        excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
-        try:
-            with st.spinner(f"Сбор ТОПа..."):
-                if not USE_SEARCH:
-                    st.error("Нет библиотеки googlesearch")
-                    st.stop()
-                found = search(st.session_state.query_input, num_results=st.session_state.settings_top_n * 2, lang="ru")
-                cnt = 0
-                for u in found:
-                    if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input in u: continue
-                    if any(x in urlparse(u).netloc for x in excl): continue
-                    target_urls.append(u)
-                    cnt += 1
-                    if cnt >= st.session_state.settings_top_n: break
-        except Exception as e:
-            st.error(f"Ошибка поиска: {e}")
-            st.stop()
-    else:
-        raw_urls = st.session_state.get("manual_urls_ui", "")
-        target_urls = [u.strip() for u in raw_urls.split('\n')
+        'ua': st.session_state.settings_ua,
