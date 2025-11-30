@@ -87,7 +87,7 @@ st.markdown(f"""
             background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
 
-        /* СТИЛИ ТАБЛИЦЫ */
+        /* СТИЛИ ТАБЛИЦЫ - Агрессивная покраска */
         [data-testid="stDataFrame"] th {{
             background-color: {HEADER_BG} !important;
             color: {PRIMARY_COLOR} !important;
@@ -102,10 +102,8 @@ st.markdown(f"""
             border-bottom: 1px solid {BORDER_COLOR} !important;
         }}
         
-        /* Убираем лишние отступы вокруг таблицы */
-        div[data-testid="stDataFrame"] {{
-            width: 100%;
-        }}
+        /* Убираем лишние отступы */
+        div[data-testid="stDataFrame"] {{ width: 100%; }}
 
         .legend-box {{
             padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
@@ -319,7 +317,7 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (SCROLLABLE TABLE)
+# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (ПОЛНАЯ ТАБЛИЦА)
 # ==========================================
 
 def render_scrollable_table(df, title_text, sort_by_col=None, use_abs_sort=False):
@@ -329,7 +327,7 @@ def render_scrollable_table(df, title_text, sort_by_col=None, use_abs_sort=False
 
     st.markdown(f"### {title_text}")
 
-    # 1. Начальная сортировка
+    # 1. Начальная сортировка по умолчанию (перед показом)
     if sort_by_col and sort_by_col in df.columns:
         if use_abs_sort:
             df['_abs_sort'] = df[sort_by_col].abs()
@@ -337,11 +335,10 @@ def render_scrollable_table(df, title_text, sort_by_col=None, use_abs_sort=False
         else:
             df = df.sort_values(by=sort_by_col, ascending=False)
             
-    # 2. Индексация с 1
     df = df.reset_index(drop=True)
     df.index = df.index + 1
 
-    # 3. Покраска
+    # 2. Покраска
     def highlight_rows(row):
         styles = [''] * len(row)
         if 'is_missing' in row and row['is_missing']:
@@ -354,11 +351,12 @@ def render_scrollable_table(df, title_text, sort_by_col=None, use_abs_sort=False
     
     styled_df = df.style.apply(highlight_rows, axis=1)
     
-    # 4. ВЫВОД ПОЛНОЙ ТАБЛИЦЫ СО СКРОЛЛОМ
+    # 3. ВЫВОД ПОЛНОЙ ТАБЛИЦЫ СО СКРОЛЛОМ
+    # Отдаем ВСЮ таблицу. Шапка теперь сортирует ВСЕ данные.
     st.dataframe(
         styled_df,
         use_container_width=True,
-        height=600, 
+        height=800, # Фиксированная высота = прокрутка внутри
         column_config={c: None for c in cols_to_hide}
     )
     st.markdown("---")
@@ -423,20 +421,4 @@ with col_sidebar:
 
 # ==========================================
 # 5. ВЫПОЛНЕНИЕ
-# ==========================================
-if st.session_state.get('start_analysis_flag'):
-    st.session_state.start_analysis_flag = False
-
-    if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
-        st.error("Введите URL!")
-        st.stop()
-    if my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
-        st.error("Введите исходный код!")
-        st.stop()
-
-    settings = {
-        'noindex': st.session_state.settings_noindex, 
-        'alt_title': st.session_state.settings_alt, 
-        'numbers': st.session_state.settings_numbers,
-        'norm': st.session_state.settings_norm, 
-        'ua': st.session_state.settings_ua,
+# ==============
