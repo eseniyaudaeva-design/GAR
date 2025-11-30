@@ -101,12 +101,18 @@ st.markdown(f"""
             color: {TEXT_COLOR} !important;
             border-bottom: 1px solid {BORDER_COLOR} !important;
         }}
+        
         .legend-box {{
             padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
         }}
         .text-red {{ color: #D32F2F; font-weight: bold; }}
         .text-bold {{ font-weight: 600; }}
         
+        /* Контейнер сортировки */
+        .sort-container {{
+            background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR};
+        }}
+
         section[data-testid="stSidebar"] {{ background-color: #FFFFFF; border-left: 1px solid {BORDER_COLOR}; }}
     </style>
 """, unsafe_allow_html=True)
@@ -313,7 +319,7 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (С ВНЕШНЕЙ СОРТИРОВКОЙ)
+# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ С ГЛОБАЛЬНОЙ СОРТИРОВКОЙ
 # ==========================================
 
 def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
@@ -324,38 +330,37 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     st.markdown(f"### {title_text}")
     
     # --- БЛОК СОРТИРОВКИ ---
-    # Сохраняем настройки сортировки в session state
     if f'{key_prefix}_sort_col' not in st.session_state:
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
     if f'{key_prefix}_sort_order' not in st.session_state:
-        # Для default sort лучше по убыванию (например, где больше всего разница)
         st.session_state[f'{key_prefix}_sort_order'] = "Убывание" 
 
-    col_sort1, col_sort2, col_spacer = st.columns([2, 2, 4])
-    with col_sort1:
-        sort_col = st.selectbox(
-            "Сортировать по:", 
-            df.columns, 
-            key=f"{key_prefix}_sort_box",
-            index=list(df.columns).index(st.session_state[f'{key_prefix}_sort_col']) if st.session_state[f'{key_prefix}_sort_col'] in df.columns else 0
-        )
-        st.session_state[f'{key_prefix}_sort_col'] = sort_col
-        
-    with col_sort2:
-        sort_order = st.radio(
-            "Порядок:", 
-            ["Убывание", "Возрастание"], 
-            horizontal=True,
-            key=f"{key_prefix}_order_box",
-            index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
-        )
-        st.session_state[f'{key_prefix}_sort_order'] = sort_order
+    with st.container():
+        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
+        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
+        with col_s1:
+            sort_col = st.selectbox(
+                "🗂 Сортировать весь список по:", 
+                df.columns, 
+                key=f"{key_prefix}_sort_box",
+                index=list(df.columns).index(st.session_state[f'{key_prefix}_sort_col']) if st.session_state[f'{key_prefix}_sort_col'] in df.columns else 0
+            )
+            st.session_state[f'{key_prefix}_sort_col'] = sort_col
+        with col_s2:
+            sort_order = st.radio(
+                "Порядок:", 
+                ["Убывание", "Возрастание"], 
+                horizontal=True,
+                key=f"{key_prefix}_order_box",
+                index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
+            )
+            st.session_state[f'{key_prefix}_sort_order'] = sort_order
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- ПРИМЕНЕНИЕ СОРТИРОВКИ К ПОЛНОМУ ДАТАСЕТУ ---
+    # --- СОРТИРОВКА ПОЛНОГО ДАТАСЕТА ---
     ascending = (sort_order == "Возрастание")
     
-    # Специфичная логика для колонок типа "Добавить/Убрать", где важен модуль числа
-    # Если в названии колонки есть "+/-" или "Добавить/Убрать" - сортируем по модулю
+    # Если столбец "Добавить/Убрать" или похожий - сортируем по модулю
     if "Добавить" in sort_col or "+/-" in sort_col:
         df['_temp_sort'] = df[sort_col].abs()
         df = df.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
@@ -564,7 +569,8 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
         </div>
         <div class="legend-box">
             <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
-            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона.
+            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона. <br>
+            ℹ️ <b>ВНИМАНИЕ:</b> Клик по шапке таблицы сортирует <u>только видимую страницу</u>. Чтобы отсортировать <b>ВЕСЬ СПИСОК</b>, используйте выпадающее меню ниже.
         </div>
     """, unsafe_allow_html=True)
 
