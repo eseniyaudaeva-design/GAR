@@ -312,7 +312,7 @@ def calculate_metrics(comp_data, my_data, settings):
                 "Сайтов": df, "Переспам": max_total
             })
 
-    # --- 4. N-ГРАММЫ (ОБНОВЛЕННАЯ ЛОГИКА) ---
+    # --- N-ГРАММЫ ---
     table_ngrams = []
     if comp_docs and my_data:
         try:
@@ -330,42 +330,75 @@ def calculate_metrics(comp_data, my_data, settings):
                 
                 my_c = my_bi.count(bg)
                 comp_c = [c.count(bg) for c in comp_bi]
-                
-                # Статистика
                 med_c = np.median(comp_c) if comp_c else 0
                 
-                # Нормировка рекомендаций
                 rec_ngram = int(round(med_c * norm_k))
                 diff_ngram = 0
-                if my_c < rec_ngram:
-                    diff_ngram = rec_ngram - my_c
-                elif my_c > rec_ngram:
-                    diff_ngram = rec_ngram - my_c # Будет отрицательным если переспам
+                if my_c < rec_ngram: diff_ngram = rec_ngram - my_c
+                elif my_c > rec_ngram: diff_ngram = rec_ngram - my_c
                 
                 if med_c > 0 or my_c > 0:
                     table_ngrams.append({
-                        "N-грамма": bg, 
-                        "Сайтов": df, 
-                        "У вас": my_c,
-                        "Медиана (рек)": rec_ngram,
-                        "Добавить/Убрать": diff_ngram,
+                        "N-грамма": bg, "Сайтов": df, "У вас": my_c,
+                        "Медиана (рек)": rec_ngram, "Добавить/Убрать": diff_ngram,
                         "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3),
-                        
-                        "diff_abs": abs(diff_ngram), # Для сортировки
-                        "is_missing": (my_c == 0)    # Для покраски
+                        "diff_abs": abs(diff_ngram), "is_missing": (my_c == 0)
                     })
         except: pass
 
+    # --- ТОП РЕЛЕВАНТНОСТИ (С БАЛЛАМИ 0-100) ---
     table_rel = []
+    # 1. Собираем сырые данные по всем
+    competitor_stats = []
+    
+    # Сначала добавим конкурентов
     for i, p in enumerate(comp_data):
         p_lemmas, _ = process_text_detailed(p['body_text'], settings)
-        w = len(set(p_lemmas).intersection(vocab))
-        table_rel.append({"Домен": p['domain'], "Позиция": i+1, "URL": p['url'], "Ширина": w, "Глубина": len(p_lemmas)})
+        # Оставляем только слова из семантического ядра (vocab)
+        relevant_lemmas = [w for w in p_lemmas if w in vocab]
+        
+        # Ширина = кол-во уникальных слов из ядра
+        raw_width = len(set(relevant_lemmas))
+        # Глубина = общее кол-во слов из ядра
+        raw_depth = len(relevant_lemmas)
+        
+        competitor_stats.append({
+            "domain": p['domain'],
+            "url": p['url'],
+            "pos": i + 1,
+            "raw_w": raw_width,
+            "raw_d": raw_depth
+        })
+        
+    # 2. Находим эталон (Максимум в ТОПе)
+    max_width_top = max([c['raw_w'] for c in competitor_stats]) if competitor_stats else 1
+    max_depth_top = max([c['raw_d'] for c in competitor_stats]) if competitor_stats else 1
+    
+    # 3. Заполняем таблицу с баллами
+    for c in competitor_stats:
+        score_w = round((c['raw_w'] / max_width_top) * 100, 1)
+        score_d = round((c['raw_d'] / max_depth_top) * 100, 1)
+        
+        table_rel.append({
+            "Домен": c['domain'],
+            "Позиция": c['pos'],
+            "URL": c['url'],
+            "Ширина (балл)": score_w,
+            "Глубина (балл)": score_d
+        })
+        
+    # 4. Считаем баллы для ВАШЕГО сайта
+    my_relevant = [w for w in my_lemmas if w in vocab]
+    my_raw_w = len(set(my_relevant))
+    my_raw_d = len(my_relevant)
+    
+    my_score_w = round((my_raw_w / max_width_top) * 100, 1)
+    my_score_d = round((my_raw_d / max_depth_top) * 100, 1)
         
     return {
         "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
         "ngrams": pd.DataFrame(table_ngrams), "relevance_top": pd.DataFrame(table_rel),
-        "my_score": {"width": len(set(my_lemmas).intersection(vocab)), "depth": len(my_lemmas)}
+        "my_score": {"width": my_score_w, "depth": my_score_d} # Теперь тут баллы!
     }
 
 # ==========================================
@@ -435,7 +468,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     df_view = df.iloc[start_idx:end_idx]
 
-    # ПОКРАСКА ЯЧЕЕК (ПРИНУДИТЕЛЬНЫЕ ЦВЕТА)
+    # ПОКРАСКА
     def highlight_rows(row):
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
@@ -450,7 +483,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     styled_df = df_view.style.apply(highlight_rows, axis=1)
     
-    # ВЫВОД ТАБЛИЦЫ
     dynamic_height = (len(df_view) * 35) + 40 
     
     st.dataframe(
@@ -460,7 +492,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         column_config={c: None for c in cols_to_hide}
     )
     
-    # КНОПКИ ПЕРЕКЛЮЧЕНИЯ
+    # КНОПКИ
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     with c_btn_prev:
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
@@ -621,8 +653,8 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     
     st.markdown(f"""
         <div style='background-color: {LIGHT_BG_MAIN}; padding: 15px; border-radius: 8px; border: 1px solid {BORDER_COLOR}; margin-bottom: 20px;'>
-            <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта</h4>
-            <p style='margin:5px 0 0 0;'>Ширина (уникальные слова): <b>{results['my_score']['width']}</b> | Глубина (всего слов): <b>{results['my_score']['depth']}</b></p>
+            <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта (в баллах от 0 до 100)</h4>
+            <p style='margin:5px 0 0 0;'>Ширина (охват семантики): <b>{results['my_score']['width']}</b> | Глубина (оптимизация): <b>{results['my_score']['depth']}</b></p>
         </div>
         <div class="legend-box">
             <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
@@ -634,4 +666,4 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
-    render_paginated_table(results['relevance_top'], "5. ТОП релевантности", "tbl_rel", default_sort_col="Ширина", use_abs_sort_default=False)
+    render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
