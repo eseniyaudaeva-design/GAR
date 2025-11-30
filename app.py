@@ -20,7 +20,7 @@ if not hasattr(inspect, 'getargspec'):
     inspect.getargspec = getargspec
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ СТРАНИЦЫ (ДОЛЖНА БЫТЬ ПЕРВОЙ)
+# 1. КОНФИГУРАЦИЯ СТРАНИЦЫ
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -90,54 +90,43 @@ st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* Основной фон и текст */
         .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
-        html, body, p, li, h1, h2, h3, h4, label, span, div {{ font-family: 'Inter', sans-serif !important; color: {TEXT_COLOR}; }}
+        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
 
-        /* Кнопки */
         .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
         .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
         
-        /* Поля ввода */
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
             background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
 
         /* === ТАБЛИЦЫ === */
-        /* Внешняя рамка таблицы */
         div[data-testid="stDataFrame"] {{
             border: 2px solid {PRIMARY_COLOR} !important;
             border-radius: 8px !important;
         }}
-        
-        /* Заголовки (th) */
         div[data-testid="stDataFrame"] div[role="columnheader"] {{
             background-color: {HEADER_BG} !important;
             color: {PRIMARY_COLOR} !important;
             font-weight: 700 !important;
             border-bottom: 2px solid {PRIMARY_COLOR} !important;
         }}
-        
-        /* Ячейки (td) */
         div[data-testid="stDataFrame"] div[role="gridcell"] {{
             background-color: #FFFFFF !important;
             color: {TEXT_COLOR} !important;
             border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
         }}
 
-        /* Легенда */
         .legend-box {{
             padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
         }}
         .text-red {{ color: #D32F2F; font-weight: bold; }}
         .text-bold {{ font-weight: 600; }}
         
-        /* Сортировка */
         .sort-container {{
             background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR};
         }}
 
-        /* Сайдбар */
         section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-left: 1px solid {BORDER_COLOR} !important; }}
     </style>
 """, unsafe_allow_html=True)
@@ -323,6 +312,7 @@ def calculate_metrics(comp_data, my_data, settings):
                 "Сайтов": df, "Переспам": max_total
             })
 
+    # --- 4. N-ГРАММЫ (ОБНОВЛЕННАЯ ЛОГИКА) ---
     table_ngrams = []
     if comp_docs and my_data:
         try:
@@ -333,16 +323,36 @@ def calculate_metrics(comp_data, my_data, settings):
             bi_freqs = Counter()
             for c in comp_bi: 
                 for b_ in set(c): bi_freqs[b_] += 1
+            
             for bg in all_bi:
                 df = bi_freqs[bg]
                 if df < 2 and bg not in my_bi: continue
+                
                 my_c = my_bi.count(bg)
                 comp_c = [c.count(bg) for c in comp_bi]
+                
+                # Статистика
                 med_c = np.median(comp_c) if comp_c else 0
+                
+                # Нормировка рекомендаций
+                rec_ngram = int(round(med_c * norm_k))
+                diff_ngram = 0
+                if my_c < rec_ngram:
+                    diff_ngram = rec_ngram - my_c
+                elif my_c > rec_ngram:
+                    diff_ngram = rec_ngram - my_c # Будет отрицательным если переспам
+                
                 if med_c > 0 or my_c > 0:
                     table_ngrams.append({
-                        "N-грамма": bg, "Сайтов": df, "Медиана": med_c, "На сайте": my_c,
-                        "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
+                        "N-грамма": bg, 
+                        "Сайтов": df, 
+                        "У вас": my_c,
+                        "Медиана (рек)": rec_ngram,
+                        "Добавить/Убрать": diff_ngram,
+                        "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3),
+                        
+                        "diff_abs": abs(diff_ngram), # Для сортировки
+                        "is_missing": (my_c == 0)    # Для покраски
                     })
         except: pass
 
@@ -425,28 +435,22 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     df_view = df.iloc[start_idx:end_idx]
 
-    # ПОКРАСКА
+    # ПОКРАСКА ЯЧЕЕК (ПРИНУДИТЕЛЬНЫЕ ЦВЕТА)
     def highlight_rows(row):
-        styles = [''] * len(row)
-        base_style = 'background-color: #FFFFFF; color: #3D4858;' # Основной стиль
-        
-        if 'is_missing' in row and row['is_missing']:
-            # Красный для отсутствующих
-            for i in range(len(row)):
-                styles[i] = base_style + 'color: #D32F2F; font-weight: bold;'
-        else:
-            # Жирный для присутствующих
-            for i in range(len(row)):
-                styles[i] = base_style + 'font-weight: 600;'
-                
+        base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
+        styles = []
+        for _ in row:
+            if 'is_missing' in row and row['is_missing']:
+                styles.append(base_style + 'color: #D32F2F; font-weight: bold;')
+            else:
+                styles.append(base_style + 'font-weight: 600;')
         return styles
     
     cols_to_hide = ["diff_abs", "is_missing"]
     
     styled_df = df_view.style.apply(highlight_rows, axis=1)
     
-    # ДИНАМИЧЕСКАЯ ВЫСОТА (чтобы не было скролла внутри, но была таблица целиком)
-    # 35px на строку + 40px шапка + запас
+    # ВЫВОД ТАБЛИЦЫ
     dynamic_height = (len(df_view) * 35) + 40 
     
     st.dataframe(
@@ -629,5 +633,5 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
 
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
-    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="TF-IDF", use_abs_sort_default=False)
+    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['relevance_top'], "5. ТОП релевантности", "tbl_rel", default_sort_col="Ширина", use_abs_sort_default=False)
