@@ -126,11 +126,11 @@ st.markdown(f"""
             --text-color: {TEXT_COLOR};
         }}
         
-        /* 1. БАЗОВЫЙ ТЕКСТ */
-        html, body, .stApp {{
+        /* Принудительные глобальные стили */
+        html, body, [data-testid="stAppViewContainer"] {{
             font-family: 'Inter', sans-serif;
-            background-color: #FFFFFF !important;
             color: {TEXT_COLOR} !important;
+            background-color: #FFFFFF !important;
         }}
         
         h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {{
@@ -138,24 +138,21 @@ st.markdown(f"""
         }}
 
         .block-container {{
-            padding-top: 1rem !important;
+            padding-top: 2rem !important;
             padding-bottom: 2rem !important;
             max-width: 100% !important; 
         }}
         
-        /* ======================================================= */
-        /* ПОЛЯ ВВОДА                                              */
-        /* ======================================================= */
-        
+        /* 1. ПОЛЯ ВВОДА */
         .stTextInput input, 
         .stTextArea textarea, 
         .stSelectbox div[data-baseweb="select"] > div {{
-            color: {TEXT_COLOR} !important;
             background-color: {LIGHT_BG_MAIN} !important;
+            color: {TEXT_COLOR} !important;
             border: 1px solid {BORDER_COLOR} !important;
             border-radius: 6px;
         }}
-
+        
         div[data-baseweb="input"]:focus-within,
         div[data-baseweb="textarea"]:focus-within,
         div[data-baseweb="select"] > div:focus-within {{
@@ -163,94 +160,67 @@ st.markdown(f"""
             box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
         }}
 
-        .stTextInput input:focus,
-        .stTextArea textarea:focus {{
-            outline: none !important;
-            border-color: transparent !important;
-            box-shadow: none !important;
-        }}
-        
-        input, textarea {{
-            caret-color: {PRIMARY_COLOR} !important;
-            color: {TEXT_COLOR} !important;
-        }}
-        
-        ::placeholder {{
-            color: #94a3b8 !important;
-            opacity: 1;
-        }}
-        
-        .stSelectbox svg {{
-            fill: {TEXT_COLOR} !important;
-        }}
-
-        /* ======================================================= */
-        /* !!! ИСПРАВЛЕНИЕ ВЫПАДАЮЩЕГО СПИСКА (POPOVER) !!!        */
-        /* ======================================================= */
-        
-        /* Фон самого выпадающего окна и списка */
+        /* 2. МЕНЮ (Popovers) */
         div[data-baseweb="popover"],
         div[data-baseweb="menu"],
         div[data-baseweb="menu"] ul {{
             background-color: #FFFFFF !important;
         }}
-
-        /* Опции (строки) внутри списка */
+        
         div[data-baseweb="menu"] li {{
             background-color: #FFFFFF !important;
-            color: {TEXT_COLOR} !important;
         }}
         
-        /* Контейнер для текста опции */
         div[data-baseweb="menu"] li span, 
         div[data-baseweb="menu"] li div {{
             color: {TEXT_COLOR} !important;
         }}
-
-        /* При наведении курсора на опцию */
-        div[data-baseweb="menu"] li:hover {{
-            background-color: {LIGHT_BG_MAIN} !important;
-        }}
-
-        /* Выбранный элемент в списке (активный) */
+        
+        /* Ховер и выбранные элементы меню */
+        div[data-baseweb="menu"] li:hover,
         div[data-baseweb="menu"] li[aria-selected="true"] {{
             background-color: {LIGHT_BG_MAIN} !important;
-            color: {PRIMARY_COLOR} !important;
-            font-weight: 600;
         }}
         
-        /* Цвет текста выбранного элемента */
+        div[data-baseweb="menu"] li:hover *,
         div[data-baseweb="menu"] li[aria-selected="true"] * {{
             color: {PRIMARY_COLOR} !important;
         }}
 
-        /* ======================================================= */
-        /* РАДИО И ЧЕКБОКСЫ                                        */
-        /* ======================================================= */
-        
+        /* 3. РАДИО-КНОПКИ */
         div[role="radiogroup"] label {{
             background-color: #FFFFFF !important;
             border: 1px solid {BORDER_COLOR};
             margin-right: 5px;
+            padding: 5px 10px;
+            border-radius: 4px;
         }}
         
         div[role="radiogroup"] p {{
             color: {TEXT_COLOR} !important;
         }}
         
+        /* Внешний круг */
         div[role="radiogroup"] label div[data-baseweb="radio"] > div {{
             background-color: #FFFFFF !important;
             border: 2px solid {DARK_BORDER} !important;
         }}
+        
+        /* Выбранный: внешний круг */
         div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div {{
             background-color: {PRIMARY_COLOR} !important;
             border-color: {PRIMARY_COLOR} !important;
         }}
+        
+        /* Выбранный: внутренняя точка */
         div[role="radiogroup"] label input:checked + div[data-baseweb="radio"] > div > div {{
             background-color: #FFFFFF !important;
         }}
+        
+        /* Рамка лейбла при выборе */
         div[role="radiogroup"] label:has(input:checked) {{
             border-color: {PRIMARY_COLOR} !important;
+            background-color: {LIGHT_BG_MAIN} !important;
         }}
 
         /* Чекбоксы */
@@ -269,9 +239,7 @@ st.markdown(f"""
             fill: #FFFFFF !important;
         }}
 
-        /* ======================================================= */
-        /* КНОПКА                                                  */
-        /* ======================================================= */
+        /* 4. КНОПКИ */
         .stButton button {{
             background-image: linear-gradient(to right, {PRIMARY_COLOR}, {PRIMARY_DARK});
             color: white !important;
@@ -287,9 +255,7 @@ st.markdown(f"""
             color: white !important;
         }}
 
-        /* ======================================================= */
-        /* САЙДБАР                                                 */
-        /* ======================================================= */
+        /* САЙДБАР (настройка правой панели) */
         .st-emotion-cache-1cpxwwu {{ 
             width: 65% !important;
             max-width: 65% !important;
@@ -809,5 +775,6 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
 
