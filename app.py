@@ -4,7 +4,7 @@ import numpy as np
 import requests
 from bs4 import BeautifulSoup
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 import math
 import inspect
 import concurrent.futures
@@ -47,7 +47,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ И СТИЛИ (АГРЕССИВНАЯ ПЕРЕКРАСКА)
+# 1. КОНФИГУРАЦИЯ И СТИЛИ
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -77,71 +77,38 @@ st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* 1. Глобальный фон */
-        .stApp {{
-            background-color: #FFFFFF !important;
-            color: {TEXT_COLOR} !important;
-        }}
-        
-        html, body, p, li, h1, h2, h3, h4 {{
-            font-family: 'Inter', sans-serif;
-            color: {TEXT_COLOR} !important;
-        }}
+        .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
+        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
 
-        /* 2. Элементы управления */
-        .stButton button {{
-            background-color: {PRIMARY_COLOR} !important;
-            color: white !important;
-            border: none;
-            border-radius: 6px;
-        }}
-        .stButton button:hover {{
-            background-color: {PRIMARY_DARK} !important;
-        }}
+        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
+        .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
         
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
-            background-color: {LIGHT_BG_MAIN} !important;
-            color: {TEXT_COLOR} !important;
-            border: 1px solid {BORDER_COLOR} !important;
+            background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
 
-        /* 3. АГРЕССИВНЫЙ ХАК ДЛЯ ТАБЛИЦ (st.dataframe) */
-        /* Принудительно красим заголовки таблицы */
+        /* СТИЛИ ТАБЛИЦЫ */
         [data-testid="stDataFrame"] th {{
             background-color: {HEADER_BG} !important;
             color: {PRIMARY_COLOR} !important;
             font-weight: bold !important;
             border-bottom: 2px solid {PRIMARY_COLOR} !important;
             text-align: center !important;
+            white-space: pre-wrap !important; /* Перенос слов в шапке */
         }}
-        
-        /* Принудительно красим ячейки таблицы */
         [data-testid="stDataFrame"] td {{
             background-color: #FFFFFF !important;
             color: {TEXT_COLOR} !important;
             border-bottom: 1px solid {BORDER_COLOR} !important;
         }}
-        
-        /* Индекс (левый столбец) */
-        [data-testid="stDataFrame"] th[role="rowheader"] {{
-            color: {PRIMARY_COLOR} !important;
-            background-color: {HEADER_BG} !important;
+        /* Подсказка легенды */
+        .legend-box {{
+            padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
         }}
-        
-        /* При наведении на строку */
-        [data-testid="stDataFrame"] tr:hover td {{
-            background-color: {LIGHT_BG_MAIN} !important;
-        }}
-        
-        /* Убираем стандартные темные рамки Streamlit */
-        div[data-testid="stDataFrame"] {{
-            border: 1px solid {BORDER_COLOR} !important;
-        }}
+        .text-red {{ color: #D32F2F; font-weight: bold; }}
+        .text-bold {{ font-weight: 600; }}
 
-        section[data-testid="stSidebar"] {{
-            background-color: #FFFFFF;
-            border-left: 1px solid {BORDER_COLOR};
-        }}
+        section[data-testid="stSidebar"] {{ background-color: #FFFFFF; border-left: 1px solid {BORDER_COLOR}; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -173,11 +140,16 @@ try:
 except:
     USE_SEARCH = False
 
-def process_text(text, settings, n_gram=1):
+def process_text_detailed(text, settings, n_gram=1):
+    """
+    Возвращает не только леммы, но и словарь {лемма: {набор_словоформ}}
+    """
     pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' if settings['numbers'] else r'[а-яА-ЯёЁa-zA-Z]+'
     words = re.findall(pattern, text.lower())
     stops = set(w.lower() for w in settings['custom_stops'])
-    clean_words = []
+    
+    lemmas = []
+    forms_map = defaultdict(set)
     
     for w in words:
         if len(w) < 2 or w in stops: continue
@@ -186,15 +158,18 @@ def process_text(text, settings, n_gram=1):
             p = morph.parse(w)[0]
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
             lemma = p.normal_form
-        clean_words.append(lemma)
+        
+        lemmas.append(lemma)
+        forms_map[lemma].add(w)
     
     if n_gram > 1:
         ngrams = []
-        for i in range(len(clean_words) - n_gram + 1):
-            phrase = " ".join(clean_words[i:i+n_gram])
+        for i in range(len(lemmas) - n_gram + 1):
+            phrase = " ".join(lemmas[i:i+n_gram])
             ngrams.append(phrase)
-        return ngrams
-    return clean_words
+        return ngrams, {}
+        
+    return lemmas, forms_map
 
 def parse_page(url, settings):
     headers = {'User-Agent': settings['ua']}
@@ -224,27 +199,31 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
+    # 1. Обработка своего сайта
     if not my_data or not my_data['body_text']:
-        my_lemmas = []
-        my_anchors = []
+        my_lemmas, my_forms = [], {}
+        my_anchors, _ = [], {}
         my_len = 0
     else:
-        my_lemmas = process_text(my_data['body_text'], settings)
-        my_anchors = process_text(my_data['anchor_text'], settings)
+        my_lemmas, my_forms = process_text_detailed(my_data['body_text'], settings)
+        my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
         my_len = len(my_lemmas)
     
+    # 2. Обработка конкурентов
     comp_docs = []
     for p in comp_data:
-        body = process_text(p['body_text'], settings)
-        anchor = process_text(p['anchor_text'], settings)
+        body, _ = process_text_detailed(p['body_text'], settings)
+        anchor, _ = process_text_detailed(p['anchor_text'], settings)
         comp_docs.append({'body': body, 'anchor': anchor})
         
     if not comp_docs:
         return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}}
 
+    # Коэффициент нормировки (если включен)
     avg_len = np.mean([len(d['body']) for d in comp_docs])
     norm_k = (my_len / avg_len) if (settings['norm'] and avg_len > 0) else 1.0
     
+    # Собираем словарь всех слов
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
@@ -254,84 +233,143 @@ def calculate_metrics(comp_data, my_data, settings):
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
         
-    k1, b = 1.2, 0.75
     table_depth, table_hybrid = [], []
     
     for word in vocab:
         df = doc_freqs[word]
+        # Отсекаем мусор: слово должно быть либо у вас, либо у 2+ конкурентов
         if df < 2 and word not in my_lemmas: continue 
         
-        my_tf = my_lemmas.count(word)
-        my_anch_tf = my_anchors.count(word)
+        # --- СТАТИСТИКА У ВАС ---
+        my_tf_total = my_lemmas.count(word)        # Всего на странице
+        my_tf_anchor = my_anchors.count(word)      # В ссылках
+        my_tf_text = max(0, my_tf_total - my_tf_anchor) # В чистом тексте
         
-        c_body_tfs = [d['body'].count(word) for d in comp_docs]
-        c_anch_tfs = [d['anchor'].count(word) for d in comp_docs]
+        # Словоформы (для таблицы)
+        forms_str = ", ".join(sorted(list(my_forms.get(word, set())))) if word in my_forms else word
         
-        med_tf = np.median(c_body_tfs)
-        med_anch = np.median(c_anch_tfs)
-        max_tf = np.max(c_body_tfs)
+        # --- СТАТИСТИКА КОНКУРЕНТОВ ---
+        c_total_tfs = [d['body'].count(word) for d in comp_docs]
+        c_anchor_tfs = [d['anchor'].count(word) for d in comp_docs]
         
+        # Медианы и Средние по конкурентам
+        mean_total = np.mean(c_total_tfs)
+        med_total = np.median(c_total_tfs)
+        max_total = np.max(c_total_tfs)
+        
+        med_anchor = np.median(c_anchor_tfs)
+        
+        # --- ФОРМУЛЫ ИЗ ТЗ ---
+        
+        # 1. Минимум по рекомендациям: "Медиана или среднее, в зависимости от того, что меньше"
+        rec_min_raw = min(mean_total, med_total)
+        
+        # Нормируем рекомендации на длину вашего текста
+        rec_min = int(round(rec_min_raw * norm_k))
+        rec_max = int(round(max_total * norm_k))
+        rec_anchor = int(round(med_anchor * norm_k)) # Рекомендация по ссылкам (обычно медиана)
+        
+        # 2. Добавить / Убрать (Общее)
+        diff_total = 0
+        if my_tf_total < rec_min:
+            diff_total = rec_min - my_tf_total # Нужно добавить (+)
+        elif my_tf_total > rec_max:
+            diff_total = rec_max - my_tf_total # Нужно убрать (-) (будет отрицательным)
+        
+        # 3. Тэг А (Добавить / Убрать)
+        # Если ссылок у вас меньше медианы - добавить, больше - убрать (или 0, если считаем нормой)
+        # Обычно для ссылок жесткой границы нет, берем разницу с медианой
+        diff_anchor = rec_anchor - my_tf_anchor
+        
+        # 4. Текст (Добавить / Убрать)
+        # Рекомендация по тексту = Рек.Всего - Рек.Ссылки
+        rec_text_min = max(0, rec_min - rec_anchor)
+        rec_text_max = max(0, rec_max - rec_anchor)
+        
+        diff_text = 0
+        if my_tf_text < rec_text_min:
+            diff_text = rec_text_min - my_tf_text
+        elif my_tf_text > rec_text_max:
+            diff_text = rec_text_max - my_tf_text
+
+        # 5. Переспам и IDF
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
+        idf = max(0.1, idf) # Защита от отрицательного IDF
         
-        target_body = int(med_tf * 1.3 * norm_k)
-        diff_body = target_body - my_tf
-        target_anch = int(med_anch * norm_k)
-        diff_anch = target_anch - my_anch_tf
-        
-        if med_tf > 0.5 or my_tf > 0:
+        spam_percent = 0
+        if my_tf_total > rec_max and rec_max > 0:
+            # "Процент превышения максимального значения"
+            spam_percent = round(((my_tf_total - rec_max) / rec_max) * 100, 1)
+        elif my_tf_total > 0 and rec_max == 0:
+            spam_percent = 100 # Если у конкурентов 0, а у нас есть - это 100% аномалия
+            
+        spam_idf = round(spam_percent * idf, 1)
+
+        # Техническое поле для сортировки (по модулю изменений)
+        abs_diff = abs(diff_total)
+
+        if med_total > 0.5 or my_tf_total > 0:
             table_depth.append({
                 "Слово": word,
-                "У вас (TF)": my_tf, 
-                "Медиана": round(med_tf, 1),
-                "Максимум": int(max_tf * norm_k),
-                "Добавить/Убрать": diff_body, 
-                "diff_abs": abs(diff_body),
-                "Тег A у вас": my_anch_tf,
-                "Тег A реком.": target_anch
+                "Словоформы": forms_str,
+                "Повторы у вас": my_tf_total,
+                "Минимум (рек)": rec_min,
+                "Максимум (рек)": rec_max,
+                "Добавить/Убрать": diff_total,
+                
+                "Тег A у вас": my_tf_anchor,
+                "Тег A (рек)": rec_anchor,
+                "Тег A +/-": diff_anchor,
+                
+                "Текст у вас": my_tf_text,
+                "Текст (рек)": rec_text_min, # Показываем мин. порог для текста
+                "Текст +/-": diff_text,
+                
+                "Переспам %": spam_percent,
+                "Переспам*IDF": spam_idf,
+                
+                "diff_abs": abs_diff, # Скрытое поле для сортировки
+                "is_missing": (my_tf_total == 0) # Для покраски в красный
             })
+            
+            # Гибридная таблица (оставляем как была, она хорошая)
             table_hybrid.append({
                 "Слово": word, 
-                "TF-IDF ТОП": round(med_tf * idf, 2), 
-                "TF-IDF у вас": round(my_tf * idf, 2),
+                "TF-IDF ТОП": round(med_total * idf, 2), 
+                "TF-IDF у вас": round(my_tf_total * idf, 2),
                 "Сайтов": df, 
-                "Переспам": max_tf
+                "Переспам": max_total
             })
 
+    # N-граммы (упрощенно)
     table_ngrams = []
-    if comp_docs and my_data and 'body_text' in my_data:
+    if comp_docs and my_data:
         try:
-            my_bi = process_text(my_data['body_text'], settings, 2)
-            comp_bi = [process_text(p['body_text'], settings, 2) for p in comp_data if p and 'body_text' in p]
-            
+            my_bi, _ = process_text_detailed(my_data['body_text'], settings, 2)
+            comp_bi = [process_text_detailed(p['body_text'], settings, 2)[0] for p in comp_data]
             all_bi = set(my_bi)
-            for c in comp_bi:
-                if c: all_bi.update(c)
+            for c in comp_bi: all_bi.update(c)
             bi_freqs = Counter()
-            for c in comp_bi:
-                if c:
-                    for b_ in set(c): bi_freqs[b_] += 1
-
+            for c in comp_bi: 
+                for b_ in set(c): bi_freqs[b_] += 1
+            
             for bg in all_bi:
                 df = bi_freqs[bg]
                 if df < 2 and bg not in my_bi: continue
                 my_c = my_bi.count(bg)
-                comp_c = [c['body'].count(bg) for c in comp_docs if 'body' in c]
+                comp_c = [c.count(bg) for c in comp_bi]
                 med_c = np.median(comp_c) if comp_c else 0
-                
                 if med_c > 0 or my_c > 0:
                     table_ngrams.append({
-                        "N-грамма": bg, 
-                        "Сайтов": df, 
-                        "Медиана": med_c,
-                        "На сайте": my_c,
-                        "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
+                        "N-грамма": bg, "Сайтов": df, "Медиана": med_c,
+                        "На сайте": my_c, "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3)
                     })
-        except Exception as e:
-            st.error(f"Error n-grams: {e}")
+        except: pass
 
+    # Релевантность
     table_rel = []
     for i, p in enumerate(comp_data):
-        p_lemmas = process_text(p['body_text'], settings)
+        p_lemmas, _ = process_text_detailed(p['body_text'], settings)
         w = len(set(p_lemmas).intersection(vocab))
         table_rel.append({
             "Домен": p['domain'], "Позиция": i+1, "URL": p['url'],
@@ -347,19 +385,15 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (DATAFRAME + SORT)
+# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (ST.DATAFRAME + STYLE)
 # ==========================================
 
 def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs_sort=False):
-    """
-    Рендеринг через st.dataframe (поддерживает сортировку в шапке),
-    но с агрессивным CSS и Pandas Styler для белого фона.
-    """
     if df.empty:
         st.info(f"{title_text}: Нет данных.")
         return
 
-    # 1. Сортировка (Начальная)
+    # 1. Сортировка
     if sort_by_col and sort_by_col in df.columns:
         if use_abs_sort:
             df['_abs_sort'] = df[sort_by_col].abs()
@@ -367,7 +401,7 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
         else:
             df = df.sort_values(by=sort_by_col, ascending=False)
             
-    # 2. Индекс с 1
+    # 2. Индекс
     df = df.reset_index(drop=True)
     df.index = df.index + 1
     
@@ -388,39 +422,44 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
     
     df_view = df.iloc[start_idx:end_idx]
 
-    # 4. ПОКРАСКА ЯЧЕЕК (Pandas Styler - fallback)
-    # Это красит саму таблицу изнутри данных, если CSS не сработает
-    def style_dataframe(d):
-        return d.style.set_properties(**{
-            'background-color': '#FFFFFF',
-            'color': '#3D4858',
-        })
+    # 4. ПОКРАСКА (Сложная логика Pandas Styler)
+    # is_missing - колонка, которую мы создали в calculate_metrics (True если TF=0)
+    
+    def highlight_rows(row):
+        styles = [''] * len(row)
+        # Если слово отсутствует на сайте (is_missing == True) -> Красный
+        if 'is_missing' in row and row['is_missing']:
+            styles = ['color: #D32F2F; font-weight: bold;'] * len(row)
+        else:
+            # Иначе -> Жирный (для всех остальных, т.к. они участвуют в формуле)
+            styles = ['font-weight: 600; color: #3D4858;'] * len(row)
+        return styles
 
     st.markdown(f"### {title_text}")
     
-    # Выводим интерактивную таблицу
+    # Скрываем тех. колонки
+    cols_to_hide = ["diff_abs", "is_missing"]
+    
+    styled_df = df_view.style.apply(highlight_rows, axis=1)
+    
     st.dataframe(
-        style_dataframe(df_view),
+        styled_df,
         use_container_width=True,
-        column_config={"diff_abs": None}
+        column_config={c: None for c in cols_to_hide}
     )
     
-    # 5. Кнопки управления
+    # 5. Кнопки
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
-    
     with c_btn_prev:
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
             st.session_state[f'{key_prefix}_page'] -= 1
             st.rerun()
-            
     with c_info:
         st.markdown(f"<div style='text-align: center; margin-top: 10px; color:{TEXT_COLOR}'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
-        
     with c_btn_next:
         if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
             st.session_state[f'{key_prefix}_page'] += 1
             st.rerun()
-            
     st.markdown("---")
 
 # ==========================================
@@ -433,11 +472,7 @@ with col_main:
     st.title("SEO Анализатор Релевантности")
 
     st.markdown("### URL или код страницы Вашего сайта")
-    my_input_type = st.radio(
-        "Тип страницы", 
-        ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], 
-        horizontal=True, label_visibility="collapsed", key="my_page_source_radio"
-    )
+    my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
 
     my_url = ""
     my_page_content = ""
@@ -465,8 +500,7 @@ with col_main:
     
     if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
         for key in list(st.session_state.keys()):
-            if key.endswith('_page'):
-                st.session_state[key] = 1
+            if key.endswith('_page'): st.session_state[key] = 1
         st.session_state.start_analysis_flag = True
 
 with col_sidebar:
@@ -489,16 +523,14 @@ with col_sidebar:
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
 # ==========================================
-# 5. ОБРАБОТКА И ВЫВОД (Session State Logic)
+# 5. ВЫПОЛНЕНИЕ
 # ==========================================
-
 if st.session_state.get('start_analysis_flag'):
     st.session_state.start_analysis_flag = False
 
     if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
         st.error("Введите URL!")
         st.stop()
-        
     if my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
         st.error("Введите исходный код!")
         st.stop()
@@ -516,7 +548,6 @@ if st.session_state.get('start_analysis_flag'):
     if source_type == "Google (Авто)":
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
-        
         try:
             with st.spinner(f"Сбор ТОПа..."):
                 if not USE_SEARCH:
@@ -571,7 +602,6 @@ if st.session_state.get('start_analysis_flag'):
 
 if st.session_state.analysis_done and st.session_state.analysis_results:
     results = st.session_state.analysis_results
-    
     st.success("Анализ готов!")
     
     st.markdown(f"""
@@ -579,36 +609,13 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
             <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта</h4>
             <p style='margin:5px 0 0 0;'>Ширина (уникальные слова): <b>{results['my_score']['width']}</b> | Глубина (всего слов): <b>{results['my_score']['depth']}</b></p>
         </div>
+        <div class="legend-box">
+            <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
+            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона.
+        </div>
     """, unsafe_allow_html=True)
 
-    render_paginated_table(
-        results['depth'], 
-        "1. Рекомендации по глубине (Добавить/Убрать слова)", 
-        "tbl_depth_1", 
-        sort_by_col="Добавить/Убрать", 
-        use_abs_sort=True
-    )
-
-    render_paginated_table(
-        results['hybrid'], 
-        "3. Гибридный ТОП (TF-IDF)", 
-        "tbl_hybrid", 
-        sort_by_col="TF-IDF ТОП", 
-        use_abs_sort=False
-    )
-
-    render_paginated_table(
-        results['ngrams'], 
-        "4. N-граммы (Фразы)", 
-        "tbl_ngrams", 
-        sort_by_col="TF-IDF", 
-        use_abs_sort=False
-    )
-
-    render_paginated_table(
-        results['relevance_top'], 
-        "5. ТОП релевантности страниц конкурентов", 
-        "tbl_rel", 
-        sort_by_col="Ширина", 
-        use_abs_sort=False
-    )
+    render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", sort_by_col="Добавить/Убрать", use_abs_sort=True)
+    render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", sort_by_col="TF-IDF ТОП", use_abs_sort=False)
+    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", sort_by_col="TF-IDF", use_abs_sort=False)
+    render_paginated_table(results['relevance_top'], "5. ТОП релевантности", "tbl_rel", sort_by_col="Ширина", use_abs_sort=False)
