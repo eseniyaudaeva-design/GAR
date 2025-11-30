@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 import re
 from collections import Counter, defaultdict
 import math
@@ -94,7 +94,7 @@ st.markdown(f"""
             font-weight: bold !important;
             border-bottom: 2px solid {PRIMARY_COLOR} !important;
             text-align: center !important;
-            white-space: pre-wrap !important; /* Перенос слов в шапке */
+            white-space: pre-wrap !important;
         }}
         [data-testid="stDataFrame"] td {{
             background-color: #FFFFFF !important;
@@ -142,20 +142,34 @@ except:
 
 def process_text_detailed(text, settings, n_gram=1):
     """
-    Возвращает не только леммы, но и словарь {лемма: {набор_словоформ}}
+    Разбивает текст на слова, учитывая настройки:
+    - settings['numbers']: включать ли цифры
+    - settings['custom_stops']: исключать ли стоп-слова
     """
-    pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' if settings['numbers'] else r'[а-яА-ЯёЁa-zA-Z]+'
+    # 1. Логика "Учитывать числа"
+    if settings['numbers']:
+        # Буквы + цифры
+        pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
+    else:
+        # Только буквы
+        pattern = r'[а-яА-ЯёЁa-zA-Z]+'
+        
     words = re.findall(pattern, text.lower())
+    
+    # 2. Логика "Стоп-слова"
     stops = set(w.lower() for w in settings['custom_stops'])
     
     lemmas = []
     forms_map = defaultdict(set)
     
     for w in words:
-        if len(w) < 2 or w in stops: continue
+        if len(w) < 2: continue
+        if w in stops: continue # Игнорируем стоп-слово
+        
         lemma = w
         if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
+            # Дополнительная фильтрация служебных частей речи
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
             lemma = p.normal_form
         
@@ -178,18 +192,34 @@ def parse_page(url, settings):
         if r.status_code != 200: return None
         soup = BeautifulSoup(r.text, 'html.parser')
         
+        # 1. Логика "Исключать noindex/script"
+        # Удаляем мусорные теги, чтобы их текст не попал в анализ
+        tags_to_remove = ['script', 'style', 'head'] # Удаляем всегда
+        
         if settings['noindex']:
-            for t in soup.find_all(['noindex', 'script', 'style', 'head', 'footer', 'nav']): t.decompose()
-        else:
-            for t in soup(['script', 'style', 'head']): t.decompose()
+            # Если галочка стоит - удаляем также навигацию, футер и noindex
+            tags_to_remove.extend(['noindex', 'nav', 'footer', 'header', 'aside'])
             
+            # Удаление комментариев (часто noindex сделан через комментарии)
+            comments = soup.find_all(string=lambda text: isinstance(text, Comment))
+            for c in comments:
+                c.extract()
+        
+        for t in soup.find_all(tags_to_remove): 
+            t.decompose()
+            
+        # Сбор ссылок (анкоров)
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
         
+        # 2. Логика "Учитывать Alt/Title"
         extra_text = []
         if settings['alt_title']:
+            # Если галочка стоит - собираем текст из атрибутов
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
+        
+        # Основной текст страницы
         body_text = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         
         return {
@@ -219,9 +249,15 @@ def calculate_metrics(comp_data, my_data, settings):
     if not comp_docs:
         return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}}
 
-    # Коэффициент нормировки (если включен)
+    # 3. Логика "Нормировать по длине"
     avg_len = np.mean([len(d['body']) for d in comp_docs])
-    norm_k = (my_len / avg_len) if (settings['norm'] and avg_len > 0) else 1.0
+    
+    # Если галочка стоит И у нас есть страница -> считаем коэффициент
+    if settings['norm'] and my_len > 0 and avg_len > 0:
+        norm_k = my_len / avg_len
+    else:
+        # Иначе (или "Без страницы") сравниваем 1 к 1
+        norm_k = 1.0
     
     # Собираем словарь всех слов
     vocab = set(my_lemmas)
@@ -237,52 +273,45 @@ def calculate_metrics(comp_data, my_data, settings):
     
     for word in vocab:
         df = doc_freqs[word]
-        # Отсекаем мусор: слово должно быть либо у вас, либо у 2+ конкурентов
         if df < 2 and word not in my_lemmas: continue 
         
         # --- СТАТИСТИКА У ВАС ---
-        my_tf_total = my_lemmas.count(word)        # Всего на странице
-        my_tf_anchor = my_anchors.count(word)      # В ссылках
-        my_tf_text = max(0, my_tf_total - my_tf_anchor) # В чистом тексте
+        my_tf_total = my_lemmas.count(word)        
+        my_tf_anchor = my_anchors.count(word)      
+        my_tf_text = max(0, my_tf_total - my_tf_anchor) 
         
-        # Словоформы (для таблицы)
         forms_str = ", ".join(sorted(list(my_forms.get(word, set())))) if word in my_forms else word
         
         # --- СТАТИСТИКА КОНКУРЕНТОВ ---
         c_total_tfs = [d['body'].count(word) for d in comp_docs]
         c_anchor_tfs = [d['anchor'].count(word) for d in comp_docs]
         
-        # Медианы и Средние по конкурентам
         mean_total = np.mean(c_total_tfs)
         med_total = np.median(c_total_tfs)
         max_total = np.max(c_total_tfs)
         
         med_anchor = np.median(c_anchor_tfs)
         
-        # --- ФОРМУЛЫ ИЗ ТЗ ---
+        # --- ПРИМЕНЕНИЕ НОРМИРОВКИ (norm_k) ---
         
-        # 1. Минимум по рекомендациям: "Медиана или среднее, в зависимости от того, что меньше"
         rec_min_raw = min(mean_total, med_total)
         
-        # Нормируем рекомендации на длину вашего текста
+        # Умножаем все рекомендации на коэффициент
         rec_min = int(round(rec_min_raw * norm_k))
         rec_max = int(round(max_total * norm_k))
-        rec_anchor = int(round(med_anchor * norm_k)) # Рекомендация по ссылкам (обычно медиана)
+        rec_anchor = int(round(med_anchor * norm_k)) 
         
         # 2. Добавить / Убрать (Общее)
         diff_total = 0
         if my_tf_total < rec_min:
-            diff_total = rec_min - my_tf_total # Нужно добавить (+)
+            diff_total = rec_min - my_tf_total 
         elif my_tf_total > rec_max:
-            diff_total = rec_max - my_tf_total # Нужно убрать (-) (будет отрицательным)
+            diff_total = rec_max - my_tf_total 
         
         # 3. Тэг А (Добавить / Убрать)
-        # Если ссылок у вас меньше медианы - добавить, больше - убрать (или 0, если считаем нормой)
-        # Обычно для ссылок жесткой границы нет, берем разницу с медианой
         diff_anchor = rec_anchor - my_tf_anchor
         
         # 4. Текст (Добавить / Убрать)
-        # Рекомендация по тексту = Рек.Всего - Рек.Ссылки
         rec_text_min = max(0, rec_min - rec_anchor)
         rec_text_max = max(0, rec_max - rec_anchor)
         
@@ -294,18 +323,16 @@ def calculate_metrics(comp_data, my_data, settings):
 
         # 5. Переспам и IDF
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
-        idf = max(0.1, idf) # Защита от отрицательного IDF
+        idf = max(0.1, idf) 
         
         spam_percent = 0
         if my_tf_total > rec_max and rec_max > 0:
-            # "Процент превышения максимального значения"
             spam_percent = round(((my_tf_total - rec_max) / rec_max) * 100, 1)
         elif my_tf_total > 0 and rec_max == 0:
-            spam_percent = 100 # Если у конкурентов 0, а у нас есть - это 100% аномалия
+            spam_percent = 100 
             
         spam_idf = round(spam_percent * idf, 1)
 
-        # Техническое поле для сортировки (по модулю изменений)
         abs_diff = abs(diff_total)
 
         if med_total > 0.5 or my_tf_total > 0:
@@ -322,17 +349,16 @@ def calculate_metrics(comp_data, my_data, settings):
                 "Тег A +/-": diff_anchor,
                 
                 "Текст у вас": my_tf_text,
-                "Текст (рек)": rec_text_min, # Показываем мин. порог для текста
+                "Текст (рек)": rec_text_min,
                 "Текст +/-": diff_text,
                 
                 "Переспам %": spam_percent,
                 "Переспам*IDF": spam_idf,
                 
-                "diff_abs": abs_diff, # Скрытое поле для сортировки
-                "is_missing": (my_tf_total == 0) # Для покраски в красный
+                "diff_abs": abs_diff,
+                "is_missing": (my_tf_total == 0)
             })
             
-            # Гибридная таблица (оставляем как была, она хорошая)
             table_hybrid.append({
                 "Слово": word, 
                 "TF-IDF ТОП": round(med_total * idf, 2), 
@@ -341,7 +367,7 @@ def calculate_metrics(comp_data, my_data, settings):
                 "Переспам": max_total
             })
 
-    # N-граммы (упрощенно)
+    # N-граммы
     table_ngrams = []
     if comp_docs and my_data:
         try:
@@ -393,7 +419,6 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
         st.info(f"{title_text}: Нет данных.")
         return
 
-    # 1. Сортировка
     if sort_by_col and sort_by_col in df.columns:
         if use_abs_sort:
             df['_abs_sort'] = df[sort_by_col].abs()
@@ -401,11 +426,9 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
         else:
             df = df.sort_values(by=sort_by_col, ascending=False)
             
-    # 2. Индекс
     df = df.reset_index(drop=True)
     df.index = df.index + 1
     
-    # 3. Пагинация (10 строк)
     ROWS_PER_PAGE = 10 
     if f'{key_prefix}_page' not in st.session_state:
         st.session_state[f'{key_prefix}_page'] = 1
@@ -422,22 +445,16 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
     
     df_view = df.iloc[start_idx:end_idx]
 
-    # 4. ПОКРАСКА (Сложная логика Pandas Styler)
-    # is_missing - колонка, которую мы создали в calculate_metrics (True если TF=0)
-    
     def highlight_rows(row):
         styles = [''] * len(row)
-        # Если слово отсутствует на сайте (is_missing == True) -> Красный
         if 'is_missing' in row and row['is_missing']:
             styles = ['color: #D32F2F; font-weight: bold;'] * len(row)
         else:
-            # Иначе -> Жирный (для всех остальных, т.к. они участвуют в формуле)
             styles = ['font-weight: 600; color: #3D4858;'] * len(row)
         return styles
 
     st.markdown(f"### {title_text}")
     
-    # Скрываем тех. колонки
     cols_to_hide = ["diff_abs", "is_missing"]
     
     styled_df = df_view.style.apply(highlight_rows, axis=1)
@@ -448,7 +465,6 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
         column_config={c: None for c in cols_to_hide}
     )
     
-    # 5. Кнопки
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     with c_btn_prev:
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
