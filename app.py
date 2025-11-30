@@ -594,3 +594,65 @@ if st.session_state.get('start_analysis_flag'):
                     target_urls.append(u)
                     cnt += 1
                     if cnt >= st.session_state.settings_top_n: break
+        except Exception as e:
+            st.error(f"Ошибка поиска: {e}")
+            st.stop()
+    else:
+        raw_urls = st.session_state.get("manual_urls_ui", "")
+        if raw_urls:
+            target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
+        else:
+            target_urls = []
+
+    if not target_urls:
+        st.error("Нет конкурентов.")
+        st.stop()
+        
+    my_data = None
+    if my_input_type == "Релевантная страница на вашем сайте":
+        with st.spinner("Скачивание вашей страницы..."):
+            my_data = parse_page(st.session_state.my_url_input, settings)
+    elif my_input_type == "Исходный код страницы или текст":
+        my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
+
+    comp_data = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
+        done = 0
+        total = len(target_urls)
+        prog = st.progress(0)
+        stat = st.empty()
+        for f in concurrent.futures.as_completed(futures):
+            res = f.result()
+            if res: comp_data.append(res)
+            done += 1
+            prog.progress(done / total)
+            stat.text(f"Загрузка конкурентов: {done}/{total}")
+    prog.empty()
+    stat.empty()
+
+    with st.spinner("Анализ данных..."):
+        st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings)
+        st.session_state.analysis_done = True
+        st.rerun()
+
+if st.session_state.analysis_done and st.session_state.analysis_results:
+    results = st.session_state.analysis_results
+    st.success("Анализ готов!")
+    
+    st.markdown(f"""
+        <div style='background-color: {LIGHT_BG_MAIN}; padding: 15px; border-radius: 8px; border: 1px solid {BORDER_COLOR}; margin-bottom: 20px;'>
+            <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта (в баллах от 0 до 100)</h4>
+            <p style='margin:5px 0 0 0;'>Ширина (охват семантики): <b>{results['my_score']['width']}</b> | Глубина (оптимизация): <b>{results['my_score']['depth']}</b></p>
+        </div>
+        <div class="legend-box">
+            <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
+            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона. <br>
+            ℹ️ Для сортировки всего списка используйте меню над таблицей.
+        </div>
+    """, unsafe_allow_html=True)
+
+    render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
+    render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
+    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
+    render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
