@@ -81,6 +81,7 @@ PRIMARY_DARK = "#1E63C4"
 TEXT_COLOR = "#3D4858"
 LIGHT_BG_MAIN = "#F1F5F9"
 BORDER_COLOR = "#E2E8F0"
+HEADER_BG = "#F0F7FF" # Светло-голубой для шапки
 
 st.markdown(f"""
     <style>
@@ -134,7 +135,6 @@ st.markdown(f"""
 # 2. ЛОГИКА (БЭКЕНД)
 # ==========================================
 
-# Инициализация Session State для сохранения результатов
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
@@ -350,9 +350,7 @@ def calculate_metrics(comp_data, my_data, settings):
 
 def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs_sort=False):
     """
-    Отрисовка таблицы с:
-    1. Пагинацией (без сброса данных, так как они в session_state)
-    2. Принудительно белым фоном через Pandas Styler
+    Отрисовка таблицы с белым фоном, голубой шапкой и сеткой.
     """
     if df.empty:
         st.info(f"{title_text}: Нет данных.")
@@ -387,36 +385,54 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
     
     df_view = df.iloc[start_idx:end_idx]
     
-    # 4. Отрисовка с принудительным стилем (Белый фон!)
-    st.markdown(f"### {title_text}")
-    
-    # Стилизация через Pandas Styler (решает проблему черных таблиц)
+    # 4. СТИЛИЗАЦИЯ (Pandas Styler)
+    # Цвета
+    header_bg = "#F0F7FF"  # Светло-голубой для шапки
+    border_color = "#277EFF" # Синий контур
+    grid_color = "#E2E8F0" # Серый для сетки внутри
+    text_main = "#3D4858"
+
     def style_dataframe(d):
         return d.style.set_properties(**{
             'background-color': '#FFFFFF',
-            'color': '#3D4858',
-            'border-color': '#E2E8F0'
+            'color': text_main,
+            'border': f'1px solid {grid_color}' # Сетка внутри ячеек
         }).set_table_styles([
-            {'selector': 'th', 'props': [
-                ('background-color', '#F1F5F9'),
-                ('color', '#277EFF'),
+            # Шапка таблицы (названия колонок)
+            {'selector': 'th.col_heading', 'props': [
+                ('background-color', header_bg),
+                ('color', border_color),
                 ('font-weight', 'bold'),
-                ('border-bottom', '1px solid #E2E8F0')
+                ('border', f'1px solid {grid_color}'), # Сетка в шапке
+                ('text-align', 'center')
+            ]},
+            # Индекс (Номера строк слева) - тоже делаем голубыми
+            {'selector': 'th.row_heading', 'props': [
+                ('background-color', header_bg),
+                ('color', border_color),
+                ('border', f'1px solid {grid_color}'),
+                ('text-align', 'center')
+            ]},
+            # Общая таблица (Внешний контур)
+            {'selector': 'table', 'props': [
+                ('border-collapse', 'collapse'),
+                ('border', f'2px solid {border_color}'), # Жирная синяя рамка вокруг
+                ('width', '100%')
             ]}
         ])
 
+    st.markdown(f"### {title_text}")
+    
     st.dataframe(
         style_dataframe(df_view),
         use_container_width=True,
-        column_config={"diff_abs": None} # Скрываем тех. колонку
+        column_config={"diff_abs": None}
     )
     
-    # 5. Кнопки управления (Снизу справа)
+    # 5. Кнопки управления
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     
     with c_btn_prev:
-        # Важно: кнопки просто меняют состояние страницы и вызывают rerun.
-        # Так как данные сохранены в session_state.analysis_results, они не пропадут.
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
             st.session_state[f'{key_prefix}_page'] -= 1
             st.rerun()
@@ -471,9 +487,7 @@ with col_main:
 
     st.markdown("---")
     
-    # Кнопка запуска меняет только флаг запуска.
     if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-        # Сброс пагинации при новом поиске
         for key in list(st.session_state.keys()):
             if key.endswith('_page'):
                 st.session_state[key] = 1
@@ -502,9 +516,8 @@ with col_sidebar:
 # 5. ОБРАБОТКА И ВЫВОД (Session State Logic)
 # ==========================================
 
-# Если была нажата кнопка запуска - производим расчеты и сохраняем в Session State
 if st.session_state.get('start_analysis_flag'):
-    st.session_state.start_analysis_flag = False # Сбрасываем триггер
+    st.session_state.start_analysis_flag = False
 
     if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
         st.error("Введите URL!")
@@ -580,12 +593,10 @@ if st.session_state.get('start_analysis_flag'):
         st.stop()
 
     with st.spinner("Анализ данных..."):
-        # СОХРАНЯЕМ В SESSION STATE
         st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings)
         st.session_state.analysis_done = True
-        st.rerun() # Перезагружаем страницу, чтобы отобразить результаты
+        st.rerun()
 
-# Если анализ уже был сделан (данные лежат в session_state), показываем таблицы
 if st.session_state.analysis_done and st.session_state.analysis_results:
     results = st.session_state.analysis_results
     
@@ -598,7 +609,6 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
         </div>
     """, unsafe_allow_html=True)
 
-    # 1. Рекомендации по глубине
     render_paginated_table(
         results['depth'], 
         "1. Рекомендации по глубине (Добавить/Убрать слова)", 
@@ -607,7 +617,6 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
         use_abs_sort=True
     )
 
-    # 3. Гибридный ТОП
     render_paginated_table(
         results['hybrid'], 
         "3. Гибридный ТОП (TF-IDF)", 
@@ -616,7 +625,6 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
         use_abs_sort=False
     )
 
-    # 4. N-граммы
     render_paginated_table(
         results['ngrams'], 
         "4. N-граммы (Фразы)", 
@@ -625,7 +633,6 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
         use_abs_sort=False
     )
 
-    # 5. ТОП релевантности
     render_paginated_table(
         results['relevance_top'], 
         "5. ТОП релевантности страниц конкурентов", 
