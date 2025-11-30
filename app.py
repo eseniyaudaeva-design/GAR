@@ -47,7 +47,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ И СТИЛИ
+# 1. КОНФИГУРАЦИЯ И СТИЛИ (AGRESSIVE CSS)
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -77,38 +77,62 @@ st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
-        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
-
-        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
-        .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
+        /* 1. Глобальный фон и шрифт */
+        .stApp {{
+            background-color: #FFFFFF !important;
+            color: {TEXT_COLOR} !important;
+        }}
         
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
-            background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
+        html, body, p, li, h1, h2, h3, h4 {{
+            font-family: 'Inter', sans-serif;
+            color: {TEXT_COLOR} !important;
         }}
 
-        /* СТИЛИ ТАБЛИЦЫ */
+        /* 2. Элементы управления */
+        .stButton button {{
+            background-color: {PRIMARY_COLOR} !important;
+            color: white !important;
+            border: none;
+            border-radius: 6px;
+        }}
+        .stButton button:hover {{
+            background-color: {PRIMARY_DARK} !important;
+        }}
+        
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
+            background-color: {LIGHT_BG_MAIN} !important;
+            color: {TEXT_COLOR} !important;
+            border: 1px solid {BORDER_COLOR} !important;
+        }}
+
+        /* 3. АГРЕССИВНЫЙ ХАК ДЛЯ ТАБЛИЦ (st.dataframe) */
         [data-testid="stDataFrame"] th {{
             background-color: {HEADER_BG} !important;
             color: {PRIMARY_COLOR} !important;
             font-weight: bold !important;
             border-bottom: 2px solid {PRIMARY_COLOR} !important;
             text-align: center !important;
-            white-space: pre-wrap !important;
+            white-space: pre-wrap !important; /* Перенос слов */
         }}
+        
         [data-testid="stDataFrame"] td {{
             background-color: #FFFFFF !important;
             color: {TEXT_COLOR} !important;
             border-bottom: 1px solid {BORDER_COLOR} !important;
         }}
-        /* Подсказка легенды */
+        
+        /* Легенда */
         .legend-box {{
-            padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
+            padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; 
+            border-radius: 5px; font-size: 14px; margin-bottom: 10px;
         }}
         .text-red {{ color: #D32F2F; font-weight: bold; }}
         .text-bold {{ font-weight: 600; }}
 
-        section[data-testid="stSidebar"] {{ background-color: #FFFFFF; border-left: 1px solid {BORDER_COLOR}; }}
+        section[data-testid="stSidebar"] {{
+            background-color: #FFFFFF;
+            border-left: 1px solid {BORDER_COLOR};
+        }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -141,22 +165,13 @@ except:
     USE_SEARCH = False
 
 def process_text_detailed(text, settings, n_gram=1):
-    """
-    Разбивает текст на слова, учитывая настройки:
-    - settings['numbers']: включать ли цифры
-    - settings['custom_stops']: исключать ли стоп-слова
-    """
-    # 1. Логика "Учитывать числа"
+    """Разбивает текст на слова и леммы."""
     if settings['numbers']:
-        # Буквы + цифры
         pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
     else:
-        # Только буквы
         pattern = r'[а-яА-ЯёЁa-zA-Z]+'
         
     words = re.findall(pattern, text.lower())
-    
-    # 2. Логика "Стоп-слова"
     stops = set(w.lower() for w in settings['custom_stops'])
     
     lemmas = []
@@ -164,12 +179,11 @@ def process_text_detailed(text, settings, n_gram=1):
     
     for w in words:
         if len(w) < 2: continue
-        if w in stops: continue # Игнорируем стоп-слово
+        if w in stops: continue
         
         lemma = w
         if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
-            # Дополнительная фильтрация служебных частей речи
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
             lemma = p.normal_form
         
@@ -193,33 +207,25 @@ def parse_page(url, settings):
         soup = BeautifulSoup(r.text, 'html.parser')
         
         # 1. Логика "Исключать noindex/script"
-        # Удаляем мусорные теги, чтобы их текст не попал в анализ
-        tags_to_remove = ['script', 'style', 'head'] # Удаляем всегда
-        
+        tags_to_remove = ['script', 'style', 'head']
         if settings['noindex']:
-            # Если галочка стоит - удаляем также навигацию, футер и noindex
             tags_to_remove.extend(['noindex', 'nav', 'footer', 'header', 'aside'])
-            
-            # Удаление комментариев (часто noindex сделан через комментарии)
+            # Удаление комментариев (скрытый noindex)
             comments = soup.find_all(string=lambda text: isinstance(text, Comment))
-            for c in comments:
-                c.extract()
+            for c in comments: c.extract()
         
         for t in soup.find_all(tags_to_remove): 
             t.decompose()
             
-        # Сбор ссылок (анкоров)
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
         
         # 2. Логика "Учитывать Alt/Title"
         extra_text = []
         if settings['alt_title']:
-            # Если галочка стоит - собираем текст из атрибутов
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
         
-        # Основной текст страницы
         body_text = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         
         return {
@@ -249,17 +255,14 @@ def calculate_metrics(comp_data, my_data, settings):
     if not comp_docs:
         return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}}
 
-    # 3. Логика "Нормировать по длине"
+    # 3. Нормировка
     avg_len = np.mean([len(d['body']) for d in comp_docs])
-    
-    # Если галочка стоит И у нас есть страница -> считаем коэффициент
     if settings['norm'] and my_len > 0 and avg_len > 0:
         norm_k = my_len / avg_len
     else:
-        # Иначе (или "Без страницы") сравниваем 1 к 1
         norm_k = 1.0
     
-    # Собираем словарь всех слов
+    # Словарь всех слов
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
@@ -283,9 +286,14 @@ def calculate_metrics(comp_data, my_data, settings):
         forms_str = ", ".join(sorted(list(my_forms.get(word, set())))) if word in my_forms else word
         
         # --- СТАТИСТИКА КОНКУРЕНТОВ ---
+        # Список вхождений у каждого конкурента: [0, 5, 2, 10, ...]
         c_total_tfs = [d['body'].count(word) for d in comp_docs]
         c_anchor_tfs = [d['anchor'].count(word) for d in comp_docs]
         
+        # НОВОЕ: Сумма повторов в ТОПе
+        sum_in_top = sum(c_total_tfs)
+
+        # Статистика распределения
         mean_total = np.mean(c_total_tfs)
         med_total = np.median(c_total_tfs)
         max_total = np.max(c_total_tfs)
@@ -293,25 +301,23 @@ def calculate_metrics(comp_data, my_data, settings):
         med_anchor = np.median(c_anchor_tfs)
         
         # --- ПРИМЕНЕНИЕ НОРМИРОВКИ (norm_k) ---
-        
         rec_min_raw = min(mean_total, med_total)
         
-        # Умножаем все рекомендации на коэффициент
         rec_min = int(round(rec_min_raw * norm_k))
         rec_max = int(round(max_total * norm_k))
         rec_anchor = int(round(med_anchor * norm_k)) 
         
-        # 2. Добавить / Убрать (Общее)
+        # Добавить / Убрать (Общее)
         diff_total = 0
         if my_tf_total < rec_min:
             diff_total = rec_min - my_tf_total 
         elif my_tf_total > rec_max:
             diff_total = rec_max - my_tf_total 
         
-        # 3. Тэг А (Добавить / Убрать)
+        # Тэг А (Добавить / Убрать)
         diff_anchor = rec_anchor - my_tf_anchor
         
-        # 4. Текст (Добавить / Убрать)
+        # Текст (Добавить / Убрать)
         rec_text_min = max(0, rec_min - rec_anchor)
         rec_text_max = max(0, rec_max - rec_anchor)
         
@@ -321,7 +327,7 @@ def calculate_metrics(comp_data, my_data, settings):
         elif my_tf_text > rec_text_max:
             diff_text = rec_text_max - my_tf_text
 
-        # 5. Переспам и IDF
+        # Переспам и IDF
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
         idf = max(0.1, idf) 
         
@@ -340,6 +346,7 @@ def calculate_metrics(comp_data, my_data, settings):
                 "Слово": word,
                 "Словоформы": forms_str,
                 "Повторы у вас": my_tf_total,
+                "Повторов в ТОПе": sum_in_top, # НОВЫЙ СТОЛБЕЦ
                 "Минимум (рек)": rec_min,
                 "Максимум (рек)": rec_max,
                 "Добавить/Убрать": diff_total,
