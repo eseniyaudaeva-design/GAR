@@ -121,23 +121,16 @@ st.markdown(f"""
 # 2. ЛОГИКА (БЭКЕНД)
 # ==========================================
 
-if 'analysis_results' not in st.session_state:
-    st.session_state.analysis_results = None
-if 'analysis_done' not in st.session_state:
-    st.session_state.analysis_done = False
-
+# Инициализация NLP
 try:
-    if not hasattr(inspect, 'getargspec'):
-        def getargspec(func):
-            spec = inspect.getfullargspec(func)
-            return spec.args, spec.varargs, spec.varkw, spec.defaults
-        inspect.getargspec = getargspec
     import pymorphy2
     morph = pymorphy2.MorphAnalyzer()
     USE_NLP = True
-except:
+except Exception as e:
+    # Если библиотека не загрузилась - выведем ошибку в сайдбар, чтобы вы знали
     morph = None
     USE_NLP = False
+    st.sidebar.error(f"⚠️ Ошибка NLP: {e}. Проверьте requirements.txt")
 
 try:
     from googlesearch import search
@@ -145,31 +138,46 @@ try:
 except:
     USE_SEARCH = False
 
+if 'analysis_results' not in st.session_state:
+    st.session_state.analysis_results = None
+if 'analysis_done' not in st.session_state:
+    st.session_state.analysis_done = False
+
 def process_text_detailed(text, settings, n_gram=1):
+    # 1. Чистка текста
     if settings['numbers']:
         pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
     else:
         pattern = r'[а-яА-ЯёЁa-zA-Z]+'
+        
     words = re.findall(pattern, text.lower())
     stops = set(w.lower() for w in settings['custom_stops'])
+    
     lemmas = []
     forms_map = defaultdict(set)
+    
     for w in words:
         if len(w) < 2: continue
         if w in stops: continue
+        
         lemma = w
+        # 2. Лемматизация (приведение к начальной форме)
         if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
+            # Фильтр предлогов и союзов
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
             lemma = p.normal_form
+        
         lemmas.append(lemma)
-        forms_map[lemma].add(w)
+        forms_map[lemma].add(w) # Сохраняем оригинальную форму для леммы
+    
     if n_gram > 1:
         ngrams = []
         for i in range(len(lemmas) - n_gram + 1):
             phrase = " ".join(lemmas[i:i+n_gram])
             ngrams.append(phrase)
         return ngrams, {}
+        
     return lemmas, forms_map
 
 def parse_page(url, settings):
@@ -198,10 +206,10 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
-    # Глобальный словарь для сбора всех словоформ
+    # Глобальный сборщик форм
     all_forms_map = defaultdict(set)
 
-    # 1. Обработка своего сайта
+    # 1. Ваш сайт
     if not my_data or not my_data['body_text']:
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
     else:
@@ -209,18 +217,18 @@ def calculate_metrics(comp_data, my_data, settings):
         my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
         my_len = len(my_lemmas)
         
-        # Добавляем формы с нашего сайта в общую копилку
+        # Записываем ваши формы
         for k, v in my_forms.items():
             all_forms_map[k].update(v)
     
-    # 2. Обработка конкурентов
+    # 2. Конкуренты
     comp_docs = []
     for p in comp_data:
         body, c_forms = process_text_detailed(p['body_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
         comp_docs.append({'body': body, 'anchor': anchor})
         
-        # Добавляем формы конкурентов в общую копилку
+        # Записываем формы конкурентов
         for k, v in c_forms.items():
             all_forms_map[k].update(v)
     
@@ -230,24 +238,27 @@ def calculate_metrics(comp_data, my_data, settings):
     avg_len = np.mean([len(d['body']) for d in comp_docs])
     norm_k = (my_len / avg_len) if (settings['norm'] and my_len > 0 and avg_len > 0) else 1.0
     
+    # Словарный запас (ЛЕММЫ)
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
+    
     N = len(comp_docs)
     doc_freqs = Counter()
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
         
     table_depth, table_hybrid = [], []
-    for word in vocab:
+    for word in vocab: # word здесь - это ЛЕММА (например "алюминиевый")
         df = doc_freqs[word]
         if df < 2 and word not in my_lemmas: continue 
         
+        # TF считаем по лемме
         my_tf_total = my_lemmas.count(word)        
         my_tf_anchor = my_anchors.count(word)      
         my_tf_text = max(0, my_tf_total - my_tf_anchor) 
         
-        # Формируем строку словоформ из ОБЩЕГО словаря
+        # Формы берем из ОБЩЕГО словаря
         forms_set = all_forms_map.get(word, set())
         forms_str = ", ".join(sorted(list(forms_set))) if forms_set else word
         
@@ -335,7 +346,7 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ С ПАГИНАЦИЕЙ И СОРТИРОВКОЙ
+# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (БЕЗ СКРОЛЛА, 20 СТРОК)
 # ==========================================
 
 def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
@@ -345,8 +356,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     st.markdown(f"### {title_text}")
     
-    # --- БЛОК СОРТИРОВКИ ---
-    # Меню сортировки важно, чтобы сортировать ВЕСЬ список перед нарезкой на страницы
+    # БЛОК СОРТИРОВКИ
     if f'{key_prefix}_sort_col' not in st.session_state:
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
     if f'{key_prefix}_sort_order' not in st.session_state:
@@ -374,16 +384,15 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             st.session_state[f'{key_prefix}_sort_order'] = sort_order
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- СОРТИРОВКА ПОЛНОГО ДАТАСЕТА ---
+    # СОРТИРОВКА
     ascending = (sort_order == "Возрастание")
-    
     if "Добавить" in sort_col or "+/-" in sort_col:
         df['_temp_sort'] = df[sort_col].abs()
         df = df.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
     else:
         df = df.sort_values(by=sort_col, ascending=ascending)
 
-    # --- ПАГИНАЦИЯ (20 СТРОК) ---
+    # ПАГИНАЦИЯ
     df = df.reset_index(drop=True)
     df.index = df.index + 1
     
@@ -403,7 +412,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     df_view = df.iloc[start_idx:end_idx]
 
-    # --- ПОКРАСКА ---
+    # ПОКРАСКА
     def highlight_rows(row):
         styles = [''] * len(row)
         if 'is_missing' in row and row['is_missing']:
@@ -416,17 +425,17 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     styled_df = df_view.style.apply(highlight_rows, axis=1)
     
-    # --- ВЫВОД ТАБЛИЦЫ (ДИНАМИЧЕСКАЯ ВЫСОТА) ---
+    # АВТО-ВЫСОТА (без скролла)
     dynamic_height = (len(df_view) * 35) + 40 
     
     st.dataframe(
         styled_df,
         use_container_width=True,
-        height=dynamic_height, # <-- Фиксируем высоту под кол-во строк
+        height=dynamic_height, 
         column_config={c: None for c in cols_to_hide}
     )
     
-    # Кнопки
+    # КНОПКИ
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     with c_btn_prev:
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
