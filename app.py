@@ -198,18 +198,31 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
+    # Глобальный словарь для сбора всех словоформ
+    all_forms_map = defaultdict(set)
+
+    # 1. Обработка своего сайта
     if not my_data or not my_data['body_text']:
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
     else:
         my_lemmas, my_forms = process_text_detailed(my_data['body_text'], settings)
         my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
         my_len = len(my_lemmas)
+        
+        # Добавляем формы с нашего сайта в общую копилку
+        for k, v in my_forms.items():
+            all_forms_map[k].update(v)
     
+    # 2. Обработка конкурентов
     comp_docs = []
     for p in comp_data:
-        body, _ = process_text_detailed(p['body_text'], settings)
+        body, c_forms = process_text_detailed(p['body_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
         comp_docs.append({'body': body, 'anchor': anchor})
+        
+        # Добавляем формы конкурентов в общую копилку
+        for k, v in c_forms.items():
+            all_forms_map[k].update(v)
     
     if not comp_docs:
         return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}}
@@ -233,7 +246,10 @@ def calculate_metrics(comp_data, my_data, settings):
         my_tf_total = my_lemmas.count(word)        
         my_tf_anchor = my_anchors.count(word)      
         my_tf_text = max(0, my_tf_total - my_tf_anchor) 
-        forms_str = ", ".join(sorted(list(my_forms.get(word, set())))) if word in my_forms else word
+        
+        # Формируем строку словоформ из ОБЩЕГО словаря
+        forms_set = all_forms_map.get(word, set())
+        forms_str = ", ".join(sorted(list(forms_set))) if forms_set else word
         
         c_total_tfs = [d['body'].count(word) for d in comp_docs]
         c_anchor_tfs = [d['anchor'].count(word) for d in comp_docs]
@@ -330,6 +346,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     st.markdown(f"### {title_text}")
     
     # --- БЛОК СОРТИРОВКИ ---
+    # Меню сортировки важно, чтобы сортировать ВЕСЬ список перед нарезкой на страницы
     if f'{key_prefix}_sort_col' not in st.session_state:
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
     if f'{key_prefix}_sort_order' not in st.session_state:
@@ -400,8 +417,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     styled_df = df_view.style.apply(highlight_rows, axis=1)
     
     # --- ВЫВОД ТАБЛИЦЫ (ДИНАМИЧЕСКАЯ ВЫСОТА) ---
-    # Расчет высоты: 35px на строку + 40px шапка + 3px запас
-    # Это гарантирует отсутствие скроллбара, таблица будет длинной
     dynamic_height = (len(df_view) * 35) + 40 
     
     st.dataframe(
@@ -552,37 +567,4 @@ if st.session_state.get('start_analysis_flag'):
         total = len(target_urls)
         prog = st.progress(0)
         stat = st.empty()
-        for f in concurrent.futures.as_completed(futures):
-            res = f.result()
-            if res: comp_data.append(res)
-            done += 1
-            prog.progress(done / total)
-            stat.text(f"Загрузка конкурентов: {done}/{total}")
-    prog.empty()
-    stat.empty()
-
-    with st.spinner("Анализ данных..."):
-        st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings)
-        st.session_state.analysis_done = True
-        st.rerun()
-
-if st.session_state.analysis_done and st.session_state.analysis_results:
-    results = st.session_state.analysis_results
-    st.success("Анализ готов!")
-    
-    st.markdown(f"""
-        <div style='background-color: {LIGHT_BG_MAIN}; padding: 15px; border-radius: 8px; border: 1px solid {BORDER_COLOR}; margin-bottom: 20px;'>
-            <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта</h4>
-            <p style='margin:5px 0 0 0;'>Ширина (уникальные слова): <b>{results['my_score']['width']}</b> | Глубина (всего слов): <b>{results['my_score']['depth']}</b></p>
-        </div>
-        <div class="legend-box">
-            <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
-            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона. <br>
-            ℹ️ Для сортировки всего списка используйте меню над таблицей.
-        </div>
-    """, unsafe_allow_html=True)
-
-    render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
-    render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
-    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="TF-IDF", use_abs_sort_default=False)
-    render_paginated_table(results['relevance_top'], "5. ТОП релевантности", "tbl_rel", default_sort_col="Ширина", use_abs_sort_default=False)
+        for f in conc
