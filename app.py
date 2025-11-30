@@ -47,7 +47,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ И CSS (ЖЕСТКИЕ СТИЛИ)
+# 1. КОНФИГУРАЦИЯ И СТИЛИ (АГРЕССИВНАЯ ПЕРЕКРАСКА)
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -71,13 +71,13 @@ PRIMARY_DARK = "#1E63C4"
 TEXT_COLOR = "#3D4858"
 LIGHT_BG_MAIN = "#F1F5F9"
 BORDER_COLOR = "#E2E8F0"
+HEADER_BG = "#F0F7FF" 
 
-# ГЛОБАЛЬНЫЕ СТИЛИ
 st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* Принудительный белый фон для всего приложения */
+        /* 1. Глобальный фон */
         .stApp {{
             background-color: #FFFFFF !important;
             color: {TEXT_COLOR} !important;
@@ -88,41 +88,7 @@ st.markdown(f"""
             color: {TEXT_COLOR} !important;
         }}
 
-        /* СТИЛИ ДЛЯ ТАБЛИЦ (HTML) */
-        table.custom-table {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-            font-family: 'Inter', sans-serif;
-            border: 2px solid {PRIMARY_COLOR} !important; /* Внешняя синяя рамка */
-        }}
-        
-        table.custom-table th {{
-            background-color: #F0F7FF !important; /* Голубая шапка */
-            color: {PRIMARY_COLOR} !important; /* Синий текст шапки */
-            font-weight: 600;
-            text-align: center;
-            padding: 10px;
-            border: 1px solid {BORDER_COLOR} !important; /* Сетка */
-        }}
-        
-        table.custom-table td {{
-            background-color: #FFFFFF !important; /* Белые ячейки */
-            color: {TEXT_COLOR} !important;
-            padding: 8px;
-            border: 1px solid {BORDER_COLOR} !important; /* Сетка */
-        }}
-        
-        /* Столбец с индексом (№) */
-        table.custom-table th:first-child, table.custom-table td:first-child {{
-            background-color: #F0F7FF !important;
-            color: {PRIMARY_COLOR} !important;
-            font-weight: bold;
-            text-align: center;
-            width: 50px;
-        }}
-
-        /* Элементы управления */
+        /* 2. Элементы управления */
         .stButton button {{
             background-color: {PRIMARY_COLOR} !important;
             color: white !important;
@@ -138,7 +104,40 @@ st.markdown(f"""
             color: {TEXT_COLOR} !important;
             border: 1px solid {BORDER_COLOR} !important;
         }}
+
+        /* 3. АГРЕССИВНЫЙ ХАК ДЛЯ ТАБЛИЦ (st.dataframe) */
+        /* Принудительно красим заголовки таблицы */
+        [data-testid="stDataFrame"] th {{
+            background-color: {HEADER_BG} !important;
+            color: {PRIMARY_COLOR} !important;
+            font-weight: bold !important;
+            border-bottom: 2px solid {PRIMARY_COLOR} !important;
+            text-align: center !important;
+        }}
         
+        /* Принудительно красим ячейки таблицы */
+        [data-testid="stDataFrame"] td {{
+            background-color: #FFFFFF !important;
+            color: {TEXT_COLOR} !important;
+            border-bottom: 1px solid {BORDER_COLOR} !important;
+        }}
+        
+        /* Индекс (левый столбец) */
+        [data-testid="stDataFrame"] th[role="rowheader"] {{
+            color: {PRIMARY_COLOR} !important;
+            background-color: {HEADER_BG} !important;
+        }}
+        
+        /* При наведении на строку */
+        [data-testid="stDataFrame"] tr:hover td {{
+            background-color: {LIGHT_BG_MAIN} !important;
+        }}
+        
+        /* Убираем стандартные темные рамки Streamlit */
+        div[data-testid="stDataFrame"] {{
+            border: 1px solid {BORDER_COLOR} !important;
+        }}
+
         section[data-testid="stSidebar"] {{
             background-color: #FFFFFF;
             border-left: 1px solid {BORDER_COLOR};
@@ -348,18 +347,19 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (HTML TABLE)
+# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (DATAFRAME + SORT)
 # ==========================================
 
 def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs_sort=False):
     """
-    Рендеринг таблицы через чистый HTML для гарантии белого фона и стилей.
+    Рендеринг через st.dataframe (поддерживает сортировку в шапке),
+    но с агрессивным CSS и Pandas Styler для белого фона.
     """
     if df.empty:
         st.info(f"{title_text}: Нет данных.")
         return
 
-    # 1. Сортировка
+    # 1. Сортировка (Начальная)
     if sort_by_col and sort_by_col in df.columns:
         if use_abs_sort:
             df['_abs_sort'] = df[sort_by_col].abs()
@@ -371,8 +371,8 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
     df = df.reset_index(drop=True)
     df.index = df.index + 1
     
-    # 3. Пагинация
-    ROWS_PER_PAGE = 20
+    # 3. Пагинация (10 строк)
+    ROWS_PER_PAGE = 10 
     if f'{key_prefix}_page' not in st.session_state:
         st.session_state[f'{key_prefix}_page'] = 1
         
@@ -386,20 +386,26 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
     start_idx = (current_page - 1) * ROWS_PER_PAGE
     end_idx = start_idx + ROWS_PER_PAGE
     
-    df_view = df.iloc[start_idx:end_idx].copy()
+    df_view = df.iloc[start_idx:end_idx]
 
-    # 4. Удаляем технические колонки перед показом
-    if 'diff_abs' in df_view.columns:
-        df_view = df_view.drop(columns=['diff_abs'])
+    # 4. ПОКРАСКА ЯЧЕЕК (Pandas Styler - fallback)
+    # Это красит саму таблицу изнутри данных, если CSS не сработает
+    def style_dataframe(d):
+        return d.style.set_properties(**{
+            'background-color': '#FFFFFF',
+            'color': '#3D4858',
+        })
 
-    # 5. КОНВЕРТАЦИЯ В HTML (Железобетонный стиль)
     st.markdown(f"### {title_text}")
     
-    # Превращаем DataFrame в HTML с классом custom-table
-    html_table = df_view.to_html(classes="custom-table", border=0, justify="left")
-    st.markdown(html_table, unsafe_allow_html=True)
+    # Выводим интерактивную таблицу
+    st.dataframe(
+        style_dataframe(df_view),
+        use_container_width=True,
+        column_config={"diff_abs": None}
+    )
     
-    # 6. Кнопки управления
+    # 5. Кнопки управления
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     
     with c_btn_prev:
