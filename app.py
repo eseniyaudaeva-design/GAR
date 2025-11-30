@@ -25,25 +25,135 @@ def check_password():
     with col2:
         st.markdown("""
             <style>
-            .auth-container {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 2rem;
-                background-color: white;
-                border-radius: 10px;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                margin-top: 5rem;
-            }
-            .password-input {
-                width: 100%;
-                margin: 1rem 0;
-            }
-            .login-button {
-                width: 100%;
-                margin-top: 1rem;
-            }
+# ==========================================
+# 1. КОНФИГУРАЦИЯ (Вставьте это вместо старого блока style)
+# ==========================================
+
+# ... (ваш код st.set_page_config ...)
+
+# Цвета (дублируем переменные для f-строк)
+PRIMARY_COLOR = "#277EFF"
+PRIMARY_DARK = "#1E63C4"
+TEXT_COLOR = "#3D4858"
+LIGHT_BG_MAIN = "#F1F5F9"
+BORDER_COLOR = "#E2E8F0"
+
+st.markdown(f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        
+        /* Принудительные глобальные стили */
+        html, body, [data-testid="stAppViewContainer"] {{
+            font-family: 'Inter', sans-serif;
+            color: {TEXT_COLOR};
+            background-color: #FFFFFF;
+        }}
+        
+        /* 1. ПОЛЯ ВВОДА (Input, Textarea, Selectbox - само поле) */
+        .stTextInput input, 
+        .stTextArea textarea, 
+        .stSelectbox div[data-baseweb="select"] > div {{
+            background-color: {LIGHT_BG_MAIN} !important;
+            color: {TEXT_COLOR} !important;
+            border: 1px solid {BORDER_COLOR} !important;
+            border-radius: 6px;
+        }}
+        
+        /* Убираем красную обводку при валидации (опционально) */
+        .stTextInput input:focus, .stTextArea textarea:focus {{
+            border-color: {PRIMARY_COLOR} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_COLOR} !important;
+        }}
+
+        /* 2. ИСПРАВЛЕНИЕ ВЫПАДАЮЩЕГО СПИСКА (Меню) */
+        /* Фон самого выпадающего списка */
+        div[data-baseweb="popover"] {{
+            background-color: #FFFFFF !important;
+            border: 1px solid {BORDER_COLOR} !important;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+        }}
+        
+        /* Пункты меню */
+        div[data-baseweb="menu"] li {{
+            background-color: #FFFFFF !important;
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        /* Текст внутри пунктов */
+        div[data-baseweb="menu"] li span {{
+            color: {TEXT_COLOR} !important;
+        }}
+        
+        /* Ховер (наведение) и Выбранный элемент */
+        div[data-baseweb="menu"] li:hover,
+        div[data-baseweb="menu"] li[aria-selected="true"] {{
+            background-color: {LIGHT_BG_MAIN} !important;
+            color: {PRIMARY_COLOR} !important;
+        }}
+        
+        /* Цвет текста выбранного элемента */
+        div[data-baseweb="menu"] li[aria-selected="true"] span {{
+            color: {PRIMARY_COLOR} !important;
+        }}
+
+        /* 3. РАДИО-КНОПКИ (Исправленные селекторы) */
+        div[role="radiogroup"] {{
+            background: transparent;
+        }}
+        
+        div[role="radiogroup"] label {{
+            background-color: #FFFFFF !important;
+            border: 1px solid {BORDER_COLOR} !important;
+            border-radius: 4px;
+            padding: 5px 10px;
+            margin-right: 10px;
+            transition: all 0.2s;
+        }}
+        
+        /* Текст радио кнопки */
+        div[role="radiogroup"] label p {{
+            color: {TEXT_COLOR} !important;
+            font-size: 14px;
+        }}
+        
+        /* Если радио выбрано - красим рамку лейбла */
+        div[role="radiogroup"] label:has(input:checked) {{
+            border-color: {PRIMARY_COLOR} !important;
+            background-color: {LIGHT_BG_MAIN} !important;
+        }}
+        
+        /* Сами кружочки (внешний круг) */
+        div[role="radiogroup"] div[data-baseweb="radio"] > div {{
+            border-color: #94a3b8 !important;
+            background-color: #FFFFFF !important;
+        }}
+        
+        /* Кружочек, когда выбран (внешний круг) */
+        div[role="radiogroup"] input:checked + div[data-baseweb="radio"] > div {{
+            border-color: {PRIMARY_COLOR} !important;
+            background-color: {PRIMARY_COLOR} !important;
+        }}
+        
+        /* Точка внутри кружочка (внутренний круг) */
+        div[role="radiogroup"] input:checked + div[data-baseweb="radio"] > div > div {{
+            background-color: #FFFFFF !important;
+        }}
+
+        /* 4. КНОПКИ (Button) */
+        .stButton button {{
+            background-color: {PRIMARY_COLOR} !important;
+            color: #FFFFFF !important;
+            border: none;
+        }}
+        .stButton button:hover {{
+            background-color: {PRIMARY_DARK} !important;
+        }}
+        
+        /* Убираем лишние отступы сверху */
+        .block-container {{
+            padding-top: 2rem !important;
+        }}
+        
             </style>
         """, unsafe_allow_html=True)
         
@@ -809,4 +919,5 @@ if st.session_state.start_analysis_flag:
     
     with st.expander("4. ТОП релевантных страниц конкурентов"):
         st.dataframe(results['relevance_top'], use_container_width=True)
+
 
