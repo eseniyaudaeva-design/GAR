@@ -14,33 +14,24 @@ from urllib.parse import urlparse
 # 0. АВТОРИЗАЦИЯ
 # ==========================================
 def check_password():
-    """Проверка пароля перед показом основного приложения"""
     if st.session_state.get("authenticated"):
         return True
-        
+    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("""
             <style>
             .auth-container {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 2rem;
-                background-color: white;
-                border-radius: 10px;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                margin-top: 5rem;
+                display: flex; flex-direction: column; align-items: center;
+                justify-content: center; padding: 2rem; background-color: white;
+                border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); margin-top: 5rem;
             }
             </style>
+            <div class="auth-container">
+                <h3>📊 GAR PRO</h3>
+                <h3>Вход в систему</h3>
+            </div>
         """, unsafe_allow_html=True)
-        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-        try:
-            st.image("eseniyaudaeva-design/GAR/logo.png", width=200)
-        except:
-            st.markdown("### 📊 GAR PRO")
-        st.markdown("### Вход в систему")
         
         password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
         
@@ -50,14 +41,13 @@ def check_password():
                 st.rerun()
             else:
                 st.error("❌ Неверный пароль")
-        st.markdown('</div>', unsafe_allow_html=True)
     return False
 
 if not check_password():
     st.stop()
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ И СТИЛИ
+# 1. КОНФИГУРАЦИЯ И CSS (ЖЕСТКИЕ СТИЛИ)
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
@@ -81,28 +71,58 @@ PRIMARY_DARK = "#1E63C4"
 TEXT_COLOR = "#3D4858"
 LIGHT_BG_MAIN = "#F1F5F9"
 BORDER_COLOR = "#E2E8F0"
-HEADER_BG = "#F0F7FF" # Светло-голубой для шапки
 
+# ГЛОБАЛЬНЫЕ СТИЛИ
 st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        :root {{
-            --primary-color: {PRIMARY_COLOR};
-            --text-color: {TEXT_COLOR};
-        }}
-        
-        html, body, [data-testid="stAppViewContainer"] {{
-            font-family: 'Inter', sans-serif;
-            color: {TEXT_COLOR} !important;
+        /* Принудительный белый фон для всего приложения */
+        .stApp {{
             background-color: #FFFFFF !important;
+            color: {TEXT_COLOR} !important;
         }}
         
-        h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown {{
+        html, body, p, li, h1, h2, h3, h4 {{
+            font-family: 'Inter', sans-serif;
             color: {TEXT_COLOR} !important;
         }}
 
-        /* Кнопки */
+        /* СТИЛИ ДЛЯ ТАБЛИЦ (HTML) */
+        table.custom-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            border: 2px solid {PRIMARY_COLOR} !important; /* Внешняя синяя рамка */
+        }}
+        
+        table.custom-table th {{
+            background-color: #F0F7FF !important; /* Голубая шапка */
+            color: {PRIMARY_COLOR} !important; /* Синий текст шапки */
+            font-weight: 600;
+            text-align: center;
+            padding: 10px;
+            border: 1px solid {BORDER_COLOR} !important; /* Сетка */
+        }}
+        
+        table.custom-table td {{
+            background-color: #FFFFFF !important; /* Белые ячейки */
+            color: {TEXT_COLOR} !important;
+            padding: 8px;
+            border: 1px solid {BORDER_COLOR} !important; /* Сетка */
+        }}
+        
+        /* Столбец с индексом (№) */
+        table.custom-table th:first-child, table.custom-table td:first-child {{
+            background-color: #F0F7FF !important;
+            color: {PRIMARY_COLOR} !important;
+            font-weight: bold;
+            text-align: center;
+            width: 50px;
+        }}
+
+        /* Элементы управления */
         .stButton button {{
             background-color: {PRIMARY_COLOR} !important;
             color: white !important;
@@ -113,21 +133,16 @@ st.markdown(f"""
             background-color: {PRIMARY_DARK} !important;
         }}
         
-        /* Поля ввода */
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
             background-color: {LIGHT_BG_MAIN} !important;
             color: {TEXT_COLOR} !important;
             border: 1px solid {BORDER_COLOR} !important;
-            border-radius: 6px;
         }}
         
-        /* Сайдбар */
         section[data-testid="stSidebar"] {{
             background-color: #FFFFFF;
             border-left: 1px solid {BORDER_COLOR};
         }}
-        
-        .block-container {{ padding-top: 2rem; padding-bottom: 5rem; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -259,18 +274,6 @@ def calculate_metrics(comp_data, my_data, settings):
         
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
         
-        bm25_scores = []
-        for i, d in enumerate(comp_docs):
-            tf = c_body_tfs[i]
-            dl = len(d['body'])
-            score = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (dl / avg_len)))
-            bm25_scores.append(score)
-        bm25_top = np.median(bm25_scores)
-        
-        bm25_my = 0
-        if my_len > 0:
-            bm25_my = idf * (my_tf * (k1 + 1)) / (my_tf + k1 * (1 - b + b * (my_len / avg_len)))
-        
         target_body = int(med_tf * 1.3 * norm_k)
         diff_body = target_body - my_tf
         target_anch = int(med_anch * norm_k)
@@ -345,12 +348,12 @@ def calculate_metrics(comp_data, my_data, settings):
     }
 
 # ==========================================
-# 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ОТОБРАЖЕНИЯ
+# 3. ФУНКЦИЯ ОТОБРАЖЕНИЯ (HTML TABLE)
 # ==========================================
 
 def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs_sort=False):
     """
-    Отрисовка таблицы с белым фоном, голубой шапкой и сеткой.
+    Рендеринг таблицы через чистый HTML для гарантии белого фона и стилей.
     """
     if df.empty:
         st.info(f"{title_text}: Нет данных.")
@@ -383,53 +386,20 @@ def render_paginated_table(df, title_text, key_prefix, sort_by_col=None, use_abs
     start_idx = (current_page - 1) * ROWS_PER_PAGE
     end_idx = start_idx + ROWS_PER_PAGE
     
-    df_view = df.iloc[start_idx:end_idx]
-    
-    # 4. СТИЛИЗАЦИЯ (Pandas Styler)
-    # Цвета
-    header_bg = "#F0F7FF"  # Светло-голубой для шапки
-    border_color = "#277EFF" # Синий контур
-    grid_color = "#E2E8F0" # Серый для сетки внутри
-    text_main = "#3D4858"
+    df_view = df.iloc[start_idx:end_idx].copy()
 
-    def style_dataframe(d):
-        return d.style.set_properties(**{
-            'background-color': '#FFFFFF',
-            'color': text_main,
-            'border': f'1px solid {grid_color}' # Сетка внутри ячеек
-        }).set_table_styles([
-            # Шапка таблицы (названия колонок)
-            {'selector': 'th.col_heading', 'props': [
-                ('background-color', header_bg),
-                ('color', border_color),
-                ('font-weight', 'bold'),
-                ('border', f'1px solid {grid_color}'), # Сетка в шапке
-                ('text-align', 'center')
-            ]},
-            # Индекс (Номера строк слева) - тоже делаем голубыми
-            {'selector': 'th.row_heading', 'props': [
-                ('background-color', header_bg),
-                ('color', border_color),
-                ('border', f'1px solid {grid_color}'),
-                ('text-align', 'center')
-            ]},
-            # Общая таблица (Внешний контур)
-            {'selector': 'table', 'props': [
-                ('border-collapse', 'collapse'),
-                ('border', f'2px solid {border_color}'), # Жирная синяя рамка вокруг
-                ('width', '100%')
-            ]}
-        ])
+    # 4. Удаляем технические колонки перед показом
+    if 'diff_abs' in df_view.columns:
+        df_view = df_view.drop(columns=['diff_abs'])
 
+    # 5. КОНВЕРТАЦИЯ В HTML (Железобетонный стиль)
     st.markdown(f"### {title_text}")
     
-    st.dataframe(
-        style_dataframe(df_view),
-        use_container_width=True,
-        column_config={"diff_abs": None}
-    )
+    # Превращаем DataFrame в HTML с классом custom-table
+    html_table = df_view.to_html(classes="custom-table", border=0, justify="left")
+    st.markdown(html_table, unsafe_allow_html=True)
     
-    # 5. Кнопки управления
+    # 6. Кнопки управления
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     
     with c_btn_prev:
@@ -587,10 +557,6 @@ if st.session_state.get('start_analysis_flag'):
             stat.text(f"Загрузка конкурентов: {done}/{total}")
     prog.empty()
     stat.empty()
-
-    if not comp_data and my_input_type == "Без страницы":
-        st.error("Ошибка загрузки конкурентов.")
-        st.stop()
 
     with st.spinner("Анализ данных..."):
         st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings)
