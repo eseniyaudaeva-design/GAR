@@ -152,7 +152,7 @@ if 'analysis_results' not in st.session_state:
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN (ФИНАЛЬНОЕ, ИСПРАВЛЕННОЕ РЕШЕНИЕ) ---
+# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"  # Для проверки статуса
@@ -262,8 +262,14 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     # 4. ФИНАЛЬНЫЙ ПАРСИНГ: УЧИТЫВАЕМ ПРОСТУЮ СТРУКТУРУ API
     results_list = []
     try:
-        collect = res_data['result']['result']['collect']
-        
+        # Проверяем на наличие поля 'collect'
+        if 'result' in res_data and 'result' in res_data['result'] and 'collect' in res_data['result']['result']:
+            collect = res_data['result']['result']['collect']
+        else:
+            st.error("❌ Ошибка парсинга: Отсутствует поле 'collect' в ответе API.")
+            st.json(res_data)
+            return []
+
         # Ожидаемая структура: [ [ [ 'url1', 'url2', ... ] ] ]
         final_url_list = []
         
@@ -275,9 +281,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
              final_url_list = collect[0][0]
         else:
              # На случай, если API вернет старую, сложную структуру с ключами ('2', '11')
-             st.warning("Обнаружена нестандартная или сложная структура ответа. Попытка парсинга...")
-             
-             # Старый, более сложный парсер для Yandex+Google (оставлен на всякий случай)
+             # Этот блок оставлен для совместимости, хотя новая версия API обычно возвращает простую.
              unique_urls = set()
              for engine_data in collect:
                 if isinstance(engine_data, dict):
@@ -296,7 +300,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
                                         for res in results_list:
                                             if res['url'] == url and pos < res['pos']:
                                                 res['pos'] = pos
-             return results_list # Если парсинг по сложной структуре сработал, возвращаем
+             return results_list 
 
         # Если сработала простая структура (final_url_list)
         if final_url_list:
@@ -375,7 +379,6 @@ def parse_page(url, settings):
         return {'url': url, 'domain': urlparse(url).netloc, 'body_text': body_text, 'anchor_text': anchor_text}
     except: return None
 
-# ИЗМЕНЕНА: Теперь принимает my_serp_pos
 def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
     all_forms_map = defaultdict(set)
 
@@ -488,7 +491,7 @@ def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
                 if df < 2 and bg not in my_bi: continue
                 
                 my_c = my_bi.count(bg)
-                comp_c = [c.count(bg) for c in comp_bi]
+                comp_c = [c.count(bg) for c in comp_docs]
                 med_c = np.median(comp_c) if comp_c else 0
                 
                 rec_ngram = int(round(med_c * norm_k))
@@ -553,7 +556,7 @@ def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
         
     table_rel.append({
         "Домен": my_label, 
-        "Позиция": my_serp_pos, # <-- ИСПОЛЬЗУЕМ РЕАЛЬНУЮ ПОЗИЦИЮ ИЗ SERP
+        "Позиция": my_serp_pos if my_serp_pos > 0 else len(comp_data) + 1, # Ставим после последнего конкурента
         "Ширина (балл)": my_score_w, 
         "Глубина (балл)": my_score_d
     })
@@ -639,11 +642,13 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     def highlight_rows(row):
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
-        for _ in row:
-            if 'is_missing' in row and row['is_missing']:
+        for col_name in row.index:
+            if col_name == 'is_missing' and row['is_missing']:
                 styles.append(base_style + 'color: #D32F2F; font-weight: bold;')
-            else:
+            elif col_name != 'is_missing' and col_name != 'diff_abs':
                 styles.append(base_style + 'font-weight: 600;')
+            else:
+                styles.append(base_style)
         return styles
     
     cols_to_hide = ["diff_abs", "is_missing"]
@@ -697,7 +702,7 @@ with col_main:
     query = st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
 
     st.markdown("### Поиск или URL страниц конкурентов")
-    source_type_new = st.radio("Источник конкурентов", ["Поиск через API Arsenkin (TOP-10)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
+    source_type_new = st.radio("Источник конкурентов", ["Поиск через API Arsenkin (TOP-50)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
     source_type = "API" if "API" in source_type_new else "Ручной список" 
 
     if source_type == "Ручной список":
@@ -736,11 +741,12 @@ with col_sidebar:
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
 # ==========================================
-# 7. ВЫПОЛНЕНИЕ (ИЗМЕНЕНА ЛОГИКА ФИЛЬТРАЦИИ И ПОИСКА ПОЗИЦИИ)
+# 7. ВЫПОЛНЕНИЕ (СКОРРЕКТИРОВАННАЯ ЛОГИКА СБОРА)
 # ==========================================
 if st.session_state.get('start_analysis_flag'):
     st.session_state.start_analysis_flag = False
 
+    # ... (Проверки входных данных) ...
     if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
         st.error("Введите URL!")
         st.stop()
@@ -753,8 +759,7 @@ if st.session_state.get('start_analysis_flag'):
     if source_type == "Ручной список" and not st.session_state.get("manual_urls_ui", "").strip():
         st.error("Введите список URL конкурентов!")
         st.stop()
-
-
+        
     settings = {
         'noindex': st.session_state.settings_noindex, 
         'alt_title': st.session_state.settings_alt, 
@@ -767,7 +772,7 @@ if st.session_state.get('start_analysis_flag'):
     target_urls = []
     my_data = None
     my_domain = ""
-    my_serp_pos = 0 # Реальная позиция в ТОПе (0, если не найдена)
+    my_serp_pos = 0 
 
     # 1. Сбор данных о ВАШЕМ сайте и домене
     if my_input_type == "Релевантная страница на вашем сайте":
@@ -780,19 +785,22 @@ if st.session_state.get('start_analysis_flag'):
             my_domain = urlparse(my_url_input).netloc
     elif my_input_type == "Исходный код страницы или текст":
         my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
-        my_domain = "local" # Заглушка для домена
-    
+        my_domain = "local" 
+
     # 2. Сбор URL конкурентов
-    
     if source_type == "API":
         
-        with st.spinner(f"Сбор ТОПа ({st.session_state.settings_top_n}) через Arsenkin API..."):
-            # Получаем список словарей: [{'url': '...', 'pos': N}, ...]
+        # --- ИЗМЕНЕНИЕ: Увеличение глубины API для буфера и остановка сбора по целевому N ---
+        TARGET_COMPETITORS = st.session_state.settings_top_n
+        # Запрашиваем максимальную глубину (50) для буфера, независимо от TARGET_COMPETITORS.
+        API_FETCH_DEPTH = 50 
+        
+        with st.spinner(f"Сбор ТОПа (глубина {API_FETCH_DEPTH}) через Arsenkin API..."):
             found_results = get_arsenkin_urls(
                 query=st.session_state.query_input, 
                 engine_type=st.session_state.settings_search_engine,
                 region_name=st.session_state.settings_region,
-                depth_val=st.session_state.settings_top_n
+                depth_val=API_FETCH_DEPTH # Используем расширенную глубину для буфера
             )
             
         if not found_results:
@@ -802,30 +810,35 @@ if st.session_state.get('start_analysis_flag'):
         # Фильтрация и трекинг позиции
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         if st.session_state.settings_agg: 
-            # Добавляем стандартные агрегаторы, если отмечен чекбокс
+            # Добавляем стандартные агрегаторы
             excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com", "yandex.ru"])
             
         initial_count = len(found_results)
+        collected_competitors_count = 0 
         
         for result in found_results:
+            # Остановка сбора, если достигли цели по количеству конкурентов
+            if collected_competitors_count >= TARGET_COMPETITORS:
+                break
+                
             url = result['url']
             pos = result['pos']
             domain = urlparse(url).netloc
 
             # 1. Проверяем, является ли это наш сайт (по домену)
             if my_domain and my_domain == domain:
-                # Фиксируем лучшую позицию (минимальное число)
                 if my_serp_pos == 0 or pos < my_serp_pos:
                     my_serp_pos = pos
-                continue # Исключаем наш сайт из списка конкурентов
+                continue 
 
             # 2. Исключаем домены из списка исключений
             if any(x in domain for x in excl): 
-                continue # Исключаем агрегаторы/запрещенные
+                continue 
 
-            target_urls.append(url) # Добавляем URL конкурента для парсинга
+            target_urls.append(url) 
+            collected_competitors_count += 1 
             
-        st.info(f"Получено уникальных URL от API: {initial_count}. После фильтрации: **{len(target_urls)}** конкурентов. Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
+        st.info(f"Получено уникальных URL от API: {initial_count}. Собрано **{collected_competitors_count}** релевантных конкурентов (цель {TARGET_COMPETITORS}). Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
 
     else:
         # Ручной режим
@@ -837,8 +850,8 @@ if st.session_state.get('start_analysis_flag'):
             
         st.info(f"Загружено **{len(target_urls)}** URL конкурентов вручную.")
 
-    if not target_urls and source_type != "Ручной список":
-        st.error("Нет конкурентов для анализа после фильтрации. Проверьте список исключаемых доменов (особенно если включен фильтр агрегаторов).")
+    if not target_urls and my_input_type != "Без страницы":
+        st.error("Нет конкурентов для анализа после фильтрации. Увеличьте глубину сбора (ТОП) или проверьте фильтры.")
         st.stop()
         
     if not my_data and my_input_type != "Без страницы":
@@ -868,7 +881,6 @@ if st.session_state.get('start_analysis_flag'):
         st.stop()
 
     with st.spinner("Анализ данных..."):
-        # Передаем реальную позицию
         st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings, my_serp_pos) 
         st.session_state.analysis_done = True
         st.rerun()
