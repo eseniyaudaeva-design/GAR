@@ -65,6 +65,7 @@ if not check_password():
 # ==========================================
 # 3. НАСТРОЙКИ API И РЕГИОНОВ
 # ==========================================
+# Убедитесь, что этот токен актуален!
 ARSENKIN_TOKEN = "43acbbb60cb7989c05914ff21be45379"
 
 # Словарь регионов (Название -> {yandex_id, google_id})
@@ -151,10 +152,9 @@ if 'analysis_results' not in st.session_state:
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# --- ОБНОВЛЕННАЯ ФУНКЦИЯ API ARSENKIN ---
+# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN (ИСПРАВЛЕНА) ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
-    url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
     
     headers = {
@@ -165,17 +165,19 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     reg_ids = REGION_MAP.get(region_name, {"ya": 213, "go": 1011969})
     se_params = []
     
+    # Формируем список поисковых систем (type: 2=Яндекс Desktop, 11=Google Desktop)
     if "Яндекс" in engine_type:
         se_params.append({"type": 2, "region": reg_ids['ya']})
     if "Google" in engine_type:
         se_params.append({"type": 11, "region": reg_ids['go']})
         
+    # JSON-Payload (структура запроса, как требовалось)
     payload = {
         "tools_name": "check-top",
         "data": {
             "queries": [query],
-            "is_snippet": False,
-            "noreask": True,
+            "is_snippet": False, # Не запрашиваем сниппеты, так как они не нужны для сбора URL
+            "noreask": True, # Отключаем исправление запроса
             "se": se_params,
             "depth": depth_val
         }
@@ -197,16 +199,17 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.error(f"❌ Ошибка сети: {e}")
         return []
     
-    # 2. Ожидание (с увеличенным интервалом)
+    # 2. Ожидание (с увеличенным интервалом и контролем)
     status = "process"
     attempts = 0
-    max_attempts = 40 
+    max_attempts = 40 # Макс 200 секунд
     
     progress_info = st.empty()
     bar = st.progress(0)
     
+    res_data = {}
     while status == "process" and attempts < max_attempts:
-        time.sleep(5) # Ждем 5 сек чтобы не превысить лимиты (30 запросов/мин)
+        time.sleep(5) # Ждем 5 сек, чтобы не превысить лимиты
         attempts += 1
         bar.progress(attempts / max_attempts)
         progress_info.text(f"Ожидание ответа API... ({attempts*5} сек)")
@@ -214,26 +217,18 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         try:
             # Запрашиваем результат
             r_get = requests.post(url_get, headers=headers, json={"task_id": task_id})
-            try:
-                res_data = r_get.json()
-            except:
-                continue
-
-            # Проверка лимитов (429)
-            if str(res_data.get("code")) == "429":
-                continue 
+            res_data = r_get.json()
             
-            # Проверка готовности
-            if res_data.get("code") == "TASK_RESULT":
+            # Проверка готовности (TASK_RESULT)
+            if res_data.get("code") == "TASK_RESULT" or (res_data.get("result") and "collect" in res_data["result"].get("result", {})):
                 status = "done"
                 break
-            elif res_data.get("result") and isinstance(res_data["result"], dict):
-                # Альтернативная проверка структуры
-                if "collect" in res_data["result"].get("result", {}):
-                    status = "done"
-                    break
+            # Проверка на лимиты или ошибку, но продолжаем ждать
+            if str(res_data.get("code")) == "429":
+                continue 
                     
-        except Exception as e:
+        except Exception:
+            # Игнорируем ошибки парсинга/сети при проверке и просто ждем следующего цикла
             pass
             
     bar.empty()
@@ -241,6 +236,8 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         
     if status != "done":
         st.error(f"⏳ Время вышло. Статус: {res_data.get('status', 'Unknown')}")
+        st.write("JSON-ответ сервера (для отладки):")
+        st.json(res_data) 
         return []
         
     # 3. Парсинг
@@ -260,12 +257,14 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
             
         urls = extract_urls(collect)
         
-    except Exception as e:
+    except Exception:
         st.error("❌ Ошибка чтения JSON ответа")
-        st.write(res_data) # Показываем JSON для отладки
+        st.write("JSON, который не удалось разобрать:")
+        st.json(res_data) 
         return []
         
     return list(set(urls))
+
 
 def process_text_detailed(text, settings, n_gram=1):
     if settings['numbers']:
@@ -690,9 +689,13 @@ if st.session_state.get('start_analysis_flag'):
     if my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
         st.error("Введите исходный код!")
         st.stop()
-    if not st.session_state.get('query_input'):
+    if source_type == "API" and not st.session_state.get('query_input'):
         st.error("Введите поисковый запрос!")
         st.stop()
+    if source_type == "Ручной список" and not st.session_state.get("manual_urls_ui", "").strip():
+        st.error("Введите список URL конкурентов!")
+        st.stop()
+
 
     settings = {
         'noindex': st.session_state.settings_noindex, 
@@ -707,32 +710,31 @@ if st.session_state.get('start_analysis_flag'):
     
     if source_type == "API":
         # Логика работы через Arsenkin API
+        
+        with st.spinner(f"Сбор ТОПа через Arsenkin API..."):
+            found_urls = get_arsenkin_urls(
+                query=st.session_state.query_input, 
+                engine_type=st.session_state.settings_search_engine,
+                region_name=st.session_state.settings_region,
+                depth_val=st.session_state.settings_top_n
+            )
+            
+        if not found_urls:
+            st.error("API не вернул ссылки или произошла ошибка. Проверьте JSON-ответ выше (если есть) или настройки токена/лимитов.")
+            st.stop()
+            
+        # Фильтрация
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         if st.session_state.settings_agg: 
             excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com", "yandex.ru"])
             
-        with st.spinner(f"Запрос к API Arsenkin ({st.session_state.settings_search_engine}, {st.session_state.settings_region})..."):
-            found_urls = get_arsenkin_urls(
-                st.session_state.query_input, 
-                st.session_state.settings_search_engine,
-                st.session_state.settings_region,
-                st.session_state.settings_top_n
-            )
-            
-        if not found_urls:
-            st.error("API не вернул ссылки или произошла ошибка.")
-            st.stop()
-            
-        # Фильтрация
-        cnt = 0
         for u in found_urls:
             # Исключаем свой сайт
-            if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input in u: continue
+            if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input and urlparse(st.session_state.my_url_input).netloc in urlparse(u).netloc: continue
             # Исключаем домены из списка исключений
             if any(x in urlparse(u).netloc for x in excl): continue
             
             target_urls.append(u)
-            cnt += 1
             
         st.info(f"Получено уникальных URL от API: {len(found_urls)}. После фильтрации: {len(target_urls)}")
 
@@ -745,13 +747,16 @@ if st.session_state.get('start_analysis_flag'):
             target_urls = []
 
     if not target_urls:
-        st.error("Нет конкурентов для анализа.")
+        st.error("Нет конкурентов для анализа после фильтрации. Проверьте список исключаемых доменов.")
         st.stop()
         
     my_data = None
     if my_input_type == "Релевантная страница на вашем сайте":
         with st.spinner("Скачивание вашей страницы..."):
             my_data = parse_page(st.session_state.my_url_input, settings)
+            if not my_data:
+                st.error("Не удалось скачать вашу страницу. Проверьте URL или настройки User-Agent.")
+                st.stop()
     elif my_input_type == "Исходный код страницы или текст":
         my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
 
@@ -800,5 +805,3 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
-
-
