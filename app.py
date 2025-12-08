@@ -51,12 +51,6 @@ def check_password():
             padding-top: 0; 
         }
         
-        /* 3. Стиль для рамки формы ввода пароля */
-        .login-box {
-            background-color: white; 
-            padding: 2rem; 
-            border-radius: 10px; 
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         /* Убираем лишний отступ у заголовка формы */
         .login-box h3 {
@@ -1007,3 +1001,4 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+
