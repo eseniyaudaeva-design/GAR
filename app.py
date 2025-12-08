@@ -24,7 +24,7 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 # 1. КОНФИГУРАЦИЯ СТРАНИЦЫ
 # ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO (API)", page_icon="📊")
+st.set_page_config(layout="wide", page_title="GAR PRO (Arsenkin API)", page_icon="📊")
 
 # ==========================================
 # 2. АВТОРИЗАЦИЯ
@@ -44,7 +44,7 @@ def check_password():
             }
             </style>
             <div class="auth-container">
-                <h3>📊 GAR PRO (API Version)</h3>
+                <h3>📊 GAR PRO (Arsenkin API)</h3>
                 <h3>Вход в систему</h3>
             </div>
         """, unsafe_allow_html=True)
@@ -79,7 +79,7 @@ DEFAULT_EXCLUDE_DOMAINS = [
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
 
-# GeoID для Яндекса (XMLRiver)
+# GeoID для Яндекса
 YANDEX_REGIONS_MAP = {
     "Москва": 213,
     "Санкт-Петербург": 2,
@@ -153,59 +153,50 @@ if 'analysis_results' not in st.session_state:
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# --- ФУНКЦИЯ ПОИСКА ЧЕРЕЗ XMLRIVER ---
-def search_via_xmlriver(query, engine_type, num_results, region_name, api_user, api_key):
+# --- ФУНКЦИЯ ПОИСКА ЧЕРЕЗ ARSENKIN API ---
+def search_via_arsenkin(query, engine_type, num_results, region_name, api_user, api_key):
     """
-    Парсинг через XMLRiver API.
+    Парсинг через Arsenkin Tools (XML Proxy).
     engine_type: 'yandex' или 'google'
     """
     results = []
     
-    # Базовый URL
-    base_url = f"http://xmlriver.com/search_{engine_type}/xml"
+    # URL для XML-запросов Арсенкина:
+    # https://xml.arsenkin.ru/{user}/{key}/{engine}/search/xml
+    base_url = f"https://xml.arsenkin.ru/{api_user}/{api_key}/{engine_type}/search/xml"
     
-    # Параметры региона
-    lr = YANDEX_REGIONS_MAP.get(region_name, 213) # По умолчанию Москва
+    lr = YANDEX_REGIONS_MAP.get(region_name, 213)
     
-    # Формируем параметры
+    # Формируем параметры запроса (стандарт Яндекс XML)
+    # Используем 'flat' группировку для получения простого списка
     params = {
-        'user': api_user,
-        'key': api_key,
         'query': query,
-        'groupby': num_results
+        'lr': lr,
+        'l10n': 'ru',
+        'sortby': 'rlv',
+        'filter': 'none',
+        'groupby': f'attr="".mode=flat.groups-on-page={num_results}.docs-in-group=1'
     }
-    
-    if engine_type == 'yandex':
-        params['lr'] = lr
-    else:
-        # Для Google можно передать loc, но XMLRiver часто сам определяет или требует доп настроек
-        # Используем простой параметр, если поддерживается, или оставляем по умолчанию
-        pass 
 
     try:
-        # Делаем запрос (тайм-аут 20 сек)
+        # Делаем запрос (тайм-аут 25 сек)
         response = requests.get(base_url, params=params, timeout=25)
         
         if response.status_code != 200:
-            st.error(f"Ошибка API ({engine_type}): Status {response.status_code}")
+            st.warning(f"Ошибка API Arsenkin ({engine_type}): Status {response.status_code}. Проверьте лимиты.")
             return []
             
         # Парсим XML
         root = ET.fromstring(response.content)
         
-        # Разбор структуры XMLRiver (Yandex XML format)
-        # Обычно: <yandexsearch> <response> <results> <grouping> <group> <doc> <url>...</url>
+        # Разбор стандартной XML выдачи (Yandex XML format)
+        # Путь: response -> results -> grouping -> group -> doc -> url
         
         for doc in root.findall(".//doc"):
             url = doc.find("url")
             if url is not None:
                 results.append(url.text)
                 
-        # Если XMLRiver вернул Google в другом формате (иногда бывает)
-        if not results and engine_type == 'google':
-             # Fallback logic if structure differs
-             pass
-             
     except Exception as e:
         st.warning(f"Ошибка при запросе к {engine_type}: {e}")
         
@@ -553,7 +544,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 col_main, col_sidebar = st.columns([65, 35]) 
 
 with col_main:
-    st.title("SEO Анализатор Релевантности (API)")
+    st.title("SEO Анализатор Релевантности (Arsenkin API)")
 
     st.markdown("### URL или код страницы Вашего сайта")
     my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
@@ -588,10 +579,9 @@ with col_main:
         st.session_state.start_analysis_flag = True
 
 with col_sidebar:
-    st.markdown("#####⚙️ Настройки API (XMLRiver)")
-    st.caption("Ключ уже введен. Введите User ID (цифры).")
-    xml_user = st.text_input("XMLRiver User ID (обязательно)", key="api_user_id")
-    xml_key = st.text_input("XMLRiver API Key", value="43acbbb60cb7989c05914ff21be45379", key="api_key_field")
+    st.markdown("#####⚙️ Настройки API (Arsenkin)")
+    ars_user = st.text_input("Arsenkin User ID", value="129656", key="api_user_id")
+    ars_key = st.text_input("Arsenkin API Key", value="43acbbb60cb7989c05914ff21be45379", key="api_key_field")
     
     st.markdown("#####⚙️ Настройки парсинга")
     ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
@@ -631,10 +621,10 @@ if st.session_state.get('start_analysis_flag'):
     
     target_urls = []
     
-    # ЛОГИКА СБОРА URL ЧЕРЕЗ API
+    # ЛОГИКА СБОРА URL ЧЕРЕЗ API ARSENKIN
     if source_type == "API":
-        if not xml_user:
-            st.error("⚠️ Для работы API необходимо ввести 'XMLRiver User ID' в боковой панели!")
+        if not ars_user or not ars_key:
+            st.error("⚠️ Для работы API необходимо заполнить User ID и API Key!")
             st.stop()
             
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
@@ -647,18 +637,18 @@ if st.session_state.get('start_analysis_flag'):
         raw_api_urls = []
         
         try:
-            with st.spinner(f"Запрос к API ({search_engine})..."):
+            with st.spinner(f"Запрос к API Arsenkin ({search_engine})..."):
                 for eng in engines_to_run:
-                    found = search_via_xmlriver(
+                    found = search_via_arsenkin(
                         query=st.session_state.query_input,
                         engine_type=eng,
-                        num_results=st.session_state.settings_top_n * 2, # берем с запасом
+                        num_results=st.session_state.settings_top_n * 2,
                         region_name=st.session_state.settings_region,
-                        api_user=xml_user,
-                        api_key=xml_key
+                        api_user=ars_user,
+                        api_key=ars_key
                     )
                     raw_api_urls.extend(found)
-                    time.sleep(0.5) # небольшая задержка
+                    time.sleep(0.5)
                 
                 # Фильтрация
                 cnt = 0
