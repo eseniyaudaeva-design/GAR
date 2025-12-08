@@ -407,37 +407,24 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for p in comp_data_parsed:
         body, c_forms = process_text_detailed(p['body_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
-        comp_docs.append({'body': body, 'anchor': anchor})
+        comp_docs.append({'body': body, 'anchor': anchor, 'url': p['url']}) # Добавил URL для связи
         for k, v in c_forms.items():
             all_forms_map[k].update(v)
     
     # Если нет успешно скачанных конкурентов, мы не можем рассчитать релевантность
     if not comp_docs:
-        # Тем не менее, нам нужна таблица релевантности, чтобы показать, кто был в ТОПе
-        
+        # Для случая, когда нет скачанных страниц, но нужен вывод
         table_rel_fallback = []
-        # Добавляем все URL, которые пришли из API/ручного списка, чтобы показать их позиции
-        for item in original_results:
-            domain = urlparse(item['url']).netloc
+        if my_data and my_data.get('domain'):
+            my_label = f"{my_data['domain']} (Вы)"
             table_rel_fallback.append({
-                "Домен": domain, 
-                "Позиция": item['pos'],
+                "Домен": my_label, 
+                "Позиция (SERP)": my_serp_pos if my_serp_pos > 0 else 999,
+                "Позиция (Отобранная)": 1,
                 "Ширина (балл)": 0, "Глубина (балл)": 0
             })
         
-        if my_data and my_data.get('domain'):
-            my_label = f"{my_data['domain']} (Вы)"
-        else:
-            my_label = "Ваш сайт"
-        
-        # Добавляем Ваш сайт
-        table_rel_fallback.append({
-            "Домен": my_label, 
-            "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
-            "Ширина (балл)": 0, "Глубина (балл)": 0
-        })
-        
-        table_rel_df = pd.DataFrame(table_rel_fallback).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
+        table_rel_df = pd.DataFrame(table_rel_fallback).sort_values(by='Позиция (SERP)', ascending=True).reset_index(drop=True)
         
         return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": table_rel_df, "my_score": {"width": 0, "depth": 0}}
 
@@ -549,14 +536,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # --- ТОП РЕЛЕВАНТНОСТИ ---
     table_rel = []
     
-    # Сначала добавляем конкурентов, которые были в ТОПе, даже если они не скачались
+    # 1. Сбор raw-статистики по ВСЕМ отобранным URL (даже не скачанным)
     competitor_stats_raw = []
     for item in original_results:
         url = item['url']
         pos = item['pos']
         domain = urlparse(url).netloc
         
-        # Находим скачанные данные для этого URL, если они есть
+        # Находим успешно скачанные данные для этого URL, если они есть
         parsed_data = next((d for d in comp_data_full if d.get('url') == url), None)
         
         raw_width = 0
@@ -571,23 +558,34 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
         competitor_stats_raw.append({
             "domain": domain, "pos": pos, 
-            "raw_w": raw_width, "raw_d": raw_depth
+            "raw_w": raw_width, "raw_d": raw_depth,
+            "is_parsed": (raw_width > 0 or raw_depth > 0)
         })
 
-    # Определяем максимумы только по **успешно скачанным и проанализированным** конкурентам
-    max_width_top = max([c['raw_w'] for c in competitor_stats_raw]) if competitor_stats_raw else 1
-    max_depth_top = max([c['raw_d'] for c in competitor_stats_raw]) if competitor_stats_raw else 1
+    # 2. Определяем максимумы только по **успешно скачанным и проанализированным** конкурентам
+    parsed_competitors = [c for c in competitor_stats_raw if c['is_parsed']]
+    max_width_top = max([c['raw_w'] for c in parsed_competitors]) if parsed_competitors else 1
+    max_depth_top = max([c['raw_d'] for c in parsed_competitors]) if parsed_competitors else 1
     
-    # 3. Баллы конкурентов (рассчитываем по всем, кто был в original_results)
+    # 3. Баллы конкурентов и фильтрация
+    # Нумеруем только те, которые будут отобраны (т.е. успешно скачаны)
+    competitor_rank = 1 
     for c in competitor_stats_raw:
         score_w = int(round((c['raw_w'] / max_width_top) * 100))
         score_d = int(round((c['raw_d'] / max_depth_top) * 100))
         
+        # ФИЛЬТРАЦИЯ: Удаляем конкурентов с нулевыми метриками (т.е. не скачанных)
+        if score_w == 0 and score_d == 0:
+             continue # Пропускаем нескачанного конкурента
+
         table_rel.append({
-            "Домен": c['domain'], "Позиция": c['pos'],
-            # Если 0/1, это может быть не скачанный конкурент
-            "Ширина (балл)": score_w, "Глубина (балл)": score_d
+            "Домен": c['domain'], 
+            "Позиция (SERP)": c['pos'], # Сохраняем реальную позицию
+            "Позиция (Отобранная)": competitor_rank, # Новая нумерация с 1
+            "Ширина (балл)": score_w, 
+            "Глубина (балл)": score_d
         })
+        competitor_rank += 1
         
     # 4. Баллы для ВАШЕГО сайта
     my_relevant = [w for w in my_lemmas if w in vocab]
@@ -605,14 +603,28 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
     table_rel.append({
         "Домен": my_label, 
-        "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1, # Ставим после последнего конкурента
+        "Позиция (SERP)": my_serp_pos if my_serp_pos > 0 else 999, # 999 - для удобства сортировки в конце
+        "Позиция (Отобранная)": competitor_rank, 
         "Ширина (балл)": my_score_w, 
         "Глубина (балл)": my_score_d
     })
     
-    # Сортируем таблицу релевантности по позиции
+    # Сортируем таблицу релевантности по реальной позиции SERP
     table_rel_df = pd.DataFrame(table_rel)
-    table_rel_df = table_rel_df.sort_values(by='Позиция', ascending=True).reset_index(drop=True)
+    # Сортируем по Позиция (SERP), а затем по Позиция (Отобранная) для стабильности
+    table_rel_df = table_rel_df.sort_values(by=['Позиция (SERP)', 'Позиция (Отобранная)'], ascending=True).reset_index(drop=True)
+    
+    # Обновляем Позиция (Отобранная) для всех, включая наш сайт
+    # Это гарантирует, что наш сайт получит правильный "отобранный" номер, если он в топе
+    if my_serp_pos > 0:
+        # Если наш сайт был в топе, его место в списке зависит от его SERP-позиции
+        final_rank = 1
+        for index, row in table_rel_df.iterrows():
+            table_rel_df.loc[index, 'Позиция (Отобранная)'] = final_rank
+            final_rank += 1
+    else:
+        # Если наш сайт не в топе, он всегда последний в списке отобранных
+        table_rel_df['Позиция (Отобранная)'] = range(1, len(table_rel_df) + 1)
         
     return {
         "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
@@ -633,7 +645,14 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     # БЛОК СОРТИРОВКИ
     if f'{key_prefix}_sort_col' not in st.session_state:
-        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
+        # Если это ТОП релевантности, сортируем по Ширине (балл), иначе по умолчанию
+        if key_prefix == "tbl_rel":
+            default_sort_col = "Ширина (балл)"
+        elif default_sort_col is None or default_sort_col not in df.columns:
+            default_sort_col = df.columns[0]
+            
+        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col
+        
     if f'{key_prefix}_sort_order' not in st.session_state:
         st.session_state[f'{key_prefix}_sort_order'] = "Убывание" 
 
@@ -685,22 +704,35 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     start_idx = (current_page - 1) * ROWS_PER_PAGE
     end_idx = start_idx + ROWS_PER_PAGE
     
-    df_view = df.iloc[start_idx:end_idx]
+    df_view = df.iloc[start_idx:end_idx].copy() # Используем .copy() для избежания SettingWithCopyWarning
 
     # ПОКРАСКА ЯЧЕЕК
     def highlight_rows(row):
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
+        is_my_site = "(Вы)" in str(row['Домен']) if 'Домен' in row else False
+
         for col_name in row.index:
+            style = base_style
+            
+            # Подсветка нашего сайта
+            if is_my_site:
+                style += 'background-color: #E6F0FF;' # Светло-голубой фон
+                
+            # Подсветка ошибок/пропусков
             if col_name == 'is_missing' and row['is_missing']:
-                styles.append(base_style + 'color: #D32F2F; font-weight: bold;')
-            elif col_name != 'is_missing' and col_name != 'diff_abs':
-                styles.append(base_style + 'font-weight: 600;')
-            else:
-                styles.append(base_style)
+                style = base_style + 'color: #D32F2F; font-weight: bold;'
+            elif col_name == 'Домен' and is_my_site:
+                 style += 'font-weight: 700;'
+
+            styles.append(style)
         return styles
     
+    # Колонка для скрытия: diff_abs и is_missing всегда, Позиция (SERP) только для ТОП релевантности
     cols_to_hide = ["diff_abs", "is_missing"]
+    if key_prefix == "tbl_rel":
+        cols_to_hide.append("Позиция (SERP)") # Скрываем реальную позицию SERP, оставляем Отобранную
+        df_view = df_view.rename(columns={"Позиция (Отобранная)": "Позиция"})
     
     styled_df = df_view.style.apply(highlight_rows, axis=1)
     
@@ -973,7 +1005,13 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
         </div>
     """, unsafe_allow_html=True)
 
+    # 5. ТОП релевантности (Баллы 0-100)
+    # Мы ожидаем, что в этой таблице не будет нулевых конкурентов,
+    # и нумерация Позиция (Отобранная) будет с 1. 
+    # В render_paginated_table мы переименуем ее в просто "Позиция".
+    render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+    
+    # Остальные таблицы
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
-    render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
