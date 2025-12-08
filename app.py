@@ -24,7 +24,7 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 # 1. КОНФИГУРАЦИЯ
 # ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO (Arsenkin Tools)", page_icon="📊")
+st.set_page_config(layout="wide", page_title="GAR PRO (Arsenkin check-top)", page_icon="📊")
 
 # ==========================================
 # 2. АВТОРИЗАЦИЯ
@@ -148,10 +148,10 @@ if 'analysis_results' not in st.session_state:
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# --- ФУНКЦИЯ РАБОТЫ С ARSENKIN TOOLS API ---
+# --- ФУНКЦИЯ РАБОТЫ С ARSENKIN TOOLS API (CHECK-TOP) ---
 def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name, api_token):
     """
-    Работа с API Инструментов (Task-based):
+    Работа с API Инструментов (check-top):
     1. Set Task -> 2. Check Status -> 3. Get Result
     """
     
@@ -165,24 +165,40 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
         "Content-Type": "application/json"
     }
     
+    # Определяем ID региона
     lr = YANDEX_REGIONS_MAP.get(region_name, 213)
-    engine_code = "yandex" if "Яндекс" in engine_type else "google"
     
+    # Определяем тип ПС (см. документацию)
+    # 1 = Яндекс XML, 2 = Яндекс Desktop, 11 = Google Desktop
+    if "Google" in engine_type:
+        se_type = 11
+        # Google ID региона обычно отличается, но для примера берем то, что есть, 
+        # или ставим дефолт (1011969 - Москва Google) если выбран Google
+        if lr == 213: lr_google = 1011969 
+        else: lr_google = lr # Fallback
+        
+        se_config = {"type": se_type, "region": lr_google}
+    else:
+        se_type = 1 # Яндекс XML (или можно 2 - Desktop)
+        se_config = {"type": se_type, "region": lr}
+
     # 1. ПОСТАНОВКА ЗАДАЧИ
     payload_set = {
-        "tools_name": "parsing_top", # Внутреннее имя инструмента "Выгрузка ТОП"
-        "task_data": {
-            "queries": query, # Можно передавать список или строку. Если API требует строку с разделителями \n - скрипт работает для 1 запроса
-            "region": lr,
-            "depth": num_results,
-            "engine": engine_code
+        "tools_name": "check-top", 
+        "data": {
+            "queries": [query], 
+            "se": [se_config],
+            "depth": num_results, 
+            "is_snippet": False,
+            "noreask": False
         }
     }
     
     # Статус в интерфейсе
     status_box = st.empty()
-    status_box.info("🚀 Отправка задачи в Arsenkin Tools...")
+    status_box.info("🚀 Отправка задачи 'check-top' в Arsenkin Tools...")
     
+    task_id = None
     try:
         r_set = requests.post(url_set, headers=headers, json=payload_set, timeout=30)
         
@@ -191,7 +207,7 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
              return []
         
         if r_set.status_code != 200:
-            st.error(f"❌ Ошибка постановки задачи: {r_set.text}")
+            st.error(f"❌ Ошибка постановки задачи (Status {r_set.status_code}): {r_set.text}")
             return []
             
         data_set = r_set.json()
@@ -209,19 +225,20 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
         return []
 
     # 2. ОЖИДАНИЕ ВЫПОЛНЕНИЯ
-    status_box.info(f"⏳ Задача {task_id} в работе. Ожидание...")
+    status_box.info(f"⏳ Задача {task_id} создана. Ожидание выполнения...")
     
-    max_retries = 30 # Ждем максимум 60-90 секунд
+    max_retries = 30 # Ждем максимум 90 секунд
     is_finished = False
     
     for _ in range(max_retries):
-        time.sleep(3) # Пауза между проверками
+        time.sleep(3) 
         
         try:
             r_check = requests.post(url_check, headers=headers, json={"task_id": task_id}, timeout=30)
             if r_check.status_code != 200: continue
             
             data_check = r_check.json()
+            # Документация не описывает формат ответа check детально, но обычно там есть status
             status = data_check.get("status")
             
             if status == "finish":
@@ -231,8 +248,8 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
                 st.error("Задача завершилась с ошибкой на сервере.")
                 return []
             else:
-                # process или new
-                progress = data_check.get("progress", "0")
+                # process
+                progress = data_check.get("progress", "?")
                 status_box.info(f"⏳ Задача {task_id} в работе... Прогресс: {progress}%")
                 
         except:
@@ -247,49 +264,48 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
     
     results_list = []
     try:
+        # В документации написано "GET запрос", но "Все запросы POST".
+        # Попробуем POST с JSON, так как мы передаем task_id
         r_get = requests.post(url_get, headers=headers, json={"task_id": task_id}, timeout=30)
-        if r_get.status_code == 200:
-            data_get = r_get.json()
-            # Формат ответа инструмента "parsing_top" может варьироваться
-            # Обычно это JSON, где есть ключи или массив с URL
-            # Предположим структуру, основанную на опыте (обычно result - это список объектов или список строк)
-            
-            # Попробуем найти список URL в ответе
-            # Часто это data_get['result'] -> list
-            
-            if isinstance(data_get, dict):
-                 raw_result = data_get.get("result", [])
-                 # Если это список словарей: [{'query':..., 'urls': [...]}]
-                 if isinstance(raw_result, list):
-                     for item in raw_result:
-                         if isinstance(item, str): # Если просто список урлов
-                             results_list.append(item)
-                         elif isinstance(item, dict) and 'urls' in item: # Если сложная структура
-                             results_list.extend(item['urls'])
-                         elif isinstance(item, dict) and 'url' in item:
-                             results_list.append(item['url'])
-            
-            # Если API вернул просто текст (иногда бывает)
-            if not results_list and "http" in r_get.text:
-                status_box.warning("Парсинг нестандартного JSON ответа...")
-                # Fallback: просто ищем все ссылки в тексте ответа
-                results_list = re.findall(r'https?://[^\s",]+', r_get.text)
+        
+        if r_get.status_code != 200:
+            st.error(f"Ошибка получения результата: {r_get.status_code}")
+            return []
+
+        data_get = r_get.json()
+        
+        # Парсинг ответа check-top
+        # Структура: result -> result -> collect -> [ [ [url1, url2...] ] ]
+        # collect - это массив массивов. 
+        # Уровень 1: Запросы (queries)
+        # Уровень 2: Поисковые системы (se)
+        # Уровень 3: Список URL
+        
+        if "result" in data_get and "result" in data_get["result"]:
+            internal_result = data_get["result"]["result"]
+            if "collect" in internal_result:
+                collect = internal_result["collect"]
+                # Берем первый запрос (мы отправляли один) и первую ПС (мы отправляли одну)
+                if len(collect) > 0:
+                    queries_res = collect[0]
+                    if len(queries_res) > 0:
+                        urls = queries_res[0] # Список URL
+                        # Иногда urls могут быть строками, иногда объектами (зависит от версии API)
+                        # Судя по примеру: [ "url1", "url2", ... ]
+                        for u in urls:
+                            if isinstance(u, str):
+                                results_list.append(u)
 
     except Exception as e:
-        st.error(f"Ошибка получения результата: {e}")
+        st.error(f"Ошибка парсинга результата: {e}")
         return []
         
     status_box.empty()
-    # Очистка от мусора (удаляем кавычки и лишние символы, если регулярка захватила)
-    clean_urls = [u.strip('",] ') for u in results_list]
     
-    # Фильтрация только валидных URL
-    final_urls = []
-    for u in clean_urls:
-        if u.startswith("http"):
-             final_urls.append(u)
-             
-    return final_urls[:num_results]
+    if not results_list:
+        st.warning("API вернул пустой список URL. Возможно, ничего не найдено.")
+        
+    return results_list[:num_results]
 
 def process_text_detailed(text, settings, n_gram=1):
     if settings['numbers']:
@@ -650,91 +666,4 @@ with col_main:
 
     st.markdown("### Поиск или URL страниц конкурентов")
     source_type_new = st.radio("Источник конкурентов", ["Поиск (API)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
-    source_type = "API" if source_type_new == "Поиск (API)" else "Ручной список" 
-
-    if source_type == "Ручной список":
-        st.markdown("### Введите список URL")
-        st.text_area("Вставьте ссылки здесь (каждая с новой строки)", height=200, key="manual_urls_ui")
-
-    st.markdown("### Редактируемые списки")
-    excludes = st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
-    c_stops = st.text_area("Стоп-слова", DEFAULT_STOPS, height=200, key="settings_stops")
-
-    st.markdown("---")
-    
-    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-        for key in list(st.session_state.keys()):
-            if key.endswith('_page'): st.session_state[key] = 1
-        st.session_state.start_analysis_flag = True
-
-with col_sidebar:
-    st.markdown("#####⚙️ Настройки API (Arsenkin Tools)")
-    st.caption("Используется API Инструментов (Task-based). Только токен.")
-    # ars_user = st.text_input("User ID (не обязательно)", value="129656", key="api_user_id") 
-    ars_key = st.text_input("API Token (Bearer)", value="43acbbb60cb7989c05914ff21be45379", key="api_key_field", type="password")
-    
-    st.markdown("#####⚙️ Настройки парсинга")
-    ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
-    search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс"], key="settings_search_engine")
-    region = st.selectbox("Регион (для Яндекса)", REGIONS, key="settings_region")
-    top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
-    
-    st.divider()
-    
-    st.checkbox("Исключать noindex/script", True, key="settings_noindex")
-    st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
-    st.checkbox("Учитывать числа", False, key="settings_numbers")
-    st.checkbox("Нормировать по длине", True, key="settings_norm")
-    st.checkbox("Исключать агрегаторы", True, key="settings_agg")
-
-# ==========================================
-# 7. ВЫПОЛНЕНИЕ
-# ==========================================
-if st.session_state.get('start_analysis_flag'):
-    st.session_state.start_analysis_flag = False
-
-    if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
-        st.error("Введите URL!")
-        st.stop()
-    if my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
-        st.error("Введите исходный код!")
-        st.stop()
-
-    settings = {
-        'noindex': st.session_state.settings_noindex, 
-        'alt_title': st.session_state.settings_alt, 
-        'numbers': st.session_state.settings_numbers,
-        'norm': st.session_state.settings_norm, 
-        'ua': st.session_state.settings_ua, 
-        'custom_stops': st.session_state.settings_stops.split()
-    }
-    
-    target_urls = []
-    
-    if source_type == "API":
-        if not ars_key:
-            st.error("⚠️ Введите API Token!")
-            st.stop()
-            
-        excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com"])
-        
-        raw_api_urls = []
-        
-        try:
-            # Используем новую функцию
-            found = get_competitors_arsenkin_tools(
-                query=st.session_state.query_input,
-                engine_type=search_engine,
-                num_results=st.session_state.settings_top_n,
-                region_name=st.session_state.settings_region,
-                api_token=ars_key
-            )
-            raw_api_urls.extend(found)
-
-        except Exception as e:
-            st.error(f"Ошибка поиска: {e}")
-            st.stop()
-        
-        # Фильтрация
-        cnt = 0
+    source_typ
