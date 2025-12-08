@@ -259,7 +259,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.json(res_data)
         return []
 
-    # 4. ФИНАЛЬНЫЙ ПАРСИНГ: УЧИТЫВАЕМ ПРОСТУЮ СТРУКТУРУ API
+    # 4. ФИНАЛЬНЫЙ ПАРСИНГ: 
     results_list = []
     try:
         # Проверяем на наличие поля 'collect'
@@ -270,7 +270,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
             st.json(res_data)
             return []
 
-        # Ожидаемая структура: [ [ [ 'url1', 'url2', ... ] ] ]
+        # Ожидаемая структура: [ [ [ 'url1', 'url2', ... ] ] ] - Простая структура
         final_url_list = []
         
         if collect and isinstance(collect, list) and len(collect) > 0 and \
@@ -280,8 +280,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
              # Простая структура: список URL-строк
              final_url_list = collect[0][0]
         else:
-             # На случай, если API вернет старую, сложную структуру с ключами ('2', '11')
-             # Этот блок оставлен для совместимости, хотя новая версия API обычно возвращает простую.
+             # На случай, если API вернет сложную структуру
              unique_urls = set()
              for engine_data in collect:
                 if isinstance(engine_data, dict):
@@ -292,7 +291,6 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
                                 pos = item.get('pos')
                                 
                                 if url and pos:
-                                    # Для уникальности по URL, сохраняем только первую (лучшую) позицию
                                     if url not in unique_urls:
                                         results_list.append({'url': url, 'pos': pos})
                                         unique_urls.add(url)
@@ -375,15 +373,24 @@ def parse_page(url, settings):
         if settings['alt_title']:
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
-        body_text = soup.get_text(separator=' ') + " " + " ".join(extra_text)
+            
+        body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
+        # Убираем лишние пробелы и новые строки
+        body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
+        
+        # Проверяем, что контент не пустой после обработки
+        if not body_text:
+            return None 
+
         return {'url': url, 'domain': urlparse(url).netloc, 'body_text': body_text, 'anchor_text': anchor_text}
-    except: return None
+    except: 
+        return None
 
-def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
+def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     all_forms_map = defaultdict(set)
-
+    
     # 1. Ваш сайт
-    if not my_data or not my_data['body_text']:
+    if not my_data or not my_data.get('body_text'):
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
     else:
         my_lemmas, my_forms = process_text_detailed(my_data['body_text'], settings)
@@ -391,27 +398,58 @@ def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
         my_len = len(my_lemmas)
         for k, v in my_forms.items():
             all_forms_map[k].update(v)
+
+    # Разделяем успешно скачанные данные для анализа лемм и статистики
+    comp_data_parsed = [d for d in comp_data_full if d.get('body_text')]
     
-    # 2. Конкуренты
+    # 2. Конкуренты (только успешно скачанные)
     comp_docs = []
-    for p in comp_data:
+    for p in comp_data_parsed:
         body, c_forms = process_text_detailed(p['body_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
         comp_docs.append({'body': body, 'anchor': anchor})
         for k, v in c_forms.items():
             all_forms_map[k].update(v)
     
+    # Если нет успешно скачанных конкурентов, мы не можем рассчитать релевантность
     if not comp_docs:
-        # Если нет конкурентов, все равно вернем баллы своего сайта
-        return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}}
+        # Тем не менее, нам нужна таблица релевантности, чтобы показать, кто был в ТОПе
+        
+        table_rel_fallback = []
+        # Добавляем все URL, которые пришли из API/ручного списка, чтобы показать их позиции
+        for item in original_results:
+            domain = urlparse(item['url']).netloc
+            table_rel_fallback.append({
+                "Домен": domain, 
+                "Позиция": item['pos'],
+                "Ширина (балл)": 0, "Глубина (балл)": 0
+            })
+        
+        if my_data and my_data.get('domain'):
+            my_label = f"{my_data['domain']} (Вы)"
+        else:
+            my_label = "Ваш сайт"
+        
+        # Добавляем Ваш сайт
+        table_rel_fallback.append({
+            "Домен": my_label, 
+            "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
+            "Ширина (балл)": 0, "Глубина (балл)": 0
+        })
+        
+        table_rel_df = pd.DataFrame(table_rel_fallback).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
+        
+        return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": table_rel_df, "my_score": {"width": 0, "depth": 0}}
 
+
+    # Дальше расчеты идут только по успешно скачанным comp_docs
     avg_len = np.mean([len(d['body']) for d in comp_docs])
     norm_k = (my_len / avg_len) if (settings['norm'] and my_len > 0 and avg_len > 0) else 1.0
     
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
-    N = len(comp_docs)
+    N = len(comp_docs) # N - количество успешно скачанных документов
     doc_freqs = Counter()
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
@@ -480,7 +518,7 @@ def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
     if comp_docs and my_data:
         try:
             my_bi, _ = process_text_detailed(my_data['body_text'], settings, 2)
-            comp_bi = [process_text_detailed(p['body_text'], settings, 2)[0] for p in comp_data]
+            comp_bi = [process_text_detailed(p['body_text'], settings, 2)[0] for p in comp_docs]
             all_bi = set(my_bi)
             for c in comp_bi: all_bi.update(c)
             bi_freqs = Counter()
@@ -510,33 +548,44 @@ def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
 
     # --- ТОП РЕЛЕВАНТНОСТИ ---
     table_rel = []
-    competitor_stats = []
     
-    # 1. Сбор конкурентов
-    for i, p in enumerate(comp_data):
-        p_lemmas, _ = process_text_detailed(p['body_text'], settings)
-        relevant_lemmas = [w for w in p_lemmas if w in vocab]
+    # Сначала добавляем конкурентов, которые были в ТОПе, даже если они не скачались
+    competitor_stats_raw = []
+    for item in original_results:
+        url = item['url']
+        pos = item['pos']
+        domain = urlparse(url).netloc
         
-        raw_width = len(set(relevant_lemmas))
-        raw_depth = len(relevant_lemmas)
+        # Находим скачанные данные для этого URL, если они есть
+        parsed_data = next((d for d in comp_data_full if d.get('url') == url), None)
         
-        # Позиция в comp_data уже очищена и нумеруется с 1
-        competitor_stats.append({
-            "domain": p['domain'], "pos": i + 1, 
+        raw_width = 0
+        raw_depth = 0
+        
+        if parsed_data and parsed_data.get('body_text'):
+            p_lemmas, _ = process_text_detailed(parsed_data['body_text'], settings)
+            # Учитываем только те леммы, которые есть в общем словаре (vocab)
+            relevant_lemmas = [w for w in p_lemmas if w in vocab] 
+            raw_width = len(set(relevant_lemmas))
+            raw_depth = len(relevant_lemmas)
+
+        competitor_stats_raw.append({
+            "domain": domain, "pos": pos, 
             "raw_w": raw_width, "raw_d": raw_depth
         })
-        
-    # 2. Максимумы (Эталон)
-    max_width_top = max([c['raw_w'] for c in competitor_stats]) if competitor_stats else 1
-    max_depth_top = max([c['raw_d'] for c in competitor_stats]) if competitor_stats else 1
+
+    # Определяем максимумы только по **успешно скачанным и проанализированным** конкурентам
+    max_width_top = max([c['raw_w'] for c in competitor_stats_raw]) if competitor_stats_raw else 1
+    max_depth_top = max([c['raw_d'] for c in competitor_stats_raw]) if competitor_stats_raw else 1
     
-    # 3. Баллы конкурентов
-    for c in competitor_stats:
+    # 3. Баллы конкурентов (рассчитываем по всем, кто был в original_results)
+    for c in competitor_stats_raw:
         score_w = int(round((c['raw_w'] / max_width_top) * 100))
         score_d = int(round((c['raw_d'] / max_depth_top) * 100))
         
         table_rel.append({
             "Домен": c['domain'], "Позиция": c['pos'],
+            # Если 0/1, это может быть не скачанный конкурент
             "Ширина (балл)": score_w, "Глубина (балл)": score_d
         })
         
@@ -556,7 +605,7 @@ def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
         
     table_rel.append({
         "Домен": my_label, 
-        "Позиция": my_serp_pos if my_serp_pos > 0 else len(comp_data) + 1, # Ставим после последнего конкурента
+        "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1, # Ставим после последнего конкурента
         "Ширина (балл)": my_score_w, 
         "Глубина (балл)": my_score_d
     })
@@ -727,7 +776,7 @@ with col_sidebar:
     region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
     device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
     
-    # ИСПРАВЛЕНИЕ: Удаление "50" из списка выбора
+    # Максимальная глубина, которую позволяет API - 30.
     top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n") 
     
     st.markdown("---")
@@ -740,7 +789,7 @@ with col_sidebar:
         st.checkbox("Учитывать числа", False, key="settings_numbers")
     with col_c2:
         st.checkbox("Нормировать по длине", True, key="settings_norm")
-        st.checkbox("Исключать агрегаторы", True, key="settings_agg")
+        st.checkbox("Исключать агрегаторы", True, key="settings_agg") # Чекбокс для агрегаторов
 
 # ==========================================
 # 7. ВЫПОЛНЕНИЕ (СКОРРЕКТИРОВАННАЯ ЛОГИКА СБОРА)
@@ -771,11 +820,11 @@ if st.session_state.get('start_analysis_flag'):
         'custom_stops': st.session_state.settings_stops.split()
     }
     
-    target_urls = []
+    target_urls_raw = [] # Список URL:pos, которые прошли первичную фильтрацию
     my_data = None
     my_domain = ""
     my_serp_pos = 0 
-
+    
     # 1. Сбор данных о ВАШЕМ сайте и домене
     if my_input_type == "Релевантная страница на вашем сайте":
         with st.spinner("Скачивание вашей страницы..."):
@@ -792,9 +841,7 @@ if st.session_state.get('start_analysis_flag'):
     # 2. Сбор URL конкурентов
     if source_type == "API":
         
-        # --- ИЗМЕНЕНИЕ: Увеличение глубины API для буфера и остановка сбора по целевому N ---
         TARGET_COMPETITORS = st.session_state.settings_top_n
-        # ИСПРАВЛЕНИЕ: Максимальная глубина, которую позволяет API Arsenkin - 30.
         API_FETCH_DEPTH = 30 
         
         with st.spinner(f"Сбор ТОПа (глубина {API_FETCH_DEPTH}) через Arsenkin API..."):
@@ -802,32 +849,29 @@ if st.session_state.get('start_analysis_flag'):
                 query=st.session_state.query_input, 
                 engine_type=st.session_state.settings_search_engine,
                 region_name=st.session_state.settings_region,
-                depth_val=API_FETCH_DEPTH # Используем максимальную глубину
+                depth_val=API_FETCH_DEPTH
             )
             
         if not found_results:
             st.error("API не вернул ссылки. Проверьте **JSON-ответ сервера** (если он выведен выше).")
             st.stop()
             
-        # Фильтрация и трекинг позиции
+        # Формирование списка исключений
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         if st.session_state.settings_agg: 
-            # Добавляем стандартные агрегаторы
-            excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com", "yandex.ru"])
+            # Агрегаторы + домены, которые вы просили добавить
+            excl.extend(["avito.ru", "ozon.ru", "wildberries.ru", "market.yandex.ru", 
+                         "tiu.ru", "youtube.com", "vk.com", "yandex.ru", 
+                         "leroymerlin.ru", "petrovich.ru"])
             
-        initial_count = len(found_results)
-        collected_competitors_count = 0 
-        
+        # 2.1. Фильтрация и трекинг позиции (ПЕРВЫМ ШАГОМ)
+        filtered_results_all = []
         for result in found_results:
-            # Остановка сбора, если достигли цели по количеству конкурентов
-            if collected_competitors_count >= TARGET_COMPETITORS:
-                break
-                
             url = result['url']
             pos = result['pos']
             domain = urlparse(url).netloc
-
-            # 1. Проверяем, является ли это наш сайт (по домену)
+            
+            # 1. Трекинг нашего сайта
             if my_domain and my_domain == domain:
                 if my_serp_pos == 0 or pos < my_serp_pos:
                     my_serp_pos = pos
@@ -837,22 +881,29 @@ if st.session_state.get('start_analysis_flag'):
             if any(x in domain for x in excl): 
                 continue 
 
-            target_urls.append(url) 
-            collected_competitors_count += 1 
-            
-        st.info(f"Получено уникальных URL от API: {initial_count}. Собрано **{collected_competitors_count}** релевантных конкурентов (цель {TARGET_COMPETITORS}). Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
+            # Если прошел фильтры, добавляем в список всех чистых конкурентов
+            filtered_results_all.append(result)
+
+        # 2.2. Ограничение по TARGET_COMPETITORS (ВТОРЫМ ШАГОМ)
+        # Берем только то количество, которое указано в TARGET_COMPETITORS
+        target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
+        
+        collected_competitors_count = len(target_urls_raw)
+        st.info(f"Получено уникальных URL от API: {len(found_results)}. После фильтрации **агрегаторов и стоп-доменов**, для анализа выбрано **{collected_competitors_count}** релевантных конкурентов (цель {TARGET_COMPETITORS}). Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
 
     else:
         # Ручной режим
         raw_urls = st.session_state.get("manual_urls_ui", "")
         if raw_urls:
-            target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
+            # В ручном режиме позиция не важна, просто список URL
+            urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
+            target_urls_raw = [{'url': u, 'pos': i+1} for i, u in enumerate(urls)]
         else:
-            target_urls = []
+            target_urls_raw = []
             
-        st.info(f"Загружено **{len(target_urls)}** URL конкурентов вручную.")
+        st.info(f"Загружено **{len(target_urls_raw)}** URL конкурентов вручную.")
 
-    if not target_urls and my_input_type != "Без страницы":
+    if not target_urls_raw and my_input_type != "Без страницы":
         st.error("Нет конкурентов для анализа после фильтрации. Увеличьте глубину сбора (ТОП) или проверьте фильтры.")
         st.stop()
         
@@ -862,28 +913,47 @@ if st.session_state.get('start_analysis_flag'):
 
 
     # 3. Скачивание контента конкурентов и анализ
-    comp_data = []
+    comp_data_full = []
+    
+    # URL для скачивания (только из target_urls_raw)
+    urls_to_fetch = [item['url'] for item in target_urls_raw]
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
+        futures = {executor.submit(parse_page, u, settings): u for u in urls_to_fetch}
         done = 0
-        total = len(target_urls)
+        total = len(urls_to_fetch)
         prog = st.progress(0)
         stat = st.empty()
+        
+        # Собираем данные, сохраняя только успешно скачанные
         for f in concurrent.futures.as_completed(futures):
             res = f.result()
-            if res: comp_data.append(res)
+            # Добавляем в список только если скачивание было успешным и контент не пустой
+            if res: 
+                comp_data_full.append(res)
+            
             done += 1
             prog.progress(done / total)
             stat.text(f"Скачивание страниц конкурентов: {done}/{total}")
     prog.empty()
     stat.empty()
 
-    if not comp_data:
-        st.error("Не удалось скачать контент со страниц конкурентов (возможно, блокировка ботов или таймаут).")
-        st.stop()
-
+    if not comp_data_full:
+        st.warning("⚠️ Не удалось скачать контент со страниц конкурентов (возможно, блокировка ботов или таймаут). Все метрики будут 0/1.")
+        
+    
+    # 4. ФИНАЛЬНЫЙ АНАЛИЗ
+    # В calculate_metrics передаем: 
+    # - comp_data_full (только скачанные и очищенные данные)
+    # - original_results (для сохранения порядка и позиции даже нескачанных URL)
     with st.spinner("Анализ данных..."):
-        st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings, my_serp_pos) 
+        st.session_state.analysis_results = calculate_metrics(
+            comp_data_full, 
+            my_data, 
+            settings, 
+            my_serp_pos, 
+            target_urls_raw # Используем список URL:pos, которые мы отобрали
+        ) 
         st.session_state.analysis_done = True
         st.rerun()
 
