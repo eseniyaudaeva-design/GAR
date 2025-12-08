@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 import time
 
 # ==========================================
-# 0. ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
+# 0. ПАТЧ СОВМЕСТИМОСТИ
 # ==========================================
 if not hasattr(inspect, 'getargspec'):
     def getargspec(func):
@@ -22,7 +22,7 @@ if not hasattr(inspect, 'getargspec'):
     inspect.getargspec = getargspec
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ СТРАНИЦЫ
+# 1. КОНФИГУРАЦИЯ
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO (Arsenkin/XMLStock)", page_icon="📊")
 
@@ -63,7 +63,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 3. СТИЛИ И КОНСТАНТЫ
+# 3. КОНСТАНТЫ
 # ==========================================
 DEFAULT_EXCLUDE_DOMAINS = [
     "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com",
@@ -100,7 +100,6 @@ REGIONS = list(YANDEX_REGIONS_MAP.keys())
 
 # Цвета
 PRIMARY_COLOR = "#277EFF"
-PRIMARY_DARK = "#1E63C4"
 TEXT_COLOR = "#3D4858"
 LIGHT_BG_MAIN = "#F1F5F9"
 BORDER_COLOR = "#E2E8F0"
@@ -110,11 +109,9 @@ ROW_BORDER_COLOR = "#DBEAFE"
 st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        
         .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
         html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
-        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
-        .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
+        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; }}
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
             background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
@@ -130,7 +127,6 @@ st.markdown(f"""
         .text-red {{ color: #D32F2F; font-weight: bold; }}
         .text-bold {{ font-weight: 600; }}
         .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR}; }}
-        section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-left: 1px solid {BORDER_COLOR} !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -138,7 +134,6 @@ st.markdown(f"""
 # 4. ЛОГИКА (БЭКЕНД)
 # ==========================================
 
-# Инициализация NLP
 try:
     import pymorphy2
     morph = pymorphy2.MorphAnalyzer()
@@ -153,20 +148,17 @@ if 'analysis_results' not in st.session_state:
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# --- ФУНКЦИЯ ПОИСКА ЧЕРЕЗ XMLSTOCK (ARSENKIN BACKEND) ---
+# --- ФУНКЦИЯ ПОИСКА (POST XMLSTOCK) ---
 def search_via_arsenkin(query, engine_type, num_results, region_name, api_user, api_key):
-    """
-    Парсинг через XMLStock (Технический бэкенд Арсенкина).
-    """
     results = []
     
-    # URL для XMLStock
+    # URL для XMLStock (Arsenkin XML Backend)
     base_url = f"https://xmlstock.com/{engine_type}/xml/"
     
     lr = YANDEX_REGIONS_MAP.get(region_name, 213)
     
-    # Формируем параметры запроса
-    params = {
+    # Параметры тела запроса (POST)
+    payload = {
         'user': api_user,
         'key': api_key,
         'query': query,
@@ -178,30 +170,39 @@ def search_via_arsenkin(query, engine_type, num_results, region_name, api_user, 
     }
 
     try:
-        # Делаем запрос (тайм-аут 25 сек)
-        response = requests.get(base_url, params=params, timeout=25)
+        # Используем POST, как вы просили (и как надежнее для XMLStock)
+        response = requests.post(base_url, data=payload, timeout=30)
         
+        # Проверка HTTP статуса
         if response.status_code != 200:
-            st.warning(f"Ошибка API ({engine_type}): {response.status_code}. Ответ: {response.text[:100]}")
+            st.error(f"❌ HTTP Ошибка {response.status_code}. Ответ сервера: {response.text}")
+            return []
+
+        # Парсинг XML
+        try:
+            root = ET.fromstring(response.content)
+        except ET.ParseError:
+            st.error(f"❌ Ошибка чтения XML. Ответ сервера не является XML: {response.text[:300]}")
             return []
             
-        # Парсим XML
-        root = ET.fromstring(response.content)
-        
-        # Проверка на ошибку внутри XML
-        error = root.find("error")
-        if error is not None:
-             st.warning(f"Ошибка API (XML): {error.text}")
+        # Проверка ошибок API
+        error_tag = root.find(".//error")
+        if error_tag is not None:
+             st.error(f"⚠️ API вернул ошибку: {error_tag.text}")
              return []
 
-        # Разбор стандартной XML выдачи
-        for doc in root.findall(".//doc"):
+        # Сбор ссылок
+        found_docs = root.findall(".//doc")
+        if not found_docs:
+            st.warning(f"⚠️ Поиск по запросу '{query}' не дал результатов. Проверьте регион. (Debug: {response.text[:100]}...)")
+
+        for doc in found_docs:
             url = doc.find("url")
             if url is not None:
                 results.append(url.text)
                 
     except Exception as e:
-        st.warning(f"Ошибка соединения с API {engine_type}: {e}")
+        st.error(f"Критическая ошибка соединения: {e}")
         
     return results[:num_results]
 
@@ -583,7 +584,7 @@ with col_main:
 
 with col_sidebar:
     st.markdown("#####⚙️ Настройки API (Arsenkin/XMLStock)")
-    st.caption("Данные от сервиса Arsenkin Tools")
+    st.caption("Ключи Арсенкина (User ID и Key) работают через систему XMLStock. Метод POST.")
     ars_user = st.text_input("User ID (цифры)", value="129656", key="api_user_id")
     ars_key = st.text_input("API Key", value="43acbbb60cb7989c05914ff21be45379", key="api_key_field")
     
@@ -625,7 +626,6 @@ if st.session_state.get('start_analysis_flag'):
     
     target_urls = []
     
-    # ЛОГИКА СБОРА URL ЧЕРЕЗ API ARSENKIN (XMLSTOCK)
     if source_type == "API":
         if not ars_user or not ars_key:
             st.error("⚠️ Для работы API необходимо заполнить User ID и API Key!")
@@ -657,7 +657,7 @@ if st.session_state.get('start_analysis_flag'):
             st.error(f"Ошибка поиска: {e}")
             st.stop()
         
-        # Фильтрация (ВЫНЕСЕНА ИЗ TRY/EXCEPT)
+        # Фильтрация
         cnt = 0
         seen = set()
         for u in raw_api_urls:
@@ -677,7 +677,7 @@ if st.session_state.get('start_analysis_flag'):
             target_urls = []
 
     if not target_urls:
-        st.error("Нет конкурентов (или ошибка API). Проверьте лимиты/User ID.")
+        st.error("Нет конкурентов (или ошибка API). Если видите ошибку выше, проверьте баланс XML лимитов у Арсенкина (раздел XML Лимиты, а не Инструменты).")
         st.stop()
         
     my_data = None
@@ -726,5 +726,4 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
 
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
-    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
-    render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+    render_paginate
