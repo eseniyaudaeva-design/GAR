@@ -7,8 +7,10 @@ import re
 from collections import Counter, defaultdict
 import math
 import concurrent.futures
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote_plus
 import inspect
+import xml.etree.ElementTree as ET
+import time
 
 # ==========================================
 # 0. ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
@@ -22,7 +24,7 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 # 1. КОНФИГУРАЦИЯ СТРАНИЦЫ
 # ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
+st.set_page_config(layout="wide", page_title="GAR PRO (API)", page_icon="📊")
 
 # ==========================================
 # 2. АВТОРИЗАЦИЯ
@@ -42,7 +44,7 @@ def check_password():
             }
             </style>
             <div class="auth-container">
-                <h3>📊 GAR PRO</h3>
+                <h3>📊 GAR PRO (API Version)</h3>
                 <h3>Вход в систему</h3>
             </div>
         """, unsafe_allow_html=True)
@@ -71,11 +73,30 @@ DEFAULT_EXCLUDE_DOMAINS = [
     "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", 
     "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", 
     "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", 
-    "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by"
+    "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", 
+    "vk.com", "facebook.com", "rutube.ru"
 ]
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
-REGIONS = ["Москва", "Санкт-Петербург", "Екатеринбург", "Новосибирск", "Казань", "Нижний Новгород", "Самара", "Челябинск", "Омск", "Краснодар", "Киев (UA)", "Минск (BY)", "Алматы (KZ)"]
+
+# GeoID для Яндекса (XMLRiver)
+YANDEX_REGIONS_MAP = {
+    "Москва": 213,
+    "Санкт-Петербург": 2,
+    "Екатеринбург": 54,
+    "Новосибирск": 65,
+    "Казань": 43,
+    "Нижний Новгород": 47,
+    "Самара": 51,
+    "Челябинск": 56,
+    "Омск": 66,
+    "Краснодар": 35,
+    "Киев (UA)": 143,
+    "Минск (BY)": 157,
+    "Алматы (KZ)": 162
+}
+
+REGIONS = list(YANDEX_REGIONS_MAP.keys())
 
 # Цвета
 PRIMARY_COLOR = "#277EFF"
@@ -90,46 +111,25 @@ st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         
-        /* Основной фон и текст */
         .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
         html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
-
-        /* Кнопки */
         .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
         .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
-        
-        /* Поля ввода */
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
             background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
-
-        /* === ТАБЛИЦЫ === */
-        div[data-testid="stDataFrame"] {{
-            border: 2px solid {PRIMARY_COLOR} !important;
-            border-radius: 8px !important;
-        }}
+        div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important; border-radius: 8px !important; }}
         div[data-testid="stDataFrame"] div[role="columnheader"] {{
-            background-color: {HEADER_BG} !important;
-            color: {PRIMARY_COLOR} !important;
-            font-weight: 700 !important;
+            background-color: {HEADER_BG} !important; color: {PRIMARY_COLOR} !important; font-weight: 700 !important;
             border-bottom: 2px solid {PRIMARY_COLOR} !important;
         }}
         div[data-testid="stDataFrame"] div[role="gridcell"] {{
-            background-color: #FFFFFF !important;
-            color: {TEXT_COLOR} !important;
-            border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
+            background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
         }}
-
-        .legend-box {{
-            padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
-        }}
+        .legend-box {{ padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px; }}
         .text-red {{ color: #D32F2F; font-weight: bold; }}
         .text-bold {{ font-weight: 600; }}
-        
-        .sort-container {{
-            background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR};
-        }}
-
+        .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR}; }}
         section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-left: 1px solid {BORDER_COLOR} !important; }}
     </style>
 """, unsafe_allow_html=True)
@@ -148,16 +148,68 @@ except Exception as e:
     USE_NLP = False
     st.sidebar.error(f"Ошибка загрузки NLP: {e}")
 
-try:
-    from googlesearch import search
-    USE_SEARCH = True
-except:
-    USE_SEARCH = False
-
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
+
+# --- ФУНКЦИЯ ПОИСКА ЧЕРЕЗ XMLRIVER ---
+def search_via_xmlriver(query, engine_type, num_results, region_name, api_user, api_key):
+    """
+    Парсинг через XMLRiver API.
+    engine_type: 'yandex' или 'google'
+    """
+    results = []
+    
+    # Базовый URL
+    base_url = f"http://xmlriver.com/search_{engine_type}/xml"
+    
+    # Параметры региона
+    lr = YANDEX_REGIONS_MAP.get(region_name, 213) # По умолчанию Москва
+    
+    # Формируем параметры
+    params = {
+        'user': api_user,
+        'key': api_key,
+        'query': query,
+        'groupby': num_results
+    }
+    
+    if engine_type == 'yandex':
+        params['lr'] = lr
+    else:
+        # Для Google можно передать loc, но XMLRiver часто сам определяет или требует доп настроек
+        # Используем простой параметр, если поддерживается, или оставляем по умолчанию
+        pass 
+
+    try:
+        # Делаем запрос (тайм-аут 20 сек)
+        response = requests.get(base_url, params=params, timeout=25)
+        
+        if response.status_code != 200:
+            st.error(f"Ошибка API ({engine_type}): Status {response.status_code}")
+            return []
+            
+        # Парсим XML
+        root = ET.fromstring(response.content)
+        
+        # Разбор структуры XMLRiver (Yandex XML format)
+        # Обычно: <yandexsearch> <response> <results> <grouping> <group> <doc> <url>...</url>
+        
+        for doc in root.findall(".//doc"):
+            url = doc.find("url")
+            if url is not None:
+                results.append(url.text)
+                
+        # Если XMLRiver вернул Google в другом формате (иногда бывает)
+        if not results and engine_type == 'google':
+             # Fallback logic if structure differs
+             pass
+             
+    except Exception as e:
+        st.warning(f"Ошибка при запросе к {engine_type}: {e}")
+        
+    return results[:num_results]
 
 def process_text_detailed(text, settings, n_gram=1):
     if settings['numbers']:
@@ -219,10 +271,8 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
-    # Глобальный сборщик форм
     all_forms_map = defaultdict(set)
 
-    # 1. Ваш сайт
     if not my_data or not my_data['body_text']:
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
     else:
@@ -232,7 +282,6 @@ def calculate_metrics(comp_data, my_data, settings):
         for k, v in my_forms.items():
             all_forms_map[k].update(v)
     
-    # 2. Конкуренты
     comp_docs = []
     for p in comp_data:
         body, c_forms = process_text_detailed(p['body_text'], settings)
@@ -347,11 +396,9 @@ def calculate_metrics(comp_data, my_data, settings):
                     })
         except: pass
 
-    # --- ТОП РЕЛЕВАНТНОСТИ ---
     table_rel = []
     competitor_stats = []
     
-    # 1. Сбор конкурентов
     for i, p in enumerate(comp_data):
         p_lemmas, _ = process_text_detailed(p['body_text'], settings)
         relevant_lemmas = [w for w in p_lemmas if w in vocab]
@@ -364,11 +411,9 @@ def calculate_metrics(comp_data, my_data, settings):
             "raw_w": raw_width, "raw_d": raw_depth
         })
         
-    # 2. Максимумы (Эталон)
     max_width_top = max([c['raw_w'] for c in competitor_stats]) if competitor_stats else 1
     max_depth_top = max([c['raw_d'] for c in competitor_stats]) if competitor_stats else 1
     
-    # 3. Баллы конкурентов
     for c in competitor_stats:
         score_w = int(round((c['raw_w'] / max_width_top) * 100))
         score_d = int(round((c['raw_d'] / max_depth_top) * 100))
@@ -378,7 +423,6 @@ def calculate_metrics(comp_data, my_data, settings):
             "Ширина (балл)": score_w, "Глубина (балл)": score_d
         })
         
-    # 4. Баллы для ВАШЕГО сайта
     my_relevant = [w for w in my_lemmas if w in vocab]
     my_raw_w = len(set(my_relevant))
     my_raw_d = len(my_relevant)
@@ -386,14 +430,13 @@ def calculate_metrics(comp_data, my_data, settings):
     my_score_w = int(round((my_raw_w / max_width_top) * 100))
     my_score_d = int(round((my_raw_d / max_depth_top) * 100))
     
-    # Добавляем ВАШ сайт в таблицу
     if my_data and my_data.get('domain'):
         my_label = f"{my_data['domain']} (Вы)"
     else:
         my_label = "Ваш сайт"
         
     table_rel.append({
-        "Домен": my_label, "Позиция": 0, # Позиция 0 чтобы был сверху при сортировке
+        "Домен": my_label, "Позиция": 0,
         "Ширина (балл)": my_score_w, "Глубина (балл)": my_score_d
     })
         
@@ -414,7 +457,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     st.markdown(f"### {title_text}")
     
-    # БЛОК СОРТИРОВКИ
     if f'{key_prefix}_sort_col' not in st.session_state:
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
     if f'{key_prefix}_sort_order' not in st.session_state:
@@ -442,7 +484,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             st.session_state[f'{key_prefix}_sort_order'] = sort_order
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # СОРТИРОВКА
     ascending = (sort_order == "Возрастание")
     if "Добавить" in sort_col or "+/-" in sort_col:
         df['_temp_sort'] = df[sort_col].abs()
@@ -450,7 +491,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     else:
         df = df.sort_values(by=sort_col, ascending=ascending)
 
-    # ПАГИНАЦИЯ (20 строк)
     df = df.reset_index(drop=True)
     df.index = df.index + 1
     
@@ -470,7 +510,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     df_view = df.iloc[start_idx:end_idx]
 
-    # ПОКРАСКА ЯЧЕЕК
     def highlight_rows(row):
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
@@ -485,7 +524,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     styled_df = df_view.style.apply(highlight_rows, axis=1)
     
-    # ВЫВОД ТАБЛИЦЫ
     dynamic_height = (len(df_view) * 35) + 40 
     
     st.dataframe(
@@ -495,7 +533,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         column_config={c: None for c in cols_to_hide}
     )
     
-    # КНОПКИ ПЕРЕКЛЮЧЕНИЯ
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     with c_btn_prev:
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
@@ -516,7 +553,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 col_main, col_sidebar = st.columns([65, 35]) 
 
 with col_main:
-    st.title("SEO Анализатор Релевантности")
+    st.title("SEO Анализатор Релевантности (API)")
 
     st.markdown("### URL или код страницы Вашего сайта")
     my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
@@ -532,8 +569,8 @@ with col_main:
     query = st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
 
     st.markdown("### Поиск или URL страниц конкурентов")
-    source_type_new = st.radio("Источник конкурентов", ["Поиск", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
-    source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
+    source_type_new = st.radio("Источник конкурентов", ["Поиск (API)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
+    source_type = "API" if source_type_new == "Поиск (API)" else "Ручной список" 
 
     if source_type == "Ручной список":
         st.markdown("### Введите список URL")
@@ -551,23 +588,24 @@ with col_main:
         st.session_state.start_analysis_flag = True
 
 with col_sidebar:
-    st.markdown("#####⚙️ Настройки")
+    st.markdown("#####⚙️ Настройки API (XMLRiver)")
+    st.caption("Ключ уже введен. Введите User ID (цифры).")
+    xml_user = st.text_input("XMLRiver User ID (обязательно)", key="api_user_id")
+    xml_key = st.text_input("XMLRiver API Key", value="43acbbb60cb7989c05914ff21be45379", key="api_key_field")
+    
+    st.markdown("#####⚙️ Настройки парсинга")
     ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
     search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
-    region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
-    device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
+    region = st.selectbox("Регион (для Яндекса)", REGIONS, key="settings_region")
     top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
-    st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
-    st.selectbox("Учитывать тип", ["Все страницы", "Коммерческие", "Информационные"], key="settings_content_type")
     
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-        st.checkbox("Исключать noindex/script", True, key="settings_noindex")
-        st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
-        st.checkbox("Учитывать числа", False, key="settings_numbers")
-    with col_c2:
-        st.checkbox("Нормировать по длине", True, key="settings_norm")
-        st.checkbox("Исключать агрегаторы", True, key="settings_agg")
+    st.divider()
+    
+    st.checkbox("Исключать noindex/script", True, key="settings_noindex")
+    st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+    st.checkbox("Учитывать числа", False, key="settings_numbers")
+    st.checkbox("Нормировать по длине", True, key="settings_norm")
+    st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
 # ==========================================
 # 7. ВЫПОЛНЕНИЕ
@@ -592,22 +630,48 @@ if st.session_state.get('start_analysis_flag'):
     }
     
     target_urls = []
-    if source_type == "Google (Авто)":
+    
+    # ЛОГИКА СБОРА URL ЧЕРЕЗ API
+    if source_type == "API":
+        if not xml_user:
+            st.error("⚠️ Для работы API необходимо ввести 'XMLRiver User ID' в боковой панели!")
+            st.stop()
+            
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
+        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com"])
+        
+        engines_to_run = []
+        if "Яндекс" in search_engine: engines_to_run.append("yandex")
+        if "Google" in search_engine: engines_to_run.append("google")
+        
+        raw_api_urls = []
+        
         try:
-            with st.spinner(f"Сбор ТОПа..."):
-                if not USE_SEARCH:
-                    st.error("Нет библиотеки googlesearch")
-                    st.stop()
-                found = search(st.session_state.query_input, num_results=st.session_state.settings_top_n * 2, lang="ru")
+            with st.spinner(f"Запрос к API ({search_engine})..."):
+                for eng in engines_to_run:
+                    found = search_via_xmlriver(
+                        query=st.session_state.query_input,
+                        engine_type=eng,
+                        num_results=st.session_state.settings_top_n * 2, # берем с запасом
+                        region_name=st.session_state.settings_region,
+                        api_user=xml_user,
+                        api_key=xml_key
+                    )
+                    raw_api_urls.extend(found)
+                    time.sleep(0.5) # небольшая задержка
+                
+                # Фильтрация
                 cnt = 0
-                for u in found:
+                seen = set()
+                for u in raw_api_urls:
+                    if u in seen: continue
+                    seen.add(u)
                     if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input in u: continue
                     if any(x in urlparse(u).netloc for x in excl): continue
                     target_urls.append(u)
                     cnt += 1
                     if cnt >= st.session_state.settings_top_n: break
+                    
         except Exception as e:
             st.error(f"Ошибка поиска: {e}")
             st.stop()
@@ -619,7 +683,7 @@ if st.session_state.get('start_analysis_flag'):
             target_urls = []
 
     if not target_urls:
-        st.error("Нет конкурентов.")
+        st.error("Нет конкурентов (или ошибка API). Проверьте лимиты/User ID.")
         st.stop()
         
     my_data = None
@@ -641,7 +705,7 @@ if st.session_state.get('start_analysis_flag'):
             if res: comp_data.append(res)
             done += 1
             prog.progress(done / total)
-            stat.text(f"Загрузка конкурентов: {done}/{total}")
+            stat.text(f"Скачивание конкурентов: {done}/{total}")
     prog.empty()
     stat.empty()
 
