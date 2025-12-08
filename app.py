@@ -181,7 +181,7 @@ if 'comp_table_data' not in st.session_state:
     st.session_state.comp_table_data = []
 
 
-# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN (С ИСПРАВЛЕНИЕМ СИНТАКСИСА) ---
+# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check" 
@@ -284,7 +284,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.json(res_data)
         return []
 
-    # 4. ФИНАЛЬНЫЙ ПАРСИНГ: (ИСПРАВЛЕНИЕ СИНТАКСИСА)
+    # 4. ФИНАЛЬНЫЙ ПАРСИНГ:
     results_list = []
     try:
         if 'result' in res_data and 'result' in res_data['result'] and 'collect' in res_data['result']['result']:
@@ -322,13 +322,12 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
                                 if url and pos:
                                     if url not in unique_urls:
                                         results_list.append({'url': url, 'pos': pos})
-                                        unique_urls.add(url) # <-- FIX 1: Correct indentation
-                                    else: # <-- FIX 2: Correctly follows the 'if'
+                                        unique_urls.add(url)
+                                    else:
                                         # Обновляем позицию, если найдена лучшая
                                         for res in results_list:
                                             if res['url'] == url and pos < res['pos']:
                                                 res['pos'] = pos
-        # УДАЛЕНО: `return results_list` находился внутри вложенного цикла, что было неверно.
         
     except Exception as e:
         st.error(f"❌ Критическая ошибка чтения и парсинга финального JSON-ответа: {e}")
@@ -372,7 +371,7 @@ def process_text_detailed(text, settings, n_gram=1):
         
     return lemmas, forms_map
 
-# --- УСИЛЕННЫЙ ПАРСИНГ (Запрос 1) ---
+# --- УСИЛЕННЫЙ ПАРСИНГ ---
 def parse_page_robust(url, settings, retries=3, timeout=30):
     """Скачивает контент страницы с повторными попытками."""
     headers = {'User-Agent': settings['ua']}
@@ -547,7 +546,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 "Сайтов": df, "Переспам": max_total
             })
 
-    # --- N-граммы (Фразы) - ИСПРАВЛЕНО (Запрос 3) ---
+    # --- N-граммы (Фразы) ---
     table_ngrams = []
     if comp_docs and my_data:
         try:
@@ -570,7 +569,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 if df < 2 and ng not in my_ngrams: continue
                 
                 my_c = my_ngrams.count(ng)
-                comp_c = [c.count(ng) for c in comp_ngrams_list]
+                comp_c = [c.count(ng) for c in comp_docs]
                 
                 sum_in_top = sum(comp_c)
                 
@@ -669,7 +668,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 # 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (FINAL)
 # ==========================================
 
-# --- Функции Истории (Запрос 2) ---
+# --- Функции Истории ---
 
 def save_analysis_to_history(my_url, successful_urls, results, comp_data):
     """Сохраняет результаты анализа в историю сессии."""
@@ -811,7 +810,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             st.rerun()
     st.markdown("---") 
 
-# --- НОВАЯ ФУНКЦИЯ ДЛЯ ТАБЛИЦЫ СТАТУСА (Запрос 5) ---
+# --- ФУНКЦИЯ ДЛЯ ТАБЛИЦЫ СТАТУСА ---
 def render_competitor_status_table(comp_data):
     """
     Отображает таблицу статусов конкурентов.
@@ -825,7 +824,7 @@ def render_competitor_status_table(comp_data):
 
     df = pd.DataFrame(comp_data)
     
-    # Создаем кликабельные домены (Запрос 5)
+    # Создаем кликабельные домены
     def make_clickable_domain(row):
         url = row['URL']
         domain = row['Домен']
@@ -845,18 +844,21 @@ def render_competitor_status_table(comp_data):
 
 
 # ==========================================
-# 6. ИНТЕРФЕЙС
+# 6. ИНТЕРФЕЙС (СКОРРЕКТИРОВАННОЕ РАСПОЛОЖЕНИЕ)
 # ==========================================
 
 st.title("SEO Анализатор Релевантности")
 
-# --- ВКЛАДКИ (Запрос 2) ---
+# --- ВКЛАДКИ ---
 tab_analysis, tab_history = st.tabs(["📊 Анализ Семантики", "📚 ИСТОРИЯ ПРОВЕРОК"]) 
 
 with tab_analysis:
-    col_main, col_sidebar = st.columns([65, 35])
+    # Используем один основной столбец, чтобы избежать пустого места справа
+    col_main = st.container()
     
     with col_main:
+        
+        # --- БЛОК 1: ВАША СТРАНИЦА И ИСТОЧНИК КОНКУРЕНТОВ ---
         st.markdown("### URL или код страницы Вашего сайта")
         my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
         my_url = ""
@@ -875,16 +877,58 @@ with tab_analysis:
             query = st.text_input("Поисковой запрос (ключ)", placeholder="купить диван в москве", key="query_input")
             
         if source_type == "Ручной список":
-            # Используем session_state.manual_urls_ui для хранения полных URL (Запрос 6)
             manual_urls_ui = st.text_area(
                 "Список URL конкурентов (каждый с новой строки):", 
                 height=300, 
                 placeholder="https://comp1.ru/page/\nhttps://comp2.com/item/", 
                 key="manual_urls_ui" 
             )
-
-        # Кнопка анализа
+            
         st.markdown("---")
+            
+        # --- БЛОК 2: ОСНОВНЫЕ НАСТРОЙКИ ---
+        st.markdown("##### ⚙️ Настройки API и поиска")
+        col_api_1, col_api_2, col_api_3 = st.columns(3)
+        
+        with col_api_1:
+            search_engine = st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
+        with col_api_2:
+            region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
+        with col_api_3:
+            top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n")
+        
+        col_api_4, col_api_5, col_api_6 = st.columns(3)
+        with col_api_4:
+            ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
+        with col_api_5:
+            device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
+        with col_api_6:
+            st.selectbox("Фильтр URL по типу", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
+
+        st.markdown("---")
+        
+        # --- БЛОК 3: НАСТРОЙКИ ПАРСИНГА И NLP ---
+        st.markdown("##### 🔬 Настройки парсинга и анализа")
+        
+        col_c1, col_c2, col_c3 = st.columns(3)
+        with col_c1:
+            st.checkbox("Исключать noindex/script", True, key="settings_noindex")
+            st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+        with col_c2:
+            st.checkbox("Учитывать числа", False, key="settings_numbers")
+            st.checkbox("Нормировать по длине", True, key="settings_norm")
+        with col_c3:
+            st.checkbox("Исключать агрегаторы", True, key="settings_agg")
+            
+        st.markdown("---")
+        
+        # --- БЛОК 4: СТОП-СЛОВА ---
+        st.markdown("##### ⛔ Стоп-слова")
+        st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=150, key="settings_stops")
+    
+        st.markdown("---")
+        
+        # --- КНОПКА АНАЛИЗА ---
         if st.button("🚀 Начать Анализ", type="primary", use_container_width=True):
             # Сброс пагинации и флага
             for key in list(st.session_state.keys()): 
@@ -892,31 +936,8 @@ with tab_analysis:
             st.session_state.start_analysis_flag = True
             st.rerun()
 
-    with col_sidebar:
-        st.markdown("#####⚙️ Настройки")
-        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
-        search_engine = st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
-        region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
-        device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-        top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n")
-        st.markdown("---")
-        st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            st.checkbox("Исключать noindex/script", True, key="settings_noindex")
-            st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
-            st.checkbox("Учитывать числа", False, key="settings_numbers")
-        with col_c2:
-            st.checkbox("Нормировать по длине", True, key="settings_norm")
-            st.checkbox("Исключать агрегаторы", True, key="settings_agg")
-        
-        st.markdown("---")
-        st.markdown("##### ⛔ Стоп-слова")
-        st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=150, key="settings_stops")
-    
-
 # ==========================================
-# 7. ВЫПОЛНЕНИЕ (СКОРРЕКТИРОВАННАЯ ЛОГИКА СБОРА)
+# 7. ВЫПОЛНЕНИЕ (ЛОГИКА)
 # ==========================================
 
 if st.session_state.get('start_analysis_flag'):
@@ -1012,7 +1033,7 @@ if st.session_state.get('start_analysis_flag'):
         st.error("Нет конкурентов для анализа после фильтрации.")
         st.stop()
         
-    # 3. Скачивание всех конкурентов (обновлено для robust parsing)
+    # 3. Скачивание всех конкурентов
     comp_data_full_raw = [] 
     
     with st.spinner(f"Скачивание {len(target_urls_raw)} конкурентов с повторными попытками..."):
@@ -1058,7 +1079,7 @@ if st.session_state.get('start_analysis_flag'):
                 "Позиция": pos
             })
     
-    # Обновление поля ввода конкурентов полными URL-адресами (Запрос 6)
+    # Обновление поля ввода конкурентов полными URL-адресами
     st.session_state.manual_urls_ui = "\n".join(successful_urls)
     
     # Сохранение данных для таблицы конкурентов
@@ -1076,7 +1097,7 @@ if st.session_state.get('start_analysis_flag'):
     st.session_state.analysis_results = results
     st.session_state.analysis_done = True
     
-    # 6. Сохранение в историю (Запрос 2)
+    # 6. Сохранение в историю
     save_analysis_to_history(st.session_state.my_url_input, successful_urls, results, comp_table_data)
     
     st.rerun()
@@ -1102,18 +1123,18 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
 
         render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
         
-        # 2. Анализ конкурентов (статус) - с кликабельными ссылками (Запрос 5)
+        # 2. Анализ конкурентов (статус) - с кликабельными ссылками
         render_competitor_status_table(st.session_state.comp_table_data) 
         
         render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
         
-        # 4. N-граммы (Фразы) - теперь должны работать (Запрос 3)
+        # 4. N-граммы (Фразы)
         render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Частота (Сумма)", use_abs_sort_default=False)
         
         render_paginated_table(results['relevance_top'], "5. Релевантность ТОПа", "tbl_relevance_top", default_sort_col="Позиция", use_abs_sort_default=False)
 
 
-# --- ВКЛАДКА ИСТОРИЯ (Запрос 2) ---
+# --- ВКЛАДКА ИСТОРИЯ ---
 with tab_history:
     st.header("📚 История Проверок")
     
