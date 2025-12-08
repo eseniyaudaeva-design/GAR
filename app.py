@@ -152,7 +152,7 @@ if 'analysis_results' not in st.session_state:
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
+# --- ИСПРАВЛЕННАЯ ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     """
     engine_type: "Google", "Яндекс", "Яндекс + Google"
@@ -171,7 +171,6 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     
     se_params = []
     
-    # Логика формирования массива se
     # Type: Яндекс Desktop = 2, Google Desktop = 11
     if "Яндекс" in engine_type:
         se_params.append({"type": 2, "region": reg_ids['ya']})
@@ -191,66 +190,74 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     
     # 1. Постановка задачи
     try:
-        r = requests.post(url_set, headers=headers, json=payload, timeout=10)
+        r = requests.post(url_set, headers=headers, json=payload, timeout=15)
         resp_json = r.json()
-        if "task_id" not in resp_json:
-            st.error(f"Ошибка API (постановка): {resp_json}")
+        
+        # Если API вернул ошибку сразу при постановке
+        if "error" in resp_json or "task_id" not in resp_json:
+            st.error(f"❌ Ошибка при постановке задачи: {resp_json}")
             return []
+            
         task_id = resp_json["task_id"]
+        st.toast(f"Задача создана: ID {task_id}")
+        
     except Exception as e:
-        st.error(f"Ошибка соединения с API: {e}")
+        st.error(f"❌ Ошибка соединения (постановка): {e}")
         return []
     
     # 2. Ожидание выполнения
     status = "process"
     attempts = 0
-    while status == "process" and attempts < 60: # макс 2 минуты
-        time.sleep(2)
+    max_attempts = 40  # 40 * 5 сек = 200 секунд ожидания
+    
+    progress_bar = st.progress(0)
+    
+    while status == "process" and attempts < max_attempts:
+        time.sleep(5) # Увеличили задержку до 5 сек, чтобы не превысить лимит 30 запросов/мин
+        attempts += 1
+        progress_bar.progress(attempts / max_attempts)
+        
         try:
-            r_check = requests.post(url_check, headers=headers, json={"task_id": task_id})
-            # API может вернуть статус в разных форматах, проверяем
-            # Обычно возвращает JSON со статусом или ошибкой
-            # Для check-top статус проверяется по логике API.
-            # Упростим: check обычно нужен, но можно сразу долбить get, он вернет null если не готово
-            # Но правильнее проверять. Документация говорит check возвращает статус.
-            pass 
-        except:
-            pass
+            # Сразу пробуем забрать результат. Если не готов, API обычно вернет null или статус process
+            # Согласно инструкции , используем POST
+            r_get = requests.post(url_get, headers=headers, json={"task_id": task_id})
             
-        # Пробуем получить результат сразу, если статус не ясен
-        try:
-            r_get = requests.post(url_get, headers=headers, json={"task_id": task_id}) 
-            # Внимание: метод GET в доке описан как GET запрос, но часто работает и POST.
-            # Исходя из вашего файла документации: "Получение результата... url .../get"
-            # Обычно GET параметры, но попробуем POST JSON как в доке
-            res_data = r_get.json()
+            try:
+                res_data = r_get.json()
+            except:
+                # Если вернулся не JSON (например, 502 Bad Gateway)
+                continue
+
+            # Проверка на ошибки внутри ответа
+            if res_data.get("status") == "Error" or res_data.get("error"):
+                # Игнорируем ошибку 429 (Too Many Requests) и ждем, если другие - выводим
+                if res_data.get("code") == "429":
+                    time.sleep(5)
+                    continue
+                else:
+                    st.write(f"⚠️ Ответ сервера: {res_data}") # Для отладки
             
-            # Проверяем готовность внутри ответа (зависит от структуры)
-            # Если задача готова, будет code: TASK_RESULT
-            if res_data.get("code") == "TASK_RESULT":
+            # Если задача готова, Арсенкин возвращает поле 'result' или code: TASK_RESULT
+            if res_data.get("code") == "TASK_RESULT" or (res_data.get("result") and "collect" in res_data["result"].get("result", {})):
                 status = "done"
                 break
-            elif res_data.get("error"):
-                 st.error(f"Ошибка API: {res_data.get('error')}")
-                 return []
-        except:
+                
+        except Exception as e:
+            st.write(f"⚠️ Ошибка проверки статуса: {e}")
             pass
-        
-        attempts += 1
+            
+    progress_bar.empty()
         
     if status != "done":
-        st.error("Таймаут ожидания API Арсенкина")
+        st.error(f"⏳ Время ожидания истекло. Последний статус: {res_data.get('status', 'неизвестен')}")
         return []
         
     # 3. Парсинг ответа
     urls = []
     try:
         # Структура: result -> result -> collect -> [ [ [url1, url2...], ... ] ]
-        # collect - массив массивов (для каждого запроса)
-        # Внутри массив массивов (для каждой ПС)
         collect = res_data['result']['result']['collect']
         
-        # Перебираем все уровни вложенности и достаем строки
         def extract_urls(obj):
             found = []
             if isinstance(obj, list):
@@ -264,10 +271,11 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         urls = extract_urls(collect)
         
     except Exception as e:
-        st.error(f"Ошибка разбора ответа API: {e}")
+        st.error(f"❌ Ошибка разбора JSON: {e}")
+        st.json(res_data) # Показываем JSON чтобы понять структуру
         return []
         
-    return list(set(urls)) # Убираем дубли
+    return list(set(urls))
 
 
 def process_text_detailed(text, settings, n_gram=1):
@@ -803,3 +811,4 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+
