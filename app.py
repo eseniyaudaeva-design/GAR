@@ -259,35 +259,54 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.json(res_data)
         return []
 
-    # 4. Парсинг (ИЗМЕНЕН: Теперь возвращает список словарей с позицией)
+    # 4. ФИНАЛЬНЫЙ ПАРСИНГ: УЧИТЫВАЕМ ПРОСТУЮ СТРУКТУРУ API
     results_list = []
-    unique_urls = set()
     try:
         collect = res_data['result']['result']['collect']
         
-        # Collect - список, где каждый элемент - результаты одного поисковика
-        for engine_data in collect:
-            # Итерируемся по результатам в каждом поисковике
-            # Ключ - это ID поисковика (например, '2' для Yandex, '11' для Google)
-            for engine_id, serps in engine_data.items():
-                if isinstance(serps, list):
-                    for item in serps:
-                        url = item.get('url')
-                        pos = item.get('pos')
-                        
-                        if url and pos:
-                            # Для уникальности по URL, сохраняем только первую (лучшую) позицию, если URL повторяется (напр., в Yandex+Google)
-                            if url not in unique_urls:
-                                results_list.append({'url': url, 'pos': pos})
-                                unique_urls.add(url)
-                            # Иначе, если уже есть - проверяем, не лучше ли новая позиция
-                            else:
-                                for res in results_list:
-                                    if res['url'] == url and pos < res['pos']:
-                                        res['pos'] = pos
-                                        
+        # Ожидаемая структура: [ [ [ 'url1', 'url2', ... ] ] ]
+        final_url_list = []
+        
+        if collect and isinstance(collect, list) and len(collect) > 0 and \
+           collect[0] and isinstance(collect[0], list) and len(collect[0]) > 0 and \
+           collect[0][0] and isinstance(collect[0][0], list):
+             
+             # Простая структура: список URL-строк
+             final_url_list = collect[0][0]
+        else:
+             # На случай, если API вернет старую, сложную структуру с ключами ('2', '11')
+             st.warning("Обнаружена нестандартная или сложная структура ответа. Попытка парсинга...")
+             
+             # Старый, более сложный парсер для Yandex+Google (оставлен на всякий случай)
+             unique_urls = set()
+             for engine_data in collect:
+                if isinstance(engine_data, dict):
+                    for engine_id, serps in engine_data.items():
+                        if isinstance(serps, list):
+                            for item in serps:
+                                url = item.get('url')
+                                pos = item.get('pos')
+                                
+                                if url and pos:
+                                    # Для уникальности по URL, сохраняем только первую (лучшую) позицию
+                                    if url not in unique_urls:
+                                        results_list.append({'url': url, 'pos': pos})
+                                        unique_urls.add(url)
+                                    else:
+                                        for res in results_list:
+                                            if res['url'] == url and pos < res['pos']:
+                                                res['pos'] = pos
+             return results_list # Если парсинг по сложной структуре сработал, возвращаем
+
+        # Если сработала простая структура (final_url_list)
+        if final_url_list:
+            for index, url in enumerate(final_url_list):
+                # Позиция = индекс + 1
+                pos = index + 1
+                results_list.append({'url': url, 'pos': pos})
+
     except Exception as e:
-        st.error(f"❌ Ошибка чтения и парсинга финального JSON-ответа: {e}")
+        st.error(f"❌ Критическая ошибка чтения и парсинга финального JSON-ответа: {e}")
         st.write("JSON, который не удалось разобрать:")
         st.json(res_data) 
         return []
@@ -498,8 +517,9 @@ def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
         raw_width = len(set(relevant_lemmas))
         raw_depth = len(relevant_lemmas)
         
+        # Позиция в comp_data уже очищена и нумеруется с 1
         competitor_stats.append({
-            "domain": p['domain'], "pos": i + 1,
+            "domain": p['domain'], "pos": i + 1, 
             "raw_w": raw_width, "raw_d": raw_depth
         })
         
@@ -538,8 +558,7 @@ def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
         "Глубина (балл)": my_score_d
     })
     
-    # Сортируем таблицу релевантности, чтобы Ваш сайт (Позиция 0) был сверху
-    # Если my_serp_pos > 0, он сортируется по своему значению
+    # Сортируем таблицу релевантности по позиции
     table_rel_df = pd.DataFrame(table_rel)
     table_rel_df = table_rel_df.sort_values(by='Позиция', ascending=True).reset_index(drop=True)
         
