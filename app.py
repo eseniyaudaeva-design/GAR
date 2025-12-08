@@ -36,7 +36,7 @@ def check_password():
     # --- СТИЛИ ДЛЯ ЦЕНТРИРОВАНИЯ И ЧИСТКИ ---
     st.markdown("""
         <style>
-        /* Главные стили для центрирования блока на экране */
+        /* Стили для центрирования блока на экране */
         
         /* Убираем лишние отступы, которые могут вызывать скролл */
         .block-container {
@@ -45,16 +45,11 @@ def check_password():
         }
 
         /* Стиль для контейнера логотипа */
+        /* Используем минимальный отступ сверху для центрирования */
         .auth-logo-box {
             text-align: center;
             margin-bottom: 1rem; /* Отступ между лого и формой */
-            padding-top: 6rem; /* Отступ сверху для визуального центрирования */
-        }
-        .auth-logo-box img {
-            max-width: 250px;
-            height: auto;
-            display: block;
-            margin: 0 auto; /* Горизонтальное центрирование логотипа */
+            padding-top: 4rem; /* Мягкий отступ сверху для центрирования */
         }
         
         /* Стиль для рамки формы ввода пароля */
@@ -76,8 +71,14 @@ def check_password():
     with col2:
         # 1. Логотип
         st.markdown('<div class="auth-logo-box">', unsafe_allow_html=True)
-        # Использование <img> для отображения. margin: 0 auto обеспечивает центрирование.
-        st.markdown('<img src="logo.png" alt="Логотип" style="max-width: 250px; height: auto;">', unsafe_allow_html=True)
+        
+        # ВОССТАНАВЛИВАЕМ st.image для надежности отображения локального файла
+        try:
+            st.image("logo.png", width=250)
+        except:
+            # Если файл не найден, выводим хотя бы текст
+            st.markdown("<h3 style='color: #D32F2F;'>LOGO</h3>", unsafe_allow_html=True)
+            
         st.markdown('</div>', unsafe_allow_html=True)
         
         # 2. Форма ввода пароля
@@ -96,7 +97,7 @@ def check_password():
         st.markdown('</div>', unsafe_allow_html=True)
         
     return False
-
+        
 if not check_password():
     st.stop()
 
@@ -1000,3 +1001,4 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+
