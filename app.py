@@ -33,88 +33,79 @@ def check_password():
     if st.session_state.get("authenticated"):
         return True
     
-    # ----------------------------------------------------------------------
-    # >>>>> ВАШИ НАСТРОЙКИ В ПИКСЕЛЯХ <<<<<
-    TOP_OFFSET = "150px"  # <-- СЮДА ВВЕСТИ ОТСТУП СВЕРХУ В PIXEL'АХ
-    BLOCK_WIDTH = "450px" # <-- СЮДА ВВЕСТИ ЖЕЛАЕМУЮ ШИРИНУ БЛОКА
-    # ----------------------------------------------------------------------
-    
-    st.markdown(f"""
+    # --- СТИЛИ ДЛЯ ИДЕАЛЬНОГО ЦЕНТРИРОВАНИЯ И УДАЛЕНИЯ СКРОЛЛА ---
+    st.markdown("""
         <style>
-        /* 1. Убираем ВСЁ автоматическое центрирование Streamlit, чтобы работать с margin-top */
-        .main {{
-            /* Сбрасываем Streamlit padding-top, чтобы наш TOP_OFFSET работал */
-            padding-top: 1rem !important; 
-            padding-bottom: 1rem !important;
-        }}
+        /* 1. Убираем скролл и центрируем весь контент по вертикали */
+        .main {
+            display: flex;
+            flex-direction: column;
+            justify-content: center; /* Вертикальное центрирование */
+            align-items: center;
+        }
 
-        /* 2. Контейнер для всего блока (Логотип + Форма) */
-        .auth-master-box {{
-            width: {BLOCK_WIDTH};       /* Заданная вами ширина */
-            margin-top: {TOP_OFFSET};   /* Заданный вами отступ сверху */
-            margin-left: auto;          /* Автоматическое центрирование */
-            margin-right: auto;         /* Автоматическое центрирование */
-            display: block;             /* Нужно для правильного марджина */
-        }}
-
-        /* 3. Стиль для логотипа */
-        .auth-logo-box {{
+        /* 2. Стиль для контейнера логотипа */
+        .auth-logo-box {
             text-align: center;
-            margin-bottom: 1rem; 
+            margin-bottom: 1rem; /* Отступ между лого и формой */
             padding-top: 0; 
-        }}
+        }
         
-        /* 4. Стиль для рамки формы ввода пароля */
-        .login-box {{
+        /* 3. Стиль для рамки формы ввода пароля */
+        .login-box {
             background-color: white; 
             padding: 2rem; 
             border-radius: 10px; 
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }}
-        /* ... остальные стили ... */
+        }
+        /* Убираем лишний отступ у заголовка формы */
+        .login-box h3 {
+            margin-top: 0;
+            text-align: center;
+        }
         
-        /* 5. Минимизируем "белое окошко" от st.image, если картинка не найдена */
-        .stImage > img {{
+        /* 4. Минимизируем "белое окошко" от st.image, если картинка не найдена */
+        .stImage > img {
             min-height: 10px; 
             min-width: 10px; 
-        }}
+        }
         </style>
     """, unsafe_allow_html=True)
     
-    # Весь контент теперь в одном DIV-контейнере с ручными отступами
-    st.markdown('<div class="auth-master-box">', unsafe_allow_html=True)
-
-    # 1. Логотип
-    st.markdown('<div class="auth-logo-box">', unsafe_allow_html=True)
-    
-    try:
-        st.image("logo.png", width=250) 
-    except Exception:
-        st.markdown("<h3 style='color: #D32F2F; font-size: 14px; margin-top: 0;'>LOGO (Не найден)</h3>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        # 1. Логотип
+        st.markdown('<div class="auth-logo-box">', unsafe_allow_html=True)
         
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # 2. Форма ввода пароля
-    st.markdown('<div class="login-box">', unsafe_allow_html=True)
-    st.markdown("<h3>Вход в систему</h3>", unsafe_allow_html=True)
-    
-    password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
-    
-    if st.button("ВОЙТИ", type="primary", use_container_width=True):
-        if password == "jfV6Xel-Q7vp-_s2UYPO":
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("❌ Неверный пароль")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Закрываем главный контейнер
-    st.markdown('</div>', unsafe_allow_html=True) 
+        # Используем st.image с защитой от "белого окошка"
+        try:
+            st.image("logo.png", width=250) 
+        except Exception:
+            # Заглушка, если logo.png не найден
+            st.markdown("<h3 style='color: #D32F2F; font-size: 14px; margin-top: 0;'>LOGO (Не найден)</h3>", unsafe_allow_html=True)
+            
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # 2. Форма ввода пароля
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+        st.markdown("<h3>Вход в систему</h3>", unsafe_allow_html=True)
+        
+        password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
+        
+        if st.button("ВОЙТИ", type="primary", use_container_width=True):
+            # ВОССТАНОВЛЕНА ЛОГИКА ПРОВЕРКИ ПАРОЛЯ
+            if password == "jfV6Xel-Q7vp-_s2UYPO":
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Неверный пароль")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
         
     return False
 
-# ... остальной код
+if not check_password():
+    st.stop()
 
 # ==========================================
 # 3. НАСТРОЙКИ API И РЕГИОНОВ
@@ -1016,5 +1007,3 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
-
-
