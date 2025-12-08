@@ -11,8 +11,6 @@ from urllib.parse import urlparse
 import inspect
 import time
 import json
-import os 
-import io # Добавлен для работы с XLSX
 
 # ==========================================
 # 0. ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
@@ -34,7 +32,7 @@ st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 def check_password():
     if st.session_state.get("authenticated"):
         return True
-   
+    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("""
@@ -42,8 +40,7 @@ def check_password():
             .auth-container {
                 display: flex; flex-direction: column; align-items: center;
                 justify-content: center; padding: 2rem; background-color: white;
-                border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                margin-top: 5rem;
+                border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); margin-top: 5rem;
             }
             </style>
             <div class="auth-container">
@@ -51,7 +48,6 @@ def check_password():
                 <h3>Вход в систему</h3>
             </div>
         """, unsafe_allow_html=True)
-        
         
         password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
         
@@ -95,8 +91,7 @@ DEFAULT_EXCLUDE_DOMAINS = [
     "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", 
     "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", 
     "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", 
-    "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", 
-    "profi.ru", 
+    "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", 
     "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", 
     "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", 
     "rutube.ru", "vk.com", "facebook.com"
@@ -117,37 +112,24 @@ st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
-        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif;
-        color: {TEXT_COLOR} !important; }}
-        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important;
-        border: none; border-radius: 6px; }}
-        .stButton button:hover {{ background-color: {PRIMARY_DARK} !important;
-        }}
+        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
+        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
+        .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
-            background-color: {LIGHT_BG_MAIN} !important;
-        color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
+            background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
-        div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important;
-        border-radius: 8px !important; }}
+        div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important; border-radius: 8px !important; }}
         div[data-testid="stDataFrame"] div[role="columnheader"] {{
-            background-color: {HEADER_BG} !important;
-        color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
+            background-color: {HEADER_BG} !important; color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
         }}
         div[data-testid="stDataFrame"] div[role="gridcell"] {{
-            background-color: #FFFFFF !important;
-        color: {TEXT_COLOR} !important; border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
+            background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
         }}
-        .legend-box {{ padding: 10px;
-        background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
-        }}
-        .text-red {{ color: #D32F2F; font-weight: bold;
-        }}
-        .text-bold {{ font-weight: 600;
-        }}
-        .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px;
-        border: 1px solid {BORDER_COLOR}; }}
-        section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important;
-        border-left: 1px solid {BORDER_COLOR} !important; }}
+        .legend-box {{ padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px; }}
+        .text-red {{ color: #D32F2F; font-weight: bold; }}
+        .text-bold {{ font-weight: 600; }}
+        .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR}; }}
+        section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-left: 1px solid {BORDER_COLOR} !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -169,62 +151,12 @@ if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
-if 'app_page' not in st.session_state:
-    st.session_state.app_page = "Анализ" # Добавление состояния для навигации
-
-# --- ФУНКЦИИ ДЛЯ ИСТОРИИ ЗАДАЧ ---
-RESULTS_FILE = "gar_pro_results.json" # Файл для сохранения истории
-
-def load_results():
-    """Загружает историю результатов из JSON файла."""
-    if not os.path.exists(RESULTS_FILE):
-        return []
-    try:
-        with open(RESULTS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-def save_results(data):
-    """Сохраняет историю результатов в JSON файл."""
-    try:
-        with open(RESULTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        return True
-    except Exception as e:
-        st.error(f"Ошибка сохранения результатов: {e}")
-        return False
-        
-# --- ФУНКЦИИ ДЛЯ СКАЧИВАНИЯ ---
-def convert_df_to_csv(df):
-    """Преобразование DataFrame в CSV строку (с разделителем ';')."""
-    return df.to_csv(index=False, sep=';', encoding='utf-8')
-
-# --- ИСПРАВЛЕНИЕ: Удален convert_df_to_xml по запросу пользователя ---
-
-def convert_df_to_xlsx(df):
-    """Преобразование DataFrame в XLSX (Excel) формат."""
-    output = io.BytesIO()
-    if df.empty:
-        return output.getvalue() 
-        
-    # Требуется: pip install openpyxl
-    try:
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False)
-    except ImportError:
-        # Эта ошибка должна обрабатываться при установке, но оставим на всякий случай
-        st.error("Ошибка: Для экспорта в XLSX требуется библиотека 'openpyxl'. Установите её: pip install openpyxl")
-        return None
-        
-    output.seek(0)
-    return output.read()
 
 # --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
-    url_check = "https://arsenkin.ru/api/tools/check" 
-    url_get = "https://arsenkin.ru/api/tools/get"    
+    url_check = "https://arsenkin.ru/api/tools/check"  # Для проверки статуса
+    url_get = "https://arsenkin.ru/api/tools/get"    # Для получения результата
     
     headers = {
         "Authorization": f"Bearer {ARSENKIN_TOKEN}",
@@ -269,31 +201,34 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     # 2. Ожидание и проверка статуса (через /check)
     status = "process"
     attempts = 0
-    max_attempts = 40 
+    max_attempts = 40 # Макс 200 секунд
     
     progress_info = st.empty()
     bar = st.progress(0)
     res_check_data = {}
     
     while status == "process" and attempts < max_attempts:
-        time.sleep(5) 
+        time.sleep(5) # Ждем 5 сек для обхода 429 ошибки
         attempts += 1
         bar.progress(attempts / max_attempts)
         progress_info.text(f"Ожидание ответа API... ({attempts*5} сек)")
         
         try:
+            # Запрашиваем статус
             r_check = requests.post(url_check, headers=headers, json={"task_id": task_id})
             res_check_data = r_check.json()
             
+            # Если получили статус 'finish', значит можно запрашивать данные
             if res_check_data.get("status") == "finish":
                 status = "done"
                 break
             
+            # Проверка на лимиты
             if str(res_check_data.get("code")) == "429":
                 continue 
                     
         except Exception:
-            pass 
+            pass # Игнорируем ошибки при проверке статуса
             
     bar.empty()
     progress_info.empty()
@@ -310,13 +245,14 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.info("Статус 'finish' получен. Запрашиваем финальный результат...")
         r_final = requests.post(url_get, headers=headers, json={"task_id": task_id}, timeout=30)
         res_data = r_final.json()
-      
+        
+        # Проверяем, что пришел именно результат, а не статус (code должен быть TASK_RESULT)
         if res_data.get("code") != "TASK_RESULT":
             st.error(f"❌ Ошибка: API не вернул финальный результат (TASK_RESULT).")
             st.write("JSON-ответ сервера:")
             st.json(res_data)
             return []
-          
+            
     except Exception as e:
         st.error(f"❌ Ошибка сети при получении результата: {e}")
         st.write("JSON-ответ сервера:")
@@ -326,6 +262,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     # 4. ФИНАЛЬНЫЙ ПАРСИНГ: 
     results_list = []
     try:
+        # Проверяем на наличие поля 'collect'
         if 'result' in res_data and 'result' in res_data['result'] and 'collect' in res_data['result']['result']:
             collect = res_data['result']['result']['collect']
         else:
@@ -333,14 +270,17 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
             st.json(res_data)
             return []
 
+        # Ожидаемая структура: [ [ [ 'url1', 'url2', ... ] ] ] - Простая структура
         final_url_list = []
-      
+        
         if collect and isinstance(collect, list) and len(collect) > 0 and \
            collect[0] and isinstance(collect[0], list) and len(collect[0]) > 0 and \
            collect[0][0] and isinstance(collect[0][0], list):
              
-            final_url_list = collect[0][0]
+             # Простая структура: список URL-строк
+             final_url_list = collect[0][0]
         else:
+             # На случай, если API вернет сложную структуру
              unique_urls = set()
              for engine_data in collect:
                 if isinstance(engine_data, dict):
@@ -358,11 +298,12 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
                                         for res in results_list:
                                             if res['url'] == url and pos < res['pos']:
                                                 res['pos'] = pos
-                                                
              return results_list 
 
+        # Если сработала простая структура (final_url_list)
         if final_url_list:
             for index, url in enumerate(final_url_list):
+                # Позиция = индекс + 1
                 pos = index + 1
                 results_list.append({'url': url, 'pos': pos})
 
@@ -372,7 +313,9 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.json(res_data) 
         return []
         
+    # Возвращаем список словарей: [{'url': '...', 'pos': N}, ...]
     return results_list
+
 
 def process_text_detailed(text, settings, n_gram=1):
     if settings['numbers']:
@@ -464,13 +407,16 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for p in comp_data_parsed:
         body, c_forms = process_text_detailed(p['body_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
-        comp_docs.append({'body': body, 'anchor': anchor, 'pos': p['pos']})
+        comp_docs.append({'body': body, 'anchor': anchor})
         for k, v in c_forms.items():
             all_forms_map[k].update(v)
     
     # Если нет успешно скачанных конкурентов, мы не можем рассчитать релевантность
     if not comp_docs:
+        # Тем не менее, нам нужна таблица релевантности, чтобы показать, кто был в ТОПе
+        
         table_rel_fallback = []
+        # Добавляем все URL, которые пришли из API/ручного списка, чтобы показать их позиции
         for item in original_results:
             domain = urlparse(item['url']).netloc
             table_rel_fallback.append({
@@ -484,6 +430,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         else:
             my_label = "Ваш сайт"
         
+        # Добавляем Ваш сайт
         table_rel_fallback.append({
             "Домен": my_label, 
             "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
@@ -491,7 +438,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         })
         
         table_rel_df = pd.DataFrame(table_rel_fallback).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
-        table_rel_df.insert(0, '№', table_rel_df.index + 1)
         
         return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": table_rel_df, "my_score": {"width": 0, "depth": 0}}
 
@@ -509,51 +455,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for w in set(d['body']): doc_freqs[w] += 1
         
     table_depth, table_hybrid = [], []
-    
-    # Инициализация для расчета баллов (ширина/глубина)
-    competitor_stats_raw = []
-    
-    max_width_top = 1
-    max_depth_top = 1
-
-    # Логика для подсчета raw_width и raw_depth
-    for d in comp_docs:
-        # p_lemmas уже были получены выше в comp_docs['body'], но тут нужно по domain
-        # Найдем оригинальный элемент из comp_data_parsed
-        original_item = next((item for item in comp_data_parsed if urlparse(item['url']).netloc == urlparse(d['url']).netloc), None)
-        if original_item:
-            p_lemmas = d['body'] 
-            domain = urlparse(original_item['url']).netloc
-            pos = original_item['pos']
-            
-            # Ширина: количество уникальных лемм, общих со всем словарем (vocab)
-            relevant_lemmas = [w for w in p_lemmas if w in vocab]
-            raw_width = len(set(relevant_lemmas))
-            raw_depth = len(relevant_lemmas)
-            
-            competitor_stats_raw.append({
-                "domain": domain,
-                "pos": pos,
-                "raw_w": raw_width,
-                "raw_d": raw_depth
-            })
-    
-    # Определяем максимумы
-    if competitor_stats_raw:
-        max_width_top = max([c['raw_w'] for c in competitor_stats_raw]) or 1
-        max_depth_top = max([c['raw_d'] for c in competitor_stats_raw]) or 1
-        
-    # Расчет my_raw_w/d
-    my_relevant = [w for w in my_lemmas if w in vocab]
-    my_raw_w = len(set(my_relevant))
-    my_raw_d = len(my_relevant)
-
-    # Нормализация баллов для ВАШЕГО сайта
-    my_score_w = int(round((my_raw_w / max_width_top) * 100))
-    my_score_d = int(round((my_raw_d / max_depth_top) * 100))
-    
-    # 3. Расчет рекомендаций (Table Depth, Hybrid)
-    
     for word in vocab:
         df = doc_freqs[word]
         if df < 2 and word not in my_lemmas: continue 
@@ -572,117 +473,130 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         mean_total = np.mean(c_total_tfs)
         med_total = np.median(c_total_tfs)
         max_total = np.max(c_total_tfs)
-
-        # Вычисление рекомендаций
-        rec_min = max(1, int(round(min(mean_total, med_total))))
-        rec_max = max(1, int(round(max_total)))
+        med_anchor = np.median(c_anchor_tfs)
         
-        rec_anchor = max(0, int(round(np.median(c_anchor_tfs))))
+        rec_min = int(round(min(mean_total, med_total) * norm_k))
+        rec_max = int(round(max_total * norm_k))
+        rec_anchor = int(round(med_anchor * norm_k)) 
+        
+        diff_total = 0
+        if my_tf_total < rec_min: diff_total = rec_min - my_tf_total 
+        elif my_tf_total > rec_max: diff_total = rec_max - my_tf_total 
+        
+        diff_anchor = rec_anchor - my_tf_anchor
         rec_text_min = max(0, rec_min - rec_anchor)
-        
-        # Разница (ключевой показатель)
-        diff_total = int(round((rec_min - my_tf_total) * norm_k))
-        diff_anchor = int(round((rec_anchor - my_tf_anchor) * norm_k))
-        diff_text = int(round((rec_text_min - my_tf_text) * norm_k))
-        
-        # IDF
-        idf = np.log((N - df + 0.5) / (df + 0.5) + 1)
-        idf = max(0.1, idf)
-        
-        # Переспам
+        rec_text_max = max(0, rec_max - rec_anchor)
+        diff_text = 0
+        if my_tf_text < rec_text_min: diff_text = rec_text_min - my_tf_text
+        elif my_tf_text > rec_text_max: diff_text = rec_text_max - my_tf_text
+
+        idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
+        idf = max(0.1, idf) 
         spam_percent = 0
         if my_tf_total > rec_max and rec_max > 0:
             spam_percent = round(((my_tf_total - rec_max) / rec_max) * 100, 1)
         elif my_tf_total > 0 and rec_max == 0:
-            spam_percent = 100
-        
+            spam_percent = 100 
         spam_idf = round(spam_percent * idf, 1)
         abs_diff = abs(diff_total)
-        
+
         if med_total > 0.5 or my_tf_total > 0:
             table_depth.append({
-                "Слово": word,
-                "Словоформы": forms_str,
-                "Повторы у вас": my_tf_total,
-                "Повторов в ТОПе": sum_in_top,
-                "Минимум (рек)": rec_min,
-                "Максимум (рек)": rec_max,
-                "Добавить/Убрать": diff_total,
-                "Тег A у вас": my_tf_anchor,
-                "Тег A (рек)": rec_anchor,
-                "Тег A +/-": diff_anchor,
-                "Текст у вас": my_tf_text,
-                "Текст (рек)": rec_text_min,
-                "Текст +/-": diff_text,
-                "Переспам %": spam_percent,
-                "Переспам*IDF": spam_idf,
-                "diff_abs": abs_diff,
-                "is_missing": (my_tf_total == 0)
+                "Слово": word, "Словоформы": forms_str, "Повторы у вас": my_tf_total,
+                "Повторов в ТОПе": sum_in_top, "Минимум (рек)": rec_min, "Максимум (рек)": rec_max,
+                "Добавить/Убрать": diff_total, "Тег A у вас": my_tf_anchor, "Тег A (рек)": rec_anchor,
+                "Тег A +/-": diff_anchor, "Текст у вас": my_tf_text, "Текст (рек)": rec_text_min,
+                "Текст +/-": diff_text, "Переспам %": spam_percent, "Переспам*IDF": spam_idf,
+                "diff_abs": abs_diff, "is_missing": (my_tf_total == 0)
             })
-            
             table_hybrid.append({
-                "Слово": word,
-                "TF-IDF ТОП": round(med_total * idf, 2),
-                "TF-IDF у вас": round(my_tf_total * idf, 2),
-                "Сайтов": df,
-                "Переспам": max_total 
+                "Слово": word, "TF-IDF ТОП": round(med_total * idf, 2), "TF-IDF у вас": round(my_tf_total * idf, 2),
+                "Сайтов": df, "Переспам": max_total
             })
-            
-    # 4. Расчет N-грамм --- ИСПРАВЛЕНО ---
+
     table_ngrams = []
     if comp_docs and my_data:
         try:
             my_bi, _ = process_text_detailed(my_data['body_text'], settings, 2)
-            comp_bi = [d['body'] for d in comp_docs] # Используем body леммы, полученные выше
-            
+            comp_bi = [process_text_detailed(p['body_text'], settings, 2)[0] for p in comp_docs]
             all_bi = set(my_bi)
             for c in comp_bi: all_bi.update(c)
-            
             bi_freqs = Counter()
-            for c in comp_bi:
+            for c in comp_bi: 
                 for b_ in set(c): bi_freqs[b_] += 1
-                
-            N_comp = len(comp_docs)
-            
             for bg in all_bi:
-                df = bi_freqs[bg] 
+                df = bi_freqs[bg]
                 if df < 2 and bg not in my_bi: continue
                 
                 my_c = my_bi.count(bg)
-                comp_c_list = [d.count(bg) for d in comp_bi]
+                comp_c = [c.count(bg) for c in comp_docs]
+                med_c = np.median(comp_c) if comp_c else 0
                 
-                sum_in_top = sum(comp_c_list)
-                mean_bi = np.mean(comp_c_list)
-                max_bi = np.max(comp_c_list)
+                rec_ngram = int(round(med_c * norm_k))
+                diff_ngram = 0
+                if my_c < rec_ngram: diff_ngram = rec_ngram - my_c
+                elif my_c > rec_ngram: diff_ngram = rec_ngram - my_c
+                
+                if med_c > 0 or my_c > 0:
+                    table_ngrams.append({
+                        "N-грамма": bg, "Сайтов": df, "У вас": my_c,
+                        "Медиана (рек)": rec_ngram, "Добавить/Убрать": diff_ngram,
+                        "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3),
+                        "diff_abs": abs(diff_ngram), "is_missing": (my_c == 0)
+                    })
+        except: pass
 
-                # Рекомендация: используем среднее значение
-                rec_min_bi = max(1, int(round(mean_bi)))
-                diff_bi = rec_min_bi - my_c
-                
-                table_ngrams.append({
-                    "N-грамма": bg,
-                    "У вас": my_c,
-                    "В ТОПе (всего)": sum_in_top,
-                    "В ТОПе (макс)": max_bi,
-                    "Сайтов с N-граммой": df,
-                    "Добавить/Убрать": diff_bi
-                })
-        except Exception as e:
-            st.warning(f"Ошибка при расчете N-грамм: {e}")
-            
-    # 5. Таблица релевантности (TOP)
+    # --- ТОП РЕЛЕВАНТНОСТИ ---
     table_rel = []
-    # Баллы конкурентов
+    
+    # Сначала добавляем конкурентов, которые были в ТОПе, даже если они не скачались
+    competitor_stats_raw = []
+    for item in original_results:
+        url = item['url']
+        pos = item['pos']
+        domain = urlparse(url).netloc
+        
+        # Находим скачанные данные для этого URL, если они есть
+        parsed_data = next((d for d in comp_data_full if d.get('url') == url), None)
+        
+        raw_width = 0
+        raw_depth = 0
+        
+        if parsed_data and parsed_data.get('body_text'):
+            p_lemmas, _ = process_text_detailed(parsed_data['body_text'], settings)
+            # Учитываем только те леммы, которые есть в общем словаре (vocab)
+            relevant_lemmas = [w for w in p_lemmas if w in vocab] 
+            raw_width = len(set(relevant_lemmas))
+            raw_depth = len(relevant_lemmas)
+
+        competitor_stats_raw.append({
+            "domain": domain, "pos": pos, 
+            "raw_w": raw_width, "raw_d": raw_depth
+        })
+
+    # Определяем максимумы только по **успешно скачанным и проанализированным** конкурентам
+    max_width_top = max([c['raw_w'] for c in competitor_stats_raw]) if competitor_stats_raw else 1
+    max_depth_top = max([c['raw_d'] for c in competitor_stats_raw]) if competitor_stats_raw else 1
+    
+    # 3. Баллы конкурентов (рассчитываем по всем, кто был в original_results)
     for c in competitor_stats_raw:
         score_w = int(round((c['raw_w'] / max_width_top) * 100))
         score_d = int(round((c['raw_d'] / max_depth_top) * 100))
+        
         table_rel.append({
-            "Домен": c['domain'],
-            "Позиция": c['pos'], 
-            "Ширина (балл)": score_w,
-            "Глубина (балл)": score_d
+            "Домен": c['domain'], "Позиция": c['pos'],
+            # Если 0/1, это может быть не скачанный конкурент
+            "Ширина (балл)": score_w, "Глубина (балл)": score_d
         })
         
+    # 4. Баллы для ВАШЕГО сайта
+    my_relevant = [w for w in my_lemmas if w in vocab]
+    my_raw_w = len(set(my_relevant))
+    my_raw_d = len(my_relevant)
+    
+    my_score_w = int(round((my_raw_w / max_width_top) * 100))
+    my_score_d = int(round((my_raw_d / max_depth_top) * 100))
+    
     # Добавляем ВАШ сайт в таблицу
     if my_data and my_data.get('domain'):
         my_label = f"{my_data['domain']} (Вы)"
@@ -690,24 +604,19 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         my_label = "Ваш сайт"
         
     table_rel.append({
-        "Домен": my_label,
-        "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
-        "Ширина (балл)": my_score_w,
+        "Домен": my_label, 
+        "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1, # Ставим после последнего конкурента
+        "Ширина (балл)": my_score_w, 
         "Глубина (балл)": my_score_d
     })
-
+    
     # Сортируем таблицу релевантности по позиции
     table_rel_df = pd.DataFrame(table_rel)
     table_rel_df = table_rel_df.sort_values(by='Позиция', ascending=True).reset_index(drop=True)
-
-    # Добавление относительного ранга (№) в начало
-    table_rel_df.insert(0, '№', table_rel_df.index + 1)
-    
+        
     return {
-        "depth": pd.DataFrame(table_depth),
-        "hybrid": pd.DataFrame(table_hybrid),
-        "ngrams": pd.DataFrame(table_ngrams),
-        "relevance_top": table_rel_df,
+        "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
+        "ngrams": pd.DataFrame(table_ngrams), "relevance_top": table_rel_df,
         "my_score": {"width": my_score_w, "depth": my_score_d}
     }
 
@@ -715,461 +624,357 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 # 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (FINAL)
 # ==========================================
 
-def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False, show_csv_download=True):
-    
-    st.markdown(f"#### {title_text}")
-    
-    # Кнопка скачивания CSV
-    if show_csv_download:
-        df_for_download = df.copy() 
-        if 'diff_abs' in df_for_download.columns:
-            df_for_download = df_for_download.drop(columns=['diff_abs'])
-        if 'is_missing' in df_for_download.columns:
-            df_for_download = df_for_download.drop(columns=['is_missing'])
-            
-        csv_data = convert_df_to_csv(df_for_download)
-        
-        c_dl, c_spacer = st.columns([1, 9]) 
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
+    if df.empty:
+        st.info(f"{title_text}: Нет данных.")
+        return
 
-        with c_dl:
-            st.download_button(
-                label="⬇️ CSV",
-                data=csv_data,
-                file_name=f"{key_prefix}.csv",
-                mime="text/csv",
-                key=f"{key_prefix}_dl_csv",
-                use_container_width=True
+    st.markdown(f"### {title_text}")
+    
+    # БЛОК СОРТИРОВКИ
+    if f'{key_prefix}_sort_col' not in st.session_state:
+        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
+    if f'{key_prefix}_sort_order' not in st.session_state:
+        st.session_state[f'{key_prefix}_sort_order'] = "Убывание" 
+
+    with st.container():
+        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
+        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
+        with col_s1:
+            sort_col = st.selectbox(
+                "🗂 Сортировать весь список по:", 
+                df.columns, 
+                key=f"{key_prefix}_sort_box",
+                index=list(df.columns).index(st.session_state[f'{key_prefix}_sort_col']) if st.session_state[f'{key_prefix}_sort_col'] in df.columns else 0
             )
-    
-    # Оригинальная логика сортировки и пагинации
-    if default_sort_col and default_sort_col in df.columns:
-        if use_abs_sort_default and 'diff_abs' in df.columns:
-            df = df.sort_values(by='diff_abs', ascending=False).reset_index(drop=True)
-        else:
-            df = df.sort_values(by=default_sort_col, ascending=False).reset_index(drop=True)
-            
+            st.session_state[f'{key_prefix}_sort_col'] = sort_col
+        with col_s2:
+            sort_order = st.radio(
+                "Порядок:", 
+                ["Убывание", "Возрастание"], 
+                horizontal=True,
+                key=f"{key_prefix}_order_box",
+                index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
+            )
+            st.session_state[f'{key_prefix}_sort_order'] = sort_order
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # СОРТИРОВКА
+    ascending = (sort_order == "Возрастание")
+    if "Добавить" in sort_col or "+/-" in sort_col:
+        df['_temp_sort'] = df[sort_col].abs()
+        df = df.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
+    else:
+        df = df.sort_values(by=sort_col, ascending=ascending)
+
+    # ПАГИНАЦИЯ (20 строк)
     df = df.reset_index(drop=True)
-    df.index = df.index + 1 
-    ROWS_PER_PAGE = 20 
+    df.index = df.index + 1
     
+    ROWS_PER_PAGE = 20
     if f'{key_prefix}_page' not in st.session_state:
         st.session_state[f'{key_prefix}_page'] = 1
         
     total_rows = len(df)
     total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
-    
     current_page = st.session_state[f'{key_prefix}_page']
     
-    if total_rows == 0:
-        st.info("Данных для таблицы нет.")
-        st.markdown("---")
-        return
-        
     if current_page > total_pages: current_page = total_pages
     if current_page < 1: current_page = 1
     
     start_idx = (current_page - 1) * ROWS_PER_PAGE
     end_idx = start_idx + ROWS_PER_PAGE
+    
     df_view = df.iloc[start_idx:end_idx]
 
     # ПОКРАСКА ЯЧЕЕК
     def highlight_rows(row):
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
-        
-        cols_to_skip = ["diff_abs", "is_missing", "№", "Позиция"] 
-        
         for col_name in row.index:
-            if col_name == 'is_missing' and 'is_missing' in row and row['is_missing']:
-                styles.append(base_style + 'color: #D32F2F; font-weight: bold;') 
-            elif col_name not in cols_to_skip:
-                styles.append(base_style + 'font-weight: 600;') 
+            if col_name == 'is_missing' and row['is_missing']:
+                styles.append(base_style + 'color: #D32F2F; font-weight: bold;')
+            elif col_name != 'is_missing' and col_name != 'diff_abs':
+                styles.append(base_style + 'font-weight: 600;')
             else:
                 styles.append(base_style)
         return styles
-
+    
     cols_to_hide = ["diff_abs", "is_missing"]
     
-    if not df_view.empty:
-        styled_df = df_view.style.apply(highlight_rows, axis=1)
-    else:
-        styled_df = df_view 
-
+    styled_df = df_view.style.apply(highlight_rows, axis=1)
+    
     # ВЫВОД ТАБЛИЦЫ
-    dynamic_height = (len(df_view) * 35) + 40
+    dynamic_height = (len(df_view) * 35) + 40 
+    
     st.dataframe(
         styled_df,
         use_container_width=True,
-        height=dynamic_height,
+        height=dynamic_height, 
         column_config={c: None for c in cols_to_hide}
     )
-
+    
     # КНОПКИ ПЕРЕКЛЮЧЕНИЯ
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
-
     with c_btn_prev:
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
             st.session_state[f'{key_prefix}_page'] -= 1
             st.rerun()
-
     with c_info:
         st.markdown(f"<div style='text-align: center; margin-top: 10px; color:{TEXT_COLOR}'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
-
     with c_btn_next:
         if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
             st.session_state[f'{key_prefix}_page'] += 1
             st.rerun()
-            
     st.markdown("---")
-
-# --- ФУНКЦИЯ ОТОБРАЖЕНИЯ СТРАНИЦЫ ИСТОРИИ ---
-def render_history_page():
-    st.title("📊 История Анализов")
-    st.markdown("Здесь хранятся результаты всех ваших предыдущих задач.")
-    
-    all_results = load_results()
-    
-    if not all_results:
-        st.info("История задач пуста.")
-        return
-        
-    for idx, task in enumerate(all_results):
-        # Используем expanser для каждого результата
-        header = f"[{task['date_str']}] {task['query']} ({task['url']} / {task['region']})"
-        with st.expander(header):
-            st.markdown(f"**Запрос:** {task['query']}")
-            st.markdown(f"**URL:** {task['url']}")
-            st.markdown(f"**Регион/ПС:** {task['region']} / {task['engine']}")
-            
-            # Отображение ключевых метрик
-            st.markdown(f""" 
-                <div style='background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 6px; border: 1px solid {BORDER_COLOR};'>
-                    <h5 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта (в баллах)</h5>
-                    <p style='margin:5px 0 0 0;'>Ширина (охват): <b>{task['my_score']['width']}</b> | Глубина (оптимизация): <b>{task['my_score']['depth']}</b></p>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Кнопка для загрузки данных из истории в текущий анализ
-            if st.button(f"Показать детальные таблицы", key=f"show_details_{idx}"):
-                # Конвертируем JSON-структуру обратно в DataFrames
-                st.session_state.analysis_results = {
-                    'depth': pd.DataFrame.from_records(task['depth']),
-                    'hybrid': pd.DataFrame.from_records(task['hybrid']),
-                    'ngrams': pd.DataFrame.from_records(task['ngrams']),
-                    'relevance_top': pd.DataFrame.from_records(task['relevance_top']),
-                    'my_score': task['my_score']
-                }
-                st.session_state.analysis_done = True
-                st.session_state.app_page = "Анализ" # Переключаем на страницу анализа
-                st.rerun()
 
 # ==========================================
 # 6. ИНТЕРФЕЙС
 # ==========================================
 
-col_main, col_sidebar = st.columns([65, 35])
+col_main, col_sidebar = st.columns([65, 35]) 
+
+with col_main:
+    st.title("SEO Анализатор Релевантности")
+
+    st.markdown("### URL или код страницы Вашего сайта")
+    my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
+
+    my_url = ""
+    my_page_content = ""
+    if my_input_type == "Релевантная страница на вашем сайте":
+        my_url = st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input")
+    elif my_input_type == "Исходный код страницы или текст":
+        my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML", key="my_content_input")
+
+    st.markdown("### Поисковой запрос")
+    query = st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
+
+    st.markdown("### Поиск или URL страниц конкурентов")
+    source_type_new = st.radio("Источник конкурентов", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
+    source_type = "API" if "API" in source_type_new else "Ручной список" 
+
+    if source_type == "Ручной список":
+        st.markdown("### Введите список URL")
+        st.text_area("Вставьте ссылки здесь (каждая с новой строки)", height=200, key="manual_urls_ui")
+
+    st.markdown("### Редактируемые списки")
+    excludes = st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
+    c_stops = st.text_area("Стоп-слова", DEFAULT_STOPS, height=200, key="settings_stops")
+
+    st.markdown("---")
+    
+    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+        for key in list(st.session_state.keys()):
+            if key.endswith('_page'): st.session_state[key] = 1
+        st.session_state.start_analysis_flag = True
 
 with col_sidebar:
-    st.session_state.app_page = st.radio(
-        "Навигация",
-        ["Анализ", "История"],
-        index=0 if st.session_state.app_page == "Анализ" else 1,
-        key="app_page_select"
-    )
+    st.markdown("#####⚙️ Настройки")
+    ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
+    search_engine = st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
+    region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
+    device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
     
-if st.session_state.app_page == "История":
-    render_history_page()
+    # Максимальная глубина, которую позволяет API - 30.
+    top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n") 
     
-elif st.session_state.app_page == "Анализ":
+    st.markdown("---")
+    st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
     
-    with col_main:
-        st.title("SEO Анализатор Релевантности")
-        
-        # --- БЛОК ВВОДА ДАННЫХ В АНАЛИЗЕ ---
-        st.markdown("### URL или код страницы Вашего сайта")
-        my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст"], key="my_input_type", horizontal=True)
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        st.checkbox("Исключать noindex/script", True, key="settings_noindex")
+        st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+        st.checkbox("Учитывать числа", False, key="settings_numbers")
+    with col_c2:
+        st.checkbox("Нормировать по длине", True, key="settings_norm")
+        st.checkbox("Исключать агрегаторы", True, key="settings_agg") # Чекбокс для агрегаторов
 
-        if my_input_type == "Релевантная страница на вашем сайте":
-            st.text_input("URL страницы", placeholder="https://ваш-домен.ru/page/", key="my_url_input")
-            st.session_state['my_content_input'] = '' 
+# ==========================================
+# 7. ВЫПОЛНЕНИЕ (СКОРРЕКТИРОВАННАЯ ЛОГИКА СБОРА)
+# ==========================================
+if st.session_state.get('start_analysis_flag'):
+    st.session_state.start_analysis_flag = False
 
-        else:
-            st.text_area("Исходный код или текст", height=200, placeholder="<html>...</html> или просто текст для анализа", key="my_content_input")
-            st.session_state['my_url_input'] = '' 
+    # ... (Проверки входных данных) ...
+    if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
+        st.error("Введите URL!")
+        st.stop()
+    if my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
+        st.error("Введите исходный код!")
+        st.stop()
+    if source_type == "API" and not st.session_state.get('query_input'):
+        st.error("Введите поисковой запрос!")
+        st.stop()
+    if source_type == "Ручной список" and not st.session_state.get("manual_urls_ui", "").strip():
+        st.error("Введите список URL конкурентов!")
+        st.stop()
+        
+    settings = {
+        'noindex': st.session_state.settings_noindex, 
+        'alt_title': st.session_state.settings_alt, 
+        'numbers': st.session_state.settings_numbers,
+        'norm': st.session_state.settings_norm, 
+        'ua': st.session_state.settings_ua, 
+        'custom_stops': st.session_state.settings_stops.split()
+    }
+    
+    target_urls_raw = [] # Список URL:pos, которые прошли первичную фильтрацию
+    my_data = None
+    my_domain = ""
+    my_serp_pos = 0 
+    
+    # 1. Сбор данных о ВАШЕМ сайте и домене
+    if my_input_type == "Релевантная страница на вашем сайте":
+        with st.spinner("Скачивание вашей страницы..."):
+            my_url_input = st.session_state.my_url_input
+            my_data = parse_page(my_url_input, settings)
+            if not my_data:
+                st.error("Не удалось скачать вашу страницу. Проверьте URL или настройки User-Agent.")
+                st.stop()
+            my_domain = urlparse(my_url_input).netloc
+    elif my_input_type == "Исходный код страницы или текст":
+        my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
+        my_domain = "local" 
 
-        st.markdown("### Поисковой запрос и конкуренты")
-        source_type = st.radio("Источник конкурентов", ["API Arsenkin", "Ручной список URL"], key="source_type", horizontal=True)
-
-        if source_type == "API Arsenkin":
-            st.text_input("Поисковой запрос", placeholder="купить товар в москве", key="query_input")
-            st.session_state['manual_urls_ui'] = '' 
-
-        else:
-            st.text_area("Список URL конкурентов (каждый с новой строки)", height=150, key="manual_urls_ui", placeholder="https://comp1.ru/page\nhttps://comp2.ru/page\n...")
-            st.session_state['query_input'] = '' 
-
-        if st.button("Начать анализ", type="primary", use_container_width=True):
-            # Сброс пагинации
-            for key in list(st.session_state.keys()):
-                if key.endswith('_page'):
-                    st.session_state[key] = 1
-            st.session_state.start_analysis_flag = True
+    # 2. Сбор URL конкурентов
+    if source_type == "API":
         
-        # --- КОНЕЦ БЛОКА ВВОДА ДАННЫХ ---
-        
-    with col_sidebar:
-        # --- БЛОК НАСТРОЕК В САЙДБАРЕ ---
-        st.markdown("#####⚙️ Настройки")
-        ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
-        search_engine = st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
-        region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
-        device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-        
-        # Основные настройки
-        top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n")
-        st.markdown("---")
-        
-        # Настройки парсинга 
-        st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            st.checkbox("Исключать noindex/script", True, key="settings_noindex")
-            st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
-            st.checkbox("Учитывать числа", False, key="settings_numbers")
-        with col_c2:
-            st.checkbox("Нормировать по длине", True, key="settings_norm")
-            agg_default = st.checkbox("Исключать агрегаторы", True, key="settings_agg") 
-        
-        custom_stops = st.text_area("Стоп-слова (каждое с новой строки)", DEFAULT_STOPS, height=100, key="settings_stops_ui")
-        # --- КОНЕЦ БЛОКА НАСТРОЕК ---
-        
-    # ==========================================
-    # 7. ВЫПОЛНЕНИЕ (СКОРРЕКТИРОВАННАЯ ЛОГИКА СБОРА)
-    # ==========================================
-    if st.session_state.get('start_analysis_flag'):
-        st.session_state.start_analysis_flag = False
-        
-        # --- ПРОВЕРКИ ---
-        if st.session_state.my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
-            st.error("Введите URL!")
-            st.stop()
-        if st.session_state.my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
-            st.error("Введите исходный код!")
-            st.stop()
-        if st.session_state.source_type == "API Arsenkin" and not st.session_state.get('query_input'):
-            st.error("Введите поисковой запрос!")
-            st.stop()
-        if st.session_state.source_type == "Ручной список URL" and not st.session_state.get("manual_urls_ui", "").strip():
-            st.error("Введите список URL конкурентов!")
-            st.stop()
-            
-        settings = {
-            'noindex': st.session_state.settings_noindex,
-            'alt_title': st.session_state.settings_alt,
-            'numbers': st.session_state.settings_numbers,
-            'norm': st.session_state.settings_norm,
-            'ua': st.session_state.settings_ua,
-            'custom_stops': [w.strip() for w in st.session_state.settings_stops_ui.split('\n') if w.strip()],
-            'agg': st.session_state.settings_agg
-        }
-        
-        my_domain = urlparse(st.session_state.get('my_url_input', '')).netloc
-        my_serp_pos = 0 
-        excl = settings['custom_stops'] + (DEFAULT_EXCLUDE_DOMAINS if settings['agg'] else [])
         TARGET_COMPETITORS = st.session_state.settings_top_n
-
-        # --- СБОР URL КОНКУРЕНТОВ ---
-        found_results = []
-        if st.session_state.source_type == "API Arsenkin":
-            with st.spinner(f"Запрос ТОПа {st.session_state.settings_top_n} к API Arsenkin..."):
-                found_results = get_arsenkin_urls(
-                    st.session_state.query_input, 
-                    st.session_state.settings_search_engine, 
-                    st.session_state.settings_region, 
-                    st.session_state.settings_top_n
-                )
-
-            # 2.1. Фильтрация и трекинг позиции (ПЕРВЫМ ШАГОМ)
-            filtered_results_all = []
-            for result in found_results:
-                url = result['url']
-                pos = result['pos']
-                domain = urlparse(url).netloc
-                
-                # 1. Трекинг нашего сайта
-                if my_domain and my_domain == domain:
-                    if my_serp_pos == 0 or pos < my_serp_pos:
-                        my_serp_pos = pos
-                    continue
-                
-                # 2. Исключаем домены из списка исключений
-                if any(x in domain for x in excl):
-                    continue
-                
-                # Если прошел фильтры, добавляем в список всех чистых конкурентов
-                filtered_results_all.append(result)
-
-            # 2.2. Ограничение по TARGET_COMPETITORS (ВТОРЫМ ШАГОМ)
-            # Берем только то количество, которое указано в TARGET_COMPETITORS
-            target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
-            collected_competitors_count = len(target_urls_raw)
-            st.info(f"Получено уникальных URL от API: {len(found_results)}. После фильтрации **агрегаторов и стоп-доменов**, для анализа выбрано **{collected_competitors_count}** релевантных конкурентов (цель {TARGET_COMPETITORS}). Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
-
-        else:
-            # Ручной режим
-            raw_urls = st.session_state.get("manual_urls_ui", "")
-            if raw_urls:
-                # В ручном режиме позиция не важна, просто список URL
-                urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
-                target_urls_raw = [{'url': u, 'pos': i+1} for i, u in enumerate(urls)]
-                my_serp_pos = 0 
-                st.info(f"Для анализа выбрано **{len(target_urls_raw)}** конкурентов из ручного списка.")
-            else:
-                target_urls_raw = []
+        API_FETCH_DEPTH = 30 
         
-        if not target_urls_raw and my_input_type != "Исходный код страницы или текст":
-            st.error("Не удалось собрать конкурентов для анализа!")
-            st.stop()
-            
-        # --- ПАРСИНГ ---
-        comp_data_full = []
-        if target_urls_raw:
-            with st.spinner(f"Парсинг {len(target_urls_raw)} страниц конкурентов..."):
-                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                    futures = {executor.submit(parse_page, item['url'], settings): item for item in target_urls_raw}
-                    for future in concurrent.futures.as_completed(futures):
-                        item = futures[future]
-                        try:
-                            data = future.result()
-                            if data:
-                                data['pos'] = item['pos'] 
-                                comp_data_full.append(data)
-                        except Exception as e:
-                            st.warning(f"Ошибка парсинга {item['url']}: {e}")
-        
-        my_data = None
-        if st.session_state.my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input:
-            with st.spinner("Парсинг Вашей страницы..."):
-                my_data = parse_page(st.session_state.my_url_input, settings)
-                if not my_data:
-                    st.error("Не удалось спарсить Вашу страницу. Проверьте URL или настройки (User-Agent).")
-        
-        elif st.session_state.my_input_type == "Исходный код страницы или текст" and st.session_state.my_content_input:
-            my_data = {
-                'url': 'Local Content',
-                'domain': 'local-content.ru',
-                'body_text': st.session_state.my_content_input,
-                'anchor_text': '' 
-            }
-            
-        if not my_data:
-            st.error("Не удалось получить данные для Вашего сайта. Анализ невозможен.")
-            st.stop()
-
-        # --- АНАЛИЗ ---
-        with st.spinner("Анализ данных..."):
-            results = calculate_metrics(
-                comp_data_full, my_data, settings, my_serp_pos, target_urls_raw
+        with st.spinner(f"Сбор ТОПа (глубина {API_FETCH_DEPTH}) через Arsenkin API..."):
+            found_results = get_arsenkin_urls(
+                query=st.session_state.query_input, 
+                engine_type=st.session_state.settings_search_engine,
+                region_name=st.session_state.settings_region,
+                depth_val=API_FETCH_DEPTH
             )
             
-        st.session_state.analysis_results = results
-        st.session_state.analysis_done = True
-        
-        # --- Сохранение результата в историю ---
-        if st.session_state.analysis_results:
-            new_result = {
-                "timestamp": time.time(),
-                "date_str": time.strftime("%Y-%m-%d %H:%M:%S"), 
-                "query": st.session_state.get('query_input', 'N/A'),
-                "url": st.session_state.get('my_url_input', 'N/A'),
-                "region": st.session_state.settings_region,
-                "engine": st.session_state.settings_search_engine,
-                # Сохраняем как список словарей
-                "depth": results['depth'].to_dict(orient='records'),
-                "hybrid": results['hybrid'].to_dict(orient='records'),
-                "ngrams": results['ngrams'].to_dict(orient='records'),
-                "relevance_top": results['relevance_top'].to_dict(orient='records'),
-                "my_score": results['my_score']
-            }
+        if not found_results:
+            st.error("API не вернул ссылки. Проверьте **JSON-ответ сервера** (если он выведен выше).")
+            st.stop()
             
-            all_results = load_results()
-            all_results.insert(0, new_result) 
-            save_results(all_results)
+        # Формирование списка исключений
+        excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
+        if st.session_state.settings_agg: 
+            # Агрегаторы + домены, которые вы просили добавить
+            excl.extend(["avito.ru", "ozon.ru", "wildberries.ru", "market.yandex.ru", 
+                         "tiu.ru", "youtube.com", "vk.com", "yandex.ru", 
+                         "leroymerlin.ru", "petrovich.ru"])
+            
+        # 2.1. Фильтрация и трекинг позиции (ПЕРВЫМ ШАГОМ)
+        filtered_results_all = []
+        for result in found_results:
+            url = result['url']
+            pos = result['pos']
+            domain = urlparse(url).netloc
+            
+            # 1. Трекинг нашего сайта
+            if my_domain and my_domain == domain:
+                if my_serp_pos == 0 or pos < my_serp_pos:
+                    my_serp_pos = pos
+                continue 
+
+            # 2. Исключаем домены из списка исключений
+            if any(x in domain for x in excl): 
+                continue 
+
+            # Если прошел фильтры, добавляем в список всех чистых конкурентов
+            filtered_results_all.append(result)
+
+        # 2.2. Ограничение по TARGET_COMPETITORS (ВТОРЫМ ШАГОМ)
+        # Берем только то количество, которое указано в TARGET_COMPETITORS
+        target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
         
+        collected_competitors_count = len(target_urls_raw)
+        st.info(f"Получено уникальных URL от API: {len(found_results)}. После фильтрации **агрегаторов и стоп-доменов**, для анализа выбрано **{collected_competitors_count}** релевантных конкурентов (цель {TARGET_COMPETITORS}). Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
+
+    else:
+        # Ручной режим
+        raw_urls = st.session_state.get("manual_urls_ui", "")
+        if raw_urls:
+            # В ручном режиме позиция не важна, просто список URL
+            urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
+            target_urls_raw = [{'url': u, 'pos': i+1} for i, u in enumerate(urls)]
+        else:
+            target_urls_raw = []
+            
+        st.info(f"Загружено **{len(target_urls_raw)}** URL конкурентов вручную.")
+
+    if not target_urls_raw and my_input_type != "Без страницы":
+        st.error("Нет конкурентов для анализа после фильтрации. Увеличьте глубину сбора (ТОП) или проверьте фильтры.")
+        st.stop()
+        
+    if not my_data and my_input_type != "Без страницы":
+        st.error("Отсутствуют данные для вашего сайта. Проверьте URL/код или выберите 'Без страницы'.")
+        st.stop()
+
+
+    # 3. Скачивание контента конкурентов и анализ
+    comp_data_full = []
+    
+    # URL для скачивания (только из target_urls_raw)
+    urls_to_fetch = [item['url'] for item in target_urls_raw]
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(parse_page, u, settings): u for u in urls_to_fetch}
+        done = 0
+        total = len(urls_to_fetch)
+        prog = st.progress(0)
+        stat = st.empty()
+        
+        # Собираем данные, сохраняя только успешно скачанные
+        for f in concurrent.futures.as_completed(futures):
+            res = f.result()
+            # Добавляем в список только если скачивание было успешным и контент не пустой
+            if res: 
+                comp_data_full.append(res)
+            
+            done += 1
+            prog.progress(done / total)
+            stat.text(f"Скачивание страниц конкурентов: {done}/{total}")
+    prog.empty()
+    stat.empty()
+
+    if not comp_data_full:
+        st.warning("⚠️ Не удалось скачать контент со страниц конкурентов (возможно, блокировка ботов или таймаут). Все метрики будут 0/1.")
+        
+    
+    # 4. ФИНАЛЬНЫЙ АНАЛИЗ
+    # В calculate_metrics передаем: 
+    # - comp_data_full (только скачанные и очищенные данные)
+    # - original_results (для сохранения порядка и позиции даже нескачанных URL)
+    with st.spinner("Анализ данных..."):
+        st.session_state.analysis_results = calculate_metrics(
+            comp_data_full, 
+            my_data, 
+            settings, 
+            my_serp_pos, 
+            target_urls_raw # Используем список URL:pos, которые мы отобрали
+        ) 
+        st.session_state.analysis_done = True
         st.rerun()
 
-    if st.session_state.analysis_done and st.session_state.analysis_results:
-        results = st.session_state.analysis_results
-        
-        with col_main:
-            st.success("Анализ готов!")
-            
-            st.markdown(f"""
-                <div style='background-color: {LIGHT_BG_MAIN}; padding: 15px; border-radius: 8px; border: 1px solid {BORDER_COLOR}; margin-bottom: 20px;'>
-                    <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта (в баллах от 0 до 100)</h4>
-                    <p style='margin:5px 0 0 0;'>Ширина (охват семантики): <b>{results['my_score']['width']}</b> | Глубина (оптимизация): <b>{results['my_score']['depth']}</b></p>
-                </div>
-                <div class=\"legend-box\">
-                    <span class=\"text-red\">Красный</span>: слова, которых нет у вас. <span class=\"text-bold\">Жирный</span>: слова, участвующие в анализе.<br>
-                    Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона. <br>
-                    ℹ️ Для сортировки всего списка используйте меню над таблицей.
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # --- БЛОК СКАЧИВАНИЯ XLSX (Централизованный) ---
-            st.markdown("---")
-            st.markdown("### 📥 Скачать таблицы в XLSX")
-            
-            col_dl1, col_dl2, col_dl3, _ = st.columns([1, 1, 1, 3])
-            
-            # 1. Скачать Рекомендации по глубине
-            with col_dl1:
-                df_depth = results['depth'].drop(columns=["diff_abs", "is_missing"], errors='ignore')
-                xlsx_depth = convert_df_to_xlsx(df_depth)
-                st.download_button(
-                    label="1. Рекомендации (XLSX)",
-                    data=xlsx_depth,
-                    file_name="gar_pro_recommendations_depth.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
+if st.session_state.analysis_done and st.session_state.analysis_results:
+    results = st.session_state.analysis_results
+    st.success("Анализ готов!")
+    
+    st.markdown(f"""
+        <div style='background-color: {LIGHT_BG_MAIN}; padding: 15px; border-radius: 8px; border: 1px solid {BORDER_COLOR}; margin-bottom: 20px;'>
+            <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта (в баллах от 0 до 100)</h4>
+            <p style='margin:5px 0 0 0;'>Ширина (охват семантики): <b>{results['my_score']['width']}</b> | Глубина (оптимизация): <b>{results['my_score']['depth']}</b></p>
+        </div>
+        <div class="legend-box">
+            <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
+            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона. <br>
+            ℹ️ Для сортировки всего списка используйте меню над таблицей.
+        </div>
+    """, unsafe_allow_html=True)
 
-            # 2. Скачать N-граммы
-            with col_dl2:
-                df_ngrams = results['ngrams']
-                xlsx_ngrams = convert_df_to_xlsx(df_ngrams)
-                st.download_button(
-                    label="2. N-граммы (XLSX)",
-                    data=xlsx_ngrams,
-                    file_name="gar_pro_ngrams.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    disabled=df_ngrams.empty
-                )
+    render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
+    render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
+    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
+    render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
 
-
-            # 3. Скачать Релевантность ТОПа
-            with col_dl3:
-                df_rel = results['relevance_top']
-                xlsx_rel = convert_df_to_xlsx(df_rel)
-                st.download_button(
-                    label="3. Релевантность (XLSX)",
-                    data=xlsx_rel,
-                    file_name="gar_pro_relevance_top.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-            st.markdown("---")
-            # --- КОНЕЦ БЛОКА СКАЧИВАНИЯ XLSX ---
-        
-            # Таблица ТОП/Релевантность
-            render_paginated_table(results['relevance_top'], "1. Релевантность ТОПа (Общий замер)", "tbl_relevance_top", default_sort_col="Позиция", use_abs_sort_default=False, show_csv_download=True)
-            
-            # Таблица Глубина (основная)
-            render_paginated_table(results['depth'], "2. Рекомендации по глубине (Минимум/Максимум)", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True, show_csv_download=True)
-            
-            # Таблица Гибридный ТОП (TF-IDF)
-            render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False, show_csv_download=True)
-
-            # Таблица N-граммы
-            render_paginated_table(results['ngrams'], "4. Рекомендации по N-граммам", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=False, show_csv_download=True)
