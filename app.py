@@ -726,7 +726,9 @@ with col_sidebar:
     search_engine = st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
     region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
     device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-    top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30, 50], index=0, key="settings_top_n")
+    
+    # ИСПРАВЛЕНИЕ: Удаление "50" из списка выбора
+    top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n") 
     
     st.markdown("---")
     st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
@@ -792,15 +794,15 @@ if st.session_state.get('start_analysis_flag'):
         
         # --- ИЗМЕНЕНИЕ: Увеличение глубины API для буфера и остановка сбора по целевому N ---
         TARGET_COMPETITORS = st.session_state.settings_top_n
-        # Запрашиваем максимальную глубину (50) для буфера, независимо от TARGET_COMPETITORS.
-        API_FETCH_DEPTH = 50 
+        # ИСПРАВЛЕНИЕ: Максимальная глубина, которую позволяет API Arsenkin - 30.
+        API_FETCH_DEPTH = 30 
         
         with st.spinner(f"Сбор ТОПа (глубина {API_FETCH_DEPTH}) через Arsenkin API..."):
             found_results = get_arsenkin_urls(
                 query=st.session_state.query_input, 
                 engine_type=st.session_state.settings_search_engine,
                 region_name=st.session_state.settings_region,
-                depth_val=API_FETCH_DEPTH # Используем расширенную глубину для буфера
+                depth_val=API_FETCH_DEPTH # Используем максимальную глубину
             )
             
         if not found_results:
@@ -905,4 +907,3 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
-
