@@ -169,17 +169,14 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
     lr = YANDEX_REGIONS_MAP.get(region_name, 213)
     
     # Определяем тип ПС (см. документацию)
-    # 1 = Яндекс XML, 2 = Яндекс Desktop, 11 = Google Desktop
     if "Google" in engine_type:
-        se_type = 11
-        # Google ID региона обычно отличается, но для примера берем то, что есть, 
-        # или ставим дефолт (1011969 - Москва Google) если выбран Google
+        se_type = 11 # Google Desktop
+        # Используем fallback ID для Google, если регион МСК (1011969)
         if lr == 213: lr_google = 1011969 
-        else: lr_google = lr # Fallback
-        
+        else: lr_google = lr 
         se_config = {"type": se_type, "region": lr_google}
     else:
-        se_type = 1 # Яндекс XML (или можно 2 - Desktop)
+        se_type = 1 # Яндекс XML
         se_config = {"type": se_type, "region": lr}
 
     # 1. ПОСТАНОВКА ЗАДАЧИ
@@ -194,7 +191,6 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
         }
     }
     
-    # Статус в интерфейсе
     status_box = st.empty()
     status_box.info("🚀 Отправка задачи 'check-top' в Arsenkin Tools...")
     
@@ -203,7 +199,7 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
         r_set = requests.post(url_set, headers=headers, json=payload_set, timeout=30)
         
         if r_set.status_code == 429:
-             st.error("⏳ Превышен лимит запросов (30 в минуту). Попробуйте чуть позже.")
+             st.error("⏳ Превышен лимит запросов (30 в минуту).")
              return []
         
         if r_set.status_code != 200:
@@ -227,18 +223,16 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
     # 2. ОЖИДАНИЕ ВЫПОЛНЕНИЯ
     status_box.info(f"⏳ Задача {task_id} создана. Ожидание выполнения...")
     
-    max_retries = 30 # Ждем максимум 90 секунд
+    max_retries = 30 # Ждем максимум ~90 секунд
     is_finished = False
     
     for _ in range(max_retries):
         time.sleep(3) 
-        
         try:
             r_check = requests.post(url_check, headers=headers, json={"task_id": task_id}, timeout=30)
             if r_check.status_code != 200: continue
             
             data_check = r_check.json()
-            # Документация не описывает формат ответа check детально, но обычно там есть status
             status = data_check.get("status")
             
             if status == "finish":
@@ -248,10 +242,8 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
                 st.error("Задача завершилась с ошибкой на сервере.")
                 return []
             else:
-                # process
                 progress = data_check.get("progress", "?")
                 status_box.info(f"⏳ Задача {task_id} в работе... Прогресс: {progress}%")
-                
         except:
             pass
             
@@ -264,8 +256,7 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
     
     results_list = []
     try:
-        # В документации написано "GET запрос", но "Все запросы POST".
-        # Попробуем POST с JSON, так как мы передаем task_id
+        # Для метода get используем JSON с task_id
         r_get = requests.post(url_get, headers=headers, json={"task_id": task_id}, timeout=30)
         
         if r_get.status_code != 200:
@@ -274,24 +265,18 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
 
         data_get = r_get.json()
         
-        # Парсинг ответа check-top
-        # Структура: result -> result -> collect -> [ [ [url1, url2...] ] ]
-        # collect - это массив массивов. 
-        # Уровень 1: Запросы (queries)
-        # Уровень 2: Поисковые системы (se)
-        # Уровень 3: Список URL
-        
+        # Парсинг сложного ответа
         if "result" in data_get and "result" in data_get["result"]:
             internal_result = data_get["result"]["result"]
             if "collect" in internal_result:
                 collect = internal_result["collect"]
-                # Берем первый запрос (мы отправляли один) и первую ПС (мы отправляли одну)
+                # collect[0] -> первый запрос
                 if len(collect) > 0:
                     queries_res = collect[0]
+                    # queries_res[0] -> первая ПС
                     if len(queries_res) > 0:
-                        urls = queries_res[0] # Список URL
-                        # Иногда urls могут быть строками, иногда объектами (зависит от версии API)
-                        # Судя по примеру: [ "url1", "url2", ... ]
+                        urls = queries_res[0]
+                        # urls -> список ссылок
                         for u in urls:
                             if isinstance(u, str):
                                 results_list.append(u)
@@ -303,7 +288,7 @@ def get_competitors_arsenkin_tools(query, engine_type, num_results, region_name,
     status_box.empty()
     
     if not results_list:
-        st.warning("API вернул пустой список URL. Возможно, ничего не найдено.")
+        st.warning("API вернул пустой список URL.")
         
     return results_list[:num_results]
 
@@ -576,94 +561,3 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
                 horizontal=True,
                 key=f"{key_prefix}_order_box",
                 index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
-            )
-            st.session_state[f'{key_prefix}_sort_order'] = sort_order
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    ascending = (sort_order == "Возрастание")
-    if "Добавить" in sort_col or "+/-" in sort_col:
-        df['_temp_sort'] = df[sort_col].abs()
-        df = df.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
-    else:
-        df = df.sort_values(by=sort_col, ascending=ascending)
-
-    df = df.reset_index(drop=True)
-    df.index = df.index + 1
-    
-    ROWS_PER_PAGE = 20
-    if f'{key_prefix}_page' not in st.session_state:
-        st.session_state[f'{key_prefix}_page'] = 1
-        
-    total_rows = len(df)
-    total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
-    current_page = st.session_state[f'{key_prefix}_page']
-    
-    if current_page > total_pages: current_page = total_pages
-    if current_page < 1: current_page = 1
-    
-    start_idx = (current_page - 1) * ROWS_PER_PAGE
-    end_idx = start_idx + ROWS_PER_PAGE
-    
-    df_view = df.iloc[start_idx:end_idx]
-
-    def highlight_rows(row):
-        base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
-        styles = []
-        for _ in row:
-            if 'is_missing' in row and row['is_missing']:
-                styles.append(base_style + 'color: #D32F2F; font-weight: bold;')
-            else:
-                styles.append(base_style + 'font-weight: 600;')
-        return styles
-    
-    cols_to_hide = ["diff_abs", "is_missing"]
-    
-    styled_df = df_view.style.apply(highlight_rows, axis=1)
-    
-    dynamic_height = (len(df_view) * 35) + 40 
-    
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
-        height=dynamic_height, 
-        column_config={c: None for c in cols_to_hide}
-    )
-    
-    c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
-    with c_btn_prev:
-        if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
-            st.session_state[f'{key_prefix}_page'] -= 1
-            st.rerun()
-    with c_info:
-        st.markdown(f"<div style='text-align: center; margin-top: 10px; color:{TEXT_COLOR}'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
-    with c_btn_next:
-        if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
-            st.session_state[f'{key_prefix}_page'] += 1
-            st.rerun()
-    st.markdown("---")
-
-# ==========================================
-# 6. ИНТЕРФЕЙС
-# ==========================================
-
-col_main, col_sidebar = st.columns([65, 35]) 
-
-with col_main:
-    st.title("SEO Анализатор Релевантности (Arsenkin API)")
-
-    st.markdown("### URL или код страницы Вашего сайта")
-    my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
-
-    my_url = ""
-    my_page_content = ""
-    if my_input_type == "Релевантная страница на вашем сайте":
-        my_url = st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input")
-    elif my_input_type == "Исходный код страницы или текст":
-        my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML", key="my_content_input")
-
-    st.markdown("### Поисковой запрос")
-    query = st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
-
-    st.markdown("### Поиск или URL страниц конкурентов")
-    source_type_new = st.radio("Источник конкурентов", ["Поиск (API)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
-    source_typ
