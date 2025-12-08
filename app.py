@@ -33,40 +33,56 @@ def check_password():
     if st.session_state.get("authenticated"):
         return True
     
+    # --- СТИЛИ ДЛЯ ЦЕНТРИРОВАНИЯ И ЧИСТКИ ---
+    st.markdown("""
+        <style>
+        /* Главные стили для центрирования блока на экране */
+        
+        /* Убираем лишние отступы, которые могут вызывать скролл */
+        .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+
+        /* Стиль для контейнера логотипа */
+        .auth-logo-box {
+            text-align: center;
+            margin-bottom: 1rem; /* Отступ между лого и формой */
+            padding-top: 6rem; /* Отступ сверху для визуального центрирования */
+        }
+        .auth-logo-box img {
+            max-width: 250px;
+            height: auto;
+            display: block;
+            margin: 0 auto; /* Горизонтальное центрирование логотипа */
+        }
+        
+        /* Стиль для рамки формы ввода пароля */
+        .login-box {
+            background-color: white; 
+            padding: 2rem; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        /* Убираем лишний отступ у заголовка формы */
+        .login-box h3 {
+            margin-top: 0;
+            text-align: center;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        # --- НОВАЯ СЕКЦИЯ ДЛЯ ОТОБРАЖЕНИЯ ЛОГОТИПА И ФОРМЫ ---
-        st.markdown("""
-            <style>
-            .auth-container {
-                /* Стиль для рамки, куда поместим пароль */
-                background-color: white; 
-                padding: 2rem; 
-                border-radius: 10px; 
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            }
-            .logo-header {
-                text-align: center;
-                margin-top: 5rem; /* Отступ сверху */
-                margin-bottom: 1rem; /* Отступ перед формой */
-            }
-            </style>
-        """, unsafe_allow_html=True)
-        
-        # 1. Логотип (предполагаем, что logo.png в корневой папке)
-        st.markdown('<div class="logo-header">', unsafe_allow_html=True)
-        try:
-            # st.image центрирует изображение по умолчанию в колонке
-            st.image("logo.png", width=250) 
-        except Exception:
-            # Fallback на случай, если файл не найден
-            st.error("❌ Файл logo.png не найден.")
-            
+        # 1. Логотип
+        st.markdown('<div class="auth-logo-box">', unsafe_allow_html=True)
+        # Использование <img> для отображения. margin: 0 auto обеспечивает центрирование.
+        st.markdown('<img src="logo.png" alt="Логотип" style="max-width: 250px; height: auto;">', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # 2. Форма ввода пароля (внутри нового контейнера)
-        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align: center; margin-top:0;'>Вход в систему</h3>", unsafe_allow_html=True)
+        # 2. Форма ввода пароля
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+        st.markdown("<h3>Вход в систему</h3>", unsafe_allow_html=True)
         
         password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
         
@@ -77,8 +93,7 @@ def check_password():
             else:
                 st.error("❌ Неверный пароль")
         
-        st.markdown('</div>', unsafe_allow_html=True) # Закрываем контейнер
-        # --- КОНЕЦ НОВОЙ СЕКЦИИ ---
+        st.markdown('</div>', unsafe_allow_html=True)
         
     return False
 
