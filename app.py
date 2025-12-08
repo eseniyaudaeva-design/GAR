@@ -11,7 +11,8 @@ from urllib.parse import urlparse
 import inspect
 import time
 import json
-import os # Для работы с файловой системой
+import os 
+import io # Добавлен для работы с XLSX
 
 # ==========================================
 # 0. ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
@@ -216,6 +217,20 @@ def convert_df_to_xml(df, root_name="Results", row_name="Item"):
     
     xml_string += f'</{root_name}>'
     return xml_string
+
+def convert_df_to_xlsx(df):
+    """Преобразование DataFrame в XLSX (Excel) формат."""
+    output = io.BytesIO()
+    # Требуется: pip install openpyxl
+    try:
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False)
+    except ImportError:
+        st.error("Ошибка: Для экспорта в XLSX требуется библиотека 'openpyxl'. Установите её: pip install openpyxl")
+        return None
+        
+    output.seek(0)
+    return output.read()
 
 
 # --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
@@ -715,7 +730,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 # ==========================================
 
 def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
-    # --- ИЗМЕНЕНИЕ 3: Добавление кнопок скачивания CSV/XML ---
+    # --- ИЗМЕНЕНИЕ: Добавление кнопок скачивания CSV/XML/XLSX ---
     st.markdown(f"#### {title_text}")
 
     df_for_download = df.copy() 
@@ -727,8 +742,10 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         
     csv_data = convert_df_to_csv(df_for_download)
     xml_data = convert_df_to_xml(df_for_download, root_name=key_prefix, row_name="item")
+    xlsx_data = convert_df_to_xlsx(df_for_download) # Новая функция для XLSX
 
-    c_dl1, c_dl2, c_dl_spacer = st.columns([1, 1, 8])
+    # 3 кнопки скачивания
+    c_dl1, c_dl2, c_dl3, c_dl_spacer = st.columns([1, 1, 1, 7]) 
 
     with c_dl1:
         st.download_button(
@@ -749,18 +766,29 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             key=f"{key_prefix}_dl_xml",
             use_container_width=True
         )
+        
+    # Кнопка XLSX
+    if xlsx_data: 
+        with c_dl3:
+            st.download_button(
+                label="⬇️ XLSX",
+                data=xlsx_data,
+                file_name=f"{key_prefix}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"{key_prefix}_dl_xlsx",
+                use_container_width=True
+            )
     # -------------------------------------------------------------------------
     
     # Оригинальная логика сортировки и пагинации
     if default_sort_col and default_sort_col in df.columns:
-        # Убедимся, что колонка для сортировки не является частью служебных, если мы используем `use_abs_sort_default`
         if use_abs_sort_default and 'diff_abs' in df.columns:
             df = df.sort_values(by='diff_abs', ascending=False).reset_index(drop=True)
         else:
             df = df.sort_values(by=default_sort_col, ascending=False).reset_index(drop=True)
             
     df = df.reset_index(drop=True)
-    df.index = df.index + 1 # Стандартный индекс для отображения в Streamlit (1, 2, 3...)
+    df.index = df.index + 1 
     ROWS_PER_PAGE = 20 
     
     if f'{key_prefix}_page' not in st.session_state:
@@ -771,7 +799,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     current_page = st.session_state[f'{key_prefix}_page']
     
-    # Корректировка страницы, если она вышла за границы
     if current_page > total_pages: current_page = total_pages
     if current_page < 1: current_page = 1
     
@@ -784,16 +811,12 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
         
-        # Список колонок, для которых не нужно применять стили жирности/красного
         cols_to_skip = ["diff_abs", "is_missing", "№", "Позиция"] 
         
         for col_name in row.index:
-            # Проверка, что 'is_missing' существует и его значение True
             if col_name == 'is_missing' and 'is_missing' in row and row['is_missing']:
-                # Красный цвет для строк, где слова нет у вас
                 styles.append(base_style + 'color: #D32F2F; font-weight: bold;') 
             elif col_name not in cols_to_skip:
-                # Жирный для остальных, кроме служебных и специальных колонок
                 styles.append(base_style + 'font-weight: 600;') 
             else:
                 styles.append(base_style)
@@ -801,7 +824,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     cols_to_hide = ["diff_abs", "is_missing"]
     
-    # Применяем стили только если DataFrame не пуст
     if not df_view.empty:
         styled_df = df_view.style.apply(highlight_rows, axis=1)
     else:
@@ -936,11 +958,12 @@ elif st.session_state.app_page == "Анализ":
         search_engine = st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
         region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
         device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-        # Максимальная глубина, которую позволяет API - 30. 
+        
+        # Основные настройки
         top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n")
         st.markdown("---")
         
-        # Настройки парсинга
+        # Настройки парсинга (Блоки, которые вы просили вернуть)
         st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
@@ -1086,12 +1109,11 @@ elif st.session_state.app_page == "Анализ":
         st.session_state.analysis_results = results
         st.session_state.analysis_done = True
         
-        # --- ИЗМЕНЕНИЕ 2: Сохранение результата в историю ---
+        # --- Сохранение результата в историю ---
         if st.session_state.analysis_results:
             # Конвертируем DataFrames в JSON-совместимый формат (список словарей)
             new_result = {
                 "timestamp": time.time(),
-                # Формат времени изменен, чтобы не вызывать ошибку форматирования
                 "date_str": time.strftime("%Y-%m-%d %H:%M:%S"), 
                 "query": st.session_state.get('query_input', 'N/A'),
                 "url": st.session_state.get('my_url_input', 'N/A'),
@@ -1108,7 +1130,6 @@ elif st.session_state.app_page == "Анализ":
             all_results = load_results()
             all_results.insert(0, new_result) 
             save_results(all_results)
-        # ---------------------------------------------------
         
         st.rerun()
 
