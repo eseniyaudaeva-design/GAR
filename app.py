@@ -65,7 +65,6 @@ if not check_password():
 # ==========================================
 # 3. НАСТРОЙКИ API И РЕГИОНОВ
 # ==========================================
-# Убедитесь, что этот токен актуален!
 ARSENKIN_TOKEN = "43acbbb60cb7989c05914ff21be45379"
 
 # Словарь регионов (Название -> {yandex_id, google_id})
@@ -433,7 +432,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         # Добавляем Ваш сайт
         table_rel_fallback.append({
             "Домен": my_label, 
-            "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
+            "Позиция": my_serp_pos if my_serp_pos > 0 else 0,
             "Ширина (балл)": 0, "Глубина (балл)": 0
         })
         
@@ -605,7 +604,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
     table_rel.append({
         "Домен": my_label, 
-        "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1, # Ставим после последнего конкурента
+        "Позиция": my_serp_pos if my_serp_pos > 0 else 0, # Ставим 0, если не найден
         "Ширина (балл)": my_score_w, 
         "Глубина (балл)": my_score_d
     })
@@ -669,7 +668,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     # ПАГИНАЦИЯ (20 строк)
     df = df.reset_index(drop=True)
-    df.index = df.index + 1
+    # Удаляем создание df.index + 1, чтобы не путать
     
     ROWS_PER_PAGE = 20
     if f'{key_prefix}_page' not in st.session_state:
@@ -711,6 +710,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         styled_df,
         use_container_width=True,
         height=dynamic_height, 
+        hide_index=True, # УБИРАЕМ СТОЛБЕЦ INDEX
         column_config={c: None for c in cols_to_hide}
     )
     
@@ -776,8 +776,8 @@ with col_sidebar:
     region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
     device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
     
-    # Максимальная глубина, которую позволяет API - 30.
-    top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n") 
+    # Количество конкурентов ДЛЯ АНАЛИЗА
+    top_n = st.selectbox("Количество конкурентов для анализа", [10, 20, 30], index=0, key="settings_top_n") 
     
     st.markdown("---")
     st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
@@ -841,10 +841,13 @@ if st.session_state.get('start_analysis_flag'):
     # 2. Сбор URL конкурентов
     if source_type == "API":
         
-        TARGET_COMPETITORS = st.session_state.settings_top_n
-        API_FETCH_DEPTH = 30 
+        # Сколько реально нужно пользователю (10, 20, 30)
+        TARGET_COMPETITORS_COUNT = st.session_state.settings_top_n
         
-        with st.spinner(f"Сбор ТОПа (глубина {API_FETCH_DEPTH}) через Arsenkin API..."):
+        # Запрашиваем у API с запасом (100), чтобы после фильтрации осталось достаточно
+        API_FETCH_DEPTH = 100 
+        
+        with st.spinner(f"Сбор ТОПа (сканируем {API_FETCH_DEPTH} позиций) через Arsenkin API..."):
             found_results = get_arsenkin_urls(
                 query=st.session_state.query_input, 
                 engine_type=st.session_state.settings_search_engine,
@@ -871,9 +874,9 @@ if st.session_state.get('start_analysis_flag'):
             pos = result['pos']
             domain = urlparse(url).netloc
             
-            # 1. Трекинг нашего сайта
-            if my_domain and my_domain == domain:
-                if my_serp_pos == 0 or pos < my_serp_pos:
+            # 1. Трекинг нашего сайта (Если нашли - запоминаем позицию, но в список конкурентов НЕ добавляем)
+            if my_domain and my_domain in domain:
+                if my_serp_pos == 0:
                     my_serp_pos = pos
                 continue 
 
@@ -884,12 +887,23 @@ if st.session_state.get('start_analysis_flag'):
             # Если прошел фильтры, добавляем в список всех чистых конкурентов
             filtered_results_all.append(result)
 
-        # 2.2. Ограничение по TARGET_COMPETITORS (ВТОРЫМ ШАГОМ)
-        # Берем только то количество, которое указано в TARGET_COMPETITORS
-        target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
+        # 2.2. Заполняем список до нужного количества (TARGET_COMPETITORS_COUNT)
+        # Мы идем по списку очищенных результатов, пока не наберем N штук.
+        # Позиции (pos) при этом сохраняются реальные из ТОП-100.
+        target_urls_raw = []
+        for res in filtered_results_all:
+            if len(target_urls_raw) < TARGET_COMPETITORS_COUNT:
+                target_urls_raw.append(res)
+            else:
+                break
         
         collected_competitors_count = len(target_urls_raw)
-        st.info(f"Получено уникальных URL от API: {len(found_results)}. После фильтрации **агрегаторов и стоп-доменов**, для анализа выбрано **{collected_competitors_count}** релевантных конкурентов (цель {TARGET_COMPETITORS}). Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
+        
+        # Если не набралось даже после 100
+        if collected_competitors_count < TARGET_COMPETITORS_COUNT:
+             st.warning(f"⚠️ В ТОП-100 найдено всего {collected_competitors_count} подходящих конкурентов (требовалось {TARGET_COMPETITORS_COUNT}). Анализ будет проведен по ним.")
+
+        st.info(f"Просканировано {len(found_results)} позиций. Отобрано **{collected_competitors_count}** конкурентов. Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет (0)'}**.")
 
     else:
         # Ручной режим
@@ -952,7 +966,7 @@ if st.session_state.get('start_analysis_flag'):
             my_data, 
             settings, 
             my_serp_pos, 
-            target_urls_raw # Используем список URL:pos, которые мы отобрали
+            target_urls_raw # Используем список URL:pos, которые мы отобрли
         ) 
         st.session_state.analysis_done = True
         st.rerun()
@@ -977,4 +991,3 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
-
