@@ -205,6 +205,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     
     progress_info = st.empty()
     bar = st.progress(0)
+    res_check_data = {}
     
     while status == "process" and attempts < max_attempts:
         time.sleep(5) # Ждем 5 сек для обхода 429 ошибки
@@ -258,30 +259,41 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.json(res_data)
         return []
 
-    # 4. Парсинг
-    urls = []
+    # 4. Парсинг (ИЗМЕНЕН: Теперь возвращает список словарей с позицией)
+    results_list = []
+    unique_urls = set()
     try:
         collect = res_data['result']['result']['collect']
         
-        def extract_urls(obj):
-            found = []
-            if isinstance(obj, list):
-                for item in obj:
-                    found.extend(extract_urls(item))
-            elif isinstance(obj, str):
-                if obj.startswith('http'):
-                    found.append(obj)
-            return found
-            
-        urls = extract_urls(collect)
-        
-    except Exception:
-        st.error("❌ Ошибка чтения и парсинга финального JSON-ответа")
+        # Collect - список, где каждый элемент - результаты одного поисковика
+        for engine_data in collect:
+            # Итерируемся по результатам в каждом поисковике
+            # Ключ - это ID поисковика (например, '2' для Yandex, '11' для Google)
+            for engine_id, serps in engine_data.items():
+                if isinstance(serps, list):
+                    for item in serps:
+                        url = item.get('url')
+                        pos = item.get('pos')
+                        
+                        if url and pos:
+                            # Для уникальности по URL, сохраняем только первую (лучшую) позицию, если URL повторяется (напр., в Yandex+Google)
+                            if url not in unique_urls:
+                                results_list.append({'url': url, 'pos': pos})
+                                unique_urls.add(url)
+                            # Иначе, если уже есть - проверяем, не лучше ли новая позиция
+                            else:
+                                for res in results_list:
+                                    if res['url'] == url and pos < res['pos']:
+                                        res['pos'] = pos
+                                        
+    except Exception as e:
+        st.error(f"❌ Ошибка чтения и парсинга финального JSON-ответа: {e}")
         st.write("JSON, который не удалось разобрать:")
         st.json(res_data) 
         return []
         
-    return list(set(urls))
+    # Возвращаем список словарей: [{'url': '...', 'pos': N}, ...]
+    return results_list
 
 
 def process_text_detailed(text, settings, n_gram=1):
@@ -344,7 +356,8 @@ def parse_page(url, settings):
         return {'url': url, 'domain': urlparse(url).netloc, 'body_text': body_text, 'anchor_text': anchor_text}
     except: return None
 
-def calculate_metrics(comp_data, my_data, settings):
+# ИЗМЕНЕНА: Теперь принимает my_serp_pos
+def calculate_metrics(comp_data, my_data, settings, my_serp_pos):
     all_forms_map = defaultdict(set)
 
     # 1. Ваш сайт
@@ -367,6 +380,7 @@ def calculate_metrics(comp_data, my_data, settings):
             all_forms_map[k].update(v)
     
     if not comp_docs:
+        # Если нет конкурентов, все равно вернем баллы своего сайта
         return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}}
 
     avg_len = np.mean([len(d['body']) for d in comp_docs])
@@ -518,13 +532,20 @@ def calculate_metrics(comp_data, my_data, settings):
         my_label = "Ваш сайт"
         
     table_rel.append({
-        "Домен": my_label, "Позиция": 0, # Позиция 0 чтобы был сверху при сортировке
-        "Ширина (балл)": my_score_w, "Глубина (балл)": my_score_d
+        "Домен": my_label, 
+        "Позиция": my_serp_pos, # <-- ИСПОЛЬЗУЕМ РЕАЛЬНУЮ ПОЗИЦИЮ ИЗ SERP
+        "Ширина (балл)": my_score_w, 
+        "Глубина (балл)": my_score_d
     })
+    
+    # Сортируем таблицу релевантности, чтобы Ваш сайт (Позиция 0) был сверху
+    # Если my_serp_pos > 0, он сортируется по своему значению
+    table_rel_df = pd.DataFrame(table_rel)
+    table_rel_df = table_rel_df.sort_values(by='Позиция', ascending=True).reset_index(drop=True)
         
     return {
         "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
-        "ngrams": pd.DataFrame(table_ngrams), "relevance_top": pd.DataFrame(table_rel),
+        "ngrams": pd.DataFrame(table_ngrams), "relevance_top": table_rel_df,
         "my_score": {"width": my_score_w, "depth": my_score_d}
     }
 
@@ -696,7 +717,7 @@ with col_sidebar:
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
 # ==========================================
-# 7. ВЫПОЛНЕНИЕ
+# 7. ВЫПОЛНЕНИЕ (ИЗМЕНЕНА ЛОГИКА ФИЛЬТРАЦИИ И ПОИСКА ПОЗИЦИИ)
 # ==========================================
 if st.session_state.get('start_analysis_flag'):
     st.session_state.start_analysis_flag = False
@@ -725,37 +746,67 @@ if st.session_state.get('start_analysis_flag'):
     }
     
     target_urls = []
+    my_data = None
+    my_domain = ""
+    my_serp_pos = 0 # Реальная позиция в ТОПе (0, если не найдена)
+
+    # 1. Сбор данных о ВАШЕМ сайте и домене
+    if my_input_type == "Релевантная страница на вашем сайте":
+        with st.spinner("Скачивание вашей страницы..."):
+            my_url_input = st.session_state.my_url_input
+            my_data = parse_page(my_url_input, settings)
+            if not my_data:
+                st.error("Не удалось скачать вашу страницу. Проверьте URL или настройки User-Agent.")
+                st.stop()
+            my_domain = urlparse(my_url_input).netloc
+    elif my_input_type == "Исходный код страницы или текст":
+        my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
+        my_domain = "local" # Заглушка для домена
+    
+    # 2. Сбор URL конкурентов
     
     if source_type == "API":
-        # Логика работы через Arsenkin API
         
-        with st.spinner(f"Сбор ТОПа через Arsenkin API..."):
-            found_urls = get_arsenkin_urls(
+        with st.spinner(f"Сбор ТОПа ({st.session_state.settings_top_n}) через Arsenkin API..."):
+            # Получаем список словарей: [{'url': '...', 'pos': N}, ...]
+            found_results = get_arsenkin_urls(
                 query=st.session_state.query_input, 
                 engine_type=st.session_state.settings_search_engine,
                 region_name=st.session_state.settings_region,
                 depth_val=st.session_state.settings_top_n
             )
             
-        if not found_urls:
-            # Здесь ошибка была выведена функцией get_arsenkin_urls
+        if not found_results:
             st.error("API не вернул ссылки. Проверьте **JSON-ответ сервера** (если он выведен выше).")
             st.stop()
             
-        # Фильтрация
+        # Фильтрация и трекинг позиции
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         if st.session_state.settings_agg: 
+            # Добавляем стандартные агрегаторы, если отмечен чекбокс
             excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com", "yandex.ru"])
             
-        for u in found_urls:
-            # Исключаем свой сайт
-            if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input and urlparse(st.session_state.my_url_input).netloc in urlparse(u).netloc: continue
-            # Исключаем домены из списка исключений
-            if any(x in urlparse(u).netloc for x in excl): continue
+        initial_count = len(found_results)
+        
+        for result in found_results:
+            url = result['url']
+            pos = result['pos']
+            domain = urlparse(url).netloc
+
+            # 1. Проверяем, является ли это наш сайт (по домену)
+            if my_domain and my_domain == domain:
+                # Фиксируем лучшую позицию (минимальное число)
+                if my_serp_pos == 0 or pos < my_serp_pos:
+                    my_serp_pos = pos
+                continue # Исключаем наш сайт из списка конкурентов
+
+            # 2. Исключаем домены из списка исключений
+            if any(x in domain for x in excl): 
+                continue # Исключаем агрегаторы/запрещенные
+
+            target_urls.append(url) # Добавляем URL конкурента для парсинга
             
-            target_urls.append(u)
-            
-        st.info(f"Получено уникальных URL от API: {len(found_urls)}. После фильтрации: {len(target_urls)}")
+        st.info(f"Получено уникальных URL от API: {initial_count}. После фильтрации: **{len(target_urls)}** конкурентов. Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
 
     else:
         # Ручной режим
@@ -764,21 +815,19 @@ if st.session_state.get('start_analysis_flag'):
             target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
         else:
             target_urls = []
+            
+        st.info(f"Загружено **{len(target_urls)}** URL конкурентов вручную.")
 
-    if not target_urls:
-        st.error("Нет конкурентов для анализа после фильтрации. Проверьте список исключаемых доменов.")
+    if not target_urls and source_type != "Ручной список":
+        st.error("Нет конкурентов для анализа после фильтрации. Проверьте список исключаемых доменов (особенно если включен фильтр агрегаторов).")
         st.stop()
         
-    my_data = None
-    if my_input_type == "Релевантная страница на вашем сайте":
-        with st.spinner("Скачивание вашей страницы..."):
-            my_data = parse_page(st.session_state.my_url_input, settings)
-            if not my_data:
-                st.error("Не удалось скачать вашу страницу. Проверьте URL или настройки User-Agent.")
-                st.stop()
-    elif my_input_type == "Исходный код страницы или текст":
-        my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
+    if not my_data and my_input_type != "Без страницы":
+        st.error("Отсутствуют данные для вашего сайта. Проверьте URL/код или выберите 'Без страницы'.")
+        st.stop()
 
+
+    # 3. Скачивание контента конкурентов и анализ
     comp_data = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
@@ -796,11 +845,12 @@ if st.session_state.get('start_analysis_flag'):
     stat.empty()
 
     if not comp_data:
-        st.error("Не удалось скачать контент со страниц конкурентов (возможно, блокировка ботов).")
+        st.error("Не удалось скачать контент со страниц конкурентов (возможно, блокировка ботов или таймаут).")
         st.stop()
 
     with st.spinner("Анализ данных..."):
-        st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings)
+        # Передаем реальную позицию
+        st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings, my_serp_pos) 
         st.session_state.analysis_done = True
         st.rerun()
 
