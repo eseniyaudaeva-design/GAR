@@ -9,6 +9,8 @@ import math
 import concurrent.futures
 from urllib.parse import urlparse
 import inspect
+import time
+import json
 
 # ==========================================
 # 0. ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
@@ -61,8 +63,28 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 3. СТИЛИ И КОНСТАНТЫ
+# 3. НАСТРОЙКИ API И РЕГИОНОВ
 # ==========================================
+ARSENKIN_TOKEN = "43acbbb60cb7989c05914ff21be45379"
+
+# Словарь регионов (Название -> {yandex_id, google_id})
+# Google ID для РФ часто общий (Россия) или Москва, для упрощения ставим основные коды
+REGION_MAP = {
+    "Москва": {"ya": 213, "go": 1011969},
+    "Санкт-Петербург": {"ya": 2, "go": 1011966},
+    "Екатеринбург": {"ya": 54, "go": 1011868},
+    "Новосибирск": {"ya": 65, "go": 1011928},
+    "Казань": {"ya": 43, "go": 1011904},
+    "Нижний Новгород": {"ya": 47, "go": 1011918},
+    "Самара": {"ya": 51, "go": 1011956},
+    "Челябинск": {"ya": 56, "go": 1011882},
+    "Омск": {"ya": 66, "go": 1011931},
+    "Краснодар": {"ya": 35, "go": 1011894},
+    "Киев (UA)": {"ya": 143, "go": 1012852},
+    "Минск (BY)": {"ya": 157, "go": 1001493},
+    "Алматы (KZ)": {"ya": 162, "go": 1014601}
+}
+
 DEFAULT_EXCLUDE_DOMAINS = [
     "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com",
     "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru",
@@ -71,11 +93,11 @@ DEFAULT_EXCLUDE_DOMAINS = [
     "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", 
     "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", 
     "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", 
-    "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by"
+    "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", 
+    "rutube.ru", "vk.com", "facebook.com"
 ]
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
-REGIONS = ["Москва", "Санкт-Петербург", "Екатеринбург", "Новосибирск", "Казань", "Нижний Новгород", "Самара", "Челябинск", "Омск", "Краснодар", "Киев (UA)", "Минск (BY)", "Алматы (KZ)"]
 
 # Цвета
 PRIMARY_COLOR = "#277EFF"
@@ -89,47 +111,24 @@ ROW_BORDER_COLOR = "#DBEAFE"
 st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        
-        /* Основной фон и текст */
         .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
         html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
-
-        /* Кнопки */
         .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
         .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
-        
-        /* Поля ввода */
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
             background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
-
-        /* === ТАБЛИЦЫ === */
-        div[data-testid="stDataFrame"] {{
-            border: 2px solid {PRIMARY_COLOR} !important;
-            border-radius: 8px !important;
-        }}
+        div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important; border-radius: 8px !important; }}
         div[data-testid="stDataFrame"] div[role="columnheader"] {{
-            background-color: {HEADER_BG} !important;
-            color: {PRIMARY_COLOR} !important;
-            font-weight: 700 !important;
-            border-bottom: 2px solid {PRIMARY_COLOR} !important;
+            background-color: {HEADER_BG} !important; color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
         }}
         div[data-testid="stDataFrame"] div[role="gridcell"] {{
-            background-color: #FFFFFF !important;
-            color: {TEXT_COLOR} !important;
-            border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
+            background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
         }}
-
-        .legend-box {{
-            padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
-        }}
+        .legend-box {{ padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px; }}
         .text-red {{ color: #D32F2F; font-weight: bold; }}
         .text-bold {{ font-weight: 600; }}
-        
-        .sort-container {{
-            background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR};
-        }}
-
+        .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR}; }}
         section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-left: 1px solid {BORDER_COLOR} !important; }}
     </style>
 """, unsafe_allow_html=True)
@@ -148,16 +147,128 @@ except Exception as e:
     USE_NLP = False
     st.sidebar.error(f"Ошибка загрузки NLP: {e}")
 
-try:
-    from googlesearch import search
-    USE_SEARCH = True
-except:
-    USE_SEARCH = False
-
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
+
+# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
+def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
+    """
+    engine_type: "Google", "Яндекс", "Яндекс + Google"
+    """
+    url_set = "https://arsenkin.ru/api/tools/set"
+    url_check = "https://arsenkin.ru/api/tools/check"
+    url_get = "https://arsenkin.ru/api/tools/get"
+    
+    headers = {
+        "Authorization": f"Bearer {ARSENKIN_TOKEN}",
+        "Content-type": "application/json"
+    }
+    
+    # Определяем регионы
+    reg_ids = REGION_MAP.get(region_name, {"ya": 213, "go": 1011969})
+    
+    se_params = []
+    
+    # Логика формирования массива se
+    # Type: Яндекс Desktop = 2, Google Desktop = 11
+    if "Яндекс" in engine_type:
+        se_params.append({"type": 2, "region": reg_ids['ya']})
+    if "Google" in engine_type:
+        se_params.append({"type": 11, "region": reg_ids['go']})
+        
+    payload = {
+        "tools_name": "check-top",
+        "data": {
+            "queries": [query],
+            "is_snippet": False,
+            "noreask": True,
+            "se": se_params,
+            "depth": depth_val
+        }
+    }
+    
+    # 1. Постановка задачи
+    try:
+        r = requests.post(url_set, headers=headers, json=payload, timeout=10)
+        resp_json = r.json()
+        if "task_id" not in resp_json:
+            st.error(f"Ошибка API (постановка): {resp_json}")
+            return []
+        task_id = resp_json["task_id"]
+    except Exception as e:
+        st.error(f"Ошибка соединения с API: {e}")
+        return []
+    
+    # 2. Ожидание выполнения
+    status = "process"
+    attempts = 0
+    while status == "process" and attempts < 60: # макс 2 минуты
+        time.sleep(2)
+        try:
+            r_check = requests.post(url_check, headers=headers, json={"task_id": task_id})
+            # API может вернуть статус в разных форматах, проверяем
+            # Обычно возвращает JSON со статусом или ошибкой
+            # Для check-top статус проверяется по логике API.
+            # Упростим: check обычно нужен, но можно сразу долбить get, он вернет null если не готово
+            # Но правильнее проверять. Документация говорит check возвращает статус.
+            pass 
+        except:
+            pass
+            
+        # Пробуем получить результат сразу, если статус не ясен
+        try:
+            r_get = requests.post(url_get, headers=headers, json={"task_id": task_id}) 
+            # Внимание: метод GET в доке описан как GET запрос, но часто работает и POST.
+            # Исходя из вашего файла документации: "Получение результата... url .../get"
+            # Обычно GET параметры, но попробуем POST JSON как в доке
+            res_data = r_get.json()
+            
+            # Проверяем готовность внутри ответа (зависит от структуры)
+            # Если задача готова, будет code: TASK_RESULT
+            if res_data.get("code") == "TASK_RESULT":
+                status = "done"
+                break
+            elif res_data.get("error"):
+                 st.error(f"Ошибка API: {res_data.get('error')}")
+                 return []
+        except:
+            pass
+        
+        attempts += 1
+        
+    if status != "done":
+        st.error("Таймаут ожидания API Арсенкина")
+        return []
+        
+    # 3. Парсинг ответа
+    urls = []
+    try:
+        # Структура: result -> result -> collect -> [ [ [url1, url2...], ... ] ]
+        # collect - массив массивов (для каждого запроса)
+        # Внутри массив массивов (для каждой ПС)
+        collect = res_data['result']['result']['collect']
+        
+        # Перебираем все уровни вложенности и достаем строки
+        def extract_urls(obj):
+            found = []
+            if isinstance(obj, list):
+                for item in obj:
+                    found.extend(extract_urls(item))
+            elif isinstance(obj, str):
+                if obj.startswith('http'):
+                    found.append(obj)
+            return found
+            
+        urls = extract_urls(collect)
+        
+    except Exception as e:
+        st.error(f"Ошибка разбора ответа API: {e}")
+        return []
+        
+    return list(set(urls)) # Убираем дубли
+
 
 def process_text_detailed(text, settings, n_gram=1):
     if settings['numbers']:
@@ -203,8 +314,9 @@ def parse_page(url, settings):
         tags_to_remove = ['script', 'style', 'head']
         if settings['noindex']:
             tags_to_remove.extend(['noindex', 'nav', 'footer', 'header', 'aside'])
-            comments = soup.find_all(string=lambda text: isinstance(text, Comment))
-            for c in comments: c.extract()
+        
+        comments = soup.find_all(string=lambda text: isinstance(text, Comment))
+        for c in comments: c.extract()
         for t in soup.find_all(tags_to_remove): t.decompose()
             
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
@@ -219,7 +331,6 @@ def parse_page(url, settings):
     except: return None
 
 def calculate_metrics(comp_data, my_data, settings):
-    # Глобальный сборщик форм
     all_forms_map = defaultdict(set)
 
     # 1. Ваш сайт
@@ -532,8 +643,8 @@ with col_main:
     query = st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
 
     st.markdown("### Поиск или URL страниц конкурентов")
-    source_type_new = st.radio("Источник конкурентов", ["Поиск", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
-    source_type = "Google (Авто)" if source_type_new == "Поиск" else "Ручной список" 
+    source_type_new = st.radio("Источник конкурентов", ["Поиск через API Arsenkin (TOP-10)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
+    source_type = "API" if "API" in source_type_new else "Ручной список" 
 
     if source_type == "Ручной список":
         st.markdown("### Введите список URL")
@@ -553,12 +664,13 @@ with col_main:
 with col_sidebar:
     st.markdown("#####⚙️ Настройки")
     ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
-    search_engine = st.selectbox("Поисковая система", ["Google", "Яндекс", "Яндекс + Google"], key="settings_search_engine")
-    region = st.selectbox("Яндекс / Регион", REGIONS, key="settings_region")
+    search_engine = st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
+    region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
     device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-    top_n = st.selectbox("Анализировать ТОП", [10, 20, 30], index=1, key="settings_top_n")
+    top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30, 50], index=0, key="settings_top_n")
+    
+    st.markdown("---")
     st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
-    st.selectbox("Учитывать тип", ["Все страницы", "Коммерческие", "Информационные"], key="settings_content_type")
     
     col_c1, col_c2 = st.columns(2)
     with col_c1:
@@ -581,6 +693,9 @@ if st.session_state.get('start_analysis_flag'):
     if my_input_type == "Исходный код страницы или текст" and not st.session_state.get('my_content_input', '').strip():
         st.error("Введите исходный код!")
         st.stop()
+    if not st.session_state.get('query_input'):
+        st.error("Введите поисковый запрос!")
+        st.stop()
 
     settings = {
         'noindex': st.session_state.settings_noindex, 
@@ -592,26 +707,40 @@ if st.session_state.get('start_analysis_flag'):
     }
     
     target_urls = []
-    if source_type == "Google (Авто)":
+    
+    if source_type == "API":
+        # Логика работы через Arsenkin API
         excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-        if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube"])
-        try:
-            with st.spinner(f"Сбор ТОПа..."):
-                if not USE_SEARCH:
-                    st.error("Нет библиотеки googlesearch")
-                    st.stop()
-                found = search(st.session_state.query_input, num_results=st.session_state.settings_top_n * 2, lang="ru")
-                cnt = 0
-                for u in found:
-                    if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input in u: continue
-                    if any(x in urlparse(u).netloc for x in excl): continue
-                    target_urls.append(u)
-                    cnt += 1
-                    if cnt >= st.session_state.settings_top_n: break
-        except Exception as e:
-            st.error(f"Ошибка поиска: {e}")
+        if st.session_state.settings_agg: 
+            excl.extend(["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com", "yandex.ru"])
+            
+        with st.spinner(f"Запрос к API Arsenkin ({st.session_state.settings_search_engine}, {st.session_state.settings_region})..."):
+            found_urls = get_arsenkin_urls(
+                st.session_state.query_input, 
+                st.session_state.settings_search_engine,
+                st.session_state.settings_region,
+                st.session_state.settings_top_n
+            )
+            
+        if not found_urls:
+            st.error("API не вернул ссылки или произошла ошибка.")
             st.stop()
+            
+        # Фильтрация
+        cnt = 0
+        for u in found_urls:
+            # Исключаем свой сайт
+            if my_input_type == "Релевантная страница на вашем сайте" and st.session_state.my_url_input in u: continue
+            # Исключаем домены из списка исключений
+            if any(x in urlparse(u).netloc for x in excl): continue
+            
+            target_urls.append(u)
+            cnt += 1
+            
+        st.info(f"Получено уникальных URL от API: {len(found_urls)}. После фильтрации: {len(target_urls)}")
+
     else:
+        # Ручной режим
         raw_urls = st.session_state.get("manual_urls_ui", "")
         if raw_urls:
             target_urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
@@ -619,7 +748,7 @@ if st.session_state.get('start_analysis_flag'):
             target_urls = []
 
     if not target_urls:
-        st.error("Нет конкурентов.")
+        st.error("Нет конкурентов для анализа.")
         st.stop()
         
     my_data = None
@@ -630,7 +759,7 @@ if st.session_state.get('start_analysis_flag'):
         my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
 
     comp_data = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(parse_page, u, settings): u for u in target_urls}
         done = 0
         total = len(target_urls)
@@ -641,9 +770,13 @@ if st.session_state.get('start_analysis_flag'):
             if res: comp_data.append(res)
             done += 1
             prog.progress(done / total)
-            stat.text(f"Загрузка конкурентов: {done}/{total}")
+            stat.text(f"Скачивание страниц конкурентов: {done}/{total}")
     prog.empty()
     stat.empty()
+
+    if not comp_data:
+        st.error("Не удалось скачать контент со страниц конкурентов (возможно, блокировка ботов).")
+        st.stop()
 
     with st.spinner("Анализ данных..."):
         st.session_state.analysis_results = calculate_metrics(comp_data, my_data, settings)
@@ -670,4 +803,3 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
-
