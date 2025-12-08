@@ -152,10 +152,10 @@ if 'analysis_results' not in st.session_state:
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN (ИСПРАВЛЕНА) ---
+# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN (ФИНАЛЬНАЯ ВЕРСИЯ) ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
-    url_get = "https://arsenkin.ru/api/tools/get"
+    url_check = "https://arsenkin.ru/api/tools/check" # Используем для проверки и получения результата
     
     headers = {
         "Authorization": f"Bearer {ARSENKIN_TOKEN}",
@@ -176,8 +176,8 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         "tools_name": "check-top",
         "data": {
             "queries": [query],
-            "is_snippet": False, # Не запрашиваем сниппеты, так как они не нужны для сбора URL
-            "noreask": True, # Отключаем исправление запроса
+            "is_snippet": False,
+            "noreask": True,
             "se": se_params,
             "depth": depth_val
         }
@@ -196,10 +196,10 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.toast(f"Задача ID {task_id} запущена")
         
     except Exception as e:
-        st.error(f"❌ Ошибка сети: {e}")
+        st.error(f"❌ Ошибка сети при постановке задачи: {e}")
         return []
     
-    # 2. Ожидание (с увеличенным интервалом и контролем)
+    # 2. Ожидание и проверка статуса (увеличенный интервал и контроль)
     status = "process"
     attempts = 0
     max_attempts = 40 # Макс 200 секунд
@@ -209,40 +209,42 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     
     res_data = {}
     while status == "process" and attempts < max_attempts:
-        time.sleep(5) # Ждем 5 сек, чтобы не превысить лимиты
+        time.sleep(5) # Ждем 5 сек для обхода 429 ошибки
         attempts += 1
         bar.progress(attempts / max_attempts)
         progress_info.text(f"Ожидание ответа API... ({attempts*5} сек)")
         
         try:
             # Запрашиваем результат
-            r_get = requests.post(url_get, headers=headers, json={"task_id": task_id})
+            r_get = requests.post(url_check, headers=headers, json={"task_id": task_id})
             res_data = r_get.json()
             
-            # Проверка готовности (TASK_RESULT)
-            if res_data.get("code") == "TASK_RESULT" or (res_data.get("result") and "collect" in res_data["result"].get("result", {})):
+            # Проверка готовности по ключевому коду
+            if res_data.get("code") == "TASK_RESULT":
                 status = "done"
                 break
-            # Проверка на лимиты или ошибку, но продолжаем ждать
+            
+            # Если код ошибки 429, просто ждем следующего цикла
             if str(res_data.get("code")) == "429":
                 continue 
                     
         except Exception:
-            # Игнорируем ошибки парсинга/сети при проверке и просто ждем следующего цикла
+            # Игнорируем ошибки сети/парсинга при проверке
             pass
             
     bar.empty()
     progress_info.empty()
         
     if status != "done":
-        st.error(f"⏳ Время вышло. Статус: {res_data.get('status', 'Unknown')}")
-        st.write("JSON-ответ сервера (для отладки):")
-        st.json(res_data) 
+        st.error(f"⏳ Время вышло или задача не выполнена. Статус: {res_data.get('status', 'Unknown')}")
+        st.write("JSON-ответ сервера (для **срочной** отладки):")
+        st.json(res_data) # **Критичный вывод для отладки!**
         return []
         
     # 3. Парсинг
     urls = []
     try:
+        # Проверяем структуру ответа, который должен быть при TASK_RESULT
         collect = res_data['result']['result']['collect']
         
         def extract_urls(obj):
@@ -258,7 +260,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         urls = extract_urls(collect)
         
     except Exception:
-        st.error("❌ Ошибка чтения JSON ответа")
+        st.error("❌ Ошибка чтения и парсинга JSON-ответа")
         st.write("JSON, который не удалось разобрать:")
         st.json(res_data) 
         return []
@@ -690,7 +692,7 @@ if st.session_state.get('start_analysis_flag'):
         st.error("Введите исходный код!")
         st.stop()
     if source_type == "API" and not st.session_state.get('query_input'):
-        st.error("Введите поисковый запрос!")
+        st.error("Введите поисковой запрос!")
         st.stop()
     if source_type == "Ручной список" and not st.session_state.get("manual_urls_ui", "").strip():
         st.error("Введите список URL конкурентов!")
@@ -720,7 +722,8 @@ if st.session_state.get('start_analysis_flag'):
             )
             
         if not found_urls:
-            st.error("API не вернул ссылки или произошла ошибка. Проверьте JSON-ответ выше (если есть) или настройки токена/лимитов.")
+            # Здесь ошибка была выведена функцией get_arsenkin_urls
+            st.error("API не вернул ссылки. Проверьте **JSON-ответ сервера** (если он выведен выше).")
             st.stop()
             
         # Фильтрация
