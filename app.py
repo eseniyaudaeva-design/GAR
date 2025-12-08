@@ -11,7 +11,7 @@ from urllib.parse import urlparse, urljoin
 import inspect
 import time
 import json
-import os # Добавлено для совместимости, если не было
+import os 
 
 # ==========================================
 # 0. ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
@@ -100,7 +100,7 @@ DEFAULT_EXCLUDE_DOMAINS = [
     "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", 
     "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", 
     "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", 
-    "rutube.ru", "vk.com", "facebook.com", "lemanapro.ru" # <-- ДОБАВЛЕНО ПО ЗАПРОСУ
+    "rutube.ru", "vk.com", "facebook.com", "lemanapro.ru"
 ]
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
@@ -170,25 +170,23 @@ try:
 except Exception as e:
     morph = None
     USE_NLP = False
-    # st.sidebar.error(f"Ошибка загрузки NLP: {e}") # Убрано, чтобы не ломать интерфейс, если нет морфологии
 
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
-if 'history' not in st.session_state: # <-- Инициализация истории
+if 'history' not in st.session_state: 
     st.session_state.history = []
-if 'comp_table_data' not in st.session_state: # <-- Инициализация данных для таблицы статуса
+if 'comp_table_data' not in st.session_state: 
     st.session_state.comp_table_data = []
 
 
-# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN (Оставлено без изменений) ---
+# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN (С ИСПРАВЛЕНИЕМ СИНТАКСИСА) ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check" 
     url_get = "https://arsenkin.ru/api/tools/get"    
     
-    # ... (Остальной код get_arsenkin_urls остается без изменений) ...
     headers = {
         "Authorization": f"Bearer {ARSENKIN_TOKEN}",
         "Content-type": "application/json"
@@ -286,7 +284,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.json(res_data)
         return []
 
-    # 4. ФИНАЛЬНЫЙ ПАРСИНГ: 
+    # 4. ФИНАЛЬНЫЙ ПАРСИНГ: (ИСПРАВЛЕНИЕ СИНТАКСИСА)
     results_list = []
     try:
         if 'result' in res_data and 'result' in res_data['result'] and 'collect' in res_data['result']['result']:
@@ -298,14 +296,22 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
 
         final_url_list = []
         
+        # Проверяем первый возможный формат (простой список URL)
         if collect and isinstance(collect, list) and len(collect) > 0 and \
            collect[0] and isinstance(collect[0], list) and len(collect[0]) > 0 and \
            collect[0][0] and isinstance(collect[0][0], list):
              
             final_url_list = collect[0][0]
+
+        if final_url_list:
+            # Парсинг первого формата
+            for index, url in enumerate(final_url_list):
+                pos = index + 1
+                results_list.append({'url': url, 'pos': pos})
         else:
-             unique_urls = set()
-             for engine_data in collect:
+            # Парсинг второго формата (с позициями и уникальностью)
+            unique_urls = set()
+            for engine_data in collect:
                 if isinstance(engine_data, dict):
                     for engine_id, serps in engine_data.items():
                         if isinstance(serps, list):
@@ -316,26 +322,21 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
                                 if url and pos:
                                     if url not in unique_urls:
                                         results_list.append({'url': url, 'pos': pos})
-                                    unique_urls.add(url)
-                                    else:
+                                        unique_urls.add(url) # <-- FIX 1: Correct indentation
+                                    else: # <-- FIX 2: Correctly follows the 'if'
+                                        # Обновляем позицию, если найдена лучшая
                                         for res in results_list:
                                             if res['url'] == url and pos < res['pos']:
                                                 res['pos'] = pos
-                            return results_list 
-
-        if final_url_list:
-            for index, url in enumerate(final_url_list):
-                pos = index + 1
-                results_list.append({'url': url, 'pos': pos})
-
+        # УДАЛЕНО: `return results_list` находился внутри вложенного цикла, что было неверно.
+        
     except Exception as e:
         st.error(f"❌ Критическая ошибка чтения и парсинга финального JSON-ответа: {e}")
         st.write("JSON, который не удалось разобрать:")
         st.json(res_data) 
         return []
         
-    return results_list
-
+    return results_list # <-- Финальный возврат в конце функции
 
 def process_text_detailed(text, settings, n_gram=1):
     if settings['numbers']:
@@ -424,7 +425,6 @@ def parse_page_robust(url, settings, retries=3, timeout=30):
     
     return {'url': url, 'domain': urlparse(url).netloc, 'body_text': '', 'anchor_text': '', 'error': 'Неизвестная ошибка после всех попыток'}
 
-# Оригинальная функция parse_page удалена/заменена на parse_page_robust
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     all_forms_map = defaultdict(set)
@@ -444,7 +444,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for p in comp_data_full:
         body, c_forms = process_text_detailed(p['body_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
-        comp_docs.append({'body': body, 'anchor': anchor, 'url': p['url'], 'pos': p['pos']})
+        comp_docs.append({'body': body, 'anchor': anchor, 'url': p['url'], 'pos': p['pos'], 'domain': p['domain']})
         for k, v in c_forms.items():
             all_forms_map[k].update(v)
     
@@ -553,12 +553,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         try:
             N_GRAM = 2
             my_ngrams, _ = process_text_detailed(my_data['body_text'], settings, N_GRAM)
+            
+            # Получаем все N-граммы конкурентов (лемматизированные фразы)
             comp_ngrams_list = [process_text_detailed(p['body_text'], settings, N_GRAM)[0] for p in comp_docs]
             
             all_ngrams = set(my_ngrams)
             for c in comp_ngrams_list: all_ngrams.update(c)
             
-            ngram_doc_freqs = Counter()
+            ngram_doc_freqs = Counter() # Сколько документов содержат эту N-грамму
             for c in comp_ngrams_list: 
                 for ng in set(c): ngram_doc_freqs[ng] += 1
                 
@@ -596,7 +598,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                         "is_missing": is_missing
                     })
         except Exception as e:
-            # Предупреждение на случай, если расчет n-грамм не удался
             st.warning(f"Ошибка при расчете N-грамм: {e}") 
             table_ngrams = []
 
@@ -623,7 +624,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     table_rel = []
     
-    # 3.1. Баллы конкурентов (рассчитываем по всем, кто был в original_results)
+    # 3.1. Баллы конкурентов
     for c in competitor_stats_raw:
         score_w = int(round((c['raw_w'] / max_width_top) * 100))
         score_d = int(round((c['raw_d'] / max_depth_top) * 100))
@@ -774,10 +775,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             # Стиль для пропущенных слов
             styles[0] += 'color: #D32F2F; font-weight: bold;'
         
-        # Стиль для других колонок (убрано для простоты, если не нужно)
-        # else:
-        #     styles = [base_style + 'font-weight: 600;' if col_name not in ["diff_abs", "is_missing"] else base_style for col_name in row.index]
-
         return styles
     
     cols_to_hide = ["diff_abs", "is_missing"]
@@ -834,6 +831,7 @@ def render_competitor_status_table(comp_data):
         domain = row['Домен']
         status = row['Статус']
         if "OK" in status:
+            # Создаем HTML-ссылку
             return f'<a href="{url}" target="_blank">{domain}</a>'
         return domain
         
@@ -947,7 +945,7 @@ if st.session_state.get('start_analysis_flag'):
         'custom_stops': st.session_state.settings_stops.split()
     }
     
-    target_urls_raw = [] # Список URL:pos, которые прошли первичную фильтрацию
+    target_urls_raw = [] 
     my_data = None
     my_domain = ""
     my_serp_pos = 0 
@@ -968,7 +966,6 @@ if st.session_state.get('start_analysis_flag'):
     # 2. Сбор URL конкурентов
     found_results = []
     if source_type == "API":
-        # ... (API logic remains the same) ...
         with st.spinner(f"Запрос ТОП-{st.session_state.settings_top_n} в {st.session_state.settings_search_engine} / {st.session_state.settings_region} по запросу '{st.session_state.query_input}'..."):
             found_results = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, st.session_state.settings_top_n)
 
@@ -977,7 +974,6 @@ if st.session_state.get('start_analysis_flag'):
         excl = set(DEFAULT_EXCLUDE_DOMAINS)
         
         if st.session_state.settings_agg:
-            # Если агрегаторы исключаются, добавляем их к стоп-доменам
             excl.update(DEFAULT_EXCLUDE_DOMAINS)
 
         for result in found_results:
@@ -995,12 +991,8 @@ if st.session_state.get('start_analysis_flag'):
             if any(x in domain for x in excl):
                 continue
             
-            # Если прошел фильтры, добавляем в список всех чистых конкурентов
             filtered_results_all.append(result)
 
-        # 2.2. Ограничение по TARGET_COMPETITORS (ВТОРЫМ ШАГОМ)
-        # TARGET_COMPETITORS должно быть определено в оригинальном коде, 
-        # используем 10 для безопасности.
         TARGET_COMPETITORS = st.session_state.settings_top_n
         target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
         collected_competitors_count = len(target_urls_raw)
@@ -1061,7 +1053,7 @@ if st.session_state.get('start_analysis_flag'):
             comp_table_data.append({
                 "URL": url,
                 "Домен": urlparse(url).netloc,
-                "Статус": f"Ошибка/Исключен", # Убрал 0/1, т.к. может быть ошибка, исключение или пустой текст
+                "Статус": f"Ошибка/Исключен", 
                 "Ошибка": error,
                 "Позиция": pos
             })
