@@ -48,7 +48,7 @@ def check_password():
         .auth-logo-box {
             text-align: center;
             margin-bottom: 1rem; /* Отступ между лого и формой */
-            padding-top: 0; /* Удаляем лишний padding-top */
+            padding-top: 0; 
         }
         
         /* 3. Стиль для рамки формы ввода пароля */
@@ -77,7 +77,7 @@ def check_password():
         # 1. Логотип
         st.markdown('<div class="auth-logo-box">', unsafe_allow_html=True)
         
-        # ВОССТАНАВЛИВАЕМ st.image (в try/except для защиты)
+        # Используем st.image с защитой от "белого окошка"
         try:
             st.image("logo.png", width=250) 
         except Exception:
@@ -86,13 +86,14 @@ def check_password():
             
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # 2. Форма ввода пароля (ВОССТАНОВЛЕНА)
+        # 2. Форма ввода пароля
         st.markdown('<div class="login-box">', unsafe_allow_html=True)
         st.markdown("<h3>Вход в систему</h3>", unsafe_allow_html=True)
         
         password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
         
         if st.button("ВОЙТИ", type="primary", use_container_width=True):
+            # ВОССТАНОВЛЕНА ЛОГИКА ПРОВЕРКИ ПАРОЛЯ
             if password == "jfV6Xel-Q7vp-_s2UYPO":
                 st.session_state.authenticated = True
                 st.rerun()
@@ -102,6 +103,9 @@ def check_password():
         st.markdown('</div>', unsafe_allow_html=True)
         
     return False
+
+if not check_password():
+    st.stop()
 
 # ==========================================
 # 3. НАСТРОЙКИ API И РЕГИОНОВ
@@ -1003,7 +1007,3 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
-
-
-
-
