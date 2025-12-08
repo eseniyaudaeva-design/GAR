@@ -200,38 +200,25 @@ def convert_df_to_csv(df):
     """Преобразование DataFrame в CSV строку (с разделителем ';')."""
     return df.to_csv(index=False, sep=';', encoding='utf-8')
 
-def convert_df_to_xml(df, root_name="Results", row_name="Item"):
-    """Преобразование DataFrame в простую XML строку."""
-    data = df.to_dict(orient='records')
-    xml_string = f'<?xml version="1.0" encoding="utf8"?>\n<{root_name}>\n'
-    
-    for record in data:
-        xml_string += f'  <{row_name}>\n'
-        for key, value in record.items():
-            # Замена недопустимых символов в именах тегов
-            tag_name = re.sub(r'[^a-zA-Z0-9_]', '', key.replace(' ', '_'))
-            # Экранирование значений
-            safe_value = str(value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&apos;')
-            xml_string += f'    <{tag_name}>{safe_value}</{tag_name}>\n'
-        xml_string += f'  </{row_name}>\n'
-    
-    xml_string += f'</{root_name}>'
-    return xml_string
+# --- ИСПРАВЛЕНИЕ: Удален convert_df_to_xml по запросу пользователя ---
 
 def convert_df_to_xlsx(df):
     """Преобразование DataFrame в XLSX (Excel) формат."""
     output = io.BytesIO()
+    if df.empty:
+        return output.getvalue() 
+        
     # Требуется: pip install openpyxl
     try:
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
     except ImportError:
+        # Эта ошибка должна обрабатываться при установке, но оставим на всякий случай
         st.error("Ошибка: Для экспорта в XLSX требуется библиотека 'openpyxl'. Установите её: pip install openpyxl")
         return None
         
     output.seek(0)
     return output.read()
-
 
 # --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
@@ -477,16 +464,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for p in comp_data_parsed:
         body, c_forms = process_text_detailed(p['body_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
-        comp_docs.append({'body': body, 'anchor': anchor})
+        comp_docs.append({'body': body, 'anchor': anchor, 'pos': p['pos']})
         for k, v in c_forms.items():
             all_forms_map[k].update(v)
     
     # Если нет успешно скачанных конкурентов, мы не можем рассчитать релевантность
     if not comp_docs:
-        # Тем не менее, нам нужна таблица релевантности, чтобы показать, кто был в ТОПе
-        
         table_rel_fallback = []
-        # Добавляем все URL, которые пришли из API/ручного списка, чтобы показать их позиции
         for item in original_results:
             domain = urlparse(item['url']).netloc
             table_rel_fallback.append({
@@ -500,7 +484,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         else:
             my_label = "Ваш сайт"
         
-        # Добавляем Ваш сайт
         table_rel_fallback.append({
             "Домен": my_label, 
             "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
@@ -508,9 +491,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         })
         
         table_rel_df = pd.DataFrame(table_rel_fallback).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
-        # --- ИЗМЕНЕНИЕ 1: Добавление относительного ранга (№) в начало ---
         table_rel_df.insert(0, '№', table_rel_df.index + 1)
-        # -----------------------------------------------------------------
         
         return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": table_rel_df, "my_score": {"width": 0, "depth": 0}}
 
@@ -536,27 +517,31 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     max_depth_top = 1
 
     # Логика для подсчета raw_width и raw_depth
-    for d in comp_data_parsed:
-        p_lemmas, _ = process_text_detailed(d['body_text'], settings)
-        domain = urlparse(d['url']).netloc
-        pos = d['pos']
-        
-        # Ширина: количество уникальных лемм, общих со всем словарем (vocab)
-        relevant_lemmas = [w for w in p_lemmas if w in vocab]
-        raw_width = len(set(relevant_lemmas))
-        raw_depth = len(relevant_lemmas)
-        
-        competitor_stats_raw.append({
-            "domain": domain,
-            "pos": pos,
-            "raw_w": raw_width,
-            "raw_d": raw_depth
-        })
+    for d in comp_docs:
+        # p_lemmas уже были получены выше в comp_docs['body'], но тут нужно по domain
+        # Найдем оригинальный элемент из comp_data_parsed
+        original_item = next((item for item in comp_data_parsed if urlparse(item['url']).netloc == urlparse(d['url']).netloc), None)
+        if original_item:
+            p_lemmas = d['body'] 
+            domain = urlparse(original_item['url']).netloc
+            pos = original_item['pos']
+            
+            # Ширина: количество уникальных лемм, общих со всем словарем (vocab)
+            relevant_lemmas = [w for w in p_lemmas if w in vocab]
+            raw_width = len(set(relevant_lemmas))
+            raw_depth = len(relevant_lemmas)
+            
+            competitor_stats_raw.append({
+                "domain": domain,
+                "pos": pos,
+                "raw_w": raw_width,
+                "raw_d": raw_depth
+            })
     
-    # Определяем максимумы только по **успешно скачанным и проанализированным** конкурентам
+    # Определяем максимумы
     if competitor_stats_raw:
-        max_width_top = max([c['raw_w'] for c in competitor_stats_raw])
-        max_depth_top = max([c['raw_d'] for c in competitor_stats_raw])
+        max_width_top = max([c['raw_w'] for c in competitor_stats_raw]) or 1
+        max_depth_top = max([c['raw_d'] for c in competitor_stats_raw]) or 1
         
     # Расчет my_raw_w/d
     my_relevant = [w for w in my_lemmas if w in vocab]
@@ -643,12 +628,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 "Переспам": max_total 
             })
             
-    # 4. Расчет N-грамм
+    # 4. Расчет N-грамм --- ИСПРАВЛЕНО ---
     table_ngrams = []
     if comp_docs and my_data:
         try:
             my_bi, _ = process_text_detailed(my_data['body_text'], settings, 2)
-            comp_bi = [process_text_detailed(p['body_text'], settings, 2)[0] for p in comp_docs]
+            comp_bi = [d['body'] for d in comp_docs] # Используем body леммы, полученные выше
+            
             all_bi = set(my_bi)
             for c in comp_bi: all_bi.update(c)
             
@@ -656,29 +642,30 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             for c in comp_bi:
                 for b_ in set(c): bi_freqs[b_] += 1
                 
+            N_comp = len(comp_docs)
+            
             for bg in all_bi:
-                df_bi = bi_freqs[bg]
-                if df_bi < 2 and bg not in my_bi: continue
+                df = bi_freqs[bg] 
+                if df < 2 and bg not in my_bi: continue
                 
                 my_c = my_bi.count(bg)
-                comp_c = [d.count(bg) for d in comp_bi]
+                comp_c_list = [d.count(bg) for d in comp_bi]
                 
-                sum_in_top_bi = sum(comp_c)
-                mean_bi = np.mean(comp_c)
-                med_bi = np.median(comp_c)
-                max_bi = np.max(comp_c)
+                sum_in_top = sum(comp_c_list)
+                mean_bi = np.mean(comp_c_list)
+                max_bi = np.max(comp_c_list)
 
-                rec_min_bi = max(1, int(round(min(mean_bi, med_bi))))
-                diff_bi = int(round((rec_min_bi - my_c)))
+                # Рекомендация: используем среднее значение
+                rec_min_bi = max(1, int(round(mean_bi)))
+                diff_bi = rec_min_bi - my_c
                 
                 table_ngrams.append({
-                    "Биграмма (леммы)": bg,
-                    "Повторы у вас": my_c,
-                    "Повторов в ТОПе": sum_in_top_bi,
-                    "Медиана (рек)": rec_min_bi,
-                    "Добавить/Убрать": diff_bi,
-                    "Сайтов": df_bi,
-                    "Максимум": max_bi
+                    "N-грамма": bg,
+                    "У вас": my_c,
+                    "В ТОПе (всего)": sum_in_top,
+                    "В ТОПе (макс)": max_bi,
+                    "Сайтов с N-граммой": df,
+                    "Добавить/Убрать": diff_bi
                 })
         except Exception as e:
             st.warning(f"Ошибка при расчете N-грамм: {e}")
@@ -691,7 +678,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         score_d = int(round((c['raw_d'] / max_depth_top) * 100))
         table_rel.append({
             "Домен": c['domain'],
-            "Позиция": c['pos'], # Это фактическая позиция в SERP
+            "Позиция": c['pos'], 
             "Ширина (балл)": score_w,
             "Глубина (балл)": score_d
         })
@@ -704,7 +691,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
     table_rel.append({
         "Домен": my_label,
-        "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1, # Ставим после последнего конкурента
+        "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
         "Ширина (балл)": my_score_w,
         "Глубина (балл)": my_score_d
     })
@@ -713,9 +700,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     table_rel_df = pd.DataFrame(table_rel)
     table_rel_df = table_rel_df.sort_values(by='Позиция', ascending=True).reset_index(drop=True)
 
-    # --- ИЗМЕНЕНИЕ 1: Добавление относительного ранга (№) в начало ---
+    # Добавление относительного ранга (№) в начало
     table_rel_df.insert(0, '№', table_rel_df.index + 1)
-    # -----------------------------------------------------------------
     
     return {
         "depth": pd.DataFrame(table_depth),
@@ -729,56 +715,31 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 # 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (FINAL)
 # ==========================================
 
-def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
-    # --- ИЗМЕНЕНИЕ: Добавление кнопок скачивания CSV/XML/XLSX ---
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False, show_csv_download=True):
+    
     st.markdown(f"#### {title_text}")
-
-    df_for_download = df.copy() 
-    # Удаляем служебные колонки перед скачиванием
-    if 'diff_abs' in df_for_download.columns:
-        df_for_download = df_for_download.drop(columns=['diff_abs'])
-    if 'is_missing' in df_for_download.columns:
-        df_for_download = df_for_download.drop(columns=['is_missing'])
+    
+    # Кнопка скачивания CSV
+    if show_csv_download:
+        df_for_download = df.copy() 
+        if 'diff_abs' in df_for_download.columns:
+            df_for_download = df_for_download.drop(columns=['diff_abs'])
+        if 'is_missing' in df_for_download.columns:
+            df_for_download = df_for_download.drop(columns=['is_missing'])
+            
+        csv_data = convert_df_to_csv(df_for_download)
         
-    csv_data = convert_df_to_csv(df_for_download)
-    xml_data = convert_df_to_xml(df_for_download, root_name=key_prefix, row_name="item")
-    xlsx_data = convert_df_to_xlsx(df_for_download) # Новая функция для XLSX
+        c_dl, c_spacer = st.columns([1, 9]) 
 
-    # 3 кнопки скачивания
-    c_dl1, c_dl2, c_dl3, c_dl_spacer = st.columns([1, 1, 1, 7]) 
-
-    with c_dl1:
-        st.download_button(
-            label="⬇️ CSV",
-            data=csv_data,
-            file_name=f"{key_prefix}.csv",
-            mime="text/csv",
-            key=f"{key_prefix}_dl_csv",
-            use_container_width=True
-        )
-
-    with c_dl2:
-        st.download_button(
-            label="⬇️ XML",
-            data=xml_data,
-            file_name=f"{key_prefix}.xml",
-            mime="text/xml",
-            key=f"{key_prefix}_dl_xml",
-            use_container_width=True
-        )
-        
-    # Кнопка XLSX
-    if xlsx_data: 
-        with c_dl3:
+        with c_dl:
             st.download_button(
-                label="⬇️ XLSX",
-                data=xlsx_data,
-                file_name=f"{key_prefix}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=f"{key_prefix}_dl_xlsx",
+                label="⬇️ CSV",
+                data=csv_data,
+                file_name=f"{key_prefix}.csv",
+                mime="text/csv",
+                key=f"{key_prefix}_dl_csv",
                 use_container_width=True
             )
-    # -------------------------------------------------------------------------
     
     # Оригинальная логика сортировки и пагинации
     if default_sort_col and default_sort_col in df.columns:
@@ -799,6 +760,11 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     
     current_page = st.session_state[f'{key_prefix}_page']
     
+    if total_rows == 0:
+        st.info("Данных для таблицы нет.")
+        st.markdown("---")
+        return
+        
     if current_page > total_pages: current_page = total_pages
     if current_page < 1: current_page = 1
     
@@ -963,7 +929,7 @@ elif st.session_state.app_page == "Анализ":
         top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n")
         st.markdown("---")
         
-        # Настройки парсинга (Блоки, которые вы просили вернуть)
+        # Настройки парсинга 
         st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
@@ -1111,7 +1077,6 @@ elif st.session_state.app_page == "Анализ":
         
         # --- Сохранение результата в историю ---
         if st.session_state.analysis_results:
-            # Конвертируем DataFrames в JSON-совместимый формат (список словарей)
             new_result = {
                 "timestamp": time.time(),
                 "date_str": time.strftime("%Y-%m-%d %H:%M:%S"), 
@@ -1150,15 +1115,61 @@ elif st.session_state.app_page == "Анализ":
                     ℹ️ Для сортировки всего списка используйте меню над таблицей.
                 </div>
             """, unsafe_allow_html=True)
+            
+            # --- БЛОК СКАЧИВАНИЯ XLSX (Централизованный) ---
+            st.markdown("---")
+            st.markdown("### 📥 Скачать таблицы в XLSX")
+            
+            col_dl1, col_dl2, col_dl3, _ = st.columns([1, 1, 1, 3])
+            
+            # 1. Скачать Рекомендации по глубине
+            with col_dl1:
+                df_depth = results['depth'].drop(columns=["diff_abs", "is_missing"], errors='ignore')
+                xlsx_depth = convert_df_to_xlsx(df_depth)
+                st.download_button(
+                    label="1. Рекомендации (XLSX)",
+                    data=xlsx_depth,
+                    file_name="gar_pro_recommendations_depth.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+
+            # 2. Скачать N-граммы
+            with col_dl2:
+                df_ngrams = results['ngrams']
+                xlsx_ngrams = convert_df_to_xlsx(df_ngrams)
+                st.download_button(
+                    label="2. N-граммы (XLSX)",
+                    data=xlsx_ngrams,
+                    file_name="gar_pro_ngrams.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    disabled=df_ngrams.empty
+                )
+
+
+            # 3. Скачать Релевантность ТОПа
+            with col_dl3:
+                df_rel = results['relevance_top']
+                xlsx_rel = convert_df_to_xlsx(df_rel)
+                st.download_button(
+                    label="3. Релевантность (XLSX)",
+                    data=xlsx_rel,
+                    file_name="gar_pro_relevance_top.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            st.markdown("---")
+            # --- КОНЕЦ БЛОКА СКАЧИВАНИЯ XLSX ---
         
-            # Таблица ТОП/Релевантность (№ и Позиция)
-            render_paginated_table(results['relevance_top'], "1. Релевантность ТОПа (Общий замер)", "tbl_relevance_top", default_sort_col="Позиция", use_abs_sort_default=False)
+            # Таблица ТОП/Релевантность
+            render_paginated_table(results['relevance_top'], "1. Релевантность ТОПа (Общий замер)", "tbl_relevance_top", default_sort_col="Позиция", use_abs_sort_default=False, show_csv_download=True)
             
             # Таблица Глубина (основная)
-            render_paginated_table(results['depth'], "2. Рекомендации по глубине (Минимум/Максимум)", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
+            render_paginated_table(results['depth'], "2. Рекомендации по глубине (Минимум/Максимум)", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True, show_csv_download=True)
             
             # Таблица Гибридный ТОП (TF-IDF)
-            render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
+            render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False, show_csv_download=True)
 
             # Таблица N-граммы
-            render_paginated_table(results['ngrams'], "4. Рекомендации по N-граммам", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
+            render_paginated_table(results['ngrams'], "4. Рекомендации по N-граммам", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=False, show_csv_download=True)
