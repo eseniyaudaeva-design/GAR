@@ -35,19 +35,38 @@ def check_password():
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
+        # --- НОВАЯ СЕКЦИЯ ДЛЯ ОТОБРАЖЕНИЯ ЛОГОТИПА И ФОРМЫ ---
         st.markdown("""
             <style>
             .auth-container {
-                display: flex; flex-direction: column; align-items: center;
-                justify-content: center; padding: 2rem; background-color: white;
-                border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); margin-top: 5rem;
+                /* Стиль для рамки, куда поместим пароль */
+                background-color: white; 
+                padding: 2rem; 
+                border-radius: 10px; 
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .logo-header {
+                text-align: center;
+                margin-top: 5rem; /* Отступ сверху */
+                margin-bottom: 1rem; /* Отступ перед формой */
             }
             </style>
-            <div class="auth-container">
-                <h3>📊 GAR PRO</h3>
-                <h3>Вход в систему</h3>
-            </div>
         """, unsafe_allow_html=True)
+        
+        # 1. Логотип (предполагаем, что logo.png в корневой папке)
+        st.markdown('<div class="logo-header">', unsafe_allow_html=True)
+        try:
+            # st.image центрирует изображение по умолчанию в колонке
+            st.image("logo.png", width=250) 
+        except Exception:
+            # Fallback на случай, если файл не найден
+            st.error("❌ Файл logo.png не найден.")
+            
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # 2. Форма ввода пароля (внутри нового контейнера)
+        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; margin-top:0;'>Вход в систему</h3>", unsafe_allow_html=True)
         
         password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
         
@@ -57,6 +76,10 @@ def check_password():
                 st.rerun()
             else:
                 st.error("❌ Неверный пароль")
+        
+        st.markdown('</div>', unsafe_allow_html=True) # Закрываем контейнер
+        # --- КОНЕЦ НОВОЙ СЕКЦИИ ---
+        
     return False
 
 if not check_password():
@@ -91,7 +114,8 @@ DEFAULT_EXCLUDE_DOMAINS = [
     "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", 
     "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", 
     "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", 
-    "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", 
+    "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", 
+    "profi.ru", 
     "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", 
     "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", 
     "rutube.ru", "vk.com", "facebook.com"
@@ -112,24 +136,37 @@ st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
-        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
-        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
-        .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
-            background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
+        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif;
+        color: {TEXT_COLOR} !important; }}
+        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important;
+        border: none; border-radius: 6px; }}
+        .stButton button:hover {{ background-color: {PRIMARY_DARK} !important;
         }}
-        div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important; border-radius: 8px !important; }}
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
+            background-color: {LIGHT_BG_MAIN} !important;
+            color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
+        }}
+        div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important;
+        border-radius: 8px !important; }}
         div[data-testid="stDataFrame"] div[role="columnheader"] {{
-            background-color: {HEADER_BG} !important; color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
+            background-color: {HEADER_BG} !important;
+            color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
         }}
         div[data-testid="stDataFrame"] div[role="gridcell"] {{
-            background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
+            background-color: #FFFFFF !important;
+            color: {TEXT_COLOR} !important; border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
         }}
-        .legend-box {{ padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px; }}
-        .text-red {{ color: #D32F2F; font-weight: bold; }}
-        .text-bold {{ font-weight: 600; }}
-        .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR}; }}
-        section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-left: 1px solid {BORDER_COLOR} !important; }}
+        .legend-box {{ padding: 10px;
+        background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px;
+        }}
+        .text-red {{ color: #D32F2F; font-weight: bold;
+        }}
+        .text-bold {{ font-weight: 600;
+        }}
+        .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px;
+        border: 1px solid {BORDER_COLOR}; }}
+        section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important;
+        border-left: 1px solid {BORDER_COLOR} !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -155,7 +192,7 @@ if 'analysis_done' not in st.session_state:
 # --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
-    url_check = "https://arsenkin.ru/api/tools/check"  # Для проверки статуса
+    url_check = "https://arsenkin.ru/api/tools/check" 
     url_get = "https://arsenkin.ru/api/tools/get"    # Для получения результата
     
     headers = {
@@ -199,6 +236,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         return []
     
     # 2. Ожидание и проверка статуса (через /check)
+    
     status = "process"
     attempts = 0
     max_attempts = 40 # Макс 200 секунд
@@ -245,14 +283,14 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
         st.info("Статус 'finish' получен. Запрашиваем финальный результат...")
         r_final = requests.post(url_get, headers=headers, json={"task_id": task_id}, timeout=30)
         res_data = r_final.json()
-        
+      
         # Проверяем, что пришел именно результат, а не статус (code должен быть TASK_RESULT)
         if res_data.get("code") != "TASK_RESULT":
             st.error(f"❌ Ошибка: API не вернул финальный результат (TASK_RESULT).")
             st.write("JSON-ответ сервера:")
             st.json(res_data)
             return []
-            
+          
     except Exception as e:
         st.error(f"❌ Ошибка сети при получении результата: {e}")
         st.write("JSON-ответ сервера:")
@@ -272,13 +310,14 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
 
         # Ожидаемая структура: [ [ [ 'url1', 'url2', ... ] ] ] - Простая структура
         final_url_list = []
+  
         
         if collect and isinstance(collect, list) and len(collect) > 0 and \
            collect[0] and isinstance(collect[0], list) and len(collect[0]) > 0 and \
            collect[0][0] and isinstance(collect[0][0], list):
              
              # Простая структура: список URL-строк
-             final_url_list = collect[0][0]
+            final_url_list = collect[0][0]
         else:
              # На случай, если API вернет сложную структуру
              unique_urls = set()
@@ -439,7 +478,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         table_rel_df = pd.DataFrame(table_rel_fallback).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
         
-        return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "ngrams": pd.DataFrame(), "relevance_top": table_rel_df, "my_score": {"width": 0, "depth": 0}}
+        # УДАЛЕНА КЛЮЧ 'ngrams' ИЗ ВОЗВРАЩАЕМОГО ЗНАЧЕНИЯ
+        return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": table_rel_df, "my_score": {"width": 0, "depth": 0}}
 
 
     # Дальше расчеты идут только по успешно скачанным comp_docs
@@ -514,38 +554,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 "Сайтов": df, "Переспам": max_total
             })
 
-    table_ngrams = []
-    if comp_docs and my_data:
-        try:
-            my_bi, _ = process_text_detailed(my_data['body_text'], settings, 2)
-            comp_bi = [process_text_detailed(p['body_text'], settings, 2)[0] for p in comp_docs]
-            all_bi = set(my_bi)
-            for c in comp_bi: all_bi.update(c)
-            bi_freqs = Counter()
-            for c in comp_bi: 
-                for b_ in set(c): bi_freqs[b_] += 1
-            for bg in all_bi:
-                df = bi_freqs[bg]
-                if df < 2 and bg not in my_bi: continue
-                
-                my_c = my_bi.count(bg)
-                comp_c = [c.count(bg) for c in comp_docs]
-                med_c = np.median(comp_c) if comp_c else 0
-                
-                rec_ngram = int(round(med_c * norm_k))
-                diff_ngram = 0
-                if my_c < rec_ngram: diff_ngram = rec_ngram - my_c
-                elif my_c > rec_ngram: diff_ngram = rec_ngram - my_c
-                
-                if med_c > 0 or my_c > 0:
-                    table_ngrams.append({
-                        "N-грамма": bg, "Сайтов": df, "У вас": my_c,
-                        "Медиана (рек)": rec_ngram, "Добавить/Убрать": diff_ngram,
-                        "TF-IDF": round(my_c * math.log(N/df if df>0 else 1), 3),
-                        "diff_abs": abs(diff_ngram), "is_missing": (my_c == 0)
-                    })
-        except: pass
-
     # --- ТОП РЕЛЕВАНТНОСТИ ---
     table_rel = []
     
@@ -616,7 +624,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
     return {
         "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
-        "ngrams": pd.DataFrame(table_ngrams), "relevance_top": table_rel_df,
+        "relevance_top": table_rel_df,
         "my_score": {"width": my_score_w, "depth": my_score_d}
     }
 
@@ -830,6 +838,7 @@ if st.session_state.get('start_analysis_flag'):
         with st.spinner("Скачивание вашей страницы..."):
             my_url_input = st.session_state.my_url_input
             my_data = parse_page(my_url_input, settings)
+        
             if not my_data:
                 st.error("Не удалось скачать вашу страницу. Проверьте URL или настройки User-Agent.")
                 st.stop()
@@ -975,6 +984,4 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
 
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
-    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
-    render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
-
+    render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
