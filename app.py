@@ -33,26 +33,27 @@ def check_password():
     if st.session_state.get("authenticated"):
         return True
     
-    # --- СТИЛИ ДЛЯ ЦЕНТРИРОВАНИЯ И ЧИСТКИ ---
+    # --- СТИЛИ ДЛЯ ИДЕАЛЬНОГО ЦЕНТРИРОВАНИЯ И УДАЛЕНИЯ СКРОЛЛА ---
     st.markdown("""
         <style>
-        /* Стили для центрирования блока на экране */
-        
-        /* Убираем лишние отступы, которые могут вызывать скролл */
-        .block-container {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
+        /* 1. Сброс базовых отступов и установка Flexbox для центрирования содержимого (УДАЛЕНИЕ СКРОЛЛА) */
+        /* Цель: Найти главный контейнер Streamlit, чтобы центрировать его по вертикали */
+        .main {
+            /* Переопределяем стили main-контейнера, чтобы использовать всю высоту viewport */
+            display: flex;
+            flex-direction: column;
+            justify-content: center; /* Вертикальное центрирование */
+            align-items: center;
         }
 
-        /* Стиль для контейнера логотипа */
-        /* Используем минимальный отступ сверху для центрирования */
+        /* 2. Стиль для контейнера логотипа и формы */
         .auth-logo-box {
             text-align: center;
             margin-bottom: 1rem; /* Отступ между лого и формой */
-            padding-top: 4rem; /* Мягкий отступ сверху для центрирования */
+            padding-top: 0; /* Удаляем лишний padding-top */
         }
         
-        /* Стиль для рамки формы ввода пароля */
+        /* 3. Стиль для рамки формы ввода пароля */
         .login-box {
             background-color: white; 
             padding: 2rem; 
@@ -64,6 +65,15 @@ def check_password():
             margin-top: 0;
             text-align: center;
         }
+        
+        /* 4. Убираем "белое окошко" (пустое место от st.image, если картинка не найдена) 
+           Делаем его минимально заметным, если нет logo.png
+        */
+        .stImage > img {
+            min-height: 10px; 
+            min-width: 10px; 
+        }
+
         </style>
     """, unsafe_allow_html=True)
     
@@ -74,10 +84,11 @@ def check_password():
         
         # ВОССТАНАВЛИВАЕМ st.image для надежности отображения локального файла
         try:
-            st.image("logo.png", width=250)
-        except:
-            # Если файл не найден, выводим хотя бы текст
-            st.markdown("<h3 style='color: #D32F2F;'>LOGO</h3>", unsafe_allow_html=True)
+            # Убедитесь, что logo.png находится в корневой папке!
+            st.image("logo.png", width=250) 
+        except Exception:
+            # Если файл не найден, выводим минимально заметную заглушку вместо большого белого окна
+            st.markdown("<h3 style='color: #D32F2F; font-size: 14px; margin-top: 0;'>LOGO (Не найден)</h3>", unsafe_allow_html=True)
             
         st.markdown('</div>', unsafe_allow_html=True)
         
@@ -97,9 +108,8 @@ def check_password():
         st.markdown('</div>', unsafe_allow_html=True)
         
     return False
-        
-if not check_password():
-    st.stop()
+
+# ... (далее весь остальной код без изменений) ...
 
 # ==========================================
 # 3. НАСТРОЙКИ API И РЕГИОНОВ
@@ -1001,4 +1011,5 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+
 
