@@ -844,8 +844,8 @@ if st.session_state.get('start_analysis_flag'):
         # Сколько реально нужно пользователю (10, 20, 30)
         TARGET_COMPETITORS_COUNT = st.session_state.settings_top_n
         
-        # Запрашиваем у API с запасом (100), чтобы после фильтрации осталось достаточно
-        API_FETCH_DEPTH = 100 
+        # Запрашиваем у API с запасом (30 - максимум для check-top), чтобы после фильтрации осталось достаточно
+        API_FETCH_DEPTH = 30
         
         with st.spinner(f"Сбор ТОПа (сканируем {API_FETCH_DEPTH} позиций) через Arsenkin API..."):
             found_results = get_arsenkin_urls(
@@ -889,7 +889,6 @@ if st.session_state.get('start_analysis_flag'):
 
         # 2.2. Заполняем список до нужного количества (TARGET_COMPETITORS_COUNT)
         # Мы идем по списку очищенных результатов, пока не наберем N штук.
-        # Позиции (pos) при этом сохраняются реальные из ТОП-100.
         target_urls_raw = []
         for res in filtered_results_all:
             if len(target_urls_raw) < TARGET_COMPETITORS_COUNT:
@@ -897,11 +896,16 @@ if st.session_state.get('start_analysis_flag'):
             else:
                 break
         
+        # === ВАЖНО: ПЕРЕСЧИТЫВАЕМ ПОЗИЦИИ (1, 2, 3...) ===
+        # Так как мы выкинули мусор, 3-й реальный сайт должен стать 1-м в таблице
+        for idx, item in enumerate(target_urls_raw):
+            item['pos'] = idx + 1
+        
         collected_competitors_count = len(target_urls_raw)
         
-        # Если не набралось даже после 100
+        # Если не набралось даже после 30
         if collected_competitors_count < TARGET_COMPETITORS_COUNT:
-             st.warning(f"⚠️ В ТОП-100 найдено всего {collected_competitors_count} подходящих конкурентов (требовалось {TARGET_COMPETITORS_COUNT}). Анализ будет проведен по ним.")
+             st.warning(f"⚠️ В ТОП-30 найдено всего {collected_competitors_count} подходящих конкурентов (требовалось {TARGET_COMPETITORS_COUNT}). Анализ будет проведен по ним.")
 
         st.info(f"Просканировано {len(found_results)} позиций. Отобрано **{collected_competitors_count}** конкурентов. Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет (0)'}**.")
 
@@ -935,59 +939,4 @@ if st.session_state.get('start_analysis_flag'):
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(parse_page, u, settings): u for u in urls_to_fetch}
         done = 0
-        total = len(urls_to_fetch)
-        prog = st.progress(0)
-        stat = st.empty()
-        
-        # Собираем данные, сохраняя только успешно скачанные
-        for f in concurrent.futures.as_completed(futures):
-            res = f.result()
-            # Добавляем в список только если скачивание было успешным и контент не пустой
-            if res: 
-                comp_data_full.append(res)
-            
-            done += 1
-            prog.progress(done / total)
-            stat.text(f"Скачивание страниц конкурентов: {done}/{total}")
-    prog.empty()
-    stat.empty()
-
-    if not comp_data_full:
-        st.warning("⚠️ Не удалось скачать контент со страниц конкурентов (возможно, блокировка ботов или таймаут). Все метрики будут 0/1.")
-        
-    
-    # 4. ФИНАЛЬНЫЙ АНАЛИЗ
-    # В calculate_metrics передаем: 
-    # - comp_data_full (только скачанные и очищенные данные)
-    # - original_results (для сохранения порядка и позиции даже нескачанных URL)
-    with st.spinner("Анализ данных..."):
-        st.session_state.analysis_results = calculate_metrics(
-            comp_data_full, 
-            my_data, 
-            settings, 
-            my_serp_pos, 
-            target_urls_raw # Используем список URL:pos, которые мы отобрли
-        ) 
-        st.session_state.analysis_done = True
-        st.rerun()
-
-if st.session_state.analysis_done and st.session_state.analysis_results:
-    results = st.session_state.analysis_results
-    st.success("Анализ готов!")
-    
-    st.markdown(f"""
-        <div style='background-color: {LIGHT_BG_MAIN}; padding: 15px; border-radius: 8px; border: 1px solid {BORDER_COLOR}; margin-bottom: 20px;'>
-            <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта (в баллах от 0 до 100)</h4>
-            <p style='margin:5px 0 0 0;'>Ширина (охват семантики): <b>{results['my_score']['width']}</b> | Глубина (оптимизация): <b>{results['my_score']['depth']}</b></p>
-        </div>
-        <div class="legend-box">
-            <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
-            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона. <br>
-            ℹ️ Для сортировки всего списка используйте меню над таблицей.
-        </div>
-    """, unsafe_allow_html=True)
-
-    render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
-    render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
-    render_paginated_table(results['ngrams'], "4. N-граммы (Фразы)", "tbl_ngrams", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
-    render_paginated_table(results['relevance_top'], "5. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+        total = len(urls_to_fetc
