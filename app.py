@@ -323,6 +323,7 @@ def process_text_detailed(text, settings, n_gram=1):
         lemma = w
         if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
+            # --- УДАЛЕНИЕ ПРЕДЛОГОВ, СОЮЗОВ И Т.Д. ---
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
             lemma = p.normal_form
         
@@ -434,16 +435,24 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for w in set(d['body']): doc_freqs[w] += 1
         
     # ==========================================
-    # НОВЫЙ БЛОК: РАСЧЕТ УПУЩЕННОЙ СЕМАНТИКИ (ШИРИНА)
+    # РАСЧЕТ УПУЩЕННОЙ СЕМАНТИКИ (ШИРИНА)
     # ==========================================
     missing_semantics = []
     my_lemmas_set = set(my_lemmas) 
     
-    # Порог: Слово должно встречаться минимум у 30% конкурентов (или минимум у 2-х)
-    min_docs_threshold = max(2, int(N * 0.30)) 
+    # Порог: Слово должно встречаться минимум у 30% конкурентов
+    min_docs_threshold = math.ceil(N * 0.30)
     
     for word, freq in doc_freqs.items():
+        # Если слова нет у нас, но оно популярно у конкурентов
         if word not in my_lemmas_set and freq >= min_docs_threshold:
+            # Отсекаем слишком короткие (мусор)
+            if len(word) < 2: continue
+            # Отсекаем цифры
+            if word.isdigit(): continue
+            
+            # Предлоги, союзы и прочее уже отфильтрованы в process_text_detailed
+            
             percent = int((freq / N) * 100)
             missing_semantics.append({'word': word, 'percent': percent})
     
@@ -829,93 +838,4 @@ if st.session_state.get('start_analysis_flag'):
         else:
             target_urls_raw = []
             
-        st.info(f"Загружено **{len(target_urls_raw)}** URL конкурентов вручную.")
-
-    if not target_urls_raw and my_input_type != "Без страницы":
-        st.error("Нет конкурентов для анализа после фильтрации.")
-        st.stop()
-        
-    if not my_data and my_input_type != "Без страницы":
-        st.error("Отсутствуют данные для вашего сайта.")
-        st.stop()
-
-    comp_data_full = []
-    urls_to_fetch = [item['url'] for item in target_urls_raw]
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(parse_page, u, settings): u for u in urls_to_fetch}
-        done = 0
-        total = len(urls_to_fetch)
-        prog = st.progress(0)
-        stat = st.empty()
-        
-        for f in concurrent.futures.as_completed(futures):
-            res = f.result()
-            if res: 
-                comp_data_full.append(res)
-            done += 1
-            prog.progress(done / total)
-            stat.text(f"Скачивание страниц конкурентов: {done}/{total}")
-    prog.empty()
-    stat.empty()
-
-    if not comp_data_full:
-        st.warning("⚠️ Не удалось скачать контент со страниц конкурентов.")
-    
-    with st.spinner("Анализ данных..."):
-        st.session_state.analysis_results = calculate_metrics(
-            comp_data_full, 
-            my_data, 
-            settings, 
-            my_serp_pos, 
-            target_urls_raw 
-        ) 
-        st.session_state.analysis_done = True
-        st.rerun()
-
-if st.session_state.analysis_done and st.session_state.analysis_results:
-    results = st.session_state.analysis_results
-    st.success("Анализ готов!")
-    
-    # КАРТОЧКА БАЛЛОВ
-    st.markdown(f"""
-        <div style='background-color: {LIGHT_BG_MAIN}; padding: 15px; border-radius: 8px; border: 1px solid {BORDER_COLOR}; margin-bottom: 20px;'>
-            <h4 style='margin:0; color: {PRIMARY_COLOR};'>Результат вашего сайта (в баллах от 0 до 100)</h4>
-            <p style='margin:5px 0 0 0;'>Ширина (охват семантики): <b>{results['my_score']['width']}</b> | Глубина (оптимизация): <b>{results['my_score']['depth']}</b></p>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # --- НОВЫЙ БЛОК: УПУЩЕННАЯ СЕМАНТИКА ---
-    if results.get('missing_semantics'):
-        st.markdown("### 🧩 Упущенная семантика (Расширение структуры)")
-        st.info(
-            "Эти слова встречаются у конкурентов, но отсутствуют у вас. "
-            "Добавление этих слов (и создание контента под них) увеличит «Ширину» охвата."
-        )
-        
-        words_html = []
-        for item in results['missing_semantics']:
-            w = item['word']
-            pct = item['percent']
-            opacity = 1.0 if pct > 70 else 0.85
-            words_html.append(f"<span style='white-space: nowrap; opacity: {opacity};' title='Встречается у {pct}% конкурентов'><b>{w}</b> <small style='color:#666'>({pct}%)</small></span>")
-        
-        st.markdown(
-            f"<div style='background-color:#F8FAFC; padding:20px; border-radius:10px; line-height: 2.2; border: 1px solid #E2E8F0; text-align: justify;'>"
-            f"{' &nbsp;•&nbsp; '.join(words_html)}"
-            f"</div><br>", 
-            unsafe_allow_html=True
-        )
-    # ----------------------------------------
-
-    st.markdown(f"""
-        <div class="legend-box">
-            <span class="text-red">Красный</span>: слова, которых нет у вас. <span class="text-bold">Жирный</span>: слова, участвующие в анализе.<br>
-            Минимум: min(среднее, медиана). Переспам: % превышения макс. диапазона. <br>
-            ℹ️ Для сортировки всего списка используйте меню над таблицей.
-        </div>
-    """, unsafe_allow_html=True)
-
-    render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
-    render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
-    render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+        st.info(f"Загружено **{len(target_urls_raw)}** URL конкурентов
