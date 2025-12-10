@@ -21,8 +21,21 @@ except ImportError:
     openai = None
 
 # ==========================================
-# 0. ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
+# 0. ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
 # ==========================================
+# Это нужно, чтобы данные не пропадали при переключении вкладок
+if 'analysis_results' not in st.session_state:
+    st.session_state.analysis_results = None
+if 'analysis_done' not in st.session_state:
+    st.session_state.analysis_done = False
+
+# Состояние для AI генератора
+if 'ai_generated_df' not in st.session_state:
+    st.session_state.ai_generated_df = None
+if 'ai_excel_bytes' not in st.session_state:
+    st.session_state.ai_excel_bytes = None
+
+# ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
 if not hasattr(inspect, 'getargspec'):
     def getargspec(func):
         spec = inspect.getfullargspec(func)
@@ -174,11 +187,6 @@ except Exception as e:
     morph = None
     USE_NLP = False
     st.sidebar.error(f"Ошибка загрузки NLP: {e}")
-
-if 'analysis_results' not in st.session_state:
-    st.session_state.analysis_results = None
-if 'analysis_done' not in st.session_state:
-    st.session_state.analysis_done = False
 
 # --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
@@ -1087,6 +1095,7 @@ with tab_seo:
             st.session_state.analysis_done = True
             st.rerun()
 
+    # --- ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ (ИЗ SESSION STATE) ---
     if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
         st.success("Анализ готов!")
@@ -1156,7 +1165,6 @@ with tab_ai:
     st.title("AI Генератор Текстов (Perplexity)")
     st.markdown("Генерация HTML-блоков для подфильтров на основе контента родительской страницы.")
 
-    # Создадим отдельный контейнер для настроек генерации, чтобы не мешать основному сайдбару
     with st.container():
         st.markdown("### 🔑 Настройки API")
         api_key_input = st.text_input("Введите ваш Perplexity API Key (начинается с pplx-)", type="password", key="pplx_key_input")
@@ -1166,6 +1174,7 @@ with tab_ai:
     
     st.markdown("---")
 
+    # --- ЛОГИКА ГЕНЕРАЦИИ (ПО КНОПКЕ) ---
     if st.button("🚀 Начать генерацию", type="primary", disabled=not api_key_input, key="btn_start_gen"):
         if not openai:
             st.error("Библиотека `openai` не установлена! `pip install openai`")
@@ -1175,14 +1184,12 @@ with tab_ai:
             st.error("Введите URL!")
             st.stop()
             
-        # 1. Инициализация клиента
         try:
             client = openai.OpenAI(api_key=api_key_input, base_url="https://api.perplexity.ai")
         except Exception as e:
             st.error(f"Ошибка инициализации клиента: {e}")
             st.stop()
 
-        # 2. Скачивание данных
         with st.status("Скачивание данных со страницы...", expanded=True) as status:
             base_text, tags, error = get_page_data_for_gen(target_url_gen)
             
@@ -1201,14 +1208,12 @@ with tab_ai:
             all_rows = []
             prog_bar = st.progress(0)
             
-            # 3. Цикл генерации
             for i, tag in enumerate(tags):
                 tag_name = tag['name']
                 st.write(f"⏳ Обработка: **{tag_name}** ({i+1}/{len(tags)})")
                 
                 blocks = generate_five_blocks(client, base_text, tag_name)
                 
-                # Сбор строки
                 row = {
                     'TagName': tag_name,
                     'URL': tag['url'],
@@ -1217,45 +1222,48 @@ with tab_ai:
                     'IP_PROP4838': blocks[2],
                     'IP_PROP4829': blocks[3],
                     'IP_PROP4831': blocks[4],
-                    # Статика
                     **STATIC_DATA_GEN
                 }
                 all_rows.append(row)
-                
                 prog_bar.progress((i + 1) / len(tags))
-                time.sleep(0.5) # Небольшая пауза чтобы не спамить UI
+                time.sleep(0.5) 
             
             status.update(label="Готово!", state="complete")
             
-        # 4. Сохранение и скачивание
-        if all_rows:
-            st.success("✅ Генерация завершена!")
-            
-            df = pd.DataFrame(all_rows)
-            # Упорядочивание колонок
-            cols = [
-                'TagName', 'URL', 
-                'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 'IP_PROP4820', 
-                'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 'IP_PROP4824',
-                'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 
-                'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837',
-                'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
-            ]
-            # Оставляем только те, что есть в df
-            final_cols = [c for c in cols if c in df.columns]
-            df = df[final_cols]
-            
-            # Конвертация в Excel в память
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Sheet1')
-            
-            st.download_button(
-                label="📥 Скачать Excel файл",
-                data=buffer.getvalue(),
-                file_name="seo_texts_result.xlsx",
-                mime="application/vnd.ms-excel"
-            )
-            
-            with st.expander("Просмотр данных (первые 5 строк)"):
-                st.dataframe(df.head())
+            # --- СОХРАНЕНИЕ В SESSION STATE ---
+            if all_rows:
+                df = pd.DataFrame(all_rows)
+                cols = [
+                    'TagName', 'URL', 
+                    'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 'IP_PROP4820', 
+                    'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 'IP_PROP4824',
+                    'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 
+                    'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837',
+                    'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
+                ]
+                final_cols = [c for c in cols if c in df.columns]
+                df = df[final_cols]
+                
+                st.session_state.ai_generated_df = df
+                
+                # Создаем буфер байтов один раз и сохраняем его
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Sheet1')
+                st.session_state.ai_excel_bytes = buffer.getvalue()
+                
+                st.rerun() # Перезагрузка, чтобы обновить UI и показать кнопку скачивания
+
+    # --- ОТОБРАЖЕНИЕ РЕЗУЛЬТАТА (ВНЕ БЛОКА КНОПКИ) ---
+    if st.session_state.ai_generated_df is not None:
+        st.success("✅ Генерация завершена! Данные сохранены.")
+        
+        st.download_button(
+            label="📥 Скачать Excel файл",
+            data=st.session_state.ai_excel_bytes,
+            file_name="seo_texts_result.xlsx",
+            mime="application/vnd.ms-excel"
+        )
+        
+        with st.expander("Просмотр данных (первые 5 строк)"):
+            st.dataframe(st.session_state.ai_generated_df.head())
