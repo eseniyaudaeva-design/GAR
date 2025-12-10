@@ -548,34 +548,27 @@ def gen_get_page_data(url):
     
     return base_text, tags_data
 
-def generate_five_blocks(base_text, tag_name):
+def gen_generate_five_blocks(client, base_text, tag_name):
     if not base_text: return ["Error"] * 5
-
-    system_instruction = """
-    Ты — профессиональный технический копирайтер.
+    system_instruction = """Ты — профессиональный технический копирайтер.
     Твоя задача — написать 5 независимых текстовых блоков HTML.
-    ВАЖНО: НЕ используй markdown обертки (```html). Пиши сразу чистый код.
-    """
+    ВАЖНО: НЕ используй markdown обертки (```html). Пиши сразу чистый код."""
 
-    user_prompt = f"""
-    ВВОДНЫЕ:
+    user_prompt = f"""ВВОДНЫЕ:
     Товар: "{tag_name}".
     База знаний: \"\"\"{base_text[:3500]}\"\"\"
 
     ЗАДАЧА:
     Сгенерируй ровно 5 текстовых блоков.
-
     СТРУКТУРА КАЖДОГО БЛОКА:
     1. Заголовок (<h2> для первого блока, <h3> для остальных).
     2. Абзац текста.
     3. Вводная фраза (заканчивается двоеточием).
     4. Список <ul> или <ol> (элементы заканчиваются точкой с запятой, последний точкой).
     5. Заключительный абзац.
-
     ВЫВОД:
     Раздели блоки строго строкой: |||BLOCK_SEP|||
     """
-
     try:
         response = client.chat.completions.create(
             model="sonar-pro", 
@@ -586,87 +579,14 @@ def generate_five_blocks(base_text, tag_name):
             temperature=0.7
         )
         content = response.choices[0].message.content
-        
-        # --- ВОТ ЗДЕСЬ ИСПРАВЛЕНИЕ ---
-        # Принудительно удаляем ```html и ``` из всего ответа
         content = content.replace("```html", "").replace("```", "")
-        # -----------------------------
-
         blocks = content.split("|||BLOCK_SEP|||")
         clean_blocks = [b.strip() for b in blocks if b.strip()]
-        
         while len(clean_blocks) < 5:
             clean_blocks.append("")
-            
         return clean_blocks[:5]
-
     except Exception as e:
         return [f"Error: {str(e)[:50]}"] * 5
-
-# --- ЗАПУСК ---
-print(f"Запуск обработки для: {TARGET_URL}")
-base_text_content, tags = get_page_data(TARGET_URL)
-
-if tags and base_text_content:
-    print(f"Найдено тегов: {len(tags)}. Генерируем контент...")
-    
-    all_rows = []
-    
-    for i, tag in enumerate(tags, 1):
-        print(f"[{i}/{len(tags)}] {tag['name']}...")
-        
-        blocks = generate_five_blocks(base_text_content, tag['name'])
-        
-        row = {
-            'TagName': tag['name'],
-            'URL': tag['url'],
-            'IP_PROP4839': blocks[0],
-            'IP_PROP4816': blocks[1],
-            'IP_PROP4838': blocks[2],
-            'IP_PROP4829': blocks[3],
-            'IP_PROP4831': blocks[4],
-            # Статика
-            'IP_PROP4817': STATIC_DATA['IP_PROP4817'],
-            'IP_PROP4818': STATIC_DATA['IP_PROP4818'],
-            'IP_PROP4819': STATIC_DATA['IP_PROP4819'],
-            'IP_PROP4820': STATIC_DATA['IP_PROP4820'],
-            'IP_PROP4821': STATIC_DATA['IP_PROP4821'],
-            'IP_PROP4822': STATIC_DATA['IP_PROP4822'],
-            'IP_PROP4823': STATIC_DATA['IP_PROP4823'],
-            'IP_PROP4824': STATIC_DATA['IP_PROP4824'],
-            'IP_PROP4825': STATIC_DATA['IP_PROP4825'],
-            'IP_PROP4826': STATIC_DATA['IP_PROP4826'],
-            'IP_PROP4834': STATIC_DATA['IP_PROP4834'],
-            'IP_PROP4835': STATIC_DATA['IP_PROP4835'],
-            'IP_PROP4836': STATIC_DATA['IP_PROP4836'],
-            'IP_PROP4837': STATIC_DATA['IP_PROP4837'],
-        }
-        all_rows.append(row)
-        time.sleep(1.5)
-
-    columns_order = [
-        'TagName', 'URL', 
-        'IP_PROP4839', 
-        'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 'IP_PROP4820', 
-        'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 'IP_PROP4824',
-        'IP_PROP4816', 
-        'IP_PROP4825', 'IP_PROP4826', 
-        'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837',
-        'IP_PROP4838', 
-        'IP_PROP4829', 
-        'IP_PROP4831'
-    ]
-    
-    df = pd.DataFrame(all_rows)
-    df = df.reindex(columns=columns_order)
-    
-    filename = 'seo_texts_result.xlsx'
-    df.to_excel(filename, index=False)
-    print(f"Готово! Файл {filename} создан.")
-
-else:
-    print("Ошибка: Не удалось получить данные со страницы.")
-    pd.DataFrame().to_excel('seo_texts_result.xlsx')
 
 # ==========================================
 # 5. ИНТЕРФЕЙС (MAIN & SIDEBAR)
@@ -1050,15 +970,16 @@ elif app_mode == "Генератор текстов (Perplexity)":
                 ]
                 
                 df_gen = pd.DataFrame(all_rows)
-                # Реиндекс только существующих колонок (на случай ошибок)
+                # Реиндекс только существующих колонок
                 valid_cols = [c for c in columns_order if c in df_gen.columns]
                 df_gen = df_gen[valid_cols]
                 
                 st.success("✅ Генерация завершена!")
                 
-                # Конвертация в Excel для скачивания
+                # Конвертация в Excel
                 output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                # ИСПРАВЛЕНИЕ: Используем стандартный движок (обычно openpyxl) без явного указания xlsxwriter
+                with pd.ExcelWriter(output) as writer:
                     df_gen.to_excel(writer, index=False, sheet_name='SEO Texts')
                 processed_data = output.getvalue()
                 
@@ -1074,4 +995,3 @@ elif app_mode == "Генератор текстов (Perplexity)":
 
             else:
                 st.error("Ошибка: Не удалось получить теги или контент со страницы. Возможно, селектор `.popular-tags-inner` отсутствует.")
-
