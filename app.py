@@ -466,8 +466,11 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             
             if freq >= min_docs_threshold:
                 missing_semantics_high.append(item)
-            elif freq >= 2: # Отсекаем слова, которые встретились только 1 раз (шум)
-                missing_semantics_low.append(item)
+            else:
+                # Если документов мало (<=5), берем все, что встретилось хотя бы 1 раз (если >1)
+                # Если документов много, фильтруем шум (freq >= 2)
+                if N <= 5 or freq >= 2:
+                    missing_semantics_low.append(item)
     
     # Сортировка по популярности
     missing_semantics_high.sort(key=lambda x: x['percent'], reverse=True)
