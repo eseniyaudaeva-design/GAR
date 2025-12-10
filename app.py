@@ -596,6 +596,116 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     }
 
 # ==========================================
+# ЛОГИКА ГЕНЕРАТОРА SEO (НОВЫЙ БЛОК)
+# ==========================================
+
+# Статические тексты для колонок (из вашего ТЗ)
+STATIC_DATA_SEO = {
+    'IP_PROP4817': "Условия поставки",
+    'IP_PROP4818': "Оперативные отгрузки в регионы точно в срок",
+    'IP_PROP4819': """<p>Надежная и быстрая доставка заказа в любую точку страны: "Стальметурал" отгружает товар 24 часа в сутки, 7 дней в неделю. Более 4 000 отгрузок в год. При оформлении заказа менеджер предложит вам оптимальный логистический маршрут.</p>""",
+    'IP_PROP4820': """<p>Наши изделия успешно применяются на некоторых предприятиях Урала, центрального региона, Поволжья, Сибири. Партнеры по логистике предложат доставить заказ самым удобным способом – автомобильным, железнодорожным, даже авиационным транспортом. Для вас разработают транспортную схему под удобный способ получения. Погрузка выполняется полностью с соблюдением особенностей техники безопасности.</p><div class="h4"><h4>Самовывоз</h4></div><p>Если обычно соглашаетесь самостоятельно забрать товар или даете это право уполномоченным, адрес и время работы склада в своем городе уточняйте у менеджера.</p><div class="h4"><h4>Грузовой транспорт компании</h4></div><p>Отправим прокат на ваш объект собственным автопарком. Получение в упаковке для безопасной транспортировки, а именно на деревянном поддоне.</p><div class="h4"><h4>Сотрудничаем с ТК</h4></div><p>Доставка с помощью транспортной компании по России и СНГ. Окончательная цена может измениться, так как ссылается на прайс-лист, который предоставляет контрагент, однако, сравним стоимость логистических служб и выберем лучшую.</p>""",
+    'IP_PROP4821': "Оплата и реквизиты для постоянных клиентов:",
+    'IP_PROP4822': """<p>Наша компания готова принять любые комфортные виды оплаты для юридических и физических лиц: по счету, наличная и безналичная, наложенный платеж, также возможны предоплата и отсрочка платежа.</p>""",
+    'IP_PROP4823': """<div class="h4"><h3>Примеры возможной оплаты</h3></div><div class="an-col-12"><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">С помощью менеджера в центрах продаж</span></p></li></ul><p>Важно! Цена не является публичной офертой. Приходите в наш офис, чтобы уточнить поступление, получить ответы на почти любой вопрос, согласовать возврат, счет, рассчитать логистику.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">На расчетный счет</span></p></li></ul><p>По внутреннему счету в отделении банка или путем перечисления средств через личный кабинет (транзакции защищены, скорость зависит от отделения). Для права подтверждения нужно показать согласие на платежное поручение с отметкой банка.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">Наличными или банковской картой при получении</span></p></li></ul><p><span style="font-weight: 400;">Поможем с оплатой: объем имеет значение. Крупным покупателям – деньги можно перевести после приемки товара.</span></p><p>Менеджеры предоставят необходимую информацию.</p><p>Заказывайте через прайс-лист:</p><p><a class="btn btn-blue" href="/catalog/">Каталог (магазин-меню):</a></p></div></div><br>""",
+    'IP_PROP4824': "Описание, статьи, поиск, отзывы, новости, акции, журнал, info:",
+    'IP_PROP4825': "Можем металлизировать, оцинковать, никелировать, проволочь",
+    'IP_PROP4826': "Современный практический подход",
+    'IP_PROP4834': "Надежность без примесей",
+    'IP_PROP4835': "Популярный поставщик",
+    'IP_PROP4836': "Качество и характер",
+    'IP_PROP4837': "Порядок в ГОСТах"
+}
+
+def get_page_data_seo(url):
+    """Сбор данных со страницы для генератора (текст + теги)"""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    try:
+        response = requests.get(url, headers=headers, timeout=20)
+        response.encoding = 'utf-8'
+        if response.status_code != 200: return None, None
+    except Exception as e:
+        st.error(f"Ошибка соединения: {e}")
+        return None, None
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Ищем описание
+    description_div = soup.find('div', class_='description-container')
+    base_text = description_div.get_text(separator="\n", strip=True) if description_div else ""
+    
+    # Если описания нет, пробуем взять просто текст body
+    if not base_text:
+         base_text = soup.get_text(separator="\n", strip=True)[:5000]
+
+    # Ищем теги
+    tags_container = soup.find(class_='popular-tags-inner')
+    tags_data = []
+    if tags_container:
+        links = tags_container.find_all('a')
+        for link in links:
+            tag_name = link.get_text(strip=True)
+            tag_url = link.get('href')
+            if tag_url:
+                from urllib.parse import urljoin
+                tag_url = urljoin(url, tag_url)
+            tags_data.append({'name': tag_name, 'url': tag_url})
+    
+    return base_text, tags_data
+
+def generate_five_blocks_seo(client, base_text, tag_name):
+    """Генерация через Perplexity"""
+    if not base_text: return ["Error: Нет базового текста"] * 5
+
+    system_instruction = """
+    Ты — профессиональный технический копирайтер.
+    Твоя задача — написать 5 независимых текстовых блоков HTML.
+    ВАЖНО: НЕ используй markdown обертки. Пиши сразу чистый код.
+    """
+
+    user_prompt = f"""
+    ВВОДНЫЕ:
+    Товар: "{tag_name}".
+    База знаний: \"\"\"{base_text[:3500]}\"\"\"
+
+    ЗАДАЧА:
+    Сгенерируй ровно 5 текстовых блоков.
+
+    СТРУКТУРА КАЖДОГО БЛОКА:
+    1. Заголовок (h2 для первого, h3 для остальных).
+    2. Абзац текста.
+    3. Вводная фраза (заканчивается двоеточием).
+    4. Список ul или ol (элементы заканчиваются точкой с запятой, последний точкой).
+    5. Заключительный абзац.
+
+    ВЫВОД:
+    Раздели блоки строго строкой: |||BLOCK_SEP|||
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="sonar-pro", 
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7
+        )
+        content = response.choices[0].message.content
+        
+        # Очистка
+        content = content.replace("```html", "").replace("```", "")
+        blocks = content.split("|||BLOCK_SEP|||")
+        clean_blocks = [b.strip() for b in blocks if b.strip()]
+        
+        while len(clean_blocks) < 5:
+            clean_blocks.append("")
+            
+        return clean_blocks[:5]
+
+    except Exception as e:
+        return [f"Error API: {str(e)}"] * 5
+# ==========================================
 # 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (FINAL)
 # ==========================================
 
@@ -704,60 +814,130 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 col_main, col_sidebar = st.columns([65, 35]) 
 
 with col_main:
-    st.title("SEO Анализатор Релевантности")
+    st.title("SEO Комбайн: GAR PRO + AI")
 
-    st.markdown("### URL или код страницы Вашего сайта")
-    my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
+    # Создаем вкладки
+    tab_gar, tab_seo = st.tabs(["📊 Анализ ТОПа (ГАР)", "📝 Генератор SEO (AI)"])
 
-    my_url = ""
-    my_page_content = ""
-    if my_input_type == "Релевантная страница на вашем сайте":
-        my_url = st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input")
-    elif my_input_type == "Исходный код страницы или текст":
-        my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML", key="my_content_input")
+    # === ВКЛАДКА 1: ВАШ СТАРЫЙ ГАР ===
+    with tab_gar:
+        # СЮДА ПЕРЕНЕСИТЕ ВЕСЬ ВАШ СТАРЫЙ КОД ИНТЕРФЕЙСА:
+        # От: st.markdown("### URL или код страницы Вашего сайта")
+        # До кнопки "ЗАПУСТИТЬ АНАЛИЗ"
+        
+        st.markdown("### URL или код страницы Вашего сайта")
+        my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
 
-    st.markdown("### Поисковой запрос")
-    query = st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
+        my_url = ""
+        my_page_content = ""
+        if my_input_type == "Релевантная страница на вашем сайте":
+            my_url = st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input")
+        elif my_input_type == "Исходный код страницы или текст":
+            my_page_content = st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML", key="my_content_input")
 
-    st.markdown("### Поиск или URL страниц конкурентов")
-    source_type_new = st.radio("Источник конкурентов", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
-    source_type = "API" if "API" in source_type_new else "Ручной список" 
+        st.markdown("### Поисковой запрос")
+        query = st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
 
-    if source_type == "Ручной список":
-        st.markdown("### Введите список URL")
-        st.text_area("Вставьте ссылки здесь (каждая с новой строки)", height=200, key="manual_urls_ui")
+        st.markdown("### Поиск или URL страниц конкурентов")
+        source_type_new = st.radio("Источник конкурентов", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
+        source_type = "API" if "API" in source_type_new else "Ручной список" 
 
-    st.markdown("### Редактируемые списки")
-    excludes = st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
-    c_stops = st.text_area("Стоп-слова", DEFAULT_STOPS, height=200, key="settings_stops")
+        if source_type == "Ручной список":
+            st.markdown("### Введите список URL")
+            st.text_area("Вставьте ссылки здесь (каждая с новой строки)", height=200, key="manual_urls_ui")
 
-    st.markdown("---")
-    
-    if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-        for key in list(st.session_state.keys()):
-            if key.endswith('_page'): st.session_state[key] = 1
-        st.session_state.start_analysis_flag = True
+        st.markdown("### Редактируемые списки")
+        excludes = st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
+        c_stops = st.text_area("Стоп-слова", DEFAULT_STOPS, height=200, key="settings_stops")
 
-with col_sidebar:
-    st.markdown("#####⚙️ Настройки")
-    ua = st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
-    search_engine = st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
-    region = st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
-    device = st.selectbox("Устройство", ["Desktop", "Mobile"], key="settings_device")
-    
-    top_n = st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n") 
-    
-    st.markdown("---")
-    st.selectbox("Учитывать тип страниц по url", ["Все страницы", "Главные страницы", "Внутренние страницы"], key="settings_url_type")
-    
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-        st.checkbox("Исключать noindex/script", True, key="settings_noindex")
-        st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
-        st.checkbox("Учитывать числа", False, key="settings_numbers")
-    with col_c2:
-        st.checkbox("Нормировать по длине", True, key="settings_norm")
-        st.checkbox("Исключать агрегаторы", True, key="settings_agg") 
+        st.markdown("---")
+        
+        if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+            for key in list(st.session_state.keys()):
+                if key.endswith('_page'): st.session_state[key] = 1
+            st.session_state.start_analysis_flag = True
+
+
+    # === ВКЛАДКА 2: НОВЫЙ ГЕНЕРАТОР ===
+    with tab_seo:
+        st.markdown("### Оптовая генерация текстов на подфильтры")
+        st.info("Вставьте ссылку на категорию. Скрипт найдет теги и сгенерирует для каждого 5 блоков текста.")
+        
+        target_seo_url = st.text_input("Ссылка на категорию (источник)", placeholder="https://site.ru/category/", key="seo_gen_url")
+        
+        if st.button("ЗАПУСТИТЬ ГЕНЕРАЦИЮ 🚀", type="primary", key="btn_gen_seo"):
+            if not pplx_api_key:
+                st.error("❌ Введите Perplexity API Key в боковой панели!")
+            elif not target_seo_url:
+                st.error("❌ Введите ссылку на категорию!")
+            else:
+                # Инициализация клиента
+                client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
+                
+                status_box = st.status("Сбор данных...", expanded=True)
+                
+                # 1. Скачиваем страницу
+                status_box.write(f"📥 Скачиваем страницу: {target_seo_url}")
+                base_text_content, tags = get_page_data_seo(target_seo_url)
+                
+                if not tags or not base_text_content:
+                    status_box.update(label="Ошибка", state="error")
+                    st.error("❌ Не удалось найти теги или контент на странице. Проверьте ссылку.")
+                else:
+                    status_box.write(f"✅ Найдено тегов: {len(tags)}. Начинаем генерацию...")
+                    progress_bar = st.progress(0)
+                    all_rows = []
+                    
+                    for i, tag in enumerate(tags, 1):
+                        status_box.write(f"✍️ Пишем текст для: **{tag['name']}** ({i}/{len(tags)})")
+                        
+                        blocks = generate_five_blocks_seo(client, base_text_content, tag['name'])
+                        
+                        row = {
+                            'TagName': tag['name'],
+                            'URL': tag['url'],
+                            'IP_PROP4839': blocks[0],
+                            'IP_PROP4816': blocks[1],
+                            'IP_PROP4838': blocks[2],
+                            'IP_PROP4829': blocks[3],
+                            'IP_PROP4831': blocks[4],
+                            **STATIC_DATA_SEO
+                        }
+                        all_rows.append(row)
+                        progress_bar.progress(i / len(tags))
+                        time.sleep(1) # Небольшая пауза
+                    
+                    status_box.update(label="Готово!", state="complete")
+                    
+                    # Формируем Excel в память
+                    columns_order = [
+                        'TagName', 'URL', 
+                        'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 'IP_PROP4820', 
+                        'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 'IP_PROP4824', 'IP_PROP4816', 
+                        'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 
+                        'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
+                    ]
+                    
+                    df = pd.DataFrame(all_rows)
+                    # Фильтр колонок, чтобы не упало если чего-то нет
+                    valid_cols = [c for c in columns_order if c in df.columns]
+                    df = df[valid_cols]
+                    
+                    # Сохраняем в буфер (RAM)
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        df.to_excel(writer, index=False)
+                    
+                    st.success(f"✅ Сгенерировано текстов: {len(df)}")
+                    
+                    # Кнопка скачивания
+                    st.download_button(
+                        label="📥 СКАЧАТЬ РЕЗУЛЬТАТ (XLSX)",
+                        data=buffer.getvalue(),
+                        file_name="seo_texts_generated.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
 
 # ==========================================
 # 7. ВЫПОЛНЕНИЕ
@@ -961,4 +1141,5 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+
 
