@@ -23,7 +23,6 @@ except ImportError:
 # ==========================================
 # 0. ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
 # ==========================================
-# Это нужно, чтобы данные не пропадали при переключении вкладок
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
@@ -831,7 +830,7 @@ def get_page_data_for_gen(url):
     
     return base_text, tags_data, None
 
-def generate_five_blocks(client, base_text, tag_name):
+def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
 
     system_instruction = """
@@ -840,16 +839,30 @@ def generate_five_blocks(client, base_text, tag_name):
     ВАЖНО: НЕ используй markdown обертки (```html). Пиши сразу чистый код.
     """
 
+    keywords_instruction = ""
+    if seo_words:
+        keywords_str = ", ".join(seo_words)
+        keywords_instruction = f"""
+        [ОБЯЗАТЕЛЬНОЕ SEO ТРЕБОВАНИЕ]
+        В тексте должны быть использованы следующие слова: {keywords_str}.
+        Правила для ключевых слов:
+        1. Вписывай их максимально органично и естественно в текст блоков.
+        2. Каждое вхождение этих слов ОБЯЗАТЕЛЬНО выдели тегом <b> (например: <b>слово</b>).
+        3. Можно менять окончания (склонять), но корень должен сохраняться.
+        """
+
     user_prompt = f"""
     ВВОДНЫЕ:
-    Товар: "{tag_name}".
+    Товар (Текущий тег): "{tag_name}".
     База знаний: \"\"\"{base_text[:3000]}\"\"\"
+
+    {keywords_instruction}
 
     ЗАДАЧА:
     Сгенерируй ровно 5 текстовых блоков.
 
     СТРУКТУРА КАЖДОГО БЛОКА:
-    1. Заголовок (<h2> для первого блока, <h3> для остальных).
+    1. Заголовок (<h2> для первого блока - СТРОГО "{tag_name}", без изменений. Для остальных <h3>).
     2. Абзац текста.
     3. Вводная фраза (заканчивается двоеточием).
     4. Список <ul> или <ol> (элементы заканчиваются точкой с запятой, последний точкой).
@@ -1202,7 +1215,17 @@ with tab_ai:
                 status.update(label="Теги не найдены!", state="error")
                 st.warning("На странице не найден блок `popular-tags-inner` или ссылки в нем.")
                 st.stop()
-                
+            
+            # --- СБОР КЛЮЧЕВЫХ СЛОВ ИЗ ВКЛАДКИ SEO ---
+            seo_keywords_list = []
+            if st.session_state.analysis_results:
+                high_list = st.session_state.analysis_results.get('missing_semantics_high', [])
+                if high_list:
+                    seo_keywords_list = [item['word'] for item in high_list]
+                    st.info(f"Найдено {len(seo_keywords_list)} слов из 'Ширины' для внедрения: {', '.join(seo_keywords_list)}")
+                else:
+                    st.warning("Список слов 'Ширина' пуст. Генерация пойдет без доп. ключей.")
+            
             status.update(label=f"Найдено тегов: {len(tags)}. Начинаем генерацию...", state="running")
             
             all_rows = []
@@ -1212,7 +1235,7 @@ with tab_ai:
                 tag_name = tag['name']
                 st.write(f"⏳ Обработка: **{tag_name}** ({i+1}/{len(tags)})")
                 
-                blocks = generate_five_blocks(client, base_text, tag_name)
+                blocks = generate_five_blocks(client, base_text, tag_name, seo_keywords_list)
                 
                 row = {
                     'TagName': tag_name,
