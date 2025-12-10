@@ -1147,4 +1147,115 @@ with tab_seo:
 
         render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
         render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
-        render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_d
+        render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+
+# ------------------------------------------
+# Вклдака 2: НОВЫЙ МОДУЛЬ (PERPLEXITY)
+# ------------------------------------------
+with tab_ai:
+    st.title("AI Генератор Текстов (Perplexity)")
+    st.markdown("Генерация HTML-блоков для подфильтров на основе контента родительской страницы.")
+
+    # Создадим отдельный контейнер для настроек генерации, чтобы не мешать основному сайдбару
+    with st.container():
+        st.markdown("### 🔑 Настройки API")
+        api_key_input = st.text_input("Введите ваш Perplexity API Key (начинается с pplx-)", type="password", key="pplx_key_input")
+        
+        st.markdown("### 📥 Ввод данных")
+        target_url_gen = st.text_input("URL Страницы (где брать теги/товары)", placeholder="https://site.ru/catalog/category/", key="pplx_url_input")
+    
+    st.markdown("---")
+
+    if st.button("🚀 Начать генерацию", type="primary", disabled=not api_key_input, key="btn_start_gen"):
+        if not openai:
+            st.error("Библиотека `openai` не установлена! `pip install openai`")
+            st.stop()
+            
+        if not target_url_gen:
+            st.error("Введите URL!")
+            st.stop()
+            
+        # 1. Инициализация клиента
+        try:
+            client = openai.OpenAI(api_key=api_key_input, base_url="https://api.perplexity.ai")
+        except Exception as e:
+            st.error(f"Ошибка инициализации клиента: {e}")
+            st.stop()
+
+        # 2. Скачивание данных
+        with st.status("Скачивание данных со страницы...", expanded=True) as status:
+            base_text, tags, error = get_page_data_for_gen(target_url_gen)
+            
+            if error:
+                status.update(label="Ошибка!", state="error")
+                st.error(error)
+                st.stop()
+                
+            if not tags:
+                status.update(label="Теги не найдены!", state="error")
+                st.warning("На странице не найден блок `popular-tags-inner` или ссылки в нем.")
+                st.stop()
+                
+            status.update(label=f"Найдено тегов: {len(tags)}. Начинаем генерацию...", state="running")
+            
+            all_rows = []
+            prog_bar = st.progress(0)
+            
+            # 3. Цикл генерации
+            for i, tag in enumerate(tags):
+                tag_name = tag['name']
+                st.write(f"⏳ Обработка: **{tag_name}** ({i+1}/{len(tags)})")
+                
+                blocks = generate_five_blocks(client, base_text, tag_name)
+                
+                # Сбор строки
+                row = {
+                    'TagName': tag_name,
+                    'URL': tag['url'],
+                    'IP_PROP4839': blocks[0],
+                    'IP_PROP4816': blocks[1],
+                    'IP_PROP4838': blocks[2],
+                    'IP_PROP4829': blocks[3],
+                    'IP_PROP4831': blocks[4],
+                    # Статика
+                    **STATIC_DATA_GEN
+                }
+                all_rows.append(row)
+                
+                prog_bar.progress((i + 1) / len(tags))
+                time.sleep(0.5) # Небольшая пауза чтобы не спамить UI
+            
+            status.update(label="Готово!", state="complete")
+            
+        # 4. Сохранение и скачивание
+        if all_rows:
+            st.success("✅ Генерация завершена!")
+            
+            df = pd.DataFrame(all_rows)
+            # Упорядочивание колонок
+            cols = [
+                'TagName', 'URL', 
+                'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 'IP_PROP4820', 
+                'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 'IP_PROP4824',
+                'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 
+                'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837',
+                'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
+            ]
+            # Оставляем только те, что есть в df
+            final_cols = [c for c in cols if c in df.columns]
+            df = df[final_cols]
+            
+            # Конвертация в Excel в память
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Sheet1')
+            
+            st.download_button(
+                label="📥 Скачать Excel файл",
+                data=buffer.getvalue(),
+                file_name="seo_texts_result.xlsx",
+                mime="application/vnd.ms-excel"
+            )
+            
+            with st.expander("Просмотр данных (первые 5 строк)"):
+                st.dataframe(df.head())
