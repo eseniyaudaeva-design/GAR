@@ -7,13 +7,14 @@ import re
 from collections import Counter, defaultdict
 import math
 import concurrent.futures
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin # <--- urljoin добавлен
 import inspect
 import time
 import json
 import os
 import io
 import openai
+import random # <--- ДОБАВЛЕНО для рандомной задержки
 
 # ==========================================
 # 0. ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
@@ -51,7 +52,8 @@ def check_password():
         password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
         
         if st.button("ВОЙТИ", type="primary", use_container_width=True):
-            if password == "jfV6Xel-Q7vp-_s2UYPO":
+            # ! ИСПОЛЬЗУЙТЕ СВОЙ ПАРОЛЬ !
+            if password == "jfV6Xel-Q7vp-_s2UYPO": 
                 st.session_state.authenticated = True
                 st.rerun()
             else:
@@ -133,6 +135,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # --- СТАТИЧЕСКИЙ КОНТЕНТ (ШАБЛОНЫ ДЛЯ ГЕНЕРАТОРА) ---
+# Блоки взяты из вашего рабочего файла
 STATIC_DATA_GEN = {
     'IP_PROP4817': "Условия поставки",
     'IP_PROP4818': "Оперативные отгрузки в регионы точно в срок",
@@ -211,7 +214,7 @@ if 'analysis_results' not in st.session_state:
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# --- ФУНКЦИИ ARSENKIN ---
+# --- ФУНКЦИИ ARSENKIN (unchanged) ---
 def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check" 
@@ -283,7 +286,6 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     try:
         collect = res_data.get('result', {}).get('result', {}).get('collect')
         if not collect:
-             # Попытка парсинга старого формата или ошибки
              st.error("❌ Некорректный ответ API.")
              return []
 
@@ -385,7 +387,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for k, v in c_forms.items(): all_forms_map[k].update(v)
     
     if not comp_docs:
-        # Fallback if no competitors
         table_rel_fallback = []
         for item in original_results:
             domain = urlparse(item['url']).netloc
@@ -521,20 +522,30 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 # --- ФУНКЦИИ ГЕНЕРАТОРА ТЕКСТА (PERPLEXITY) ---
 
 def gen_get_page_data(url):
+    # Используем селекторы из вашего рабочего файла
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
     try:
-        response = requests.get(url, headers=headers)
+        # Устанавливаем небольшой таймаут для парсинга страницы
+        response = requests.get(url, headers=headers, timeout=10) 
         response.encoding = 'utf-8'
     except Exception as e:
+        st.error(f"Ошибка при скачивании страницы: {e}")
         return None, None
     
     if response.status_code != 200:
+        st.error(f"Ошибка HTTP: {response.status_code}")
         return None, None
 
     soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Парсим основной текст (body)
     description_div = soup.find('div', class_='description-container')
     base_text = description_div.get_text(separator="\n", strip=True) if description_div else ""
-
+    if not base_text:
+        st.warning("Предупреждение: не удалось найти div.description-container. Будет использоваться вся текстовая часть страницы.")
+        base_text = soup.get_text(separator="\n", strip=True)
+        
+    # Парсим теги
     tags_container = soup.find(class_='popular-tags-inner')
     tags_data = []
     if tags_container:
@@ -543,17 +554,23 @@ def gen_get_page_data(url):
             tag_name = link.get_text(strip=True)
             tag_url = link.get('href')
             if tag_url and tag_url.startswith('/'):
-                tag_url = urljoin(url, tag_url)
+                # Формируем полный URL для тегов
+                tag_url = urljoin(url, tag_url) 
             tags_data.append({'name': tag_name, 'url': tag_url})
     
     return base_text, tags_data
 
 def gen_generate_five_blocks(client, base_text, tag_name):
-    if not base_text: return ["Error"] * 5
+    if not base_text: return ["Error: Base text is empty"] * 5
+    
+    MAX_RETRIES = 5 
+    INITIAL_DELAY = 5 
+
     system_instruction = """Ты — профессиональный технический копирайтер.
     Твоя задача — написать 5 независимых текстовых блоков HTML.
     ВАЖНО: НЕ используй markdown обертки (```html). Пиши сразу чистый код."""
 
+    # Промпт из вашего рабочего файла
     user_prompt = f"""ВВОДНЫЕ:
     Товар: "{tag_name}".
     База знаний: \"\"\"{base_text[:3500]}\"\"\"
@@ -569,26 +586,41 @@ def gen_generate_five_blocks(client, base_text, tag_name):
     ВЫВОД:
     Раздели блоки строго строкой: |||BLOCK_SEP|||
     """
-    try:
-        response = client.chat.completions.create(
-            model="sonar-pro", 
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7
-            # Таймаут удален по запросу пользователя для массовой генерации
-        )
-        content = response.choices[0].message.content
-        content = content.replace("```html", "").replace("```", "")
-        blocks = content.split("|||BLOCK_SEP|||")
-        clean_blocks = [b.strip() for b in blocks if b.strip()]
-        while len(clean_blocks) < 5:
-            clean_blocks.append("")
-        return clean_blocks[:5]
-    except Exception as e:
-        # Убран лимит на длину сообщения об ошибке для лучшей диагностики
-        return [f"Error: {str(e)}"] * 5
+    
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = client.chat.completions.create(
+                model="sonar-pro", 
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.7,
+                # Таймаут на 600 секунд для самого длительного запроса
+                timeout=600 
+            )
+            content = response.choices[0].message.content
+            # Очистка от оберток markdown, если модель их все же добавит
+            content = content.replace("```html", "").replace("```", "") 
+            blocks = content.split("|||BLOCK_SEP|||")
+            clean_blocks = [b.strip() for b in blocks if b.strip()]
+            
+            # Убедимся, что блоков ровно 5 (дополняем пустыми, если не хватает)
+            while len(clean_blocks) < 5:
+                clean_blocks.append("")
+            return clean_blocks[:5]
+        
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                # Экспоненциальная задержка: 5с, 10с, 20с, 40с + немного рандома
+                delay = INITIAL_DELAY * (2 ** attempt) + random.uniform(0, 2)
+                st.warning(f"❌ Ошибка генерации для '{tag_name}' (Попытка {attempt+1}/{MAX_RETRIES}). Ожидание {delay:.1f}с...")
+                time.sleep(delay)
+            else:
+                # После последней попытки возвращаем ошибку
+                return [f"Error: Connection or API Failure after {MAX_RETRIES} attempts. Last error: {type(e).__name__}: {str(e)}"] * 5
+                
+    return ["Error: Should not reach here"] * 5 # Безопасный возврат
 
 # ==========================================
 # 5. ИНТЕРФЕЙС (MAIN & SIDEBAR)
@@ -733,7 +765,7 @@ if app_mode == "SEO Анализатор (ГАР)":
 
     # --- ВЫПОЛНЕНИЕ АНАЛИЗА ---
     if st.session_state.get('start_analysis_flag'):
-        st.session_state.start_analysis_flag = False
+        st.session_session.start_analysis_flag = False
 
         if my_input_type == "Релевантная страница на вашем сайте" and not st.session_state.get('my_url_input'):
             st.error("Введите URL!")
@@ -895,7 +927,6 @@ elif app_mode == "Генератор текстов (Perplexity)":
         
         with st.container(border=True):
             st.markdown("#### 1. Настройки API")
-            # Пытаемся взять ключ из env или st.secrets, иначе просим ввести
             default_key = os.getenv("PERPLEXITY_API_KEY", "")
             pplx_api_key = st.text_input("Введите PERPLEXITY_API_KEY", value=default_key, type="password")
             
@@ -912,9 +943,10 @@ elif app_mode == "Генератор текстов (Perplexity)":
                 st.error("Ошибка: Не введена ссылка!")
                 st.stop()
                 
-            # Инициализация клиента внутри процесса
+            # Инициализация клиента
             try:
-                client = openai.OpenAI(api_key=pplx_api_key, base_url="[https://api.perplexity.ai](https://api.perplexity.ai)")
+                # Таймаут на уровне клиента: 600 секунд
+                client = openai.OpenAI(api_key=pplx_api_key, base_url="[https://api.perplexity.ai](https://api.perplexity.ai)", timeout=600)
             except Exception as e:
                 st.error(f"Ошибка инициализации клиента: {e}")
                 st.stop()
@@ -932,17 +964,19 @@ elif app_mode == "Генератор текстов (Perplexity)":
                 for i, tag in enumerate(tags, 1):
                     status_text.text(f"Обработка [{i}/{len(tags)}]: {tag['name']}...")
                     
+                    # Генерация с логикой повторных попыток (The Fix)
                     blocks = gen_generate_five_blocks(client, base_text_content, tag['name'])
                     
                     row = {
                         'TagName': tag['name'],
                         'URL': tag['url'],
+                        # Динамически генерируемые блоки (соответствуют вашему рабочему коду)
                         'IP_PROP4839': blocks[0],
                         'IP_PROP4816': blocks[1],
                         'IP_PROP4838': blocks[2],
                         'IP_PROP4829': blocks[3],
                         'IP_PROP4831': blocks[4],
-                        # Статика
+                        # Статические блоки
                         'IP_PROP4817': STATIC_DATA_GEN['IP_PROP4817'],
                         'IP_PROP4818': STATIC_DATA_GEN['IP_PROP4818'],
                         'IP_PROP4819': STATIC_DATA_GEN['IP_PROP4819'],
@@ -960,9 +994,11 @@ elif app_mode == "Генератор текстов (Perplexity)":
                     }
                     all_rows.append(row)
                     progress_bar.progress(i / len(tags))
-                    time.sleep(1.0) # Небольшая задержка для API
+                    
+                    # Обязательная задержка между успешными запросами
+                    time.sleep(2.5) 
 
-                # Формирование DataFrame
+                # Формирование DataFrame с нужным порядком колонок
                 columns_order = [
                     'TagName', 'URL', 
                     'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 'IP_PROP4820', 
@@ -972,15 +1008,13 @@ elif app_mode == "Генератор текстов (Perplexity)":
                 ]
                 
                 df_gen = pd.DataFrame(all_rows)
-                # Реиндекс только существующих колонок
                 valid_cols = [c for c in columns_order if c in df_gen.columns]
                 df_gen = df_gen[valid_cols]
                 
-                st.success("✅ Генерация завершена!")
+                st.success("✅ Генерация завершена! Проверьте, что в столбцах нет текста 'Error: Connection...'.")
                 
                 # Конвертация в Excel
                 output = io.BytesIO()
-                # Используем стандартный движок без xlsxwriter
                 with pd.ExcelWriter(output) as writer:
                     df_gen.to_excel(writer, index=False, sheet_name='SEO Texts')
                 processed_data = output.getvalue()
@@ -993,7 +1027,7 @@ elif app_mode == "Генератор текстов (Perplexity)":
                 )
                 
                 with st.expander("Предпросмотр данных"):
-                    st.dataframe(df_gen.head())
+                    st.dataframe(df_gen.head(10))
 
             else:
-                st.error("Ошибка: Не удалось получить теги или контент со страницы. Возможно, селектор `.popular-tags-inner` отсутствует.")
+                st.error("Ошибка: Не удалось получить теги или контент со страницы. Проверьте URL или селекторы.")
