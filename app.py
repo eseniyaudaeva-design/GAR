@@ -1188,7 +1188,23 @@ with tab_ai:
     st.markdown("---")
 
     # --- ЛОГИКА ГЕНЕРАЦИИ (ПО КНОПКЕ) ---
-    if st.button("🚀 Начать генерацию", type="primary", disabled=not api_key_input, key="btn_start_gen"):
+    col_btn_start, col_btn_reset = st.columns([2,1])
+    
+    with col_btn_start:
+        start_gen = st.button("🚀 Начать генерацию", type="primary", disabled=not api_key_input, key="btn_start_gen")
+    
+    # Кнопка ручного сброса
+    with col_btn_reset:
+        if st.button("🔄 Сбросить результат", key="btn_reset_gen"):
+            st.session_state.ai_generated_df = None
+            st.session_state.ai_excel_bytes = None
+            st.rerun()
+
+    if start_gen:
+        # АВТОМАТИЧЕСКИЙ СБРОС ПЕРЕД НАЧАЛОМ НОВОЙ ГЕНЕРАЦИИ
+        st.session_state.ai_generated_df = None
+        st.session_state.ai_excel_bytes = None
+        
         if not openai:
             st.error("Библиотека `openai` не установлена! `pip install openai`")
             st.stop()
