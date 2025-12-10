@@ -564,7 +564,7 @@ def gen_generate_five_blocks(client, base_text, tag_name):
     1. Заголовок (<h2> для первого блока, <h3> для остальных).
     2. Абзац текста.
     3. Вводная фраза (заканчивается двоеточием).
-    4. Список <ul> или <ol> (ВАЖНО: каждый пункт списка ОБЯЗАТЕЛЬНО начинается с заглавной буквы; элементы заканчиваются точкой с запятой, последний точкой).
+    4. Список <ul> или <ol> (ВАЖНО: каждый пункт списка ОБЯЗАТЕЛЬНО начинается с Заглавной буквы; элементы заканчиваются точкой с запятой, последний точкой).
     5. Заключительный абзац.
     ВЫВОД:
     Раздели блоки строго строкой: |||BLOCK_SEP|||
@@ -577,6 +577,7 @@ def gen_generate_five_blocks(client, base_text, tag_name):
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.7
+            # Таймаут удален по запросу пользователя для массовой генерации
         )
         content = response.choices[0].message.content
         content = content.replace("```html", "").replace("```", "")
@@ -586,7 +587,8 @@ def gen_generate_five_blocks(client, base_text, tag_name):
             clean_blocks.append("")
         return clean_blocks[:5]
     except Exception as e:
-        return [f"Error: {str(e)[:50]}"] * 5
+        # Убран лимит на длину сообщения об ошибке для лучшей диагностики
+        return [f"Error: {str(e)}"] * 5
 
 # ==========================================
 # 5. ИНТЕРФЕЙС (MAIN & SIDEBAR)
