@@ -922,7 +922,7 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
             
             # 1. ЧАСТЫЕ
             if high:
-                st.markdown("**🔥 Частые слова (встречаются у >30% конкурентов):**")
+                st.markdown("**🔥 Основные связанные слова по ширине:**")
                 words_list_h = [item['word'] for item in high]
                 st.markdown(
                     f"<div style='background-color:#F8FAFC; padding:15px; border-radius:10px; line-height: 1.6; border: 1px solid #E2E8F0; color: #333; font-size: 14px;'>"
@@ -937,7 +937,7 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
                 
             # 2. РЕДКИЕ
             if low:
-                st.markdown("**🧊 Редкие/Специфичные слова (встречаются у <30% конкурентов):**")
+                st.markdown("**Дополнительный список связанных слов, который может улучшить ширину охвата**")
                 words_list_l = [item['word'] for item in low]
                 st.markdown(
                     f"<div style='background-color:#F8FAFC; padding:15px; border-radius:10px; line-height: 1.6; border: 1px solid #E2E8F0; color: #555; font-size: 13px;'>"
@@ -961,3 +961,4 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
     render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
     render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+
