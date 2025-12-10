@@ -420,7 +420,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         })
         
         table_rel_df = pd.DataFrame(table_rel_fallback).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
-        return {"depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": table_rel_df, "my_score": {"width": 0, "depth": 0}, "missing_semantics": []}
+        return {
+            "depth": pd.DataFrame(), 
+            "hybrid": pd.DataFrame(), 
+            "relevance_top": table_rel_df, 
+            "my_score": {"width": 0, "depth": 0}, 
+            "missing_semantics_high": [], 
+            "missing_semantics_low": []
+        }
 
     # Дальше расчеты идут только по успешно скачанным comp_docs
     avg_len = np.mean([len(d['body']) for d in comp_docs])
@@ -435,17 +442,18 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for w in set(d['body']): doc_freqs[w] += 1
         
     # ==========================================
-    # РАСЧЕТ УПУЩЕННОЙ СЕМАНТИКИ (ШИРИНА)
+    # РАСЧЕТ УПУЩЕННОЙ СЕМАНТИКИ (2 СПИСКА)
     # ==========================================
-    missing_semantics = []
+    missing_semantics_high = []
+    missing_semantics_low = []
     my_lemmas_set = set(my_lemmas) 
     
     # Порог: Слово должно встречаться минимум у 30% конкурентов
     min_docs_threshold = math.ceil(N * 0.30)
     
     for word, freq in doc_freqs.items():
-        # Если слова нет у нас, но оно популярно у конкурентов
-        if word not in my_lemmas_set and freq >= min_docs_threshold:
+        # Если слова нет у нас
+        if word not in my_lemmas_set:
             # Отсекаем слишком короткие (мусор)
             if len(word) < 2: continue
             # Отсекаем цифры
@@ -454,10 +462,16 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             # Предлоги, союзы и прочее уже отфильтрованы в process_text_detailed
             
             percent = int((freq / N) * 100)
-            missing_semantics.append({'word': word, 'percent': percent})
+            item = {'word': word, 'percent': percent}
+            
+            if freq >= min_docs_threshold:
+                missing_semantics_high.append(item)
+            elif freq >= 2: # Отсекаем слова, которые встретились только 1 раз (шум)
+                missing_semantics_low.append(item)
     
     # Сортировка по популярности
-    missing_semantics.sort(key=lambda x: x['percent'], reverse=True)
+    missing_semantics_high.sort(key=lambda x: x['percent'], reverse=True)
+    missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
     # ==========================================
         
     table_depth, table_hybrid = [], []
@@ -574,7 +588,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
         "relevance_top": table_rel_df,
         "my_score": {"width": my_score_w, "depth": my_score_d},
-        "missing_semantics": missing_semantics 
+        "missing_semantics_high": missing_semantics_high,
+        "missing_semantics_low": missing_semantics_low
     }
 
 # ==========================================
@@ -894,27 +909,42 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
         </div>
     """, unsafe_allow_html=True)
 
-    # --- СВОРАЧИВАЕМЫЙ БЛОК: УПУЩЕННАЯ СЕМАНТИКА ---
-    if results.get('missing_semantics'):
-        count_missing = len(results['missing_semantics'])
-        with st.expander(f"🧩 Упущенная семантика ({count_missing} слов) — Нажмите, чтобы развернуть", expanded=False):
-            st.info(
-                f"Эти слова встречаются у более чем 30% конкурентов, но отсутствуют у вас."
-            )
+    # --- СВОРАЧИВАЕМЫЙ БЛОК: УПУЩЕННАЯ СЕМАНТИКА (ДВА СПИСКА) ---
+    high = results.get('missing_semantics_high', [])
+    low = results.get('missing_semantics_low', [])
+    
+    if high or low:
+        count_total = len(high) + len(low)
+        with st.expander(f"🧩 Упущенная семантика ({count_total} слов) — Нажмите, чтобы развернуть", expanded=False):
             
-            words_html = []
-            for item in results['missing_semantics']:
-                w = item['word']
-                pct = item['percent']
-                opacity = 1.0 if pct > 70 else 0.85
-                words_html.append(f"<span style='white-space: nowrap; opacity: {opacity};' title='Встречается у {pct}% конкурентов'><b>{w}</b> <small style='color:#666'>({pct}%)</small></span>")
+            # 1. ЧАСТЫЕ
+            if high:
+                st.markdown("**🔥 Частые слова (встречаются у >30% конкурентов):**")
+                words_list_h = [item['word'] for item in high]
+                st.markdown(
+                    f"<div style='background-color:#F8FAFC; padding:15px; border-radius:10px; line-height: 1.6; border: 1px solid #E2E8F0; color: #333; font-size: 14px;'>"
+                    f"{', '.join(words_list_h)}"
+                    f"</div>", 
+                    unsafe_allow_html=True
+                )
             
-            st.markdown(
-                f"<div style='background-color:#F8FAFC; padding:20px; border-radius:10px; line-height: 2.2; border: 1px solid #E2E8F0; text-align: justify;'>"
-                f"{' &nbsp;•&nbsp; '.join(words_html)}"
-                f"</div><br>", 
-                unsafe_allow_html=True
-            )
+            # Разделитель
+            if high and low:
+                st.divider()
+                
+            # 2. РЕДКИЕ
+            if low:
+                st.markdown("**🧊 Редкие/Специфичные слова (встречаются у <30% конкурентов):**")
+                words_list_l = [item['word'] for item in low]
+                st.markdown(
+                    f"<div style='background-color:#F8FAFC; padding:15px; border-radius:10px; line-height: 1.6; border: 1px solid #E2E8F0; color: #555; font-size: 13px;'>"
+                    f"{', '.join(words_list_l)}"
+                    f"</div>", 
+                    unsafe_allow_html=True
+                )
+            
+            st.caption("Слова отсортированы по частоте встречаемости.")
+            
     # ----------------------------------------
 
     st.markdown(f"""
