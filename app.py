@@ -531,8 +531,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     missing_semantics_low = []
     
     # ОБЪЕДИНЯЕМ ТЕКСТ и АНКОРЫ ДЛЯ ПРОВЕРКИ "ЕСТЬ ЛИ У НАС"
-    # Это решает проблему "слово есть, но в другом падеже/числе" (т.к. все лемматизировано)
-    # и проблему "слово есть в меню/ссылках, но не в тексте".
     my_full_lemmas_set = set(my_lemmas) | set(my_anchors)
     
     for word, freq in doc_freqs.items():
@@ -552,8 +550,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             med_val = np.median(c_counts)
             
             # Логика разделения согласно запросу:
-            # High (Важные) = Медиана > 0
-            if med_val > 0:
+            # High (Важные) = Медиана >= 1 (Строгое условие, отсекает 0.5)
+            if med_val >= 1:
                 missing_semantics_high.append(item)
             else:
                 # В хвост берем все остальное, если частота не единичная
@@ -653,7 +651,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     table_rel = []
     
     # 1. Расчет для конкурентов
-    for item in original_results:
+    for item in original_results
+    :
         url = item['url']
         pos = item['pos']
         domain = urlparse(url).netloc
@@ -697,7 +696,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
     # 2. Расчет для ВАС
     if total_lsi_count > 0:
-        my_intersection_count = len(set(my_lemmas).intersection(S_LSI))
+        # Для ширины используем объединенное множество (текст + анкоры)
+        my_intersection_count = len(my_full_lemmas_set.intersection(S_LSI))
         my_score_w = int(round((my_intersection_count / total_lsi_count) * 100))
     else:
         my_score_w = 0
