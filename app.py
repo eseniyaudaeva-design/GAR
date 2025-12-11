@@ -339,10 +339,8 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     return results_list
 
 def process_text_detailed(text, settings, n_gram=1):
-    if settings['numbers']:
-        pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
-    else:
-        pattern = r'[а-яА-ЯёЁa-zA-Z]+'
+    # ВСЕГДА разрешаем буквы И ЦИФРЫ, чтобы ловить "м1", "ст3"
+    pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
         
     words = re.findall(pattern, text.lower())
     stops = set(w.lower() for w in settings['custom_stops'])
@@ -352,6 +350,12 @@ def process_text_detailed(text, settings, n_gram=1):
     
     for w in words:
         if len(w) < 2: continue
+        
+        # Если настройка "Учитывать числа" ВЫКЛЮЧЕНА, то мы пропускаем ЧИСТЫЕ числа (2025, 100).
+        # Но слова типа "м1", "ст3" (смешанные) - ОСТАВЛЯЕМ.
+        if not settings['numbers'] and w.isdigit():
+            continue
+            
         if w in stops: continue
         
         lemma = w
@@ -380,13 +384,18 @@ def parse_page(url, settings):
         if r.status_code != 200: return None
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        tags_to_remove = ['script', 'style', 'head']
+        # СПИСОК ТЕГОВ ДЛЯ УДАЛЕНИЯ (по умолчанию пустой)
+        tags_to_remove = []
+        
+        # Удаляем ТОЛЬКО если пользователь поставил галочку для noindex
         if settings['noindex']:
-            tags_to_remove.extend(['noindex', 'nav', 'footer', 'header', 'aside'])
+            tags_to_remove.append('noindex') 
         
         comments = soup.find_all(string=lambda text: isinstance(text, Comment))
         for c in comments: c.extract()
-        for t in soup.find_all(tags_to_remove): t.decompose()
+        
+        if tags_to_remove:
+            for t in soup.find_all(tags_to_remove): t.decompose()
             
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
@@ -500,7 +509,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         if word not in my_lemmas_set:
             # Отсекаем слишком короткие (мусор)
             if len(word) < 2: continue
-            # Отсекаем цифры
+            # Отсекаем ЧИСТЫЕ цифры из подсказок (если они вдруг пролезли)
             if word.isdigit(): continue
             
             # Предлоги, союзы и прочее уже отфильтрованы в process_text_detailed
@@ -635,12 +644,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 width_score_val = int(round((intersection_count / total_lsi_count) * 100))
             else:
                 width_score_val = 0
-                
-            # Для глубины в таблице конкурентов мы просто берем кол-во слов из ядра,
-            # но для простоты оставим старую логику или 0, так как метрика "Глубина" 
-            # (Depth Score) сложна для конкурента (надо считать медиану без него самого и т.д.)
-            # Чтобы не усложнять, покажем просто ширину. А "Глубина (балл)" сделаем как % попадания в ядро по длине?
-            # Лучше просто оставим ширину как главную метрику.
             
         table_rel.append({
             "Домен": domain, "Позиция": pos,
@@ -1100,7 +1103,7 @@ with tab_seo:
         
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            st.checkbox("Исключать noindex/script", True, key="settings_noindex")
+            st.checkbox("Исключать содержимое <noindex>", True, key="settings_noindex")
             st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
             st.checkbox("Учитывать числа", False, key="settings_numbers")
         with col_c2:
