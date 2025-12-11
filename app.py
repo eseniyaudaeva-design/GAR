@@ -473,9 +473,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
         
-    # --- ИЗМЕНЕНИЕ: ЛОГИКА ГАР ПРО (Порог 50%) ---
-    # Основные слова (S_LSI) - те, что есть у >= 50% конкурентов
-    min_docs_threshold = math.ceil(N * 0.50) 
+    # --- ИЗМЕНЕНИЕ: ПОВЫШЕННЫЙ ПОРОГ (60%) ---
+    # Чтобы отсеять лишнее и приблизить ширину к 100%, берем только слова,
+    # встречающиеся у 60% конкурентов (было 50%).
+    min_docs_threshold = math.ceil(N * 0.60) 
+    # Защита от слишком маленького порога, если сайтов мало
+    if N >= 3 and min_docs_threshold < 2:
+         min_docs_threshold = 2
     if min_docs_threshold < 1: min_docs_threshold = 1
     
     S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
@@ -608,7 +612,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             else:
                 width_score_val = 0
             
-            # ГЛУБИНА (для конкурентов упрощенно - наличие)
+            # ГЛУБИНА (для конкурентов - чуть строже: не просто наличие, а хоть какая-то частотность)
             hits = 0
             check_words = [w for w in S_LSI if w in words_bounds_map]
             for w in check_words:
@@ -1261,7 +1265,7 @@ with tab_seo:
                 # 1. ОСНОВНЫЕ СЛОВА (ВАЖНЫЕ)
                 if high:
                     st.markdown("##### ⭐️ Основные связанные слова (Важные)")
-                    st.markdown("Эти слова встречаются у большинства конкурентов (>50%). Их отсутствие сильно снижает балл «Ширина».")
+                    st.markdown("Эти слова встречаются у БОЛЬШИНСТВА конкурентов (повышенный приоритет). Их отсутствие сильно снижает балл «Ширина».")
                     
                     words_list_h = [item['word'] for item in high]
                     # Формируем строку через запятую
