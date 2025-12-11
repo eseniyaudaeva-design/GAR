@@ -461,56 +461,171 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     median_len = np.median(c_lens)
     
     if median_len > 0 and my_len > 0 and settings['norm']:
-        norm_k = my_len / median_len
+        norm_coefficient = my_len / median_len
     else:
-        norm_k = 1.0
+        norm_coefficient = 1.0
     
+    # 1. СОБИРАЕМ ВСЕ СЛОВА ИЗ ВСЕХ ДОКУМЕНТОВ (включая ваш)
+    all_docs_lemmas = []
+    for d in comp_docs:
+        all_docs_lemmas.extend(d['body'])
+    if my_data and my_data.get('body_text'):
+        all_docs_lemmas.extend(my_lemmas)
+    
+    # 2. РАСЧЕТ ЧАСТОТЫ СЛОВ ВО ВСЕЙ КОЛЛЕКЦИИ
+    word_freq_all = Counter(all_docs_lemmas)
+    
+    # 3. ОТБОР ВАЖНЫХ СЛОВ (как в ГАРПРО - топ-N самых частых)
+    # В ГАРПРО используют топ-100 или топ-150 самых частых слов
+    top_n = min(150, len(word_freq_all))
+    important_words = {w for w, cnt in word_freq_all.most_common(top_n) 
+                      if w.lower() not in GARBAGE_LATIN_STOPLIST 
+                      and len(w) > 2 
+                      and not w.isdigit()}
+    
+    # 4. РАСЧЕТ ДОКУМЕНТНОЙ ЧАСТОТЫ (в скольких документах встречается слово)
+    N = len(comp_docs)
+    if my_data and my_data.get('body_text'):
+        N_total = N + 1
+    else:
+        N_total = N
+    
+    doc_freqs = Counter()
+    for d in comp_docs:
+        for w in set(d['body']): 
+            doc_freqs[w] += 1
+    
+    # Если есть ваш документ, учитываем его в документной частоте
+    if my_data and my_data.get('body_text'):
+        for w in set(my_lemmas):
+            doc_freqs[w] += 1
+    
+    # 5. ФИЛЬТРАЦИЯ ВАЖНЫХ СЛОВ ПО ДОКУМЕНТНОЙ ЧАСТОТЕ
+    # В ГАРПРО важные слова встречаются минимум в 2-3 документах
+    filtered_important_words = {w for w in important_words if doc_freqs.get(w, 0) >= 2}
+    
+    # 6. РАСЧЕТ TF-IDF ДЛЯ КАЖДОГО СЛОВА В КАЖДОМ ДОКУМЕНТЕ
+    def calculate_tf_idf_for_doc(doc_lemmas, is_my_doc=False):
+        tf_idf_scores = {}
+        word_counts = Counter(doc_lemmas)
+        
+        for word in filtered_important_words:
+            tf = word_counts[word]
+            df = doc_freqs.get(word, 0)
+            
+            if df > 0 and N_total > 0:
+                idf = math.log((N_total + 1) / (df + 0.5))
+            else:
+                idf = 0
+            
+            tf_idf = tf * idf
+            if tf_idf > 0:
+                tf_idf_scores[word] = tf_idf
+        
+        return tf_idf_scores
+    
+    # 7. РАСЧЕТ КОСИНУСНОГО СХОДСТВА МЕЖДУ ДОКУМЕНТАМИ
+    def cosine_similarity(vec1, vec2):
+        dot_product = sum(vec1.get(k, 0) * vec2.get(k, 0) for k in set(vec1.keys()) | set(vec2.keys()))
+        norm1 = math.sqrt(sum(v * v for v in vec1.values()))
+        norm2 = math.sqrt(sum(v * v for v in vec2.values()))
+        
+        if norm1 * norm2 == 0:
+            return 0
+        return dot_product / (norm1 * norm2)
+    
+    # 8. РАСЧЕТ ШИРИНЫ И ГЛУБИНЫ (НОВАЯ ЛОГИКА)
+    table_rel = []
+    
+    # Сначала для конкурентов
+    comp_vectors = []
+    for i, item in enumerate(original_results):
+        url = item['url']
+        pos = item['pos']
+        domain = urlparse(url).netloc
+        parsed_data = next((d for d in comp_data_full if d.get('url') == url), None)
+        
+        if parsed_data and parsed_data.get('body_text'):
+            p_lemmas, _ = process_text_detailed(parsed_data['body_text'], settings)
+            tf_idf_vector = calculate_tf_idf_for_doc(p_lemmas)
+            comp_vectors.append((domain, pos, tf_idf_vector, p_lemmas))
+    
+    # Добавляем ваш сайт
+    if my_data and my_data.get('body_text'):
+        my_vector = calculate_tf_idf_for_doc(my_lemmas, is_my_doc=True)
+        my_domain_label = f"{my_data.get('domain', 'Ваш сайт')} (Вы)"
+        all_vectors = [(my_domain_label, my_serp_pos if my_serp_pos > 0 else len(original_results) + 1, my_vector, my_lemmas)] + comp_vectors
+    else:
+        all_vectors = comp_vectors
+    
+    # 9. РАСЧЕТ ЦЕНТРОИДА (среднего вектора ТОПа)
+    centroid_vector = {}
+    if comp_vectors:
+        all_words = set()
+        for _, _, vector, _ in comp_vectors:
+            all_words.update(vector.keys())
+        
+        for word in all_words:
+            values = [vector.get(word, 0) for _, _, vector, _ in comp_vectors]
+            centroid_vector[word] = np.mean(values)
+    
+    # 10. РАСЧЕТ БАЛЛОВ ДЛЯ КАЖДОГО ДОКУМЕНТА
+    for domain, pos, vector, lemmas in all_vectors:
+        # ШИРИНА: косинусное сходство с центроидом ТОПа (масштабированное до 0-100)
+        if centroid_vector:
+            width_similarity = cosine_similarity(vector, centroid_vector)
+            width_score = int(round(width_similarity * 100))
+        else:
+            width_score = 0
+        
+        # ГЛУБИНА: среднее нормализованное TF-IDF (как в ГАРПРО)
+        if vector:
+            # Нормализация TF-IDF значений
+            max_tf_idf = max(vector.values()) if vector else 1
+            normalized_tf_idf = sum(v / max_tf_idf for v in vector.values()) / len(vector) if vector else 0
+            depth_score = int(round(normalized_tf_idf * 100))
+        else:
+            depth_score = 0
+        
+        # Корректировка баллов (чтобы были в диапазоне 0-100)
+        width_score = min(100, max(0, width_score))
+        depth_score = min(100, max(0, depth_score))
+        
+        table_rel.append({
+            "Домен": domain,
+            "Позиция": pos,
+            "Ширина (балл)": width_score,
+            "Глубина (балл)": depth_score
+        })
+    
+    # 11. РАСЧЕТ ДЛЯ ВАШЕГО САЙТА ОТДЕЛЬНО
+    my_score_w = 0
+    my_score_d = 0
+    if my_data and my_data.get('body_text'):
+        my_vector = calculate_tf_idf_for_doc(my_lemmas, is_my_doc=True)
+        
+        # Ширина
+        if centroid_vector:
+            width_similarity = cosine_similarity(my_vector, centroid_vector)
+            my_score_w = int(round(width_similarity * 100))
+        
+        # Глубина
+        if my_vector:
+            max_tf_idf = max(my_vector.values()) if my_vector else 1
+            normalized_tf_idf = sum(v / max_tf_idf for v in my_vector.values()) / len(my_vector) if my_vector else 0
+            my_score_d = int(round(normalized_tf_idf * 100))
+    
+    # 12. ТАБЛИЦА DEPTH (оставляем ваш существующий код)
+    table_depth, table_hybrid = [], []
+    words_bounds_map = {}
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
-    N = len(comp_docs) 
-    doc_freqs = Counter()
-    for d in comp_docs:
-        for w in set(d['body']): doc_freqs[w] += 1
-        
-    min_docs_threshold = math.ceil(N * 0.50) 
-    if min_docs_threshold < 1: min_docs_threshold = 1
-    
-    S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
-    
-    S_LSI = {w for w in S_LSI if w.lower() not in GARBAGE_LATIN_STOPLIST}
-    
-    total_lsi_count = len(S_LSI)
-
-    missing_semantics_high = []
-    missing_semantics_low = []
-    my_lemmas_set = set(my_lemmas) 
-    
-    for word, freq in doc_freqs.items():
-        if word in GARBAGE_LATIN_STOPLIST: continue
-        if word not in my_lemmas_set:
-            if len(word) < 2: continue
-            if word.isdigit(): continue
-            percent = int((freq / N) * 100)
-            item = {'word': word, 'percent': percent}
-            if freq >= min_docs_threshold:
-                missing_semantics_high.append(item)
-            else:
-                if N <= 5 or freq >= 2:
-                    missing_semantics_low.append(item)
-    
-    missing_semantics_high.sort(key=lambda x: x['percent'], reverse=True)
-    missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
-        
-    table_depth, table_hybrid = [], []
-    words_bounds_map = {}
-    total_important_words = 0
-    words_in_range = 0
     
     for word in vocab:
         if word in GARBAGE_LATIN_STOPLIST: continue
         
-        df = doc_freqs[word]
+        df = doc_freqs.get(word, 0)
         if df < 2 and word not in my_lemmas: continue 
         
         my_tf_total = my_lemmas.count(word)        
@@ -525,9 +640,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         base_min = min(mean_total, med_total)
         
-        rec_min = int(round(base_min * norm_k))
-        rec_max = int(round(max_total * norm_k))
-        rec_median = med_total * norm_k 
+        rec_min = int(round(base_min * norm_coefficient))
+        rec_max = int(round(max_total * norm_coefficient))
+        rec_median = med_total * norm_coefficient 
         
         words_bounds_map[word] = {'min': rec_min, 'max': rec_max}
 
@@ -545,13 +660,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             action_diff = int(round(my_tf_total - rec_max))
             if action_diff == 0: action_diff = 1
             action_text = f"-{action_diff}"
-        else:
-            words_in_range += 1
-            
-        if word in S_LSI:
-            total_important_words += 1
-
-        idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
+        
+        idf = math.log((N_total - df + 0.5) / (df + 0.5) + 1)
         idf = max(0.1, idf) 
         
         if rec_median > 0.1:
@@ -579,6 +689,37 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 "Слово": word, "TF-IDF ТОП": round(np.median(c_total_tfs) * idf, 2), "TF-IDF у вас": round(my_tf_total * idf, 2),
                 "Сайтов": df, "Переспам": max_total
             })
+    
+    # 13. MISSING SEMANTICS
+    missing_semantics_high = []
+    missing_semantics_low = []
+    my_lemmas_set = set(my_lemmas) 
+    
+    for word in filtered_important_words:
+        if word not in my_lemmas_set:
+            if len(word) < 2: continue
+            df = doc_freqs.get(word, 0)
+            percent = int((df / N_total) * 100) if N_total > 0 else 0
+            item = {'word': word, 'percent': percent}
+            if df >= 2:  # Слова, которые есть хотя бы в 2 документах
+                missing_semantics_high.append(item)
+            else:
+                missing_semantics_low.append(item)
+    
+    missing_semantics_high.sort(key=lambda x: x['percent'], reverse=True)
+    missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
+    
+    # Сортируем таблицу relevance_top по позиции
+    table_rel_df = pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
+        
+    return {
+        "depth": pd.DataFrame(table_depth), 
+        "hybrid": pd.DataFrame(table_hybrid),
+        "relevance_top": table_rel_df,
+        "my_score": {"width": min(100, max(0, my_score_w)), "depth": min(100, max(0, my_score_d))},
+        "missing_semantics_high": missing_semantics_high,
+        "missing_semantics_low": missing_semantics_low
+    }
 
     # РАСЧЕТ ШИРИНЫ И ГЛУБИНЫ ДЛЯ ВСЕХ ДОКУМЕНТОВ (включая ваш)
     table_rel = []
@@ -1606,3 +1747,4 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
