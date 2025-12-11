@@ -359,7 +359,9 @@ def process_text_detailed(text, settings, n_gram=1):
             p = morph.parse(w)[0]
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
             
-            # !FIX: Лемматор может вернуть "ё" (например, "крепёж"). Принудительно меняем обратно на "е".
+            # !FIX: ПРИНУДИТЕЛЬНАЯ ЗАМЕНА Ё НА Е В ЛЕММЕ
+            # Pymorphy может вернуть нормальную форму "ёлка" даже если на входе "елка".
+            # Поэтому мы заменяем ё на е и здесь.
             lemma = p.normal_form.replace('ё', 'е')
         
         lemmas.append(lemma)
@@ -501,8 +503,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for d in comp_docs:
         word_counts_per_doc.append(Counter(d['body']))
 
-    for w in vocab:
-        df = doc_freqs[w]
+    # !FIX: ПЕРЕИМЕНОВАЛИ word -> lemma для ясности (хотя в vocab уже леммы)
+    for lemma in vocab:
+        df = doc_freqs[lemma]
         if df == 0: continue
         
         idf = math.log((N + 1) / (df + 1)) + 1
@@ -511,14 +514,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for i in range(N):
             doc_len = c_lens[i]
             if doc_len > 0:
-                count = word_counts_per_doc[i][w]
+                count = word_counts_per_doc[i][lemma]
                 rel_tfs.append(count / doc_len)
             else:
                 rel_tfs.append(0)
                 
         med_rel_tf = np.median(rel_tfs)
         weight = med_rel_tf * idf
-        word_weights[w] = weight
+        word_weights[lemma] = weight
 
     # --- ЭТАП 2: ФОРМИРОВАНИЕ ЯДРА (S_LSI) ---
     MAX_MAIN_WORDS = 70
@@ -549,20 +552,20 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # ОБЪЕДИНЯЕМ ТЕКСТ и АНКОРЫ ДЛЯ ПРОВЕРКИ "ЕСТЬ ЛИ У НАС"
     my_full_lemmas_set = set(my_lemmas) | set(my_anchors)
     
-    for word, freq in doc_freqs.items():
-        if word in GARBAGE_LATIN_STOPLIST: continue
+    for lemma, freq in doc_freqs.items():
+        if lemma in GARBAGE_LATIN_STOPLIST: continue
         
         # Условие: "Повторов у вас - 0" (проверяем по полному набору лемм сайта)
-        if word not in my_full_lemmas_set:
-            if len(word) < 2: continue
-            if word.isdigit(): continue
+        if lemma not in my_full_lemmas_set:
+            if len(lemma) < 2: continue
+            if lemma.isdigit(): continue
             
             percent = int((freq / N) * 100)
-            weight = word_weights.get(word, 0)
-            item = {'word': word, 'percent': percent, 'weight': weight}
+            weight = word_weights.get(lemma, 0)
+            item = {'word': lemma, 'percent': percent, 'weight': weight}
             
             # Считаем медиану для этого слова
-            c_counts = [word_counts_per_doc[i][word] for i in range(N)]
+            c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
             med_val = np.median(c_counts)
             
             # !FIX: ИСПРАВЛЕННАЯ ЛОГИКА (строгое И)
@@ -583,17 +586,17 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     words_in_range = 0
     
     # Расчет данных для таблиц
-    for word in vocab:
-        if word in GARBAGE_LATIN_STOPLIST: continue
+    for lemma in vocab:
+        if lemma in GARBAGE_LATIN_STOPLIST: continue
         
-        df = doc_freqs[word]
-        if df < 2 and word not in my_lemmas: continue 
+        df = doc_freqs[lemma]
+        if df < 2 and lemma not in my_lemmas: continue 
         
-        my_tf_count = my_lemmas.count(word)        
-        forms_set = all_forms_map.get(word, set())
-        forms_str = ", ".join(sorted(list(forms_set))) if forms_set else word
+        my_tf_count = my_lemmas.count(lemma)        
+        forms_set = all_forms_map.get(lemma, set())
+        forms_str = ", ".join(sorted(list(forms_set))) if forms_set else lemma
         
-        c_counts = [word_counts_per_doc[i][word] for i in range(N)]
+        c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         
         mean_total = np.mean(c_counts)
         med_total = np.median(c_counts) # Сырая медиана
@@ -606,7 +609,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         rec_max = int(round(max_total * norm_k))
         rec_median = med_total * norm_k 
         
-        words_bounds_map[word] = {'min': rec_min, 'max': rec_max}
+        words_bounds_map[lemma] = {'min': rec_min, 'max': rec_max}
 
         status = "Норма"
         action_diff = 0
@@ -625,10 +628,10 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         else:
             words_in_range += 1
             
-        if word in S_LSI:
+        if lemma in S_LSI:
             total_important_words += 1
             
-        weight_top = word_weights.get(word, 0)
+        weight_top = word_weights.get(lemma, 0)
         
         my_rel_tf = (my_tf_count / my_len) if my_len > 0 else 0
         idf_val = math.log((N + 1) / (df + 1)) + 1
@@ -643,7 +646,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
         # !FIX: Убрали лишнюю фильтрацию
         table_depth.append({
-            "Слово": word, 
+            "Слово": lemma, 
             "Словоформы": forms_str, 
             "Вхождений у вас": my_tf_count,
             "Медиана": round(med_total, 1), 
@@ -657,7 +660,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         })
         
         table_hybrid.append({
-            "Слово": word, 
+            "Слово": lemma, 
             "TF-IDF ТОП": round(weight_top, 4), 
             "TF-IDF у вас": round(weight_my, 4),
             "Сайтов": df, 
