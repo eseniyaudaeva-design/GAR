@@ -23,16 +23,25 @@ except ImportError:
 # ==========================================
 # 0. ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
 # ==========================================
+# Для SEO анализа
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# Состояние для AI генератора
+# Для AI генератора текстов
 if 'ai_generated_df' not in st.session_state:
     st.session_state.ai_generated_df = None
 if 'ai_excel_bytes' not in st.session_state:
     st.session_state.ai_excel_bytes = None
+
+# Для Генератора плитки тегов (НОВОЕ)
+if 'tags_html_result' not in st.session_state:
+    st.session_state.tags_html_result = None
+
+# Для Генератора таблиц (НОВОЕ)
+if 'table_html_result' not in st.session_state:
+    st.session_state.table_html_result = None
 
 # ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
 if not hasattr(inspect, 'getargspec'):
@@ -1434,8 +1443,17 @@ with tab_tags:
                 
             html_output += '</div>\n</div>\n</div>'
             
-            st.success("HTML код сгенерирован:")
-            st.code(html_output, language='html')
+            # Сохраняем в сессию
+            st.session_state.tags_html_result = html_output
+            st.rerun() # Обновляем страницу
+
+    # Отображаем результат, если он есть в сессии
+    if st.session_state.tags_html_result:
+        st.success("HTML код сгенерирован:")
+        st.code(st.session_state.tags_html_result, language='html')
+        if st.button("Сбросить", key="reset_tags"):
+            st.session_state.tags_html_result = None
+            st.rerun()
 
 # ------------------------------------------
 # Вклдака 4: ГЕНЕРАТОР ТАБЛИЦ (NEW)
@@ -1467,11 +1485,21 @@ with tab_tables:
             with st.spinner("Генерация таблицы..."):
                 html_result = generate_html_table(client_table, table_prompt)
             
-            st.success("Готово!")
-            st.code(html_result, language='html')
-            
-            st.markdown("### Предпросмотр (примерный):")
-            st.markdown(html_result, unsafe_allow_html=True)
-            
+            # Сохраняем в сессию
+            st.session_state.table_html_result = html_result
+            st.rerun()
+
         except Exception as e:
             st.error(f"Ошибка API: {e}")
+
+    # Отображаем результат, если он есть в сессии
+    if st.session_state.table_html_result:
+        st.success("Готово!")
+        st.code(st.session_state.table_html_result, language='html')
+        
+        st.markdown("### Предпросмотр (примерный):")
+        st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
+        
+        if st.button("Сбросить", key="reset_table"):
+            st.session_state.table_html_result = None
+            st.rerun()
