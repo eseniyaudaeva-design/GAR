@@ -437,14 +437,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     comp_data_parsed = [d for d in comp_data_full if d.get('body_text')]
     
     comp_docs = []
-    # Сохраняем URL в структуре comp_docs, чтобы потом точно сопоставить баллы
     for p in comp_data_parsed:
         body, c_forms = process_text_detailed(p['body_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
         comp_docs.append({
             'body': body, 
             'anchor': anchor,
-            'url': p['url'], # Важно: сохраняем URL для маппинга
+            'url': p['url'],
             'domain': p['domain']
         })
         for k, v in c_forms.items():
@@ -484,16 +483,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     # Длины текстов
     c_lens = [len(d['body']) for d in comp_docs]
-    median_len = np.median(c_lens)
+    median_len = np.median(c_lens) if c_lens else 0
+    if median_len == 0: median_len = 1 # Защита от деления на 0
     
-    # AvgL (Средняя длина текста конкурентов) для BM25
-    avg_dl = np.mean(c_lens) if c_lens else 0
-    
-    # Коэффициент нормировки (только для рекомендаций в таблице, не для Score)
-    if median_len > 0 and my_len > 0 and settings['norm']:
-        norm_k = my_len / median_len
+    # Коэффициент нормировки для Вашего сайта (для таблицы рекомендаций)
+    if my_len > 0 and settings['norm']:
+        norm_k_recs = my_len / median_len
     else:
-        norm_k = 1.0
+        norm_k_recs = 1.0
     
     # Полный словарь
     vocab = set(my_lemmas)
@@ -532,7 +529,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         med_val = np.median(c_counts)
         percent = int((doc_freqs[lemma] / N) * 100)
         
-        # Упрощенный вес для сортировки списка
         weight_simple = word_idf_map.get(lemma, 0) * med_val
         
         if med_val > 0:
@@ -558,58 +554,79 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
     
-    # Ядро для fallback (если S_WIDTH_CORE пустой)
     lsi_candidates_weighted.sort(key=lambda x: x[1], reverse=True)
     S_DEPTH_TOP70 = set([x[0] for x in lsi_candidates_weighted[:70]])
 
     total_width_core_count = len(S_WIDTH_CORE)
 
-    # --- ЭТАП 3: РАСЧЕТ БАЛЛОВ (BM25 + WIDTH) ---
+    # --- ЭТАП 3: РАСЧЕТ БАЛЛОВ (NORMALIZED BM25) ---
     
-    def calculate_bm25_raw(doc_tokens, doc_len):
-        """Считает 'сырой' BM25 документа."""
-        if avg_dl == 0 or doc_len == 0: return 0
+    def calculate_normalized_bm25(doc_tokens, doc_len):
+        """
+        Считает BM25, НО с предварительной нормировкой TF по объему.
+        Это позволяет маленьким текстам с высокой плотностью получать высокий балл (как в GAR PRO).
+        """
+        if median_len == 0: return 0
+        if doc_len == 0: return 0
+        
+        # 1. Считаем коэффициент сжатия/растяжения к медиане
+        # Если текст маленький (100 слов), а медиана 1000 -> K = 10. 
+        # TF умножится на 10. Плотность сохранится, но балл вырастет.
+        length_ratio = median_len / doc_len
+        
         score = 0
         counts = Counter(doc_tokens)
-        K = 1.2 * (0.25 + 0.75 * (doc_len / avg_dl))
+        
+        # В формуле BM25 используем median_len как длину документа, 
+        # так как мы привели TF к этой длине.
+        # Тогда L/AvgL = Median/Median = 1.
+        # Знаменатель K становится константой: 1.2 * (0.25 + 0.75 * 1) = 1.2
+        K_val = 1.2 
+        
         target_words = S_WIDTH_CORE if S_WIDTH_CORE else S_DEPTH_TOP70
+        
         for word in target_words:
             if word not in counts: continue
-            tf = counts[word]
+            
+            raw_tf = counts[word]
+            
+            # НОРМИРОВКА TF
+            norm_tf = raw_tf * length_ratio
+            
             idf = word_idf_map.get(word, 0)
-            term_weight = (tf * 2.2) / (tf + K)
+            
+            # Формула с нормированным TF
+            term_weight = (norm_tf * 2.2) / (norm_tf + K_val)
             score += idf * term_weight
+            
         return score
 
     def calculate_width_score_val(lemmas_set):
-        """Считает балл ширины по правилу 0.9"""
         if total_width_core_count == 0: return 0
         intersection_count = len(lemmas_set.intersection(S_WIDTH_CORE))
         ratio = intersection_count / total_width_core_count
         if ratio >= 0.9: return 100
         else: return int(round((ratio / 0.9) * 100))
 
-    # 3.1. Считаем BM25 для всех конкурентов
-    # Сохраняем результаты в словарь url -> scores, чтобы потом использовать в таблице
+    # 3.1. Считаем Нормированный BM25 для всех конкурентов
     competitor_scores_map = {}
-    
     comp_bm25_list = []
     
     for i, doc in enumerate(comp_docs):
-        # BM25 Raw
-        raw_bm25 = calculate_bm25_raw(doc['body'], c_lens[i])
-        comp_bm25_list.append(raw_bm25)
+        # BM25 Normalized
+        norm_bm25 = calculate_normalized_bm25(doc['body'], c_lens[i])
+        comp_bm25_list.append(norm_bm25)
         
-        # Width Raw
+        # Width
         doc_set = set(doc['body'])
         width_val = calculate_width_score_val(doc_set)
         
         competitor_scores_map[doc['url']] = {
-            'width_final': min(100, width_val), # Сразу ограничиваем 100
-            'bm25_raw': raw_bm25
+            'width_final': min(100, width_val),
+            'bm25_val': norm_bm25
         }
 
-    # 3.2. Медиана и Лимит
+    # 3.2. Медиана ТОПа и Лимит
     if comp_bm25_list:
         median_bm25_top = np.median(comp_bm25_list)
     else:
@@ -618,24 +635,26 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     spam_limit = median_bm25_top * 1.25
     if spam_limit == 0: spam_limit = 1 
 
-    # 3.3. Финализируем баллы глубины для конкурентов (применяем Limit)
+    # 3.3. Финализируем баллы
     for url, scores in competitor_scores_map.items():
-        depth_val = int(round((scores['bm25_raw'] / spam_limit) * 100))
-        scores['depth_final'] = min(100, depth_val) # Ограничиваем 100
+        # Считаем процент от лимита
+        depth_val = int(round((scores['bm25_val'] / spam_limit) * 100))
+        scores['depth_final'] = min(100, depth_val) # Ограничение 100
 
-    # 3.4. Считаем для ВАС
-    my_bm25_raw = calculate_bm25_raw(my_lemmas, my_len)
-    my_depth_score_final = int(round((my_bm25_raw / spam_limit) * 100))
-    my_depth_score_final = min(100, my_depth_score_final) # Ограничиваем 100
+    # 3.4. Считаем для ВАС (Тоже с нормировкой!)
+    my_bm25_norm = calculate_normalized_bm25(my_lemmas, my_len)
+    my_depth_score_final = int(round((my_bm25_norm / spam_limit) * 100))
+    my_depth_score_final = min(100, my_depth_score_final)
     
     my_width_score_final = calculate_width_score_val(my_full_lemmas_set)
     my_width_score_final = min(100, my_width_score_final)
 
     # --- ЭТАП 4: ТАБЛИЦЫ ДЕТАЛИЗАЦИИ ---
     table_depth, table_hybrid = [], []
-    words_in_range_depth = 0
-    total_important_words_depth = 0
     
+    # Для таблицы детализации (hybrid) нужен avg_dl, хоть в BM25 мы использовали медиану
+    avg_dl = np.mean(c_lens) if c_lens else 1
+
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
@@ -652,13 +671,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         max_total = np.max(c_counts)
         mean_total = np.mean(c_counts)
         
-        # Рекомендации (с учетом norm_k и ceil)
+        # Рекомендации (с учетом norm_k_recs)
         base_min = min(mean_total, med_total)
-        rec_min = int(math.ceil(base_min * norm_k))
-        rec_max = int(round(max_total * norm_k)) 
+        rec_min = int(math.ceil(base_min * norm_k_recs))
+        rec_max = int(round(max_total * norm_k_recs)) 
         if rec_max < rec_min: rec_max = rec_min
         
-        rec_median = med_total * norm_k 
+        rec_median = med_total * norm_k_recs 
         
         status = "Норма"
         action_diff = 0
@@ -714,14 +733,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         pos = item['pos']
         domain = urlparse(url).netloc
         
-        # Получаем уже рассчитанные значения из карты
         scores = competitor_scores_map.get(url)
         
         if scores:
             w_score = scores['width_final']
             d_score = scores['depth_final']
         else:
-            # Если URL не был скачан или не распарсился
             w_score = 0
             d_score = 0
             
@@ -731,7 +748,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Глубина (балл)": d_score
         })
         
-    # Добавляем Вас
     if my_data and my_data.get('domain'):
         my_label = f"{my_data['domain']} (Вы)"
     else:
@@ -752,94 +768,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "missing_semantics_high": missing_semantics_high,
         "missing_semantics_low": missing_semantics_low
     }
-# ==========================================
-# 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (PAGINATION + EXCEL)
-# ==========================================
-
-def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
-    if df.empty:
-        st.info(f"{title_text}: Нет данных.")
-        return
-
-    # Заголовок и кнопка скачивания в одной строке
-    col_t1, col_t2 = st.columns([7, 3])
-    with col_t1:
-        st.markdown(f"### {title_text}")
-    
-    # 1. Сортировка (до фильтрации)
-    if f'{key_prefix}_sort_col' not in st.session_state:
-        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
-    if f'{key_prefix}_sort_order' not in st.session_state:
-        st.session_state[f'{key_prefix}_sort_order'] = "Убывание" 
-
-    # 2. Поиск
-    search_query = st.text_input(f"🔍 Поиск ({title_text})", key=f"{key_prefix}_search")
-    if search_query:
-        mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
-        df_filtered = df[mask].copy()
-    else:
-        df_filtered = df.copy()
-
-    if df_filtered.empty:
-        st.warning("Ничего не найдено.")
-        return
-
-    # 3. Применение сортировки
-    with st.container():
-        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
-        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
-        with col_s1:
-            sort_col = st.selectbox(
-                "🗂 Сортировать по:", 
-                df_filtered.columns, 
-                key=f"{key_prefix}_sort_box",
-                index=list(df_filtered.columns).index(st.session_state[f'{key_prefix}_sort_col']) if st.session_state[f'{key_prefix}_sort_col'] in df_filtered.columns else 0
-            )
-            st.session_state[f'{key_prefix}_sort_col'] = sort_col
-        with col_s2:
-            sort_order = st.radio(
-                "Порядок:", 
-                ["Убывание", "Возрастание"], 
-                horizontal=True,
-                key=f"{key_prefix}_order_box",
-                index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
-            )
-            st.session_state[f'{key_prefix}_sort_order'] = sort_order
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    ascending = (sort_order == "Возрастание")
-    
-    # !FIX: ИСПРАВЛЕНА ЛОГИКА СОРТИРОВКИ
-    # Теперь проверяем ТЕКУЩИЙ выбранный столбец (sort_col), а не дефолтный.
-    if sort_col == "Рекомендация" and "sort_val" in df_filtered.columns:
-         df_filtered = df_filtered.sort_values(by="sort_val", ascending=ascending)
-    elif "Добавить" in sort_col or "+/-" in sort_col:
-        df_filtered['_temp_sort'] = df_filtered[sort_col].abs()
-        df_filtered = df_filtered.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
-    else:
-        df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
-
-    # Обновление индекса
-    df_filtered = df_filtered.reset_index(drop=True)
-    df_filtered.index = df_filtered.index + 1
-    
-    # 4. Генерация Excel (СКАЧИВАЕТСЯ ПОЛНАЯ ТАБЛИЦА)
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        export_df = df_filtered.copy()
-        if "is_missing" in export_df.columns: del export_df["is_missing"]
-        if "sort_val" in export_df.columns: del export_df["sort_val"]
-        export_df.to_excel(writer, index=False, sheet_name='Data')
-    excel_data = buffer.getvalue()
-    
-    with col_t2:
-        st.download_button(
-            label="📥 Скачать Excel (Все данные)",
-            data=excel_data,
-            file_name=f"{key_prefix}_export.xlsx",
-            mime="application/vnd.ms-excel",
-            key=f"{key_prefix}_down"
-        )
 
     # 5. ПАГИНАЦИЯ (Отображаем по 20 строк)
     ROWS_PER_PAGE = 20
@@ -1696,6 +1624,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
