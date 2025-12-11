@@ -1581,3 +1581,4 @@ with tab_tables:
             st.session_state.table_html_result = None
             st.rerun()
 
+
