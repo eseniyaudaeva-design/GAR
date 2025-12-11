@@ -533,7 +533,11 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
     table_depth, table_hybrid = [], []
     
-    # Для расчета общего балла глубины
+    # Словарь границ для каждого слова (чтобы использовать потом при расчете глубины конкурентов)
+    # word -> {min, max}
+    words_bounds_map = {}
+
+    # Для расчета общего балла глубины ВАШЕГО сайта
     total_important_words = 0
     words_in_range = 0
     
@@ -559,6 +563,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         rec_max = int(round(max_total * norm_k))
         rec_median = med_total * norm_k # Чисто для отображения и процента
         
+        # Сохраняем границы для этого слова
+        words_bounds_map[word] = {'min': rec_min, 'max': rec_max}
+
         # СТАТУСЫ
         status = "Норма"
         action_diff = 0
@@ -591,11 +598,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         idf = max(0.1, idf) 
         
         # Dword = Cpage / Mtop (где Mtop нормализованная)
-        # Если Mtop ~ 0, то глубина максимальная (или бесконечная), ставим заглушку
         if rec_median > 0.1:
             depth_percent = int(round((my_tf_total / rec_median) * 100))
         else:
             depth_percent = 0 if my_tf_total == 0 else 100
+        
+        # Ограничение до 100%
+        depth_percent = min(100, depth_percent)
 
         # Добавляем строку только если слово значимое (есть в топе или у нас)
         if med_total > 0.5 or my_tf_total > 0:
@@ -622,7 +631,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # --- ТОП РЕЛЕВАНТНОСТИ ---
     table_rel = []
     
-    # 1. Расчет ширины для конкурентов (Охват S_LSI)
+    # 1. Расчет ширины и глубины для конкурентов
+    # Глубина конкурента: % важных слов (из S_LSI), которые находятся в диапазоне [Min, Max]
     competitor_stats_raw = []
     for item in original_results:
         url = item['url']
@@ -631,23 +641,47 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         parsed_data = next((d for d in comp_data_full if d.get('url') == url), None)
         
         width_score_val = 0
-        depth_score_val = 0 # Заглушка, так как глубина теперь у каждого своя сложная
+        depth_score_val = 0 
         
         if parsed_data and parsed_data.get('body_text'):
             p_lemmas, _ = process_text_detailed(parsed_data['body_text'], settings)
+            p_counts = Counter(p_lemmas)
             p_set = set(p_lemmas)
             
-            # НОВАЯ ФОРМУЛА ШИРИНЫ: Пересечение с ядром / Размер ядра
+            # ШИРИНА: Пересечение с ядром / Размер ядра
             intersection_count = len(p_set.intersection(S_LSI))
             if total_lsi_count > 0:
                 width_score_val = int(round((intersection_count / total_lsi_count) * 100))
             else:
                 width_score_val = 0
             
+            # ГЛУБИНА: Проход по S_LSI и проверка попадания в диапазон [Min, Max]
+            hits_in_range = 0
+            # S_LSI содержит слова, которые мы считаем важными
+            check_words = [w for w in S_LSI if w in words_bounds_map]
+            
+            for w in check_words:
+                count = p_counts[w]
+                bounds = words_bounds_map[w]
+                # Проверяем попадание в диапазон. 
+                # Важно: тут мы сравниваем абсолютное значение с нормализованным диапазоном.
+                # Это допущение (мы оцениваем конкурента по меркам "эталона для вашего сайта").
+                if bounds['min'] <= count <= bounds['max']:
+                    hits_in_range += 1
+            
+            if len(check_words) > 0:
+                depth_score_val = int(round((hits_in_range / len(check_words)) * 100))
+            else:
+                depth_score_val = 0
+                
+            # Ограничение 100
+            width_score_val = min(100, width_score_val)
+            depth_score_val = min(100, depth_score_val)
+            
         table_rel.append({
             "Домен": domain, "Позиция": pos,
             "Ширина (балл)": width_score_val,
-            "Глубина (балл)": 0 # Заглушка или можно убрать столбец
+            "Глубина (балл)": depth_score_val
         })
         
     # 2. Расчет ширины и глубины для ВАС
@@ -657,12 +691,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     else:
         my_score_w = 0
     
-    # Новый расчет общего балла глубины (из прошлого шага)
-    # Процент слов, которые находятся в диапазоне нормы или выше (покрыты)
+    # Глубина (из прошлого шага: % слов в статусе "Норма")
     if total_important_words > 0:
         my_score_d_new = int(round((words_in_range / total_important_words) * 100))
     else:
         my_score_d_new = 0
+    
+    my_score_w = min(100, my_score_w)
+    my_score_d_new = min(100, my_score_d_new)
     
     if my_data and my_data.get('domain'):
         my_label = f"{my_data['domain']} (Вы)"
@@ -696,6 +732,18 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     st.markdown(f"### {title_text}")
     
+    # 1. Глобальный поиск по всей таблице
+    search_query = st.text_input(f"🔍 Поиск по таблице ({title_text})", key=f"{key_prefix}_search")
+    if search_query:
+        # Фильтруем исходный датафрейм (строка содержит подстроку)
+        mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
+        df = df[mask]
+    
+    if df.empty:
+        st.warning("Ничего не найдено по вашему запросу.")
+        return
+
+    # 2. Сортировка
     if f'{key_prefix}_sort_col' not in st.session_state:
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
     if f'{key_prefix}_sort_order' not in st.session_state:
@@ -733,6 +781,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     else:
         df = df.sort_values(by=sort_col, ascending=ascending)
 
+    # 3. Пагинация
     df = df.reset_index(drop=True)
     df.index = df.index + 1
     
@@ -742,6 +791,8 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         
     total_rows = len(df)
     total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
+    if total_pages == 0: total_pages = 1
+    
     current_page = st.session_state[f'{key_prefix}_page']
     
     if current_page > total_pages: current_page = total_pages
@@ -768,7 +819,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
                     cell_style += "color: #2E7D32; font-weight: bold;" # Зеленый
             
             if col_name == 'is_missing' and row['is_missing']:
-                 pass # Уже обработано статусом
+                 pass 
             
             styles.append(cell_style)
         return styles
