@@ -35,11 +35,11 @@ if 'ai_generated_df' not in st.session_state:
 if 'ai_excel_bytes' not in st.session_state:
     st.session_state.ai_excel_bytes = None
 
-# Для Генератора плитки тегов (НОВОЕ)
+# Для Генератора плитки тегов
 if 'tags_html_result' not in st.session_state:
     st.session_state.tags_html_result = None
 
-# Для Генератора таблиц (НОВОЕ)
+# Для Генератора таблиц
 if 'table_html_result' not in st.session_state:
     st.session_state.table_html_result = None
 
@@ -185,6 +185,7 @@ st.markdown(f"""
         }}
         .legend-box {{ padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px; }}
         .text-red {{ color: #D32F2F; font-weight: bold; }}
+        .text-green {{ color: #2E7D32; font-weight: bold; }}
         .text-bold {{ font-weight: 600; }}
         .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR}; }}
         section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-left: 1px solid {BORDER_COLOR} !important; }}
@@ -511,62 +512,92 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # ==========================================
         
     table_depth, table_hybrid = [], []
+    
+    # Для расчета общего балла глубины
+    total_important_words = 0
+    words_in_range = 0
+    
     for word in vocab:
         df = doc_freqs[word]
+        # Берем только слова, которые есть хотя бы у 2 конкурентов ИЛИ есть у нас
         if df < 2 and word not in my_lemmas: continue 
         
         my_tf_total = my_lemmas.count(word)        
-        my_tf_anchor = my_anchors.count(word)      
-        my_tf_text = max(0, my_tf_total - my_tf_anchor) 
         
         forms_set = all_forms_map.get(word, set())
         forms_str = ", ".join(sorted(list(forms_set))) if forms_set else word
         
         c_total_tfs = [d['body'].count(word) for d in comp_docs]
-        c_anchor_tfs = [d['anchor'].count(word) for d in comp_docs]
         
-        sum_in_top = sum(c_total_tfs)
-        mean_total = np.mean(c_total_tfs)
-        med_total = np.median(c_total_tfs)
-        max_total = np.max(c_total_tfs)
-        med_anchor = np.median(c_anchor_tfs)
+        # --- НОВАЯ ЛОГИКА РАСЧЕТА ГЛУБИНЫ (МЕДИАНА +- 20%) ---
+        median_raw = np.median(c_total_tfs)
         
-        rec_min = int(round(min(mean_total, med_total) * norm_k))
-        rec_max = int(round(max_total * norm_k))
-        rec_anchor = int(round(med_anchor * norm_k)) 
+        # Нормализованная медиана (Цель)
+        rec_median = median_raw * norm_k
         
-        diff_total = 0
-        if my_tf_total < rec_min: diff_total = rec_min - my_tf_total 
-        elif my_tf_total > rec_max: diff_total = rec_max - my_tf_total 
+        # Границы нормы
+        lower_bound = math.floor(rec_median * 0.8)
+        upper_bound = math.ceil(rec_median * 1.2)
         
-        diff_anchor = rec_anchor - my_tf_anchor
-        rec_text_min = max(0, rec_min - rec_anchor)
-        rec_text_max = max(0, rec_max - rec_anchor)
-        diff_text = 0
-        if my_tf_text < rec_text_min: diff_text = rec_text_min - my_tf_text
-        elif my_tf_text > rec_text_max: diff_text = rec_text_max - my_tf_text
+        # СТАТУСЫ
+        status = "Норма"
+        action_diff = 0
+        action_text = "✅"
+        
+        if my_tf_total < lower_bound:
+            status = "Недоспам"
+            action_diff = int(round(rec_median - my_tf_total))
+            # Если разница 0 из-за округления, но статус недоспам - ставим +1
+            if action_diff == 0: action_diff = 1
+            action_text = f"+{action_diff}"
+        elif my_tf_total > upper_bound:
+            status = "Переспам"
+            action_diff = int(round(my_tf_total - rec_median))
+            if action_diff == 0: action_diff = 1
+            action_text = f"-{action_diff}"
+        else:
+            # Попали в диапазон
+            words_in_range += 1
+            
+        # Считаем общее число важных слов для скоринга
+        # (Исключаем совсем редкие, если их медиана около 0)
+        if rec_median >= 0.5:
+            total_important_words += 1
+        elif my_tf_total > 0:
+            # Если медиана 0, но слово есть у нас - тоже учитываем
+            total_important_words += 1
 
+        # Расчет IDF для гибридного топа (старая логика для второй таблицы)
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
         idf = max(0.1, idf) 
-        spam_percent = 0
-        if my_tf_total > rec_max and rec_max > 0:
-            spam_percent = round(((my_tf_total - rec_max) / rec_max) * 100, 1)
-        elif my_tf_total > 0 and rec_max == 0:
-            spam_percent = 100 
-        spam_idf = round(spam_percent * idf, 1)
-        abs_diff = abs(diff_total)
+        max_total = np.max(c_total_tfs)
+        
+        # Dword = Cpage / Mtop (где Mtop нормализованная)
+        # Если Mtop ~ 0, то глубина максимальная (или бесконечная), ставим заглушку
+        if rec_median > 0.1:
+            depth_percent = int(round((my_tf_total / rec_median) * 100))
+        else:
+            depth_percent = 0 if my_tf_total == 0 else 100
 
-        if med_total > 0.5 or my_tf_total > 0:
+        # Добавляем строку только если слово значимое (есть в топе или у нас)
+        if median_raw > 0.5 or my_tf_total > 0:
             table_depth.append({
-                "Слово": word, "Словоформы": forms_str, "Повторы у вас": my_tf_total,
-                "Повторов в ТОПе": sum_in_top, "Минимум (рек)": rec_min, "Максимум (рек)": rec_max,
-                "Добавить/Убрать": diff_total, "Тег A у вас": my_tf_anchor, "Тег A (рек)": rec_anchor,
-                "Тег A +/-": diff_anchor, "Текст у вас": my_tf_text, "Текст (рек)": rec_text_min,
-                "Текст +/-": diff_text, "Переспам %": spam_percent, "Переспам*IDF": spam_idf,
-                "diff_abs": abs_diff, "is_missing": (my_tf_total == 0)
+                "Слово": word, 
+                "Словоформы": forms_str, 
+                "Вхождений у вас": my_tf_total,
+                "Медиана ТОП (норм.)": round(rec_median, 1),
+                "Нижняя граница": lower_bound,
+                "Верхняя граница": upper_bound,
+                "Глубина %": depth_percent,
+                "Статус": status,
+                "Рекомендация": action_text,
+                "is_missing": (status == "Недоспам" and my_tf_total == 0),
+                "sort_val": abs(action_diff) if status != "Норма" else 0
             })
+            
+            # Гибридная таблица остается как была (TF-IDF)
             table_hybrid.append({
-                "Слово": word, "TF-IDF ТОП": round(med_total * idf, 2), "TF-IDF у вас": round(my_tf_total * idf, 2),
+                "Слово": word, "TF-IDF ТОП": round(np.median(c_total_tfs) * idf, 2), "TF-IDF у вас": round(my_tf_total * idf, 2),
                 "Сайтов": df, "Переспам": max_total
             })
 
@@ -603,9 +634,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
     my_relevant = [w for w in my_lemmas if w in vocab]
     my_raw_w = len(set(my_relevant))
-    my_raw_d = len(my_relevant)
+    
+    # Новый расчет общего балла глубины
+    # Процент слов, которые находятся в диапазоне нормы или выше (покрыты)
+    if total_important_words > 0:
+        my_score_d_new = int(round((words_in_range / total_important_words) * 100))
+    else:
+        my_score_d_new = 0
+    
     my_score_w = int(round((my_raw_w / max_width_top) * 100))
-    my_score_d = int(round((my_raw_d / max_depth_top) * 100))
     
     if my_data and my_data.get('domain'):
         my_label = f"{my_data['domain']} (Вы)"
@@ -615,7 +652,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     table_rel.append({
         "Домен": my_label, 
         "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
-        "Ширина (балл)": my_score_w, "Глубина (балл)": my_score_d
+        "Ширина (балл)": my_score_w, "Глубина (балл)": my_score_d_new
     })
     
     table_rel_df = pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
@@ -623,7 +660,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     return {
         "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
         "relevance_top": table_rel_df,
-        "my_score": {"width": my_score_w, "depth": my_score_d},
+        "my_score": {"width": my_score_w, "depth": my_score_d_new},
         "missing_semantics_high": missing_semantics_high,
         "missing_semantics_low": missing_semantics_low
     }
@@ -667,7 +704,10 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         st.markdown("</div>", unsafe_allow_html=True)
 
     ascending = (sort_order == "Возрастание")
-    if "Добавить" in sort_col or "+/-" in sort_col:
+    if "sort_val" in df.columns and default_sort_col == "Рекомендация":
+         # Специальная сортировка для рекомендаций (по модулю разницы)
+         df = df.sort_values(by="sort_val", ascending=ascending)
+    elif "Добавить" in sort_col or "+/-" in sort_col:
         df['_temp_sort'] = df[sort_col].abs()
         df = df.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
     else:
@@ -695,16 +735,25 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     def highlight_rows(row):
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
+        status = row.get("Статус", "")
+        
         for col_name in row.index:
+            cell_style = base_style
+            if col_name == "Статус":
+                if status == "Недоспам":
+                    cell_style += "color: #D32F2F; font-weight: bold;" # Красный
+                elif status == "Переспам":
+                    cell_style += "color: #E65100; font-weight: bold;" # Оранжевый/Красный
+                elif status == "Норма":
+                    cell_style += "color: #2E7D32; font-weight: bold;" # Зеленый
+            
             if col_name == 'is_missing' and row['is_missing']:
-                styles.append(base_style + 'color: #D32F2F; font-weight: bold;')
-            elif col_name != 'is_missing' and col_name != 'diff_abs':
-                styles.append(base_style + 'font-weight: 600;')
-            else:
-                styles.append(base_style)
+                 pass # Уже обработано статусом
+            
+            styles.append(cell_style)
         return styles
     
-    cols_to_hide = ["diff_abs", "is_missing"]
+    cols_to_hide = ["is_missing", "sort_val"]
     
     styled_df = df_view.style.apply(highlight_rows, axis=1)
     
@@ -855,6 +904,8 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     Ты — профессиональный технический копирайтер и филолог русского языка.
     Твоя задача — написать 5 независимых текстовых блоков HTML.
     ВАЖНО: НЕ используй markdown обертки (```html). Пиши сразу чистый код.
+    
+    IMPORTANT: Do not include citations, references, or footnotes like [1], [2], [10] in the text.
     """
 
     keywords_instruction = ""
@@ -894,6 +945,8 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     5. Заключительный абзац.
 
     ГЛАВНОЕ ПРАВИЛО: Текст должен звучать естественно для человека. Роботизированные фразы запрещены. Склоняй слова!
+    
+    NO CITATIONS OR FOOTNOTES LIKE [1].
 
     ВЫВОД:
     Раздели блоки строго строкой: |||BLOCK_SEP|||
@@ -909,6 +962,11 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
             temperature=0.7
         )
         content = response.choices[0].message.content
+        
+        # ------------------------------------
+        # REMOVE CITATIONS (Regex cleaning)
+        # ------------------------------------
+        content = re.sub(r'\[\d+\]', '', content)
         
         # Чистка от маркдауна
         content = content.replace("```html", "").replace("```", "")
@@ -929,6 +987,8 @@ def generate_html_table(client, user_prompt):
     You are an HTML generator.
     Your task is to generate a semantic HTML table based on the user's request.
     
+    IMPORTANT: Do not include citations, references, or footnotes like [1], [2] in the table content.
+    
     CRITICAL: You MUST apply specific inline CSS styles to the table elements EXACTLY as follows:
     1. For the <table> tag, use: style="border-collapse: collapse; width: 100%; border: 2px solid black;"
     2. For every <th> tag, use: style="border: 2px solid black; padding: 5px;"
@@ -948,6 +1008,12 @@ def generate_html_table(client, user_prompt):
             temperature=0.5
         )
         content = response.choices[0].message.content
+        
+        # ------------------------------------
+        # REMOVE CITATIONS (Regex cleaning)
+        # ------------------------------------
+        content = re.sub(r'\[\d+\]', '', content)
+        
         # Чистка на всякий случай
         content = content.replace("```html", "").replace("```", "").strip()
         return content
@@ -1223,7 +1289,7 @@ with tab_seo:
             </div>
         """, unsafe_allow_html=True)
 
-        render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Добавить/Убрать", use_abs_sort_default=True)
+        render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
         render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
 
