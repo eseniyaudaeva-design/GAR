@@ -334,9 +334,11 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     return results_list
 
 def process_text_detailed(text, settings, n_gram=1):
+    # !FIX: Приводим к нижнему регистру и меняем 'ё' на 'е' ПЕРЕД всем остальным
+    text = text.lower().replace('ё', 'е')
+    
     pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
-        
-    words = re.findall(pattern, text.lower())
+    words = re.findall(pattern, text)
     stops = set(w.lower() for w in settings['custom_stops'])
     
     lemmas = []
@@ -390,6 +392,16 @@ def parse_page(url, settings):
         anchor_text = " ".join(anchors_list)
         
         extra_text = []
+        
+        # !FIX: Всегда собираем Meta Description и Keywords, если они есть
+        meta_desc = soup.find('meta', attrs={'name': 'description'})
+        if meta_desc and meta_desc.get('content'):
+            extra_text.append(meta_desc['content'])
+            
+        meta_kw = soup.find('meta', attrs={'name': 'keywords'})
+        if meta_kw and meta_kw.get('content'):
+            extra_text.append(meta_kw['content'])
+            
         if settings['alt_title']:
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
@@ -1643,4 +1655,3 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
-
