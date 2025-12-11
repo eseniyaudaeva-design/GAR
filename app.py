@@ -473,11 +473,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
         
+    # --- ИЗМЕНЕНИЕ: ЛОГИКА ГАР ПРО (Порог 50%) ---
+    # Основные слова (S_LSI) - те, что есть у >= 50% конкурентов
     min_docs_threshold = math.ceil(N * 0.50) 
     if min_docs_threshold < 1: min_docs_threshold = 1
     
     S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
-    
     S_LSI = {w for w in S_LSI if w.lower() not in GARBAGE_LATIN_STOPLIST}
     
     total_lsi_count = len(S_LSI)
@@ -493,9 +494,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             if word.isdigit(): continue
             percent = int((freq / N) * 100)
             item = {'word': word, 'percent': percent}
+            
+            # РАЗДЕЛЕНИЕ НА ОСНОВНЫЕ И ДОПОЛНИТЕЛЬНЫЕ
             if freq >= min_docs_threshold:
                 missing_semantics_high.append(item)
             else:
+                # В "хвост" берем если встретилось хотя бы у 2 (или если всего мало конкурентов)
                 if N <= 5 or freq >= 2:
                     missing_semantics_low.append(item)
     
@@ -604,7 +608,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             else:
                 width_score_val = 0
             
-            # ГЛУБИНА
+            # ГЛУБИНА (для конкурентов упрощенно - наличие)
             hits = 0
             check_words = [w for w in S_LSI if w in words_bounds_map]
             for w in check_words:
@@ -1246,42 +1250,44 @@ with tab_seo:
             </div>
         """, unsafe_allow_html=True)
 
-        # --- СВОРАЧИВАЕМЫЙ БЛОК: УПУЩЕННАЯ СЕМАНТИКА (ДВА СПИСКА) ---
+        # --- ОБНОВЛЕННЫЙ БЛОК: УПУЩЕННАЯ СЕМАНТИКА (TEXT BLOCK STYLE) ---
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         
-        if high or low:
-            count_total = len(high) + len(low)
+        count_total = len(high) + len(low)
+        if count_total > 0:
             with st.expander(f"🧩 Упущенная семантика ({count_total} слов) — Нажмите, чтобы развернуть", expanded=False):
                 
-                # 1. ЧАСТЫЕ
+                # 1. ОСНОВНЫЕ СЛОВА (ВАЖНЫЕ)
                 if high:
-                    st.markdown("**🔥 Основные связанные слова по ширине:**")
-                    words_list_h = [item['word'] for item in high]
-                    st.markdown(
-                        f"<div style='background-color:#F8FAFC; padding:15px; border-radius:10px; line-height: 1.6; border: 1px solid #E2E8F0; color: #333; font-size: 14px;'>"
-                        f"{', '.join(words_list_h)}"
-                        f"</div>", 
-                        unsafe_allow_html=True
-                    )
-                
-                # Разделитель
-                if high and low:
-                    st.divider()
+                    st.markdown("##### ⭐️ Основные связанные слова (Важные)")
+                    st.markdown("Эти слова встречаются у большинства конкурентов (>50%). Их отсутствие сильно снижает балл «Ширина».")
                     
-                # 2. РЕДКИЕ
-                if low:
-                    st.markdown("**Дополнительный список связанных слов, который может улучшить ширину охвата**")
-                    words_list_l = [item['word'] for item in low]
+                    words_list_h = [item['word'] for item in high]
+                    # Формируем строку через запятую
+                    text_cloud_h = ", ".join(words_list_h)
+                    
                     st.markdown(
-                        f"<div style='background-color:#F8FAFC; padding:15px; border-radius:10px; line-height: 1.6; border: 1px solid #E2E8F0; color: #555; font-size: 13px;'>"
-                        f"{', '.join(words_list_l)}"
+                        f"<div style='background-color:#EBF5FF; padding:15px; border-radius:8px; line-height: 1.6; border: 1px solid #BEE3F8; color: #2C5282; font-size: 14px; margin-bottom: 15px;'>"
+                        f"{text_cloud_h}"
                         f"</div>", 
                         unsafe_allow_html=True
                     )
                 
-                st.caption("Слова отсортированы по частоте встречаемости.")
-                
+                # 2. ДОПОЛНИТЕЛЬНЫЕ СЛОВА (ХВОСТ)
+                if low:
+                    st.markdown("##### 🔹 Дополнительный список связанных слов")
+                    st.markdown("Встречаются реже, но могут улучшить охват тематики.")
+                    
+                    words_list_l = [item['word'] for item in low]
+                    text_cloud_l = ", ".join(words_list_l)
+                    
+                    st.markdown(
+                        f"<div style='background-color:#F7FAFC; padding:15px; border-radius:8px; line-height: 1.6; border: 1px solid #E2E8F0; color: #4A5568; font-size: 13px;'>"
+                        f"{text_cloud_l}"
+                        f"</div>", 
+                        unsafe_allow_html=True
+                    )
         # ----------------------------------------
 
         st.markdown(f"""
@@ -1572,4 +1578,3 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
-
