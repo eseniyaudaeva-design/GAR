@@ -384,12 +384,14 @@ def parse_page(url, settings):
         if r.status_code != 200: return None
         soup = BeautifulSoup(r.text, 'html.parser')
         
+        # ТЕПЕРЬ ПО УМОЛЧАНИЮ СПИСОК ПУСТОЙ. НИЧЕГО НЕ УДАЛЯЕМ.
+        tags_to_remove = []
+        
         # 2. NOINDEX УДАЛЯЕМ ТОЛЬКО ЕСЛИ ВКЛЮЧЕНА ГАЛОЧКА
         if settings['noindex']:
             tags_to_remove.append('noindex') 
         
-        # Примечание: header, footer, nav, aside НЕ удаляются, чтобы соответствовать оригиналу
-        
+        # Комментарии все равно чистим, они не нужны
         comments = soup.find_all(string=lambda text: isinstance(text, Comment))
         for c in comments: c.extract()
         
@@ -1587,4 +1589,3 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
-
