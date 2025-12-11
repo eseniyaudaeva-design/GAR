@@ -384,12 +384,14 @@ def parse_page(url, settings):
         if r.status_code != 200: return None
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # СПИСОК ТЕГОВ ДЛЯ УДАЛЕНИЯ (по умолчанию пустой)
-        tags_to_remove = []
+        # 1. ТЕХНИЧЕСКИЕ ТЕГИ УДАЛЯЕМ ВСЕГДА
+        tags_to_remove = ['script', 'style', 'head']
         
-        # Удаляем ТОЛЬКО если пользователь поставил галочку для noindex
+        # 2. NOINDEX УДАЛЯЕМ ТОЛЬКО ЕСЛИ ВКЛЮЧЕНА ГАЛОЧКА
         if settings['noindex']:
             tags_to_remove.append('noindex') 
+        
+        # Примечание: header, footer, nav, aside НЕ удаляются, чтобы соответствовать оригиналу
         
         comments = soup.find_all(string=lambda text: isinstance(text, Comment))
         for c in comments: c.extract()
@@ -548,30 +550,29 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         c_total_tfs = [d['body'].count(word) for d in comp_docs]
         
-        # --- ЛОГИКА РАСЧЕТА ГЛУБИНЫ (МЕДИАНА +- 20%) ---
-        median_raw = np.median(c_total_tfs)
+        # --- ФОРМУЛА КАК В ОРИГИНАЛЕ (Мин/Макс) ---
+        mean_total = np.mean(c_total_tfs)
+        med_total = np.median(c_total_tfs)
+        max_total = np.max(c_total_tfs)
         
-        # Нормализованная медиана (Цель)
-        rec_median = median_raw * norm_k
-        
-        # Границы нормы
-        lower_bound = math.floor(rec_median * 0.8)
-        upper_bound = math.ceil(rec_median * 1.2)
+        # Границы (с учетом нормализации)
+        rec_min = int(round(min(mean_total, med_total) * norm_k))
+        rec_max = int(round(max_total * norm_k))
+        rec_median = med_total * norm_k # Чисто для отображения и процента
         
         # СТАТУСЫ
         status = "Норма"
         action_diff = 0
         action_text = "✅"
         
-        if my_tf_total < lower_bound:
+        if my_tf_total < rec_min:
             status = "Недоспам"
-            action_diff = int(round(rec_median - my_tf_total))
-            # Если разница 0 из-за округления, но статус недоспам - ставим +1
+            action_diff = int(round(rec_min - my_tf_total))
             if action_diff == 0: action_diff = 1
             action_text = f"+{action_diff}"
-        elif my_tf_total > upper_bound:
+        elif my_tf_total > rec_max:
             status = "Переспам"
-            action_diff = int(round(my_tf_total - rec_median))
+            action_diff = int(round(my_tf_total - rec_max))
             if action_diff == 0: action_diff = 1
             action_text = f"-{action_diff}"
         else:
@@ -589,7 +590,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         # Расчет IDF для гибридного топа (старая логика для второй таблицы)
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
         idf = max(0.1, idf) 
-        max_total = np.max(c_total_tfs)
         
         # Dword = Cpage / Mtop (где Mtop нормализованная)
         # Если Mtop ~ 0, то глубина максимальная (или бесконечная), ставим заглушку
@@ -599,14 +599,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             depth_percent = 0 if my_tf_total == 0 else 100
 
         # Добавляем строку только если слово значимое (есть в топе или у нас)
-        if median_raw > 0.5 or my_tf_total > 0:
+        if med_total > 0.5 or my_tf_total > 0:
             table_depth.append({
                 "Слово": word, 
                 "Словоформы": forms_str, 
                 "Вхождений у вас": my_tf_total,
                 "Медиана ТОП (норм.)": round(rec_median, 1),
-                "Нижняя граница": lower_bound,
-                "Верхняя граница": upper_bound,
+                "Минимум (рек)": rec_min,
+                "Максимум (рек)": rec_max,
                 "Глубина %": depth_percent,
                 "Статус": status,
                 "Рекомендация": action_text,
