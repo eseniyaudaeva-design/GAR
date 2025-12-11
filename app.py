@@ -23,27 +23,22 @@ except ImportError:
 # ==========================================
 # 0. ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
 # ==========================================
-# Для SEO анализа
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
 
-# Для AI генератора текстов
 if 'ai_generated_df' not in st.session_state:
     st.session_state.ai_generated_df = None
 if 'ai_excel_bytes' not in st.session_state:
     st.session_state.ai_excel_bytes = None
 
-# Для Генератора плитки тегов
 if 'tags_html_result' not in st.session_state:
     st.session_state.tags_html_result = None
 
-# Для Генератора таблиц
 if 'table_html_result' not in st.session_state:
     st.session_state.table_html_result = None
 
-# ПАТЧ СОВМЕСТИМОСТИ (Для NLP)
 if not hasattr(inspect, 'getargspec'):
     def getargspec(func):
         spec = inspect.getfullargspec(func)
@@ -55,7 +50,6 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
-# ЧЕРНЫЙ СПИСОК МУСОРНЫХ СЛОВ
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
     'cookie', 'cookies', 'policy', 'privacy', 'agreement', 'terms',
@@ -63,9 +57,10 @@ GARBAGE_LATIN_STOPLIST = {
     'login', 'logout', 'sign', 'register', 'auth', 'account', 'profile',
     'search', 'menu', 'nav', 'navigation', 'footer', 'header', 'sidebar',
     'img', 'jpg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'svg',
-    'ok', 'error', 'undefined', 'null', 'true', 'false', 'var', 'let', 'const', 'function',
+    'ok', 'error', 'undefined', 'null', 'true', 'false', 'var', 'let', 'const', 'function', 'return',
     'ru', 'en', 'com', 'net', 'org', 'info', 'biz', 'shop', 'store',
-    'phone', 'email', 'tel', 'fax', 'mob', 'address', 'copyright', 'all', 'rights', 'reserved'
+    'phone', 'email', 'tel', 'fax', 'mob', 'address', 'copyright', 'all', 'rights', 'reserved',
+    'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
 }
 
 # ==========================================
@@ -339,7 +334,6 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     return results_list
 
 def process_text_detailed(text, settings, n_gram=1):
-    # ВСЕГДА разрешаем буквы И ЦИФРЫ, чтобы ловить "м1", "ст3"
     pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
         
     words = re.findall(pattern, text.lower())
@@ -351,8 +345,6 @@ def process_text_detailed(text, settings, n_gram=1):
     for w in words:
         if len(w) < 2: continue
         
-        # Если настройка "Учитывать числа" ВЫКЛЮЧЕНА, то мы пропускаем ЧИСТЫЕ числа (2025, 100).
-        # Но слова типа "м1", "ст3" (смешанные) - ОСТАВЛЯЕМ.
         if not settings['numbers'] and w.isdigit():
             continue
             
@@ -361,7 +353,6 @@ def process_text_detailed(text, settings, n_gram=1):
         lemma = w
         if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
-            # --- УДАЛЕНИЕ ПРЕДЛОГОВ, СОЮЗОВ И Т.Д. ---
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
             lemma = p.normal_form
         
@@ -384,14 +375,11 @@ def parse_page(url, settings):
         if r.status_code != 200: return None
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # ТЕПЕРЬ ПО УМОЛЧАНИЮ СПИСОК ПУСТОЙ. НИЧЕГО НЕ УДАЛЯЕМ.
         tags_to_remove = []
         
-        # 2. NOINDEX УДАЛЯЕМ ТОЛЬКО ЕСЛИ ВКЛЮЧЕНА ГАЛОЧКА
         if settings['noindex']:
             tags_to_remove.append('noindex') 
         
-        # Комментарии все равно чистим, они не нужны
         comments = soup.find_all(string=lambda text: isinstance(text, Comment))
         for c in comments: c.extract()
         
@@ -419,7 +407,6 @@ def parse_page(url, settings):
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     all_forms_map = defaultdict(set)
     
-    # 1. Ваш сайт
     if not my_data or not my_data.get('body_text'):
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
     else:
@@ -429,10 +416,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for k, v in my_forms.items():
             all_forms_map[k].update(v)
 
-    # Разделяем успешно скачанные данные для анализа лемм и статистики
     comp_data_parsed = [d for d in comp_data_full if d.get('body_text')]
     
-    # 2. Конкуренты (только успешно скачанные)
     comp_docs = []
     for p in comp_data_parsed:
         body, c_forms = process_text_detailed(p['body_text'], settings)
@@ -441,7 +426,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for k, v in c_forms.items():
             all_forms_map[k].update(v)
     
-    # Если нет успешно скачанных конкурентов, мы не можем рассчитать релевантность
     if not comp_docs:
         table_rel_fallback = []
         for item in original_results:
@@ -473,100 +457,80 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "missing_semantics_low": []
         }
 
-    # Дальше расчеты идут только по успешно скачанным comp_docs
-    avg_len = np.mean([len(d['body']) for d in comp_docs])
-    norm_k = (my_len / avg_len) if (settings['norm'] and my_len > 0 and avg_len > 0) else 1.0
+    c_lens = [len(d['body']) for d in comp_docs]
+    median_len = np.median(c_lens)
+    
+    if median_len > 0 and my_len > 0 and settings['norm']:
+        norm_k = my_len / median_len
+    else:
+        norm_k = 1.0
     
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
-    N = len(comp_docs) # N - количество успешно скачанных документов
+    N = len(comp_docs) 
     doc_freqs = Counter()
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
         
-    # ==========================================
-    # ОПРЕДЕЛЕНИЕ LSI-ЯДРА (S_LSI) ДЛЯ РАСЧЕТА ШИРИНЫ
-    # ==========================================
-    # Порог: Слово должно встречаться минимум у 30% конкурентов
-    min_docs_threshold = math.ceil(N * 0.30)
-    # Защита от слишком малого порога, если конкурентов мало (например, 2-3)
-    if min_docs_threshold < 2 and N >= 2:
-        min_docs_threshold = 2
+    min_docs_threshold = math.ceil(N * 0.50) 
+    if min_docs_threshold < 1: min_docs_threshold = 1
     
-    # Формируем множество эталонных лемм (Ядро)
     S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
+    
+    S_LSI = {w for w in S_LSI if w.lower() not in GARBAGE_LATIN_STOPLIST}
+    
     total_lsi_count = len(S_LSI)
 
-    # ==========================================
-    # РАСЧЕТ УПУЩЕННОЙ СЕМАНТИКИ (2 СПИСКА)
-    # ==========================================
     missing_semantics_high = []
     missing_semantics_low = []
     my_lemmas_set = set(my_lemmas) 
     
     for word, freq in doc_freqs.items():
-        # Если слова нет у нас
+        if word in GARBAGE_LATIN_STOPLIST: continue
         if word not in my_lemmas_set:
-            # Отсекаем слишком короткие (мусор)
             if len(word) < 2: continue
-            # Отсекаем ЧИСТЫЕ цифры из подсказок (если они вдруг пролезли)
             if word.isdigit(): continue
-            
-            # Предлоги, союзы и прочее уже отфильтрованы в process_text_detailed
-            
             percent = int((freq / N) * 100)
             item = {'word': word, 'percent': percent}
-            
             if freq >= min_docs_threshold:
                 missing_semantics_high.append(item)
             else:
-                # Если документов мало (<=5), берем все, что встретилось хотя бы 1 раз (если >1)
-                # Если документов много, фильтруем шум (freq >= 2)
                 if N <= 5 or freq >= 2:
                     missing_semantics_low.append(item)
     
-    # Сортировка по популярности
     missing_semantics_high.sort(key=lambda x: x['percent'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
-    # ==========================================
         
     table_depth, table_hybrid = [], []
-    
-    # Словарь границ для каждого слова (чтобы использовать потом при расчете глубины конкурентов)
-    # word -> {min, max}
     words_bounds_map = {}
-
-    # Для расчета общего балла глубины ВАШЕГО сайта
     total_important_words = 0
     words_in_range = 0
     
     for word in vocab:
+        if word in GARBAGE_LATIN_STOPLIST: continue
+        
         df = doc_freqs[word]
-        # Берем только слова, которые есть хотя бы у 2 конкурентов ИЛИ есть у нас
         if df < 2 and word not in my_lemmas: continue 
         
         my_tf_total = my_lemmas.count(word)        
-        
         forms_set = all_forms_map.get(word, set())
         forms_str = ", ".join(sorted(list(forms_set))) if forms_set else word
         
         c_total_tfs = [d['body'].count(word) for d in comp_docs]
         
-        # --- ФОРМУЛА КАК В ОРИГИНАЛЕ (Мин/Макс) ---
         mean_total = np.mean(c_total_tfs)
         med_total = np.median(c_total_tfs)
         max_total = np.max(c_total_tfs)
         
-        # Границы (с учетом нормализации)
-        rec_min = int(round(min(mean_total, med_total) * norm_k))
-        rec_max = int(round(max_total * norm_k))
-        rec_median = med_total * norm_k # Чисто для отображения и процента
+        base_min = min(mean_total, med_total)
         
-        # Сохраняем границы для этого слова
+        rec_min = int(round(base_min * norm_k))
+        rec_max = int(round(max_total * norm_k))
+        rec_median = med_total * norm_k 
+        
         words_bounds_map[word] = {'min': rec_min, 'max': rec_max}
 
-        # СТАТУСЫ
         status = "Норма"
         action_diff = 0
         action_text = "✅"
@@ -582,31 +546,20 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             if action_diff == 0: action_diff = 1
             action_text = f"-{action_diff}"
         else:
-            # Попали в диапазон
             words_in_range += 1
             
-        # Считаем общее число важных слов для скоринга
-        # (Исключаем совсем редкие, если их медиана около 0)
-        if rec_median >= 0.5:
-            total_important_words += 1
-        elif my_tf_total > 0:
-            # Если медиана 0, но слово есть у нас - тоже учитываем
+        if word in S_LSI:
             total_important_words += 1
 
-        # Расчет IDF для гибридного топа (старая логика для второй таблицы)
         idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
         idf = max(0.1, idf) 
         
-        # Dword = Cpage / Mtop (где Mtop нормализованная)
         if rec_median > 0.1:
             depth_percent = int(round((my_tf_total / rec_median) * 100))
         else:
             depth_percent = 0 if my_tf_total == 0 else 100
-        
-        # Ограничение до 100%
         depth_percent = min(100, depth_percent)
 
-        # Добавляем строку только если слово значимое (есть в топе или у нас)
         if med_total > 0.5 or my_tf_total > 0:
             table_depth.append({
                 "Слово": word, 
@@ -622,18 +575,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 "sort_val": abs(action_diff) if status != "Норма" else 0
             })
             
-            # Гибридная таблица остается как была (TF-IDF)
             table_hybrid.append({
                 "Слово": word, "TF-IDF ТОП": round(np.median(c_total_tfs) * idf, 2), "TF-IDF у вас": round(my_tf_total * idf, 2),
                 "Сайтов": df, "Переспам": max_total
             })
 
-    # --- ТОП РЕЛЕВАНТНОСТИ ---
     table_rel = []
     
-    # 1. Расчет ширины и глубины для конкурентов
-    # Глубина конкурента: % важных слов (из S_LSI), которые находятся в диапазоне [Min, Max]
-    competitor_stats_raw = []
+    # 1. Расчет для конкурентов
     for item in original_results:
         url = item['url']
         pos = item['pos']
@@ -648,33 +597,25 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             p_counts = Counter(p_lemmas)
             p_set = set(p_lemmas)
             
-            # ШИРИНА: Пересечение с ядром / Размер ядра
-            intersection_count = len(p_set.intersection(S_LSI))
+            # ШИРИНА: % слов из S_LSI, которые ПРИСУТСТВУЮТ
             if total_lsi_count > 0:
+                intersection_count = len(p_set.intersection(S_LSI))
                 width_score_val = int(round((intersection_count / total_lsi_count) * 100))
             else:
                 width_score_val = 0
             
-            # ГЛУБИНА: Проход по S_LSI и проверка попадания в диапазон [Min, Max]
-            hits_in_range = 0
-            # S_LSI содержит слова, которые мы считаем важными
+            # ГЛУБИНА
+            hits = 0
             check_words = [w for w in S_LSI if w in words_bounds_map]
-            
             for w in check_words:
-                count = p_counts[w]
-                bounds = words_bounds_map[w]
-                # Проверяем попадание в диапазон. 
-                # Важно: тут мы сравниваем абсолютное значение с нормализованным диапазоном.
-                # Это допущение (мы оцениваем конкурента по меркам "эталона для вашего сайта").
-                if bounds['min'] <= count <= bounds['max']:
-                    hits_in_range += 1
-            
+                cnt = p_counts[w]
+                if cnt > 0:
+                    hits += 1
             if len(check_words) > 0:
-                depth_score_val = int(round((hits_in_range / len(check_words)) * 100))
+                depth_score_val = int(round((hits / len(check_words)) * 100))
             else:
                 depth_score_val = 0
                 
-            # Ограничение 100
             width_score_val = min(100, width_score_val)
             depth_score_val = min(100, depth_score_val)
             
@@ -684,14 +625,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Глубина (балл)": depth_score_val
         })
         
-    # 2. Расчет ширины и глубины для ВАС
-    my_intersection_count = len(set(my_lemmas).intersection(S_LSI))
+    # 2. Расчет для ВАС
     if total_lsi_count > 0:
+        my_intersection_count = len(set(my_lemmas).intersection(S_LSI))
         my_score_w = int(round((my_intersection_count / total_lsi_count) * 100))
     else:
         my_score_w = 0
     
-    # Глубина (из прошлого шага: % слов в статусе "Норма")
     if total_important_words > 0:
         my_score_d_new = int(round((words_in_range / total_important_words) * 100))
     else:
@@ -732,18 +672,15 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     st.markdown(f"### {title_text}")
     
-    # 1. Глобальный поиск по всей таблице
     search_query = st.text_input(f"🔍 Поиск по таблице ({title_text})", key=f"{key_prefix}_search")
     if search_query:
-        # Фильтруем исходный датафрейм (строка содержит подстроку)
         mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
         df = df[mask]
     
     if df.empty:
-        st.warning("Ничего не найдено по вашему запросу.")
+        st.warning("Ничего не найдено.")
         return
 
-    # 2. Сортировка
     if f'{key_prefix}_sort_col' not in st.session_state:
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
     if f'{key_prefix}_sort_order' not in st.session_state:
@@ -754,7 +691,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         col_s1, col_s2, col_sp = st.columns([2, 2, 4])
         with col_s1:
             sort_col = st.selectbox(
-                "🗂 Сортировать весь список по:", 
+                "🗂 Сортировать по:", 
                 df.columns, 
                 key=f"{key_prefix}_sort_box",
                 index=list(df.columns).index(st.session_state[f'{key_prefix}_sort_col']) if st.session_state[f'{key_prefix}_sort_col'] in df.columns else 0
@@ -773,7 +710,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     ascending = (sort_order == "Возрастание")
     if "sort_val" in df.columns and default_sort_col == "Рекомендация":
-         # Специальная сортировка для рекомендаций (по модулю разницы)
          df = df.sort_values(by="sort_val", ascending=ascending)
     elif "Добавить" in sort_col or "+/-" in sort_col:
         df['_temp_sort'] = df[sort_col].abs()
@@ -781,7 +717,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     else:
         df = df.sort_values(by=sort_col, ascending=ascending)
 
-    # 3. Пагинация
     df = df.reset_index(drop=True)
     df.index = df.index + 1
     
@@ -794,9 +729,9 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     if total_pages == 0: total_pages = 1
     
     current_page = st.session_state[f'{key_prefix}_page']
-    
     if current_page > total_pages: current_page = total_pages
     if current_page < 1: current_page = 1
+    st.session_state[f'{key_prefix}_page'] = current_page
     
     start_idx = (current_page - 1) * ROWS_PER_PAGE
     end_idx = start_idx + ROWS_PER_PAGE
@@ -812,14 +747,11 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             cell_style = base_style
             if col_name == "Статус":
                 if status == "Недоспам":
-                    cell_style += "color: #D32F2F; font-weight: bold;" # Красный
+                    cell_style += "color: #D32F2F; font-weight: bold;" 
                 elif status == "Переспам":
-                    cell_style += "color: #E65100; font-weight: bold;" # Оранжевый/Красный
+                    cell_style += "color: #E65100; font-weight: bold;" 
                 elif status == "Норма":
-                    cell_style += "color: #2E7D32; font-weight: bold;" # Зеленый
-            
-            if col_name == 'is_missing' and row['is_missing']:
-                 pass 
+                    cell_style += "color: #2E7D32; font-weight: bold;" 
             
             styles.append(cell_style)
         return styles
