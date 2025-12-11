@@ -360,8 +360,6 @@ def process_text_detailed(text, settings, n_gram=1):
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
             
             # !FIX: ПРИНУДИТЕЛЬНАЯ ЗАМЕНА Ё НА Е В ЛЕММЕ
-            # Pymorphy может вернуть нормальную форму "ёлка" даже если на входе "елка".
-            # Поэтому мы заменяем ё на е и здесь.
             lemma = p.normal_form.replace('ё', 'е')
         
         lemmas.append(lemma)
@@ -503,7 +501,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for d in comp_docs:
         word_counts_per_doc.append(Counter(d['body']))
 
-    # !FIX: ПЕРЕИМЕНОВАЛИ word -> lemma для ясности (хотя в vocab уже леммы)
     for lemma in vocab:
         df = doc_freqs[lemma]
         if df == 0: continue
@@ -805,7 +802,10 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
         st.markdown("</div>", unsafe_allow_html=True)
 
     ascending = (sort_order == "Возрастание")
-    if "sort_val" in df_filtered.columns and default_sort_col == "Рекомендация":
+    
+    # !FIX: ИСПРАВЛЕНА ЛОГИКА СОРТИРОВКИ
+    # Теперь проверяем ТЕКУЩИЙ выбранный столбец (sort_col), а не дефолтный.
+    if sort_col == "Рекомендация" and "sort_val" in df_filtered.columns:
          df_filtered = df_filtered.sort_values(by="sort_val", ascending=ascending)
     elif "Добавить" in sort_col or "+/-" in sort_col:
         df_filtered['_temp_sort'] = df_filtered[sort_col].abs()
