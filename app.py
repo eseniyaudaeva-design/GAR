@@ -475,22 +475,22 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 #     for w in set(d['body']): doc_freqs[w] += 1
 
 # НОВЫЙ КОД (ВКЛЮЧАЕТ ВАШ ТЕКСТ):
-doc_freqs = Counter()
+    doc_freqs = Counter()
 # Сначала считаем частоту по конкурентам
-for d in comp_docs:
+    for d in comp_docs:
     for w in set(d['body']):
         doc_freqs[w] += 1
 # Теперь добавляем слова из вашего текста, если их еще нет
-for w in set(my_lemmas):
+    for w in set(my_lemmas):
     if w not in doc_freqs:
         doc_freqs[w] = 0  # Слово есть только у вас, встречается 0 раз у конкурентов
 
 # Порог рассчитываем от общего числа документов (N конкурентов + 1 ваш)
-total_docs = N + 1  # +1 ваш документ
-min_docs_threshold = math.ceil(total_docs * 0.50)
+    total_docs = N + 1  # +1 ваш документ
+    min_docs_threshold = math.ceil(total_docs * 0.50)
 
-S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
-S_LSI = {w for w in S_LSI if w.lower() not in GARBAGE_LATIN_STOPLIST}
+    S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
+    S_LSI = {w for w in S_LSI if w.lower() not in GARBAGE_LATIN_STOPLIST}
     
     total_lsi_count = len(S_LSI)
 
@@ -1584,4 +1584,5 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
