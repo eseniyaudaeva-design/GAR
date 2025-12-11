@@ -768,8 +768,107 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "missing_semantics_high": missing_semantics_high,
         "missing_semantics_low": missing_semantics_low
     }
+# ==========================================
+# 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (PAGINATION + EXCEL)
+# ==========================================
 
-    # 5. ПАГИНАЦИЯ (Отображаем по 20 строк)
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
+    if df.empty:
+        st.info(f"{title_text}: Нет данных.")
+        return
+
+    # Заголовок и кнопка скачивания в одной строке
+    col_t1, col_t2 = st.columns([7, 3])
+    with col_t1:
+        st.markdown(f"### {title_text}")
+    
+    # 1. Сортировка (инициализация)
+    if f'{key_prefix}_sort_col' not in st.session_state:
+        # Если дефолтная колонка есть в DF, берем её, иначе первую попавшуюся
+        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if (default_sort_col and default_sort_col in df.columns) else df.columns[0]
+    if f'{key_prefix}_sort_order' not in st.session_state:
+        st.session_state[f'{key_prefix}_sort_order'] = "Убывание" 
+
+    # 2. Поиск
+    search_query = st.text_input(f"🔍 Поиск ({title_text})", key=f"{key_prefix}_search")
+    if search_query:
+        mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
+        df_filtered = df[mask].copy()
+    else:
+        df_filtered = df.copy()
+
+    if df_filtered.empty:
+        st.warning("Ничего не найдено.")
+        return
+
+    # 3. Применение сортировки (UI)
+    with st.container():
+        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
+        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
+        with col_s1:
+            current_sort = st.session_state[f'{key_prefix}_sort_col']
+            # Защита от потери колонки при смене данных
+            if current_sort not in df_filtered.columns:
+                current_sort = df_filtered.columns[0]
+                
+            sort_col = st.selectbox(
+                "🗂 Сортировать по:", 
+                df_filtered.columns, 
+                key=f"{key_prefix}_sort_box",
+                index=list(df_filtered.columns).index(current_sort)
+            )
+            st.session_state[f'{key_prefix}_sort_col'] = sort_col
+        with col_s2:
+            sort_order = st.radio(
+                "Порядок:", 
+                ["Убывание", "Возрастание"], 
+                horizontal=True,
+                key=f"{key_prefix}_order_box",
+                index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
+            )
+            st.session_state[f'{key_prefix}_sort_order'] = sort_order
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    ascending = (sort_order == "Возрастание")
+    
+    # Логика сортировки
+    # Если включена сортировка по абсолютным значениям (для рекомендаций +/-)
+    if use_abs_sort_default and sort_col == "Рекомендация" and "sort_val" in df_filtered.columns:
+         df_filtered = df_filtered.sort_values(by="sort_val", ascending=ascending)
+    elif ("Добавить" in sort_col or "+/-" in sort_col) and df_filtered[sort_col].dtype == object:
+        # Пытаемся сортировать строковые числа "+1", "-5" по модулю
+        try:
+            df_filtered['_temp_sort'] = df_filtered[sort_col].astype(str).str.replace(r'[^\d]', '', regex=True)
+            df_filtered['_temp_sort'] = pd.to_numeric(df_filtered['_temp_sort'], errors='coerce').fillna(0)
+            df_filtered = df_filtered.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
+        except:
+             df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
+    else:
+        df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
+
+    # Обновление индекса
+    df_filtered = df_filtered.reset_index(drop=True)
+    df_filtered.index = df_filtered.index + 1
+    
+    # 4. Генерация Excel
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        export_df = df_filtered.copy()
+        if "is_missing" in export_df.columns: del export_df["is_missing"]
+        if "sort_val" in export_df.columns: del export_df["sort_val"]
+        export_df.to_excel(writer, index=False, sheet_name='Data')
+    excel_data = buffer.getvalue()
+    
+    with col_t2:
+        st.download_button(
+            label="📥 Скачать Excel",
+            data=excel_data,
+            file_name=f"{key_prefix}_export.xlsx",
+            mime="application/vnd.ms-excel",
+            key=f"{key_prefix}_down"
+        )
+
+    # 5. ПАГИНАЦИЯ
     ROWS_PER_PAGE = 20
     if f'{key_prefix}_page' not in st.session_state:
         st.session_state[f'{key_prefix}_page'] = 1
@@ -788,6 +887,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     df_view = df_filtered.iloc[start_idx:end_idx]
 
+    # Стилизация
     def highlight_rows(row):
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
@@ -806,10 +906,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         return styles
     
     cols_to_hide = ["is_missing", "sort_val"]
-    
-    styled_df = df_view.style.apply(highlight_rows, axis=1)
-    
-    # Высота таблицы подстраивается под кол-во строк на странице (макс 20)
+    cols_to_hide = [c for c in cols_to_hide if c in df_view.columns]
+
+    try:
+        styled_df = df_view.style.apply(highlight_rows, axis=1)
+    except:
+        styled_df = df_view # Fallback если стили сломались
+
     dynamic_height = (len(df_view) * 35) + 40 
     
     st.dataframe(
@@ -826,7 +929,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             st.session_state[f'{key_prefix}_page'] -= 1
             st.rerun()
     with c_info:
-        st.markdown(f"<div style='text-align: center; margin-top: 10px; color:{TEXT_COLOR}'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; margin-top: 10px; color:#3D4858'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
     with c_btn_next:
         if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
             st.session_state[f'{key_prefix}_page'] += 1
@@ -1624,6 +1727,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
