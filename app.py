@@ -470,121 +470,241 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     vocab = sorted(list(vocab))
     N = len(comp_docs)
     
-    # ================= НАЧАЛО ГИПОТЕЗЫ 1: TF-IDF ФИЛЬТРАЦИЯ =================
-    # 1. Считаем частоту слов по конкурентам
-    doc_freqs = Counter()
-    for d in comp_docs:
-        for w in set(d['body']):
-            doc_freqs[w] += 1
-
-    # Учитываем также слова из вашего текста, если их нет у конкурентов, то 0
-    for w in set(my_lemmas):
-        if w not in doc_freqs:
-            doc_freqs[w] = 0
-
-    # Порог рассчитываем от общего числа документов (N конкурентов + 1 ваш)
-    total_docs = N + 1  # +1 ваш документ
-    min_docs_threshold = math.ceil(total_docs * 0.50)
+    # ================= УЛУЧШЕННЫЙ АЛГОРИТМ S_LSI =================
+    # 1. Собираем ВСЕ формы слов из ВСЕХ документов
+    all_words_all_forms = []
     
-    # 2. Считаем TF-IDF для каждого слова
-    word_scores = {}
-    for word in doc_freqs:
-        df = doc_freqs[word]
-        # IDF = log(общее_кол_во_документов / частота_слова + 1)
-        idf = math.log((total_docs + 1) / (df + 1)) + 1
+    # Слова из конкурентов (в оригинальной форме)
+    for d in comp_docs:
+        all_words_all_forms.extend(d['body'])
+    
+    # Слова из вашего текста (в оригинальной форме)
+    all_words_all_forms.extend(my_lemmas)
+    
+    # 2. Подсчитываем частоту ВСЕХ форм
+    all_forms_freq = Counter(all_words_all_forms)
+    total_all_words = len(all_words_all_forms)
+    
+    # 3. Приводим слова к нормальной форме для анализа
+    if USE_NLP:
+        normalized_freq = Counter()
+        for word, count in all_forms_freq.items():
+            try:
+                parsed = morph.parse(word)[0]
+                # Пропускаем служебные части речи
+                stop_tags = {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ', 'NUMR'}
+                if any(tag in parsed.tag for tag in stop_tags):
+                    continue
+                
+                normal_form = parsed.normal_form
+                # Исключаем слишком короткие
+                if len(normal_form) < 2:
+                    continue
+                    
+                normalized_freq[normal_form] += count
+            except:
+                normalized_freq[word] += count
+    else:
+        normalized_freq = all_forms_freq
+    
+    # 4. Рассчитываем статистику
+    total_unique_words = len(normalized_freq)
+    total_docs = N + 1  # N конкурентов + ваш документ
+    
+    # 5. ДИНАМИЧЕСКИЙ ПОРОГ: чем меньше документов, тем выше порог
+    if total_docs <= 5:
+        min_percent = 80  # 80% для 2-5 документов
+    elif total_docs <= 10:
+        min_percent = 60  # 60% для 6-10 документов
+    elif total_docs <= 20:
+        min_percent = 40  # 40% для 11-20 документов
+    else:
+        min_percent = 30  # 30% для >20 документов
+    
+    min_docs_threshold = math.ceil(total_docs * min_percent / 100)
+    
+    # 6. Считаем в скольких документах встречается КАЖДАЯ НОРМАЛЬНАЯ ФОРМА
+    docs_with_normal_form = Counter()
+    
+    # Для конкурентов
+    for d in comp_docs:
+        unique_norms_in_doc = set()
+        for word in d['body']:
+            if USE_NLP:
+                try:
+                    parsed = morph.parse(word)[0]
+                    stop_tags = {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ', 'NUMR'}
+                    if any(tag in parsed.tag for tag in stop_tags):
+                        continue
+                    norm = parsed.normal_form
+                    if len(norm) >= 2:
+                        unique_norms_in_doc.add(norm)
+                except:
+                    if len(word) >= 2:
+                        unique_norms_in_doc.add(word)
+            else:
+                if len(word) >= 2:
+                    unique_norms_in_doc.add(word)
         
-        # Считаем средний TF по всем документам
-        total_tf = 0
-        count_docs_with_word = 0
+        for norm in unique_norms_in_doc:
+            docs_with_normal_form[norm] += 1
+    
+    # Для вашего документа
+    your_norms = set()
+    for word in my_lemmas:
+        if USE_NLP:
+            try:
+                parsed = morph.parse(word)[0]
+                stop_tags = {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ', 'NUMR'}
+                if any(tag in parsed.tag for tag in stop_tags):
+                    continue
+                norm = parsed.normal_form
+                if len(norm) >= 2:
+                    your_norms.add(norm)
+            except:
+                if len(word) >= 2:
+                    your_norms.add(word)
+        else:
+            if len(word) >= 2:
+                your_norms.add(word)
+    
+    for norm in your_norms:
+        if norm not in docs_with_normal_form:
+            docs_with_normal_form[norm] = 1
+        else:
+            docs_with_normal_form[norm] += 1
+    
+    # 7. Формируем S_LSI на основе НОРМАЛЬНЫХ ФОРМ
+    S_LSI_norms = set()
+    
+    for norm, doc_count in docs_with_normal_form.items():
+        # Проверяем частоту (в скольких документах есть)
+        if doc_count < min_docs_threshold:
+            continue
         
-        # В документах конкурентов
-        for d in comp_docs:
-            tf_in_doc = d['body'].count(word)
-            if tf_in_doc > 0:
-                total_tf += tf_in_doc
-                count_docs_with_word += 1
+        # Проверяем не в стоп-листе
+        if norm.lower() in GARBAGE_LATIN_STOPLIST:
+            continue
         
-        # Также учитываем ваш документ
-        if word in my_lemmas:
-            total_tf += my_lemmas.count(word)
-            count_docs_with_word += 1
+        # Проверяем длину
+        if len(norm) < 2:
+            continue
         
-        avg_tf = total_tf / count_docs_with_word if count_docs_with_word > 0 else 0
-        tf_idf_score = avg_tf * idf
+        # Проверяем общую частоту (сколько раз слово встречается вообще)
+        total_freq = normalized_freq.get(norm, 0)
+        if total_freq < 5:  # Минимум 5 вхождений во всех документах
+            continue
         
-        word_scores[word] = {
-            'tf_idf': tf_idf_score,
-            'df': df,
-            'avg_tf': avg_tf,
-            'percent': int((df / total_docs) * 100) if total_docs > 0 else 0
-        }
-
-    # 3. Формируем S_LSI на основе КОМБИНИРОВАННОГО КРИТЕРИЯ
+        S_LSI_norms.add(norm)
+    
+    # 8. Преобразуем S_LSI обратно в исходные формы для отображения
+    # Собираем все исходные формы для каждого нормализованного слова
+    norm_to_original = defaultdict(set)
+    
+    # Для всех слов во всех документах
+    for word in all_words_all_forms:
+        if USE_NLP:
+            try:
+                parsed = morph.parse(word)[0]
+                norm = parsed.normal_form
+                if norm in S_LSI_norms:
+                    norm_to_original[norm].add(word)
+            except:
+                if word in S_LSI_norms:  # Если не смогли нормализовать
+                    norm_to_original[word].add(word)
+        else:
+            if word in S_LSI_norms:
+                norm_to_original[word].add(word)
+    
+    # 9. Выбираем самую частую исходную форму для отображения
     S_LSI = set()
-    for word, scores in word_scores.items():
-        df = scores['df']
-        tf_idf = scores['tf_idf']
-        percent = scores['percent']
+    for norm, original_forms in norm_to_original.items():
+        # Находим самую частую форму
+        most_frequent_form = None
+        max_freq = 0
         
-        # КРИТЕРИЙ 1: Частота встречаемости (≥50%)
-        meets_freq = df >= min_docs_threshold
+        for form in original_forms:
+            freq = all_forms_freq.get(form, 0)
+            if freq > max_freq:
+                max_freq = freq
+                most_frequent_form = form
         
-        # КРИТЕРИЙ 2: TF-IDF выше порога (фильтруем "мусор")
-        tf_idf_threshold = 0.5  # Экспериментальное значение
-        
-        # КРИТЕРИЙ 3: Минимальная длина слова
-        min_length = 2
-        
-        # КРИТЕРИЙ 4: Не в стоп-листе
-        not_in_stoplist = word.lower() not in GARBAGE_LATIN_STOPLIST
-        
-        if (meets_freq and 
-            tf_idf >= tf_idf_threshold and 
-            len(word) >= min_length and
-            not_in_stoplist):
-            S_LSI.add(word)
+        if most_frequent_form:
+            S_LSI.add(most_frequent_form)
     
     total_lsi_count = len(S_LSI)
-    # ================= КОНЕЦ ГИПОТЕЗЫ 1 =================
-        # ================= НАЧАЛО ДИАГНОСТИЧЕСКОГО КОДА =================
-    # ДИАГНОСТИКА: Сравнение с ГАР ПРО
-    debug_info = {}
     
-    # 1. Статистика по S_LSI
-    debug_info['total_s_lsi'] = len(S_LSI)
+    # 10. Сохраняем отладочную информацию
+    debug_info = {
+        'total_docs': total_docs,
+        'min_percent': min_percent,
+        'min_docs_threshold': min_docs_threshold,
+        'S_LSI_norms': list(S_LSI_norms)[:50],
+        'S_LSI_original': list(S_LSI)[:50],
+        'normalized_freq_samples': dict(list(normalized_freq.items())[:20])
+    }
+    st.session_state.s_lsi_debug = debug_info
+    # ================= КОНЕЦ УЛУЧШЕННОГО АЛГОРИТМА =================
+    # ================= ОБНОВЛЕННЫЙ ДИАГНОСТИЧЕСКИЙ КОД =================
+    # ДИАГНОСТИКА: более подробная информация
+    debug_info = st.session_state.get('s_lsi_debug', {})
     
-    # 2. Выводим все слова из S_LSI с их статистикой
-    s_lsi_details = []
-    if len(S_LSI) > 0:
-        sorted_words = sorted([(w, doc_freqs[w], word_scores[w]['tf_idf'], word_scores[w]['percent']) 
-                              for w in S_LSI], key=lambda x: x[1], reverse=True)
-        
-        for word, freq, tf_idf_val, percent_val in sorted_words[:50]:  # Первые 50
-            s_lsi_details.append({
-                'word': word, 
-                'freq': f"{freq}/{total_docs}",
-                'percent': f"{percent_val}%",
-                'tf_idf': round(tf_idf_val, 3)
-            })
-    
-    debug_info['s_lsi_details'] = s_lsi_details
-    
-    # 3. Сравнение с ожидаемым списком из ГАР ПРО
+    # Добавляем информацию о пропущенных словах
     expected_words = {
         'шина', 'втулка', 'калькулятор', 'наименование', 'производителей',
         'выгодной', 'профильные', 'металлообработка', 'соглашаюсь', 'анод',
         'имя', 'дюралевый', 'чушка'
     }
     
-    missing = expected_words - S_LSI
-    extra = S_LSI - expected_words
+    # Приводим ожидаемые слова к нормальной форме для сравнения
+    expected_norms = set()
+    for word in expected_words:
+        if USE_NLP:
+            try:
+                parsed = morph.parse(word)[0]
+                expected_norms.add(parsed.normal_form)
+            except:
+                expected_norms.add(word)
+        else:
+            expected_norms.add(word)
     
-    debug_info['missing_from_gar'] = list(missing)
-    debug_info['extra_words'] = list(extra)[:30]  # Первые 30 лишних слов
+    # Проверяем, какие нормальные формы есть в S_LSI_norms
+    missing_norms = expected_norms - set(debug_info.get('S_LSI_norms', []))
     
-    # 4. Сохраняем отладочную информацию
+    # Ищем оригинальные формы пропущенных слов
+    missing_original = []
+    for norm in missing_norms:
+        # Ищем все исходные формы этого слова
+        found_forms = []
+        for word in all_words_all_forms:
+            if USE_NLP:
+                try:
+                    parsed = morph.parse(word)[0]
+                    if parsed.normal_form == norm:
+                        found_forms.append(word)
+                except:
+                    if word == norm:
+                        found_forms.append(word)
+            else:
+                if word == norm:
+                    found_forms.append(word)
+        
+        if found_forms:
+            # Берем самую частую
+            most_freq = max(found_forms, key=lambda x: all_forms_freq.get(x, 0))
+            missing_original.append(f"{norm} → {most_freq} (частота: {all_forms_freq.get(most_freq, 0)})")
+        else:
+            missing_original.append(f"{norm} (не найдено в текстах)")
+    
+    debug_info['missing_expected'] = missing_original
+    
+    # Собираем лишние слова (в оригинальной форме)
+    extra_original = list(S_LSI - expected_words)[:30]
+    debug_info['extra_original'] = extra_original
+    
+    # Сохраняем обновленную информацию
     st.session_state.s_lsi_debug = debug_info
-    # ================= КОНЕЦ ДИАГНОСТИЧЕСКОГО КОДА =================
+    # ================= КОНЕЦ ОБНОВЛЕННОГО ДИАГНОСТИЧЕСКОГО КОДА =================
 
     missing_semantics_high = []
     missing_semantics_low = []
@@ -765,38 +885,57 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "missing_semantics_low": missing_semantics_low
     }
 
-# ================= ФУНКЦИЯ ОТОБРАЖЕНИЯ ДИАГНОСТИКИ =================
+# ================= ОБНОВЛЕННАЯ ФУНКЦИЯ ОТОБРАЖЕНИЯ ДИАГНОСТИКИ =================
 def show_s_lsi_diagnostics():
     if 's_lsi_debug' not in st.session_state:
         return
     
     debug = st.session_state.s_lsi_debug
     
-    with st.expander("🔍 ДИАГНОСТИКА S_LSI (для отладки)", expanded=True):
-        st.write(f"**Всего слов в S_LSI:** {debug['total_s_lsi']}")
+    with st.expander("🔍 ДИАГНОСТИКА S_LSI v2.0", expanded=True):
+        # Основная информация
+        st.write(f"**Общее число документов:** {debug.get('total_docs', 'N/A')}")
+        st.write(f"**Динамический порог:** ≥{debug.get('min_percent', 'N/A')}% документов")
+        st.write(f"**Минимум документов:** {debug.get('min_docs_threshold', 'N/A')}")
+        st.write(f"**Слов в S_LSI (нормальные формы):** {len(debug.get('S_LSI_norms', []))}")
+        st.write(f"**Слов в S_LSI (исходные формы):** {len(debug.get('S_LSI_original', []))}")
         
-        # 1. Показываем слова из S_LSI
-        if debug['s_lsi_details']:
-            st.write("**Слова в S_LSI (первые 50):**")
-            df_details = pd.DataFrame(debug['s_lsi_details'])
-            st.dataframe(df_details, use_container_width=True, height=300)
+        # 1. Нормальные формы в S_LSI
+        if debug.get('S_LSI_norms'):
+            st.write("**Нормальные формы в S_LSI (первые 30):**")
+            norms_text = ", ".join(debug['S_LSI_norms'][:30])
+            st.text(norms_text)
         
-        # 2. Показываем отсутствующие слова
-        if debug['missing_from_gar']:
-            st.write(f"**Слова из ГАР ПРО, которых нет в S_LSI ({len(debug['missing_from_gar'])}):**")
-            st.write(", ".join(debug['missing_from_gar']))
+        # 2. Исходные формы в S_LSI
+        if debug.get('S_LSI_original'):
+            st.write("**Исходные формы в S_LSI (первые 30):**")
+            original_text = ", ".join(debug['S_LSI_original'][:30])
+            st.text(original_text)
         
-        # 3. Показываем лишние слова
-        if debug['extra_words']:
-            st.write(f"**Лишние слова в S_LSI (первые 30 из {len(debug['extra_words'])}):**")
-            st.write(", ".join(debug['extra_words']))
+        # 3. Пропущенные слова (с анализом)
+        if debug.get('missing_expected'):
+            st.write(f"**Пропущенные слова из ГАР ПРО ({len(debug['missing_expected'])}):**")
+            for item in debug['missing_expected']:
+                st.text(f"• {item}")
+            
+            # Анализ причин
+            st.write("**Возможные причины пропуска:**")
+            st.text("1. Слово в другой форме (падеж, число)")
+            st.text("2. Частота ниже порога (слишком редкое)")
+            st.text("3. Не прошло фильтрацию по длине/стоп-словам")
         
-        # 4. Информация о настройках
-        st.write("**Настройки формирования S_LSI:**")
-        st.write(f"- Порог частоты: ≥50% документов")
-        st.write(f"- Порог TF-IDF: ≥0.5")
-        st.write(f"- Общее число документов: {debug.get('total_docs', 'N/A')}")
-# ================= КОНЕЦ ФУНКЦИИ ДИАГНОСТИКИ =================
+        # 4. Лишние слова
+        if debug.get('extra_original'):
+            st.write(f"**Лишние слова в S_LSI (первые 30):**")
+            extra_text = ", ".join(debug['extra_original'])
+            st.text(extra_text)
+        
+        # 5. Пример частот нормализованных слов
+        if debug.get('normalized_freq_samples'):
+            st.write("**Частота нормализованных слов (примеры):**")
+            for word, freq in debug['normalized_freq_samples'].items():
+                st.text(f"{word}: {freq} вхождений")
+# ================= КОНЕЦ ОБНОВЛЕННОЙ ФУНКЦИИ =================
 # ==========================================
 # 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (FINAL)
 # ==========================================
@@ -1725,4 +1864,5 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
