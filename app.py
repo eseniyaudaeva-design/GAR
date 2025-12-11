@@ -564,10 +564,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             c_counts = [word_counts_per_doc[i][word] for i in range(N)]
             med_val = np.median(c_counts)
             
-            # !FIX: ИСПРАВЛЕННАЯ ЛОГИКА РАЗДЕЛЕНИЯ
-            # High (Важные) = Медиана >= 0.5 (для четного N) ИЛИ Встречается у > 30% сайтов
-            # Это позволяет захватить слова типа "лебедки", которые есть у 3-4 конкурентов из 10
-            if med_val >= 0.5 or percent >= 30:
+            # !FIX: ИСПРАВЛЕННАЯ ЛОГИКА (строгое И)
+            # High (Важные) = Медиана > 0 (>=0.5 для округления) И Встречается у >= 30% сайтов
+            if med_val > 0 and percent >= 30:
                 missing_semantics_high.append(item)
             else:
                 # В хвост берем все остальное, если частота не единичная
@@ -641,8 +640,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             depth_percent = 0 if my_tf_count == 0 else 100
         depth_percent = min(100, depth_percent)
 
-        # !FIX: Убрали лишнюю фильтрацию (if med_total > 0.5), теперь в таблицу попадают все слова,
-        # которые прошли первичный фильтр (встречаются >= 2 раза или есть у нас).
+        # !FIX: Убрали лишнюю фильтрацию
         table_depth.append({
             "Слово": word, 
             "Словоформы": forms_str, 
@@ -748,10 +746,10 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     }
 
 # ==========================================
-# 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (SCROLL + DOWNLOAD)
+# 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (PAGINATION + EXCEL)
 # ==========================================
 
-def render_scrollable_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
     if df.empty:
         st.info(f"{title_text}: Нет данных.")
         return
@@ -761,7 +759,7 @@ def render_scrollable_table(df, title_text, key_prefix, default_sort_col=None, u
     with col_t1:
         st.markdown(f"### {title_text}")
     
-    # 1. Сортировка (до фильтрации, чтобы работало логично)
+    # 1. Сортировка (до фильтрации)
     if f'{key_prefix}_sort_col' not in st.session_state:
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
     if f'{key_prefix}_sort_order' not in st.session_state:
@@ -815,10 +813,9 @@ def render_scrollable_table(df, title_text, key_prefix, default_sort_col=None, u
     df_filtered = df_filtered.reset_index(drop=True)
     df_filtered.index = df_filtered.index + 1
     
-    # 4. Генерация Excel
+    # 4. Генерация Excel (СКАЧИВАЕТСЯ ПОЛНАЯ ТАБЛИЦА)
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        # Убираем колонки, которые не нужны в Excel
         export_df = df_filtered.copy()
         if "is_missing" in export_df.columns: del export_df["is_missing"]
         if "sort_val" in export_df.columns: del export_df["sort_val"]
@@ -827,14 +824,32 @@ def render_scrollable_table(df, title_text, key_prefix, default_sort_col=None, u
     
     with col_t2:
         st.download_button(
-            label="📥 Скачать Excel",
+            label="📥 Скачать Excel (Все данные)",
             data=excel_data,
             file_name=f"{key_prefix}_export.xlsx",
             mime="application/vnd.ms-excel",
             key=f"{key_prefix}_down"
         )
 
-    # 5. Отображение (Скроллируемая таблица)
+    # 5. ПАГИНАЦИЯ (Отображаем по 20 строк)
+    ROWS_PER_PAGE = 20
+    if f'{key_prefix}_page' not in st.session_state:
+        st.session_state[f'{key_prefix}_page'] = 1
+        
+    total_rows = len(df_filtered)
+    total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
+    if total_pages == 0: total_pages = 1
+    
+    current_page = st.session_state[f'{key_prefix}_page']
+    if current_page > total_pages: current_page = total_pages
+    if current_page < 1: current_page = 1
+    st.session_state[f'{key_prefix}_page'] = current_page
+    
+    start_idx = (current_page - 1) * ROWS_PER_PAGE
+    end_idx = start_idx + ROWS_PER_PAGE
+    
+    df_view = df_filtered.iloc[start_idx:end_idx]
+
     def highlight_rows(row):
         base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
         styles = []
@@ -853,11 +868,11 @@ def render_scrollable_table(df, title_text, key_prefix, default_sort_col=None, u
         return styles
     
     cols_to_hide = ["is_missing", "sort_val"]
-    styled_df = df_filtered.style.apply(highlight_rows, axis=1)
     
-    # Ограничиваем высоту, чтобы появился скролл, если таблица длинная
-    # min(len * 35 + 40, 600) - динамическая высота до 600px
-    dynamic_height = min((len(df_filtered) * 35) + 40, 600)
+    styled_df = df_view.style.apply(highlight_rows, axis=1)
+    
+    # Высота таблицы подстраивается под кол-во строк на странице (макс 20)
+    dynamic_height = (len(df_view) * 35) + 40 
     
     st.dataframe(
         styled_df,
@@ -865,6 +880,19 @@ def render_scrollable_table(df, title_text, key_prefix, default_sort_col=None, u
         height=dynamic_height, 
         column_config={c: None for c in cols_to_hide}
     )
+    
+    # Кнопки навигации
+    c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
+    with c_btn_prev:
+        if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] -= 1
+            st.rerun()
+    with c_info:
+        st.markdown(f"<div style='text-align: center; margin-top: 10px; color:{TEXT_COLOR}'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
+    with c_btn_next:
+        if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] += 1
+            st.rerun()
     st.markdown("---")
 
 # ==========================================
@@ -1342,7 +1370,7 @@ with tab_seo:
                 # 1. ОСНОВНЫЕ СЛОВА (ВАЖНЫЕ)
                 if high:
                     st.markdown("##### ⭐️ Основные связанные слова (Важные)")
-                    st.markdown("Слова, которые **отсутствуют у вас**, но встречаются у большинства конкурентов (Медиана ≥ 0.5 или на >30% сайтов).")
+                    st.markdown("Слова, которые **отсутствуют у вас**, но встречаются у большинства конкурентов (Медиана ≥ 0.5 И на >30% сайтов).")
                     
                     words_list_h = [item['word'] for item in high]
                     # Формируем строку через запятую
@@ -1379,9 +1407,9 @@ with tab_seo:
             </div>
         """, unsafe_allow_html=True)
 
-        render_scrollable_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-        render_scrollable_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
-        render_scrollable_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
+        render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+        render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
+        render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
 
 # ------------------------------------------
 # Вклдака 2: НОВЫЙ МОДУЛЬ (PERPLEXITY)
