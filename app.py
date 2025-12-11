@@ -461,9 +461,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     median_len = np.median(c_lens)
     
     if median_len > 0 and my_len > 0 and settings['norm']:
-        norm_coefficient = my_len / median_len
+        norm_k = my_len / median_len
     else:
-        norm_coefficient = 1.0
+        norm_k = 1.0
     
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
@@ -476,8 +476,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     min_docs_threshold = math.ceil(N * 0.50) 
     if min_docs_threshold < 1: min_docs_threshold = 1
     
-    # Важные слова (S_LSI) - слова, встречающиеся у ≥50% конкурентов
     S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
+    
     S_LSI = {w for w in S_LSI if w.lower() not in GARBAGE_LATIN_STOPLIST}
     
     total_lsi_count = len(S_LSI)
@@ -525,9 +525,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         base_min = min(mean_total, med_total)
         
-        rec_min = int(round(base_min * norm_coefficient))
-        rec_max = int(round(max_total * norm_coefficient))
-        rec_median = med_total * norm_coefficient 
+        rec_min = int(round(base_min * norm_k))
+        rec_max = int(round(max_total * norm_k))
+        rec_median = med_total * norm_k 
         
         words_bounds_map[word] = {'min': rec_min, 'max': rec_max}
 
@@ -580,116 +580,208 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 "Сайтов": df, "Переспам": max_total
             })
 
-    # РАСЧЕТ ШИРИНЫ И ГЛУБИНЫ ДЛЯ ВСЕХ ДОКУМЕНТОВ (включая ваш)
     table_rel = []
     
-    # Создаем список всех документов для расчета (конкуренты + ваш)
-    all_docs_for_calc = []
+    # 1. Расчет для конкурентов
     for item in original_results:
         url = item['url']
+        pos = item['pos']
+        domain = urlparse(url).netloc
         parsed_data = next((d for d in comp_data_full if d.get('url') == url), None)
+        
+        width_score_val = 0
+        depth_score_val = 0 
+        
         if parsed_data and parsed_data.get('body_text'):
             p_lemmas, _ = process_text_detailed(parsed_data['body_text'], settings)
-            all_docs_for_calc.append({
-                'url': url,
-                'domain': urlparse(url).netloc,
-                'pos': item['pos'],
-                'lemmas': p_lemmas,
-                'counts': Counter(p_lemmas)
-            })
-    
-    # Добавляем ваш сайт в расчет
-    if my_data and my_data.get('body_text'):
-        all_docs_for_calc.append({
-            'url': my_data.get('url', ''),
-            'domain': f"{my_data.get('domain', 'Ваш сайт')} (Вы)",
-            'pos': my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
-            'lemmas': my_lemmas,
-            'counts': Counter(my_lemmas)
-        })
-    
-    # Для каждого документа рассчитываем ширину и глубину
-    for doc in all_docs_for_calc:
-        doc_lemmas_set = set(doc['lemmas'])
-        
-        # ШИРИНА: процент важных слов (S_LSI), которые есть в документе
-        if total_lsi_count > 0:
-            intersection_count = len(doc_lemmas_set.intersection(S_LSI))
-            width_score = int(round((intersection_count / total_lsi_count) * 100))
-        else:
-            width_score = 0
-        
-        # ГЛУБИНА: процент важных слов, количество которых попадает в нормальный диапазон
-        depth_hits = 0
-        depth_total = 0
-        
-        for word in S_LSI:
-            if word in words_bounds_map:
-                word_count = doc['counts'][word]
-                bounds = words_bounds_map[word]
+            p_counts = Counter(p_lemmas)
+            p_set = set(p_lemmas)
+            
+            # ШИРИНА: % слов из S_LSI, которые ПРИСУТСТВУЮТ
+            if total_lsi_count > 0:
+                intersection_count = len(p_set.intersection(S_LSI))
+                width_score_val = int(round((intersection_count / total_lsi_count) * 100))
+            else:
+                width_score_val = 0
+            
+            # ГЛУБИНА
+            hits = 0
+            check_words = [w for w in S_LSI if w in words_bounds_map]
+            for w in check_words:
+                cnt = p_counts[w]
+                if cnt > 0:
+                    hits += 1
+            if len(check_words) > 0:
+                depth_score_val = int(round((hits / len(check_words)) * 100))
+            else:
+                depth_score_val = 0
                 
-                # Проверяем, попадает ли количество слова в диапазон [min, max]
-                if bounds['min'] <= word_count <= bounds['max']:
-                    depth_hits += 1
-                
-                depth_total += 1
-        
-        if depth_total > 0:
-            depth_score = int(round((depth_hits / depth_total) * 100))
-        else:
-            depth_score = 0
-        
-        # Ограничиваем значения 0-100
-        width_score = min(100, max(0, width_score))
-        depth_score = min(100, max(0, depth_score))
-        
+            width_score_val = min(100, width_score_val)
+            depth_score_val = min(100, depth_score_val)
+            
         table_rel.append({
-            "Домен": doc['domain'],
-            "Позиция": doc['pos'],
-            "Ширина (балл)": width_score,
-            "Глубина (балл)": depth_score
+            "Домен": domain, "Позиция": pos,
+            "Ширина (балл)": width_score_val,
+            "Глубина (балл)": depth_score_val
         })
+        
+    # 2. Расчет для ВАС
+    if total_lsi_count > 0:
+        my_intersection_count = len(set(my_lemmas).intersection(S_LSI))
+        my_score_w = int(round((my_intersection_count / total_lsi_count) * 100))
+    else:
+        my_score_w = 0
     
-    # Отдельно получаем значения для вашего сайта
-    my_score_w = 0
-    my_score_d = 0
-    if my_data and my_data.get('body_text'):
-        my_lemmas_set = set(my_lemmas)
-        my_counts = Counter(my_lemmas)
-        
-        # Ширина для вашего сайта
-        if total_lsi_count > 0:
-            my_intersection_count = len(my_lemmas_set.intersection(S_LSI))
-            my_score_w = int(round((my_intersection_count / total_lsi_count) * 100))
-        
-        # Глубина для вашего сайта
-        my_depth_hits = 0
-        my_depth_total = 0
-        
-        for word in S_LSI:
-            if word in words_bounds_map:
-                word_count = my_counts[word]
-                bounds = words_bounds_map[word]
-                
-                if bounds['min'] <= word_count <= bounds['max']:
-                    my_depth_hits += 1
-                
-                my_depth_total += 1
-        
-        if my_depth_total > 0:
-            my_score_d = int(round((my_depth_hits / my_depth_total) * 100))
+    if total_important_words > 0:
+        my_score_d_new = int(round((words_in_range / total_important_words) * 100))
+    else:
+        my_score_d_new = 0
     
-    # Сортируем по позиции
+    my_score_w = min(100, my_score_w)
+    my_score_d_new = min(100, my_score_d_new)
+    
+    if my_data and my_data.get('domain'):
+        my_label = f"{my_data['domain']} (Вы)"
+    else:
+        my_label = "Ваш сайт"
+        
+    table_rel.append({
+        "Домен": my_label, 
+        "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
+        "Ширина (балл)": my_score_w, "Глубина (балл)": my_score_d_new
+    })
+    
     table_rel_df = pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
         
     return {
-        "depth": pd.DataFrame(table_depth), 
-        "hybrid": pd.DataFrame(table_hybrid),
+        "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
         "relevance_top": table_rel_df,
-        "my_score": {"width": min(100, max(0, my_score_w)), "depth": min(100, max(0, my_score_d))},
+        "my_score": {"width": my_score_w, "depth": my_score_d_new},
         "missing_semantics_high": missing_semantics_high,
         "missing_semantics_low": missing_semantics_low
     }
+
+# ==========================================
+# 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (FINAL)
+# ==========================================
+
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
+    if df.empty:
+        st.info(f"{title_text}: Нет данных.")
+        return
+
+    st.markdown(f"### {title_text}")
+    
+    search_query = st.text_input(f"🔍 Поиск по таблице ({title_text})", key=f"{key_prefix}_search")
+    if search_query:
+        mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
+        df = df[mask]
+    
+    if df.empty:
+        st.warning("Ничего не найдено.")
+        return
+
+    if f'{key_prefix}_sort_col' not in st.session_state:
+        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
+    if f'{key_prefix}_sort_order' not in st.session_state:
+        st.session_state[f'{key_prefix}_sort_order'] = "Убывание" 
+
+    with st.container():
+        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
+        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
+        with col_s1:
+            sort_col = st.selectbox(
+                "🗂 Сортировать по:", 
+                df.columns, 
+                key=f"{key_prefix}_sort_box",
+                index=list(df.columns).index(st.session_state[f'{key_prefix}_sort_col']) if st.session_state[f'{key_prefix}_sort_col'] in df.columns else 0
+            )
+            st.session_state[f'{key_prefix}_sort_col'] = sort_col
+        with col_s2:
+            sort_order = st.radio(
+                "Порядок:", 
+                ["Убывание", "Возрастание"], 
+                horizontal=True,
+                key=f"{key_prefix}_order_box",
+                index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
+            )
+            st.session_state[f'{key_prefix}_sort_order'] = sort_order
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    ascending = (sort_order == "Возрастание")
+    if "sort_val" in df.columns and default_sort_col == "Рекомендация":
+         df = df.sort_values(by="sort_val", ascending=ascending)
+    elif "Добавить" in sort_col or "+/-" in sort_col:
+        df['_temp_sort'] = df[sort_col].abs()
+        df = df.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
+    else:
+        df = df.sort_values(by=sort_col, ascending=ascending)
+
+    df = df.reset_index(drop=True)
+    df.index = df.index + 1
+    
+    ROWS_PER_PAGE = 20
+    if f'{key_prefix}_page' not in st.session_state:
+        st.session_state[f'{key_prefix}_page'] = 1
+        
+    total_rows = len(df)
+    total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
+    if total_pages == 0: total_pages = 1
+    
+    current_page = st.session_state[f'{key_prefix}_page']
+    if current_page > total_pages: current_page = total_pages
+    if current_page < 1: current_page = 1
+    st.session_state[f'{key_prefix}_page'] = current_page
+    
+    start_idx = (current_page - 1) * ROWS_PER_PAGE
+    end_idx = start_idx + ROWS_PER_PAGE
+    
+    df_view = df.iloc[start_idx:end_idx]
+
+    def highlight_rows(row):
+        base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
+        styles = []
+        status = row.get("Статус", "")
+        
+        for col_name in row.index:
+            cell_style = base_style
+            if col_name == "Статус":
+                if status == "Недоспам":
+                    cell_style += "color: #D32F2F; font-weight: bold;" 
+                elif status == "Переспам":
+                    cell_style += "color: #E65100; font-weight: bold;" 
+                elif status == "Норма":
+                    cell_style += "color: #2E7D32; font-weight: bold;" 
+            
+            styles.append(cell_style)
+        return styles
+    
+    cols_to_hide = ["is_missing", "sort_val"]
+    
+    styled_df = df_view.style.apply(highlight_rows, axis=1)
+    
+    dynamic_height = (len(df_view) * 35) + 40 
+    
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        height=dynamic_height, 
+        column_config={c: None for c in cols_to_hide}
+    )
+    
+    c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
+    with c_btn_prev:
+        if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] -= 1
+            st.rerun()
+    with c_info:
+        st.markdown(f"<div style='text-align: center; margin-top: 10px; color:{TEXT_COLOR}'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
+    with c_btn_next:
+        if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] += 1
+            st.rerun()
+    st.markdown("---")
+
 # ==========================================
 # 6. ЛОГИКА ДЛЯ PERPLEXITY (AI GEN)
 # ==========================================
@@ -1200,9 +1292,9 @@ with tab_seo:
             </div>
         """, unsafe_allow_html=True)
 
-        render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Рекомендация")
-        render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-        render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)")
+        render_paginated_table(results['depth'], "1. Рекомендации по глубине", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+        render_paginated_table(results['hybrid'], "3. Гибридный ТОП (TF-IDF)", "tbl_hybrid", default_sort_col="TF-IDF ТОП", use_abs_sort_default=False)
+        render_paginated_table(results['relevance_top'], "4. ТОП релевантности (Баллы 0-100)", "tbl_rel", default_sort_col="Ширина (балл)", use_abs_sort_default=False)
 
 # ------------------------------------------
 # Вклдака 2: НОВЫЙ МОДУЛЬ (PERPLEXITY)
@@ -1480,9 +1572,4 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
-
-
-
-
-
 
