@@ -651,8 +651,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     table_rel = []
     
     # 1. Расчет для конкурентов
-    for item in original_results
-    :
+    for item in original_results:
         url = item['url']
         pos = item['pos']
         domain = urlparse(url).netloc
@@ -1644,3 +1643,4 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
