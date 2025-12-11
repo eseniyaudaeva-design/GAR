@@ -50,7 +50,6 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
-# Убрал 'info' из списка мусора, так как оно требовалось в выдаче
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
     'cookie', 'cookies', 'policy', 'privacy', 'agreement', 'terms',
@@ -335,13 +334,13 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     return results_list
 
 def process_text_detailed(text, settings, n_gram=1):
-    # !FIX: Приводим к нижнему регистру и меняем 'ё' на 'е' ПЕРЕД всем остальным
+    # Приводим к нижнему регистру и меняем 'ё' на 'е' ПЕРЕД всем остальным
     text = text.lower().replace('ё', 'е')
     
     pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
     words = re.findall(pattern, text)
     
-    # !FIX: Стоп-слова тоже нормализуем (ё -> е)
+    # Стоп-слова тоже нормализуем (ё -> е)
     stops = set(w.lower().replace('ё', 'е') for w in settings['custom_stops'])
     
     lemmas = []
@@ -359,7 +358,9 @@ def process_text_detailed(text, settings, n_gram=1):
         if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
             if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
-            lemma = p.normal_form
+            
+            # !FIX: Лемматор может вернуть "ё" (например, "крепёж"). Принудительно меняем обратно на "е".
+            lemma = p.normal_form.replace('ё', 'е')
         
         lemmas.append(lemma)
         forms_map[lemma].add(w)
@@ -396,7 +397,7 @@ def parse_page(url, settings):
         
         extra_text = []
         
-        # !FIX: Всегда собираем Meta Description и Keywords
+        # Всегда собираем Meta Description и Keywords
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'):
             extra_text.append(meta_desc['content'])
@@ -647,7 +648,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Вхождений у вас": my_tf_count,
             "Медиана": round(med_total, 1), 
             "Минимум (рек)": rec_min, 
-            "Максимум (рек)": rec_max,
+            "Максимум (рек)": rec_max, 
             "Глубина %": depth_percent,
             "Статус": status,
             "Рекомендация": action_text,
@@ -1370,7 +1371,7 @@ with tab_seo:
                 # 1. ОСНОВНЫЕ СЛОВА (ВАЖНЫЕ)
                 if high:
                     st.markdown("##### ⭐️ Основные связанные слова (Важные)")
-                    st.markdown("Слова, которые **отсутствуют у вас**, но встречаются у большинства конкурентов (Медиана ≥ 0.5 И на >30% сайтов).")
+                    st.markdown("Слова, которые **отсутствуют у вас**, но встречаются у большинства конкурентов (Медиана > 0 И на >30% сайтов).")
                     
                     words_list_h = [item['word'] for item in high]
                     # Формируем строку через запятую
