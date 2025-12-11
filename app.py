@@ -433,7 +433,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for k, v in my_forms.items():
             all_forms_map[k].update(v)
 
-    # --- 2. Обработка конкурентов (единый проход) ---
+    # --- 2. Обработка конкурентов ---
     comp_data_parsed = [d for d in comp_data_full if d.get('body_text')]
     
     comp_docs = []
@@ -483,11 +483,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     # Длины текстов
     c_lens = [len(d['body']) for d in comp_docs]
-    median_len = np.median(c_lens) if c_lens else 0
-    if median_len == 0: median_len = 1 # Защита от деления на 0
+    # AvgL (Средняя длина) - Важнейший параметр для BM25
+    avg_dl = np.mean(c_lens) if c_lens else 0
+    if avg_dl == 0: avg_dl = 1
     
-    # Коэффициент нормировки для Вашего сайта (для таблицы рекомендаций)
-    if my_len > 0 and settings['norm']:
+    median_len = np.median(c_lens) if c_lens else 0
+    
+    # Коэффициент нормировки (ТОЛЬКО для таблицы "Рекомендации", чтобы показать юзеру сколько добавить)
+    # Для расчета БАЛЛОВ (BM25) он использоваться НЕ БУДЕТ.
+    if median_len > 0 and my_len > 0 and settings['norm']:
         norm_k_recs = my_len / median_len
     else:
         norm_k_recs = 1.0
@@ -506,13 +510,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for d in comp_docs:
         word_counts_per_doc.append(Counter(d['body']))
 
-    # --- ЭТАП 1: TF-IDF & СТАТИСТИКА ---
+    # --- ЭТАП 1: IDF ---
     word_idf_map = {}
     for lemma in vocab:
         df = doc_freqs[lemma]
         if df == 0: continue
-        idf = math.log((N + 1) / (df + 1)) + 1
-        word_idf_map[lemma] = idf
+        # Классический IDF
+        idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
+        # Если IDF отрицательный (очень частые слова), ставим маленький плюс
+        word_idf_map[lemma] = max(idf, 0.01)
 
     # --- ЭТАП 2: ФОРМИРОВАНИЕ ЯДРА (S_WIDTH_CORE) ---
     S_WIDTH_CORE = set()
@@ -534,7 +540,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         if med_val > 0:
             lsi_candidates_weighted.append((lemma, weight_simple))
 
-        # === УСЛОВИЕ ЯДРА: Медиана >= 1 ===
+        # Ядро Ширины: Медиана >= 1
         is_width_word = False
         if med_val >= 1: 
             S_WIDTH_CORE.add(lemma)
@@ -559,45 +565,32 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     total_width_core_count = len(S_WIDTH_CORE)
 
-    # --- ЭТАП 3: РАСЧЕТ БАЛЛОВ (NORMALIZED BM25) ---
+    # --- ЭТАП 3: РАСЧЕТ BM25 (КЛАССИЧЕСКИЙ OKAPI) ---
+    # Мы убрали искусственную нормировку TF. Теперь работает честная физика BM25.
     
-    def calculate_normalized_bm25(doc_tokens, doc_len):
-        """
-        Считает BM25, НО с предварительной нормировкой TF по объему.
-        Это позволяет маленьким текстам с высокой плотностью получать высокий балл (как в GAR PRO).
-        """
-        if median_len == 0: return 0
-        if doc_len == 0: return 0
-        
-        # 1. Считаем коэффициент сжатия/растяжения к медиане
-        # Если текст маленький (100 слов), а медиана 1000 -> K = 10. 
-        # TF умножится на 10. Плотность сохранится, но балл вырастет.
-        length_ratio = median_len / doc_len
+    def calculate_bm25_okapi(doc_tokens, doc_len):
+        if avg_dl == 0 or doc_len == 0: return 0
         
         score = 0
         counts = Counter(doc_tokens)
         
-        # В формуле BM25 используем median_len как длину документа, 
-        # так как мы привели TF к этой длине.
-        # Тогда L/AvgL = Median/Median = 1.
-        # Знаменатель K становится константой: 1.2 * (0.25 + 0.75 * 1) = 1.2
-        K_val = 1.2 
+        # Параметры BM25 (стандартные для SEO анализа)
+        k1 = 1.2
+        b = 0.75
         
         target_words = S_WIDTH_CORE if S_WIDTH_CORE else S_DEPTH_TOP70
         
         for word in target_words:
             if word not in counts: continue
             
-            raw_tf = counts[word]
-            
-            # НОРМИРОВКА TF
-            norm_tf = raw_tf * length_ratio
-            
+            tf = counts[word]
             idf = word_idf_map.get(word, 0)
             
-            # Формула с нормированным TF
-            term_weight = (norm_tf * 2.2) / (norm_tf + K_val)
-            score += idf * term_weight
+            # Классическая формула
+            numerator = tf * (k1 + 1)
+            denominator = tf + k1 * (1 - b + b * (doc_len / avg_dl))
+            
+            score += idf * (numerator / denominator)
             
         return score
 
@@ -608,14 +601,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         if ratio >= 0.9: return 100
         else: return int(round((ratio / 0.9) * 100))
 
-    # 3.1. Считаем Нормированный BM25 для всех конкурентов
+    # 3.1. Считаем BM25 для конкурентов
     competitor_scores_map = {}
     comp_bm25_list = []
     
     for i, doc in enumerate(comp_docs):
-        # BM25 Normalized
-        norm_bm25 = calculate_normalized_bm25(doc['body'], c_lens[i])
-        comp_bm25_list.append(norm_bm25)
+        # Используем реальную длину документа!
+        raw_bm25 = calculate_bm25_okapi(doc['body'], c_lens[i])
+        comp_bm25_list.append(raw_bm25)
         
         # Width
         doc_set = set(doc['body'])
@@ -623,27 +616,27 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         competitor_scores_map[doc['url']] = {
             'width_final': min(100, width_val),
-            'bm25_val': norm_bm25
+            'bm25_val': raw_bm25
         }
 
-    # 3.2. Медиана ТОПа и Лимит
+    # 3.2. Медиана ТОПа
     if comp_bm25_list:
         median_bm25_top = np.median(comp_bm25_list)
     else:
         median_bm25_top = 0
         
+    # Лимит спама
     spam_limit = median_bm25_top * 1.25
     if spam_limit == 0: spam_limit = 1 
 
     # 3.3. Финализируем баллы
     for url, scores in competitor_scores_map.items():
-        # Считаем процент от лимита
         depth_val = int(round((scores['bm25_val'] / spam_limit) * 100))
-        scores['depth_final'] = min(100, depth_val) # Ограничение 100
+        scores['depth_final'] = min(100, depth_val) 
 
-    # 3.4. Считаем для ВАС (Тоже с нормировкой!)
-    my_bm25_norm = calculate_normalized_bm25(my_lemmas, my_len)
-    my_depth_score_final = int(round((my_bm25_norm / spam_limit) * 100))
+    # 3.4. Считаем для ВАС
+    my_bm25 = calculate_bm25_okapi(my_lemmas, my_len)
+    my_depth_score_final = int(round((my_bm25 / spam_limit) * 100))
     my_depth_score_final = min(100, my_depth_score_final)
     
     my_width_score_final = calculate_width_score_val(my_full_lemmas_set)
@@ -652,9 +645,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # --- ЭТАП 4: ТАБЛИЦЫ ДЕТАЛИЗАЦИИ ---
     table_depth, table_hybrid = [], []
     
-    # Для таблицы детализации (hybrid) нужен avg_dl, хоть в BM25 мы использовали медиану
-    avg_dl = np.mean(c_lens) if c_lens else 1
-
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
@@ -671,7 +661,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         max_total = np.max(c_counts)
         mean_total = np.mean(c_counts)
         
-        # Рекомендации (с учетом norm_k_recs)
+        # Рекомендации (оставляем нормировку, чтобы советовать адекватные числа)
         base_min = min(mean_total, med_total)
         rec_min = int(math.ceil(base_min * norm_k_recs))
         rec_max = int(round(max_total * norm_k_recs)) 
@@ -1727,6 +1717,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
