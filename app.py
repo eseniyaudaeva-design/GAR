@@ -1129,18 +1129,46 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     except Exception as e:
         return [f"API Error: {str(e)}"] * 5
 
-def generate_html_table(client, user_prompt):
-    system_instruction = """
+def generate_html_table(client, user_prompt, seo_keywords_data=None):
+    """
+    seo_keywords_data: список словарей [{'word': 'окно', 'count': 5}, ...]
+    """
+    
+    # Формируем блок инструкций по SEO словам
+    seo_instruction = ""
+    if seo_keywords_data and len(seo_keywords_data) > 0:
+        words_desc = []
+        for item in seo_keywords_data:
+            words_desc.append(f"- Слово '{item['word']}' (употребить примерно {item['count']} раз(а) суммарно во всех таблицах)")
+        
+        words_str = "\n".join(words_desc)
+        seo_instruction = f"""
+        [SEO INSTRUCTIONS - CRITICAL]
+        You MUST integrate the following keywords into the text content of the tables (in headers, cell values, or descriptions).
+        
+        KEYWORDS TO USE:
+        {words_str}
+        
+        RULES FOR KEYWORDS:
+        1. Use them NATURALLY. Do not just list them.
+        2. YOU MUST DECLINE/CONJUGATE these words (change endings, case, number) so they fit the Russian grammar perfectly.
+        3. Distribute these occurrences across the tables generated.
+        """
+
+    system_instruction = f"""
     You are an HTML generator.
-    Your task is to generate a semantic HTML table based on the user's request.
+    Your task is to generate a SET OF SEMANTIC HTML TABLES (from 1 to 5 tables depending on the topic depth) based on the user's request.
     
     IMPORTANT: Do not include citations, references, or footnotes like [1], [2] in the table content.
     
+    {seo_instruction}
+    
     CRITICAL: You MUST apply specific inline CSS styles to the table elements EXACTLY as follows:
-    1. For the <table> tag, use: style="border-collapse: collapse; width: 100%; border: 2px solid black;"
-    2. For every <th> tag, use: style="border: 2px solid black; padding: 5px;"
+    1. For the <table> tag, use: style="border-collapse: collapse; width: 100%; border: 2px solid black; margin-bottom: 20px;"
+    2. For every <th> tag, use: style="border: 2px solid black; padding: 5px; background-color: #f0f0f0;"
     3. For every <td> tag, use: style="border: 2px solid black; padding: 5px;"
     
+    If generating multiple tables, separate them with a <br><br> tag.
     Do not use internal <style> blocks. Use only inline styles.
     Output ONLY the HTML code. Do not wrap it in markdown (```html).
     """
@@ -1152,16 +1180,14 @@ def generate_html_table(client, user_prompt):
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.5
+            temperature=0.7
         )
         content = response.choices[0].message.content
         
-        # ------------------------------------
-        # REMOVE CITATIONS (Regex cleaning)
-        # ------------------------------------
+        # Очистка от ссылок типа [1]
         content = re.sub(r'\[\d+\]', '', content)
         
-        # Чистка на всякий случай
+        # Чистка от маркдауна
         content = content.replace("```html", "").replace("```", "").strip()
         return content
     except Exception as e:
@@ -1670,18 +1696,70 @@ with tab_tags:
             st.rerun()
 
 # ------------------------------------------
-# Вклдака 4: ГЕНЕРАТОР ТАБЛИЦ (NEW)
+# Вклдака 4: ГЕНЕРАТОР ТАБЛИЦ (SEO INTEGRATION)
 # ------------------------------------------
 with tab_tables:
-    st.title("🧩 Генератор HTML таблиц")
-    st.markdown("Введите запрос, и ИИ создаст таблицу с жестко заданным оформлением (черные рамки, отступы).")
+    st.title("🧩 Генератор HTML таблиц (SEO)")
+    st.markdown("""
+    Генератор создает до 5 таблиц с жестким оформлением. 
+    **Автоматически подтягивает самые дефицитные слова** из вкладки "SEO Анализ" (топ-4 слова, которые нужно добавить больше всего).
+    """)
     
-    # Повторяем ввод ключа здесь, чтобы не бегать между вкладками
+    # Повторяем ввод ключа
     pplx_key_table = st.text_input("Perplexity API Key", type="password", key="pplx_key_table")
     
-    table_prompt = st.text_area("Опишите, какую таблицу нужно создать", height=150, placeholder="Сравнительная таблица видов труб из ПВХ с характеристиками и применением")
+    # --- ЛОГИКА ВЫБОРА СЛОВ ИЗ РЕЗУЛЬТАТОВ АНАЛИЗА ---
+    top_missing_words = []
     
-    if st.button("Сгенерировать таблицу", type="primary", key="btn_gen_table"):
+    if st.session_state.analysis_results and 'depth' in st.session_state.analysis_results:
+        df_depth = st.session_state.analysis_results['depth']
+        
+        # 1. Фильтруем те, где Рекомендация начинается с "+"
+        # (Предполагается, что формат строки "+5" или "+1")
+        mask_plus = df_depth['Рекомендация'].astype(str).str.startswith('+')
+        df_missing = df_depth[mask_plus].copy()
+        
+        if not df_missing.empty:
+            # 2. Извлекаем числовое значение для сортировки
+            # Удаляем '+', переводим в int
+            def extract_diff(val):
+                try:
+                    return int(str(val).replace('+', ''))
+                except:
+                    return 0
+            
+            df_missing['diff_val'] = df_missing['Рекомендация'].apply(extract_diff)
+            
+            # 3. Сортируем по убыванию дефицита (сначала самые нужные)
+            df_missing = df_missing.sort_values(by='diff_val', ascending=False)
+            
+            # 4. Берем ТОП-4
+            top_4_df = df_missing.head(4)
+            
+            for _, row in top_4_df.iterrows():
+                top_missing_words.append({
+                    'word': row['Слово'],
+                    'count': row['diff_val']
+                })
+    
+    # Отображение слов, которые будут использованы
+    st.markdown("### 🔍 Слова для внедрения (из SEO анализа)")
+    if top_missing_words:
+        cols_w = st.columns(4)
+        for i, item in enumerate(top_missing_words):
+            with cols_w[i % 4]:
+                st.info(f"**{item['word']}**\n\nНужно добавить: +{item['count']}")
+        st.caption("Эти слова (в любых склонениях) будут переданы нейросети для внедрения в таблицы.")
+    else:
+        if not st.session_state.analysis_results:
+            st.warning("⚠️ Анализ не проведен. Таблицы будут сгенерированы без SEO-ключей. Сначала запустите анализ на первой вкладке.")
+        else:
+            st.success("✅ Нет слов с рекомендацией 'Добавить' (или список пуст). Генерация пройдет без дополнительных ключей.")
+
+    st.markdown("---")
+    table_prompt = st.text_area("Опишите, какие таблицы нужно создать", height=150, placeholder="Сравнительная таблица видов труб из ПВХ с характеристиками, применением и ценами...")
+    
+    if st.button("Сгенерировать таблицы", type="primary", key="btn_gen_table"):
         if not pplx_key_table:
             st.error("Введите API ключ!")
             st.stop()
@@ -1696,8 +1774,9 @@ with tab_tables:
         try:
             client_table = openai.OpenAI(api_key=pplx_key_table, base_url="https://api.perplexity.ai")
             
-            with st.spinner("Генерация таблицы..."):
-                html_result = generate_html_table(client_table, table_prompt)
+            with st.spinner("Нейросеть пишет таблицы и внедряет ключевые слова..."):
+                # Передаем top_missing_words в функцию
+                html_result = generate_html_table(client_table, table_prompt, top_missing_words)
             
             # Сохраняем в сессию
             st.session_state.table_html_result = html_result
@@ -1709,23 +1788,17 @@ with tab_tables:
     # Отображаем результат, если он есть в сессии
     if st.session_state.table_html_result:
         st.success("Готово!")
-        st.code(st.session_state.table_html_result, language='html')
         
-        st.markdown("### Предпросмотр (примерный):")
-        st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
+        tab_view, tab_code = st.tabs(["👁️ Предпросмотр", "💻 HTML Код"])
         
-        if st.button("Сбросить", key="reset_table"):
-            st.session_state.table_html_result = None
-            st.rerun()
-
-
-
-
-
-
-
-
-
-
-
-
+        with tab_view:
+            st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
+            
+        with tab_code:
+            st.code(st.session_state.table_html_result, language='html')
+        
+        col_copy, col_reset = st.columns([1, 1])
+        with col_reset:
+            if st.button("Сбросить результат", key="reset_table"):
+                st.session_state.table_html_result = None
+                st.rerun()
