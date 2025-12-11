@@ -501,7 +501,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for d in comp_docs:
         word_counts_per_doc.append(Counter(d['body']))
 
-    # --- ЭТАП 1: РАСЧЕТ ВЕСОВ TF-IDF (для сортировки в таблицах) ---
+    # --- ЭТАП 1: РАСЧЕТ ВЕСОВ TF-IDF ---
     word_weights = {}
     for lemma in vocab:
         df = doc_freqs[lemma]
@@ -522,58 +522,59 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         weight = med_rel_tf * idf
         word_weights[lemma] = weight
 
-    # --- ЭТАП 2: ФОРМИРОВАНИЕ ЯДРА ДЛЯ ШИРИНЫ И СПИСКОВ УПУЩЕННОГО ---
+    # --- ЭТАП 2: ФОРМИРОВАНИЕ ЯДРА И СПИСКОВ УПУЩЕННОГО ---
     
-    # S_WIDTH_CORE - набор слов, определяющих "Ширину" (Медиана > 0 И встречается >= 30%)
-    S_WIDTH_CORE = set()
-    
+    S_WIDTH_CORE = set() # Ядро ширины: все слова, где Медиана > 0
     missing_semantics_high = []
     missing_semantics_low = []
     
-    my_full_lemmas_set = set(my_lemmas) | set(my_anchors) # Для проверки наличия у нас
+    # Объединяем текст и анкоры, чтобы проверить, есть ли слово у нас вообще
+    my_full_lemmas_set = set(my_lemmas) | set(my_anchors)
 
-    # Дополнительно: S_LSI_TOP70 для расчета "Глубины" (чтобы оставить старую логику глубины, основанную на топе весов)
-    # Или можем использовать S_WIDTH_CORE и для глубины, но лучше разделим, чтобы не сломать логику переспама
-    lsi_candidates_weighted = []
+    lsi_candidates_weighted = [] # Для топа глубины
     
     for lemma, freq in doc_freqs.items():
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
-        percent = int((freq / N) * 100)
+        # Расчет метрик
         c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         med_val = np.median(c_counts)
+        percent = int((freq / N) * 100)
         weight = word_weights.get(lemma, 0)
         
-        # Сбор кандидатов для сортировки по весу (для таблиц)
+        # Для сортировки таблиц
         if med_val > 0:
             lsi_candidates_weighted.append((lemma, weight))
 
-        # === НОВАЯ ЛОГИКА ОПРЕДЕЛЕНИЯ ВАЖНЫХ СЛОВ ДЛЯ ШИРИНЫ ===
-        is_important_width = False
-        if med_val > 0 and percent >= 30:
-            is_important_width = True
+        # === ЛОГИКА 1: ОПРЕДЕЛЕНИЕ ЯДРА (S_WIDTH_CORE) ===
+        # Строгое условие: Медиана > 0
+        is_width_word = False
+        if med_val > 0:
             S_WIDTH_CORE.add(lemma)
+            is_width_word = True
         
-        # Логика Missing Semantics (Слова, которых нет у вас)
+        # === ЛОГИКА 2: СПИСКИ УПУЩЕННОГО (Missing) ===
+        # Проверяем, есть ли слово у нас
         if lemma not in my_full_lemmas_set:
             if len(lemma) < 2: continue
             if lemma.isdigit(): continue
             
             item = {'word': lemma, 'percent': percent, 'weight': weight}
             
-            if is_important_width:
+            # Если слово входит в ядро (Медиана > 0) -> HIGH
+            if is_width_word:
                 missing_semantics_high.append(item)
-            else:
-                # В "хвост" берем, если встречается хотя бы 2 раза (или если мало конкурентов)
-                if N <= 5 or freq >= 2:
-                    missing_semantics_low.append(item)
+            
+            # Если слово НЕ входит в ядро (Медиана = 0), но встречается часто (>= 30%) -> LOW
+            # (дополнительный список, чтобы не терять слова, которые есть у 30-49% конкурентов)
+            elif percent >= 30:
+                 missing_semantics_low.append(item)
     
-    # Сортировка списков упущенного
+    # Сортировка списков
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
     
-    # Для расчета Глубины (оставляем топ-70 самых весомых, как было, или берем всё ядро)
-    # Чтобы не ломать старую логику глубины, возьмем Топ-70 весомых слов для таблицы Depth
+    # Ядро глубины (Топ-70 самых весомых) для таблицы Depth и расчета Depth Score
     lsi_candidates_weighted.sort(key=lambda x: x[1], reverse=True)
     S_DEPTH_TOP70 = set([x[0] for x in lsi_candidates_weighted[:70]])
 
@@ -595,9 +596,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         
-        mean_total = np.mean(c_counts)
         med_total = np.median(c_counts)
         max_total = np.max(c_counts)
+        mean_total = np.mean(c_counts)
         
         base_min = min(mean_total, med_total)
         rec_min = int(round(base_min * norm_k))
@@ -621,7 +622,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             if action_diff == 0: action_diff = 1
             action_text = f"-{action_diff}"
         else:
-            # Для расчета балла Глубины считаем попадание в диапазон
             words_in_range_depth += 1
             
         if lemma in S_DEPTH_TOP70:
@@ -662,16 +662,16 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Переспам": max_total
         })
 
-    # === РАСЧЕТ ИТОГОВЫХ БАЛЛОВ (ШИРИНА И ГЛУБИНА) ===
+    # === РАСЧЕТ ИТОГОВЫХ БАЛЛОВ (ШИРИНА) ===
     
     total_width_core_count = len(S_WIDTH_CORE)
     
     def calculate_width_score_rule_90(lemmas_set):
         """
-        Расчет ширины по правилу: 
-        База = слова с Медианой>0 и Freq>=30% (S_WIDTH_CORE).
-        Если покрыто >= 90% базы, то балл 100.
-        Иначе линейное масштабирование от 0 до 90%.
+        1. Берем слова из S_WIDTH_CORE (Медиана > 0).
+        2. Считаем, сколько из них есть у нас.
+        3. Если покрыто >= 90% -> 100 баллов.
+        4. Иначе линейная пропорция от 0 до 90%.
         """
         if total_width_core_count == 0:
             return 0
@@ -682,7 +682,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         if ratio >= 0.9:
             return 100
         else:
-            # Масштабируем: 0.9 -> 100, 0 -> 0.
             # Формула: (ratio / 0.9) * 100
             score = (ratio / 0.9) * 100
             return int(round(score))
@@ -704,10 +703,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             p_counts = Counter(p_lemmas)
             p_set = set(p_lemmas)
             
-            # ШИРИНА (По новой формуле 90%)
             width_score_val = calculate_width_score_rule_90(p_set)
             
-            # ГЛУБИНА (По старой логике: % попадания в Top-70)
+            # Глубина считается по старому принципу (попадание в Топ-70)
             hits = 0
             check_words = [w for w in S_DEPTH_TOP70 if w in words_bounds_map]
             for w in check_words:
@@ -729,7 +727,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         })
         
     # 2. Расчет для ВАС
-    # Используем my_full_lemmas_set (текст + анкоры) для расчета ширины
     my_score_w = calculate_width_score_rule_90(my_full_lemmas_set)
     
     if total_important_words_depth > 0:
@@ -1706,4 +1703,5 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
