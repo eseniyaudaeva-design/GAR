@@ -339,7 +339,9 @@ def process_text_detailed(text, settings, n_gram=1):
     
     pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
     words = re.findall(pattern, text)
-    stops = set(w.lower() for w in settings['custom_stops'])
+    
+    # !FIX: Стоп-слова тоже нормализуем (ё -> е)
+    stops = set(w.lower().replace('ё', 'е') for w in settings['custom_stops'])
     
     lemmas = []
     forms_map = defaultdict(set)
@@ -636,28 +638,29 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             depth_percent = 0 if my_tf_count == 0 else 100
         depth_percent = min(100, depth_percent)
 
-        if med_total > 0.5 or my_tf_count > 0:
-            table_depth.append({
-                "Слово": word, 
-                "Словоформы": forms_str, 
-                "Вхождений у вас": my_tf_count,
-                "Медиана": round(med_total, 1), 
-                "Минимум (рек)": rec_min, 
-                "Максимум (рек)": rec_max,
-                "Глубина %": depth_percent,
-                "Статус": status,
-                "Рекомендация": action_text,
-                "is_missing": (status == "Недоспам" and my_tf_count == 0),
-                "sort_val": abs(action_diff) if status != "Норма" else 0
-            })
-            
-            table_hybrid.append({
-                "Слово": word, 
-                "TF-IDF ТОП": round(weight_top, 4), 
-                "TF-IDF у вас": round(weight_my, 4),
-                "Сайтов": df, 
-                "Переспам": max_total
-            })
+        # !FIX: Убрали лишнюю фильтрацию (if med_total > 0.5), теперь в таблицу попадают все слова,
+        # которые прошли первичный фильтр (встречаются >= 2 раза или есть у нас).
+        table_depth.append({
+            "Слово": word, 
+            "Словоформы": forms_str, 
+            "Вхождений у вас": my_tf_count,
+            "Медиана": round(med_total, 1), 
+            "Минимум (рек)": rec_min, 
+            "Максимум (рек)": rec_max,
+            "Глубина %": depth_percent,
+            "Статус": status,
+            "Рекомендация": action_text,
+            "is_missing": (status == "Недоспам" and my_tf_count == 0),
+            "sort_val": abs(action_diff) if status != "Норма" else 0
+        })
+        
+        table_hybrid.append({
+            "Слово": word, 
+            "TF-IDF ТОП": round(weight_top, 4), 
+            "TF-IDF у вас": round(weight_my, 4),
+            "Сайтов": df, 
+            "Переспам": max_total
+        })
 
     table_rel = []
     
