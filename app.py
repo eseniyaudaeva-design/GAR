@@ -50,6 +50,7 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO", page_icon="📊")
 
+# Убрал 'info' из списка мусора, так как оно требовалось в выдаче
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
     'cookie', 'cookies', 'policy', 'privacy', 'agreement', 'terms',
@@ -58,7 +59,7 @@ GARBAGE_LATIN_STOPLIST = {
     'search', 'menu', 'nav', 'navigation', 'footer', 'header', 'sidebar',
     'img', 'jpg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'svg',
     'ok', 'error', 'undefined', 'null', 'true', 'false', 'var', 'let', 'const', 'function', 'return',
-    'ru', 'en', 'com', 'net', 'org', 'info', 'biz', 'shop', 'store',
+    'ru', 'en', 'com', 'net', 'org', 'biz', 'shop', 'store',
     'phone', 'email', 'tel', 'fax', 'mob', 'address', 'copyright', 'all', 'rights', 'reserved',
     'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
 }
@@ -563,8 +564,10 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             c_counts = [word_counts_per_doc[i][word] for i in range(N)]
             med_val = np.median(c_counts)
             
-            # Логика: High (Важные) = Медиана >= 1. Остальное Low.
-            if med_val >= 1:
+            # !FIX: ИСПРАВЛЕННАЯ ЛОГИКА РАЗДЕЛЕНИЯ
+            # High (Важные) = Медиана >= 0.5 (для четного N) ИЛИ Встречается у > 30% сайтов
+            # Это позволяет захватить слова типа "лебедки", которые есть у 3-4 конкурентов из 10
+            if med_val >= 0.5 or percent >= 30:
                 missing_semantics_high.append(item)
             else:
                 # В хвост берем все остальное, если частота не единичная
@@ -1339,7 +1342,7 @@ with tab_seo:
                 # 1. ОСНОВНЫЕ СЛОВА (ВАЖНЫЕ)
                 if high:
                     st.markdown("##### ⭐️ Основные связанные слова (Важные)")
-                    st.markdown("Слова, которые **отсутствуют у вас**, но встречаются у большинства конкурентов (Медиана ≥ 1).")
+                    st.markdown("Слова, которые **отсутствуют у вас**, но встречаются у большинства конкурентов (Медиана ≥ 0.5 или на >30% сайтов).")
                     
                     words_list_h = [item['word'] for item in high]
                     # Формируем строку через запятую
@@ -1355,7 +1358,7 @@ with tab_seo:
                 # 2. ДОПОЛНИТЕЛЬНЫЕ СЛОВА (ХВОСТ)
                 if low:
                     st.markdown("##### 🔹 Дополнительный список связанных слов")
-                    st.markdown("Слова, встречающиеся реже (Медиана < 1), но присутствующие в ТОПе.")
+                    st.markdown("Слова, встречающиеся реже, но присутствующие в ТОПе.")
                     
                     words_list_l = [item['word'] for item in low]
                     text_cloud_l = ", ".join(words_list_l)
