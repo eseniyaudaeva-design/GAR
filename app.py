@@ -334,7 +334,7 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
     return results_list
 
 def process_text_detailed(text, settings, n_gram=1):
-    # Приводим к нижнему регистру и меняем 'ё' на 'е' ПЕРЕД всем остальным
+    # !FIX: Приводим к нижнему регистру и меняем 'ё' на 'е' ПЕРЕД всем остальным
     text = text.lower().replace('ё', 'е')
     
     pattern = r'[а-яА-ЯёЁ0-9a-zA-Z]+' 
@@ -393,7 +393,7 @@ def parse_page(url, settings):
         
         extra_text = []
         
-        # Всегда собираем Meta Description и Keywords
+        # !FIX: Всегда собираем Meta Description и Keywords
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'):
             extra_text.append(meta_desc['content'])
