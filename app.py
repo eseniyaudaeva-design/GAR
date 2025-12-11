@@ -505,7 +505,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         word_weights[w] = weight
 
     # --- ЭТАП 2: ФОРМИРОВАНИЕ ЯДРА (S_LSI) ---
-    # Для баллов "Ширины" используем Топ-70, где медиана > 0.
     MAX_MAIN_WORDS = 70
     
     lsi_candidates = []
@@ -530,13 +529,17 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # --- ЭТАП 3: РАЗБИЕНИЕ НА СПИСКИ УПУЩЕННОГО ---
     missing_semantics_high = []
     missing_semantics_low = []
-    my_lemmas_set = set(my_lemmas) 
+    
+    # ОБЪЕДИНЯЕМ ТЕКСТ и АНКОРЫ ДЛЯ ПРОВЕРКИ "ЕСТЬ ЛИ У НАС"
+    # Это решает проблему "слово есть, но в другом падеже/числе" (т.к. все лемматизировано)
+    # и проблему "слово есть в меню/ссылках, но не в тексте".
+    my_full_lemmas_set = set(my_lemmas) | set(my_anchors)
     
     for word, freq in doc_freqs.items():
         if word in GARBAGE_LATIN_STOPLIST: continue
         
-        # Условие: "Повторов у вас - 0"
-        if word not in my_lemmas_set:
+        # Условие: "Повторов у вас - 0" (проверяем по полному набору лемм сайта)
+        if word not in my_full_lemmas_set:
             if len(word) < 2: continue
             if word.isdigit(): continue
             
@@ -549,7 +552,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             med_val = np.median(c_counts)
             
             # Логика разделения согласно запросу:
-            # High (Важные) = Медиана > 0 (И повторов у нас 0 - уже проверено выше)
+            # High (Важные) = Медиана > 0
             if med_val > 0:
                 missing_semantics_high.append(item)
             else:
