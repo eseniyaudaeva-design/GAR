@@ -505,17 +505,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         word_weights[w] = weight
 
     # --- ЭТАП 2: ФОРМИРОВАНИЕ ЯДРА (S_LSI) ---
-    # НОВАЯ ЛОГИКА: Включаем, если Медиана > 0
-    # Остальные условия (частота 50%, tf-idf 0.0042) УБРАНЫ из фильтра,
-    # но используем сортировку по весу, чтобы оставить лучшие.
-    
+    # Для баллов "Ширины" используем Топ-70, где медиана > 0.
     MAX_MAIN_WORDS = 70
     
     lsi_candidates = []
     for w, freq in doc_freqs.items():
         if w in GARBAGE_LATIN_STOPLIST: continue
         
-        # Рассчитываем сырую медиану для фильтра
         c_counts = [word_counts_per_doc[i][w] for i in range(N)]
         med_val = np.median(c_counts)
         
@@ -526,7 +522,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # Сортируем кандидатов по весу (от большего к меньшему)
     lsi_candidates.sort(key=lambda x: x[1], reverse=True)
     
-    # Обрезаем топ-70
+    # Обрезаем топ-70 для подсчета "Ширины"
     S_LSI = set([x[0] for x in lsi_candidates[:MAX_MAIN_WORDS]])
 
     total_lsi_count = len(S_LSI)
@@ -538,6 +534,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     for word, freq in doc_freqs.items():
         if word in GARBAGE_LATIN_STOPLIST: continue
+        
+        # Условие: "Повторов у вас - 0"
         if word not in my_lemmas_set:
             if len(word) < 2: continue
             if word.isdigit(): continue
@@ -546,8 +544,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             weight = word_weights.get(word, 0)
             item = {'word': word, 'percent': percent, 'weight': weight}
             
-            # Логика разделения
-            if word in S_LSI:
+            # Считаем медиану для этого слова
+            c_counts = [word_counts_per_doc[i][word] for i in range(N)]
+            med_val = np.median(c_counts)
+            
+            # Логика разделения согласно запросу:
+            # High (Важные) = Медиана > 0 (И повторов у нас 0 - уже проверено выше)
+            if med_val > 0:
                 missing_semantics_high.append(item)
             else:
                 # В хвост берем все остальное, если частота не единичная
@@ -580,7 +583,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         max_total = np.max(c_counts)
         
         # Для расчета рекомендаций (недоспам/переспам) используем нормировку
-        # как и было, так как пользователь просил поменять только формулу медианы в таблице
         base_min = min(mean_total, med_total)
         
         rec_min = int(round(base_min * norm_k))
@@ -623,12 +625,11 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         depth_percent = min(100, depth_percent)
 
         if med_total > 0.5 or my_tf_count > 0:
-            # ИЗМЕНЕНИЕ: В таблице теперь выводим сырую медиану (med_total)
             table_depth.append({
                 "Слово": word, 
                 "Словоформы": forms_str, 
                 "Вхождений у вас": my_tf_count,
-                "Медиана": round(med_total, 1), # <-- НОВОЕ ИМЯ И ЗНАЧЕНИЕ (Сырая медиана)
+                "Медиана": round(med_total, 1), 
                 "Минимум (рек)": rec_min,
                 "Максимум (рек)": rec_max,
                 "Глубина %": depth_percent,
