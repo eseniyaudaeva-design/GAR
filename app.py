@@ -921,7 +921,7 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
 # ==========================================
 
 # ИСПОЛЬЗУЕМ ВКУЛАДКИ, ЧТОБЫ НЕ ЛОМАТЬ ДИЗАЙН ПЕРВОЙ ЧАСТИ
-tab_seo, tab_ai = st.tabs(["📊 SEO Анализ (ГАР)", "🤖 AI Генерация (Perplexity)"])
+tab_seo, tab_ai, tab_tags = st.tabs(["📊 SEO Анализ (ГАР)", "🤖 AI Генерация (Perplexity)", "🏷️ Генератор плитки тегов"])
 
 # ------------------------------------------
 # Вклдака 1: ВЕСЬ СТАРЫЙ КОД (БЕЗ ИЗМЕНЕНИЙ СТРУКТУРЫ)
@@ -1334,3 +1334,76 @@ with tab_ai:
         
         with st.expander("Просмотр данных (первые 5 строк)"):
             st.dataframe(st.session_state.ai_generated_df.head())
+
+# ------------------------------------------
+# Вклдака 3: ГЕНЕРАТОР ПЛИТКИ ТЕГОВ (NEW)
+# ------------------------------------------
+with tab_tags:
+    st.title("🏷️ Генератор плитки тегов")
+    st.markdown("Вставьте список ссылок (каждая с новой строки). Скрипт перейдет по ним, заберет название страницы (H1) и сформирует HTML-код плитки.")
+    
+    urls_input = st.text_area("Список ссылок", height=200, placeholder="https://site.ru/catalog/filter/1/\nhttps://site.ru/catalog/filter/2/", key="tag_urls_input")
+    
+    if st.button("Сгенерировать плитку", type="primary", key="btn_gen_tags"):
+        if not urls_input.strip():
+            st.error("Введите ссылки!")
+            st.stop()
+            
+        urls_list = [u.strip() for u in urls_input.split('\n') if u.strip()]
+        
+        results_tags = []
+        
+        # Функция парсинга заголовка H1
+        def fetch_h1_title(url):
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                r = requests.get(url, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    r.encoding = 'utf-8' # Force utf-8 usually for Russian sites
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                    
+                    # 1. Пробуем H1
+                    h1 = soup.find('h1')
+                    if h1:
+                        return h1.get_text(strip=True)
+                    
+                    # 2. Пробуем Title
+                    if soup.title:
+                        return soup.title.get_text(strip=True)
+                        
+                return "Нет заголовка"
+            except:
+                return "Ошибка доступа"
+
+        # Многопоточный сбор
+        with st.status("Сбор заголовков...", expanded=True) as status:
+            progress_bar = st.progress(0)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_url = {executor.submit(fetch_h1_title, url): url for url in urls_list}
+                
+                completed_count = 0
+                for future in concurrent.futures.as_completed(future_to_url):
+                    url = future_to_url[future]
+                    try:
+                        name = future.result()
+                        results_tags.append({'url': url, 'name': name})
+                    except Exception as exc:
+                        results_tags.append({'url': url, 'name': "Ошибка"})
+                    
+                    completed_count += 1
+                    progress_bar.progress(completed_count / len(urls_list))
+            
+            status.update(label="Готово!", state="complete")
+        
+        # Генерация HTML
+        if results_tags:
+            html_output = '<div class="popular-tags-text">\n<div class="popular-tags-inner-text">\n<div class="tag-items">\n'
+            
+            for item in results_tags:
+                # Вставляем данные в шаблон
+                html_output += f'<a href="{item["url"]}" class="tag-item">{item["name"]}</a>\n'
+                
+            html_output += '</div>\n</div>\n</div>'
+            
+            st.success("HTML код сгенерирован:")
+            st.code(html_output, language='html')
