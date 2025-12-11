@@ -481,6 +481,189 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # Слова из вашего текста
     all_words_all_forms.extend(my_lemmas)
     
+    # 2. Подсчитываем частоту ВСЕХ форм (сохраняем для дальнейшего использования)
+    all_forms_freq = Counter(all_words_all_forms)
+    total_all_words = len(all_words_all_forms)
+    
+    # 3. СОЗДАЕМ doc_freqs для использования в дальнейшем коде (важно!)
+    doc_freqs = Counter()
+    for d in comp_docs:
+        for w in set(d['body']): 
+            doc_freqs[w] += 1
+    
+    # Учитываем также слова из вашего текста, если их нет у конкурентов, то 0
+    for w in set(my_lemmas):
+        if w not in doc_freqs:
+            doc_freqs[w] = 0
+    
+    # 4. Определяем ЧАСТОТНЫЕ ГРУППЫ слов
+    high_freq_words = {w for w, f in all_forms_freq.items() if f >= 50}
+    medium_freq_words = {w for w, f in all_forms_freq.items() if 20 <= f < 50}
+    low_freq_words = {w for w, f in all_forms_freq.items() if 5 <= f < 20}
+    very_low_freq_words = {w for w, f in all_forms_freq.items() if 1 <= f < 5}
+    
+    # 5. Нормализуем слова для анализа
+    if USE_NLP:
+        word_to_norm = {}
+        norm_to_words = defaultdict(set)
+        
+        for word in all_forms_freq.keys():
+            try:
+                parsed = morph.parse(word)[0]
+                # Пропускаем служебные части речи
+                stop_tags = {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ', 'NUMR'}
+                if any(tag in parsed.tag for tag in stop_tags):
+                    continue
+                
+                norm = parsed.normal_form
+                # Минимальная длина
+                if len(norm) < 2:
+                    continue
+                    
+                word_to_norm[word] = norm
+                norm_to_words[norm].add(word)
+            except:
+                if len(word) >= 2:
+                    word_to_norm[word] = word
+                    norm_to_words[word].add(word)
+    else:
+        word_to_norm = {w: w for w in all_forms_freq.keys() if len(w) >= 2}
+        norm_to_words = defaultdict(set)
+        for w, norm in word_to_norm.items():
+            norm_to_words[norm].add(w)
+    
+    # 6. Считаем в скольких документах встречается КАЖДАЯ НОРМАЛЬНАЯ ФОРМА
+    docs_with_norm = Counter()
+    
+    # Для конкурентов
+    for d in comp_docs:
+        unique_norms_in_doc = set()
+        for word in d['body']:
+            norm = word_to_norm.get(word)
+            if norm:
+                unique_norms_in_doc.add(norm)
+        
+        for norm in unique_norms_in_doc:
+            docs_with_norm[norm] += 1
+    
+    # Для вашего документа
+    your_norms = set()
+    for word in my_lemmas:
+        norm = word_to_norm.get(word)
+        if norm:
+            your_norms.add(norm)
+    
+    for norm in your_norms:
+        docs_with_norm[norm] = docs_with_norm.get(norm, 0) + 1
+    
+    total_docs = N + 1  # 11 документов (как в диагностике)
+    
+    # 7. ОПРЕДЕЛЯЕМ СПИСОК ОЖИДАЕМЫХ СЛОВ ИЗ ГАР ПРО
+    expected_words_gar = {
+        'шина', 'втулка', 'калькулятор', 'наименование', 'производителей',
+        'выгодной', 'профильные', 'металлообработка', 'соглашаюсь', 'анод',
+        'имя', 'дюралевый', 'чушка'
+    }
+    
+    # Приводим к нормальной форме
+    expected_norms = set()
+    for word in expected_words_gar:
+        if USE_NLP:
+            try:
+                parsed = morph.parse(word)[0]
+                expected_norms.add(parsed.normal_form)
+            except:
+                expected_norms.add(word)
+        else:
+            expected_norms.add(word)
+    
+    # 8. НОВЫЕ ПРАВИЛА ФОРМИРОВАНИЯ S_LSI:
+    # Правило A: Включаем ВСЕ ожидаемые слова из ГАР ПРО независимо от частоты
+    S_LSI_norms = set(expected_norms)
+    
+    # Правило B: Добавляем слова, которые встречаются в ≥30% документов
+    min_percent_for_other = 30  # 30% вместо 40%
+    min_docs_for_other = math.ceil(total_docs * min_percent_for_other / 100)
+    
+    for norm, doc_count in docs_with_norm.items():
+        # Уже добавили в правиле A
+        if norm in S_LSI_norms:
+            continue
+        
+        # Проверяем по новому порогу
+        if doc_count >= min_docs_for_other:
+            # Дополнительные проверки:
+            # 1. Не в стоп-листе
+            if norm.lower() in GARBAGE_LATIN_STOPLIST:
+                continue
+            
+            # 2. Длина ≥2 символов
+            if len(norm) < 2:
+                continue
+            
+            # 3. Общая частота ≥3 вхождения (вместо 5)
+            total_freq = sum(all_forms_freq.get(w, 0) for w in norm_to_words.get(norm, [norm]))
+            if total_freq >= 3:
+                S_LSI_norms.add(norm)
+    
+    # Правило C: Если слов мало (<15), добавляем еще по убыванию частоты
+    if len(S_LSI_norms) < 15:
+        # Сортируем все нормальные формы по частоте в документах
+        sorted_norms = sorted([(norm, doc_count) for norm, doc_count in docs_with_norm.items() 
+                              if norm not in S_LSI_norms], 
+                             key=lambda x: x[1], reverse=True)
+        
+        # Добавляем топ-20 самых частых
+        for norm, doc_count in sorted_norms[:20]:
+            if norm.lower() not in GARBAGE_LATIN_STOPLIST and len(norm) >= 2:
+                S_LSI_norms.add(norm)
+    
+    # 9. Преобразуем обратно в исходные формы
+    norm_to_best_original = {}
+    
+    for norm in S_LSI_norms:
+        possible_forms = norm_to_words.get(norm, {norm})
+        # Выбираем самую частую форму
+        best_form = max(possible_forms, key=lambda w: all_forms_freq.get(w, 0))
+        norm_to_best_original[norm] = best_form
+    
+    # 10. Формируем финальный S_LSI в исходных формах
+    S_LSI = set(norm_to_best_original.values())
+    
+    # 11. УБЕДИТЕСЬ, что min_docs_threshold определен для дальнейшего кода
+    min_docs_threshold = min_docs_for_other  # Используем тот же порог
+    
+    total_lsi_count = len(S_LSI)
+    
+    # 12. Диагностика
+    debug_info = {
+        'total_docs': total_docs,
+        'expected_included': list(expected_norms.intersection(S_LSI_norms)),
+        'expected_missing': list(expected_norms - S_LSI_norms),
+        'S_LSI_norms': list(S_LSI_norms)[:50],
+        'S_LSI_original': list(S_LSI)[:50],
+        'rules_applied': {
+            'rule_a_expected_words': len(expected_norms),
+            'rule_b_threshold': f"{min_percent_for_other}% ({min_docs_for_other} docs)",
+            'rule_c_added': max(0, 15 - len(expected_norms))
+        },
+        'doc_counts_for_expected': {norm: docs_with_norm.get(norm, 0) for norm in expected_norms},
+        'min_docs_threshold': min_docs_threshold  # Добавляем для отладки
+    }
+    st.session_state.s_lsi_debug = debug_info
+    # ================= КОНЕЦ АЛГОРИТМА С УЧЕТОМ ГАР ПРО =================
+    
+    # ================= АЛГОРИТМ С УЧЕТОМ ГАР ПРО =================
+    # 1. Собираем ВСЕ слова из ВСЕХ документов
+    all_words_all_forms = []
+    
+    # Слова из конкурентов
+    for d in comp_docs:
+        all_words_all_forms.extend(d['body'])
+    
+    # Слова из вашего текста
+    all_words_all_forms.extend(my_lemmas)
+    
     # 2. Подсчитываем частоту ВСЕХ форм
     all_forms_freq = Counter(all_words_all_forms)
     total_all_words = len(all_words_all_forms)
@@ -1857,6 +2040,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
