@@ -476,7 +476,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "missing_semantics_low": []
         }
 
-    # Нормировка длины (если включена)
+    # Нормировка длины
     c_lens = [len(d['body']) for d in comp_docs]
     median_len = np.median(c_lens)
     
@@ -485,23 +485,21 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     else:
         norm_k = 1.0
     
-    # Полный словарь слов
+    # Полный словарь
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
     N = len(comp_docs) 
     
-    # Частота документов (на скольких сайтах встречается слово)
     doc_freqs = Counter()
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
         
-    # Считаем вхождения для каждого документа отдельно
     word_counts_per_doc = []
     for d in comp_docs:
         word_counts_per_doc.append(Counter(d['body']))
 
-    # --- ЭТАП 1: Расчет TF-IDF (для сортировки в таблицах) ---
+    # --- ЭТАП 1: TF-IDF ---
     word_weights = {}
     for lemma in vocab:
         df = doc_freqs[lemma]
@@ -522,62 +520,56 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         weight = med_rel_tf * idf
         word_weights[lemma] = weight
 
-    # --- ЭТАП 2: ФОРМИРОВАНИЕ ЯДРА И СПИСКОВ УПУЩЕННОГО ---
+    # --- ЭТАП 2: ЯДРО (S_WIDTH_CORE) И СПИСКИ ---
     
-    S_WIDTH_CORE = set() # Слова, где Медиана > 0 (Ядро ширины)
+    S_WIDTH_CORE = set()
     missing_semantics_high = []
     missing_semantics_low = []
     
     my_full_lemmas_set = set(my_lemmas) | set(my_anchors)
 
-    # Список для топа TF-IDF (для Глубины)
     lsi_candidates_weighted = []
     
     for lemma, freq in doc_freqs.items():
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
-        # Собираем статистику по конкурентам: [0, 5, 2, 0, 10...]
         c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         
-        # Считаем МЕДИАНУ
         med_val = np.median(c_counts)
         percent = int((freq / N) * 100)
         weight = word_weights.get(lemma, 0)
         
-        # Для сортировок
         if med_val > 0:
             lsi_candidates_weighted.append((lemma, weight))
 
-        # === ГЛАВНОЕ УСЛОВИЕ GAR PRO ===
+        # === ИСПРАВЛЕННАЯ ЛОГИКА ===
+        # Строго >= 1. Если 0.5 — это меньше 1, значит игнорируем.
         is_width_word = False
-        if med_val > 0:
+        if med_val >= 1: 
             S_WIDTH_CORE.add(lemma)
             is_width_word = True
         
-        # Проверка: есть ли слово у нас?
         if lemma not in my_full_lemmas_set:
             if len(lemma) < 2: continue
             if lemma.isdigit(): continue
             
             item = {'word': lemma, 'percent': percent, 'weight': weight}
             
-            # 1. Основной список (High): Медиана > 0 и У нас = 0
+            # Попадает в "Важные", только если Медиана >= 1
             if is_width_word:
                 missing_semantics_high.append(item)
             
-            # 2. Дополнительный список (Low): Медиана = 0, но слово популярное (>=30% сайтов)
+            # Если медиана < 1 (например 0.5 или 0), но слово популярное
             elif percent >= 30:
                  missing_semantics_low.append(item)
     
-    # Сортировка списков
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
     
-    # Ядро для Глубины (Топ-70 самых весомых)
     lsi_candidates_weighted.sort(key=lambda x: x[1], reverse=True)
     S_DEPTH_TOP70 = set([x[0] for x in lsi_candidates_weighted[:70]])
 
-    # --- ЭТАП 3: РАСЧЕТ ТАБЛИЦ ---
+    # --- ЭТАП 3: ТАБЛИЦЫ ---
     table_depth, table_hybrid = [], []
     words_bounds_map = {}
     total_important_words_depth = 0
@@ -595,15 +587,22 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         
-        med_total = np.median(c_counts) # Та самая медиана
+        med_total = np.median(c_counts)
         max_total = np.max(c_counts)
         mean_total = np.mean(c_counts)
         
-        # Рекомендации (min берется как минимум от средней и медианы, чтобы не завышать)
+        # --- ИСПРАВЛЕНИЕ РЕКОМЕНДАЦИЙ ---
         base_min = min(mean_total, med_total)
         
-        rec_min = int(round(base_min * norm_k))
-        rec_max = int(round(max_total * norm_k))
+        # Используем int(), чтобы отбросить дробную часть.
+        # 0.9 -> 0
+        # 0.5 -> 0
+        # 1.1 -> 1
+        rec_min = int(base_min * norm_k)
+        rec_max = int(max_total * norm_k)
+        
+        # Для расчета глубины (процентов) оставляем дробную медиану, чтобы график был точнее,
+        # но bounds записываем целочисленные
         rec_median = med_total * norm_k 
         
         words_bounds_map[lemma] = {'min': rec_min, 'max': rec_max}
@@ -668,7 +667,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     total_width_core_count = len(S_WIDTH_CORE)
     
     def calculate_width_score_rule_90(lemmas_set):
-        # Если покрыто 90% ядра, то балл 100.
         if total_width_core_count == 0: return 0
         
         intersection_count = len(lemmas_set.intersection(S_WIDTH_CORE))
@@ -750,7 +748,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "missing_semantics_high": missing_semantics_high,
         "missing_semantics_low": missing_semantics_low
     }
-
 # ==========================================
 # 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (PAGINATION + EXCEL)
 # ==========================================
@@ -1696,6 +1693,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
