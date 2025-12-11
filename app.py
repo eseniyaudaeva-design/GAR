@@ -915,13 +915,42 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     except Exception as e:
         return [f"API Error: {str(e)}"] * 5
 
+def generate_html_table(client, user_prompt):
+    system_instruction = """
+    You are an HTML generator.
+    Your task is to generate a semantic HTML table based on the user's request.
+    
+    CRITICAL: You MUST apply specific inline CSS styles to the table elements EXACTLY as follows:
+    1. For the <table> tag, use: style="border-collapse: collapse; width: 100%; border: 2px solid black;"
+    2. For every <th> tag, use: style="border: 2px solid black; padding: 5px;"
+    3. For every <td> tag, use: style="border: 2px solid black; padding: 5px;"
+    
+    Do not use internal <style> blocks. Use only inline styles.
+    Output ONLY the HTML code. Do not wrap it in markdown (```html).
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="sonar-pro", 
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.5
+        )
+        content = response.choices[0].message.content
+        # Чистка на всякий случай
+        content = content.replace("```html", "").replace("```", "").strip()
+        return content
+    except Exception as e:
+        return f"Error: {e}"
 
 # ==========================================
 # 7. ИНТЕРФЕЙС (TABS)
 # ==========================================
 
 # ИСПОЛЬЗУЕМ ВКУЛАДКИ, ЧТОБЫ НЕ ЛОМАТЬ ДИЗАЙН ПЕРВОЙ ЧАСТИ
-tab_seo, tab_ai, tab_tags = st.tabs(["📊 SEO Анализ (ГАР)", "🤖 AI Генерация (Perplexity)", "🏷️ Генератор плитки тегов"])
+tab_seo, tab_ai, tab_tags, tab_tables = st.tabs(["📊 SEO Анализ (ГАР)", "🤖 AI Генерация (Perplexity)", "🏷️ Генератор плитки тегов", "🧩 Генератор таблиц"])
 
 # ------------------------------------------
 # Вклдака 1: ВЕСЬ СТАРЫЙ КОД (БЕЗ ИЗМЕНЕНИЙ СТРУКТУРЫ)
@@ -1407,3 +1436,42 @@ with tab_tags:
             
             st.success("HTML код сгенерирован:")
             st.code(html_output, language='html')
+
+# ------------------------------------------
+# Вклдака 4: ГЕНЕРАТОР ТАБЛИЦ (NEW)
+# ------------------------------------------
+with tab_tables:
+    st.title("🧩 Генератор HTML таблиц")
+    st.markdown("Введите запрос, и ИИ создаст таблицу с жестко заданным оформлением (черные рамки, отступы).")
+    
+    # Повторяем ввод ключа здесь, чтобы не бегать между вкладками
+    pplx_key_table = st.text_input("Perplexity API Key", type="password", key="pplx_key_table")
+    
+    table_prompt = st.text_area("Опишите, какую таблицу нужно создать", height=150, placeholder="Сравнительная таблица видов труб из ПВХ с характеристиками и применением")
+    
+    if st.button("Сгенерировать таблицу", type="primary", key="btn_gen_table"):
+        if not pplx_key_table:
+            st.error("Введите API ключ!")
+            st.stop()
+        if not table_prompt:
+            st.error("Введите описание таблицы!")
+            st.stop()
+            
+        if not openai:
+            st.error("Библиотека `openai` не установлена.")
+            st.stop()
+            
+        try:
+            client_table = openai.OpenAI(api_key=pplx_key_table, base_url="https://api.perplexity.ai")
+            
+            with st.spinner("Генерация таблицы..."):
+                html_result = generate_html_table(client_table, table_prompt)
+            
+            st.success("Готово!")
+            st.code(html_result, language='html')
+            
+            st.markdown("### Предпросмотр (примерный):")
+            st.markdown(html_result, unsafe_allow_html=True)
+            
+        except Exception as e:
+            st.error(f"Ошибка API: {e}")
