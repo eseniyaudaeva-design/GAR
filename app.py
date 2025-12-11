@@ -1139,22 +1139,24 @@ def generate_html_table(client, user_prompt, seo_keywords_data=None):
     if seo_keywords_data and len(seo_keywords_data) > 0:
         words_desc = []
         for item in seo_keywords_data:
-            words_desc.append(f"- Слово '{item['word']}' (употребить примерно {item['count']} раз(а) суммарно во всех таблицах)")
+            words_desc.append(f"- Keyword: '{item['word']}' -> Target count: {item['count']} times.")
         
         words_str = "\n".join(words_desc)
         seo_instruction = f"""
-        [SEO INSTRUCTIONS - CRITICAL]
-        You MUST integrate the following keywords into the text content of the tables (in headers, cell values, or descriptions).
+        [AGGRESSIVE SEO INSTRUCTIONS - CRITICAL PRIORITY]
+        You are an SEO Content Generator. Your goal is to maximize keyword density naturally.
         
-        KEYWORDS TO USE:
+        REQUIRED KEYWORDS AND COUNTS:
         {words_str}
         
-        RULES FOR KEYWORDS:
-        1. Use them NATURALLY. Do not just list them.
-        2. YOU MUST DECLINE/CONJUGATE these words (change endings, case, number) so they fit the Russian grammar perfectly.
-        3. Distribute these occurrences across the tables generated.
-        4. HIGHLIGHTING: Wrap every occurrence of these keywords (in any form) with <b> tags.
-           Example: if the keyword is "труба", output "<b>трубы</b>" or "<b>трубой</b>".
+        MANDATORY RULES:
+        1. **CREATE A DESCRIPTION COLUMN**: Tables usually have short text. To fit the keyword counts naturally, YOU MUST ADD A COLUMN named "Описание" (Description) or "Характеристики" (Features) to the table. Write longer sentences in this column to integrate the keywords.
+        2. **QUANTITY**: You MUST try to reach the target count for each keyword across all tables generated. If the count is high, write more text in the Description column.
+        3. **BOLDING**: CRITICAL! Every time you insert a keyword from the list (in any declension/case), you MUST wrap it in <b> tags.
+           - Bad: "мы продаем окна"
+           - Good: "мы продаем <b>окна</b>"
+           - Good: "монтаж <b>окон</b>"
+        4. **NATURAL LANGUAGE**: Conjugate/decline the words to fit Russian grammar.
         """
 
     system_instruction = f"""
