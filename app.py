@@ -528,8 +528,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         percent = int((doc_freqs[lemma] / N) * 100)
         
         # Получаем вес слова для сортировки
-        # Для сортировки используем упрощенный вес: IDF * Median_TF
-        # (в таблице Hybrid используется сложный TF-IDF, здесь упростим для скорости сбора ядра)
         weight_simple = word_idf_map.get(lemma, 0) * med_val
         
         if med_val > 0:
@@ -572,13 +570,10 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         score = 0
         counts = Counter(doc_tokens)
         
-        # Знаменатель K, зависящий от длины документа
-        # 1.2 * (0.25 + 0.75 * L/AvgL)
+        # Знаменатель K
         K = 1.2 * (0.25 + 0.75 * (doc_len / avg_dl))
         
-        # Суммируем ТОЛЬКО по значимым словам (S_WIDTH_CORE)
-        # Если суммировать все, мусор забьет сигнал.
-        # Если S_WIDTH_CORE пустой, берем S_DEPTH_TOP70
+        # Суммируем ТОЛЬКО по значимым словам
         target_words = S_WIDTH_CORE if S_WIDTH_CORE else S_DEPTH_TOP70
         
         for word in target_words:
@@ -587,10 +582,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             tf = counts[word]
             idf = word_idf_map.get(word, 0)
             
-            # Формула BM25 (компонента TF)
-            # (TF * 2.2) / (TF + K)
             term_weight = (tf * 2.2) / (tf + K)
-            
             score += idf * term_weight
             
         return score
@@ -608,7 +600,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         median_bm25_top = 0
         
     # 3.3. Лимит спама (100 баллов)
-    # Если медиана 0, ставим заглушку 1, чтобы не делить на 0
     spam_limit = median_bm25_top * 1.25
     if spam_limit == 0: spam_limit = 1 
 
@@ -617,6 +608,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     # 3.5. Итоговый балл глубины для ВАС
     my_depth_score_final = int(round((my_bm25_raw / spam_limit) * 100))
+    # --- ОГРАНИЧЕНИЕ: Максимум 100 ---
+    my_depth_score_final = min(100, my_depth_score_final)
 
     # --- ЭТАП 4: ТАБЛИЦЫ ДЕТАЛИЗАЦИИ ---
     table_depth, table_hybrid = [], []
@@ -643,8 +636,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         # Округление рекомендаций ВВЕРХ (ceil)
         rec_min = int(math.ceil(base_min * norm_k))
-        rec_max = int(round(max_total * norm_k)) # Max можно обычно округлять
-        if rec_max < rec_min: rec_max = rec_min # Защита
+        rec_max = int(round(max_total * norm_k)) 
+        if rec_max < rec_min: rec_max = rec_min
         
         rec_median = med_total * norm_k 
         
@@ -663,7 +656,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             if action_diff == 0: action_diff = 1
             action_text = f"-{action_diff}"
         
-        # Расчет "процентной глубины" для конкретного слова (визуализация в таблице)
+        # Расчет "процентной глубины"
         depth_percent = 0
         if rec_median > 0.1:
             depth_percent = int(round((my_tf_count / rec_median) * 100))
@@ -671,7 +664,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             depth_percent = 0 if my_tf_count == 0 else 100
         depth_percent = min(100, depth_percent)
 
-        # Для таблицы гибрид нужен вес
         weight_hybrid = word_idf_map.get(lemma, 0) * (my_tf_count / my_len if my_len > 0 else 0)
 
         table_depth.append({
@@ -715,11 +707,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         pos = item['pos']
         domain = urlparse(url).netloc
         
-        # Находим данные конкурента
-        # Используем индекс i, так как comp_bm25_scores мы строили по порядку (0..N)
-        # Но original_results может быть больше N (если часть не скачалась), нужно сопоставлять аккуратно
-        
-        # Ищем распарсенные данные
         parsed_entry = next((d for d in comp_data_full if d.get('url') == url), None)
         
         width_score_val = 0
@@ -733,13 +720,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             width_score_val = calculate_width_score_rule_90(p_set)
             
             # Глубина (BM25)
-            # Нам нужно найти этот документ в comp_docs, чтобы взять его посчитанный BM25
-            # Или пересчитать (проще пересчитать, т.к. индексы могут не совпасть при фильтрации)
             c_score_raw = calculate_bm25_for_doc(p_lemmas, len(p_lemmas))
             depth_score_val_bm25 = int(round((c_score_raw / spam_limit) * 100))
                 
             width_score_val = min(100, width_score_val)
-            # depth_score_val_bm25 НЕ ограничиваем 100, чтобы видеть переспам (140 и т.д.)
+            # --- ОГРАНИЧЕНИЕ: Максимум 100 для конкурентов тоже ---
+            depth_score_val_bm25 = min(100, depth_score_val_bm25)
             
         table_rel.append({
             "Домен": domain, "Позиция": pos,
@@ -1715,6 +1701,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
