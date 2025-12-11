@@ -384,9 +384,6 @@ def parse_page(url, settings):
         if r.status_code != 200: return None
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # 1. ТЕХНИЧЕСКИЕ ТЕГИ УДАЛЯЕМ ВСЕГДА
-        tags_to_remove = ['script', 'style', 'head']
-        
         # 2. NOINDEX УДАЛЯЕМ ТОЛЬКО ЕСЛИ ВКЛЮЧЕНА ГАЛОЧКА
         if settings['noindex']:
             tags_to_remove.append('noindex') 
@@ -1590,3 +1587,4 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
