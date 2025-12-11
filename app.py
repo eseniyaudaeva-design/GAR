@@ -353,8 +353,12 @@ def process_text_detailed(text, settings, n_gram=1):
         lemma = w
         if USE_NLP and n_gram == 1: 
             p = morph.parse(w)[0]
-            if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
+            stop_tags = {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ'}
+            if any(tag in p.tag for tag in stop_tags):
+                continue
             lemma = p.normal_form
+            if len(lemma) < 2:
+                continue
         
         lemmas.append(lemma)
         forms_map[lemma].add(w)
@@ -468,27 +472,19 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
-    N = len(comp_docs) 
-# СТАРЫЙ КОД (ИСКЛЮЧАЕТ ВАШ ТЕКСТ):
-# doc_freqs = Counter() 
-# for d in comp_docs:  
-#     for w in set(d['body']): doc_freqs[w] += 1
-
-# НОВЫЙ КОД (ВКЛЮЧАЕТ ВАШ ТЕКСТ):
+    N = len(comp_docs)
     doc_freqs = Counter()
-# Сначала считаем частоту по конкурентам
     for d in comp_docs:
         for w in set(d['body']):
-        doc_freqs[w] += 1
-# Теперь добавляем слова из вашего текста, если их еще нет
-    for w in set(my_lemmas):
+            doc_freqs[w] += 1
+        
+    for w in set(my_lemmas): 
     if w not in doc_freqs:
-        doc_freqs[w] = 0  # Слово есть только у вас, встречается 0 раз у конкурентов
-
-# Порог рассчитываем от общего числа документов (N конкурентов + 1 ваш)
-    total_docs = N + 1  # +1 ваш документ
+        doc_freqs[w] = 0
+    
+    total_docs = N + 1
     min_docs_threshold = math.ceil(total_docs * 0.50)
-
+    
     S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
     S_LSI = {w for w in S_LSI if w.lower() not in GARBAGE_LATIN_STOPLIST}
     
@@ -1584,6 +1580,4 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
-
-
 
