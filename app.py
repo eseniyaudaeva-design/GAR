@@ -478,7 +478,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     doc_freqs = Counter()
 # Сначала считаем частоту по конкурентам
     for d in comp_docs:
-    for w in set(d['body']):
+        for w in set(d['body']):
         doc_freqs[w] += 1
 # Теперь добавляем слова из вашего текста, если их еще нет
     for w in set(my_lemmas):
@@ -1584,5 +1584,6 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
