@@ -457,6 +457,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "missing_semantics_low": []
         }
 
+    # Длины текстов конкурентов (нужны для расчета относительного TF)
     c_lens = [len(d['body']) for d in comp_docs]
     median_len = np.median(c_lens)
     
@@ -465,28 +466,84 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     else:
         norm_k = 1.0
     
+    # Словарь всех слов
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
     N = len(comp_docs) 
+    
+    # Частота документов (сколько сайтов содержат слово)
     doc_freqs = Counter()
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
         
-    # --- ИЗМЕНЕНИЕ: ПОВЫШЕННЫЙ ПОРОГ (60%) ---
-    # Чтобы отсеять лишнее и приблизить ширину к 100%, берем только слова,
-    # встречающиеся у 60% конкурентов (было 50%).
-    min_docs_threshold = math.ceil(N * 0.60) 
-    # Защита от слишком маленького порога, если сайтов мало
-    if N >= 3 and min_docs_threshold < 2:
-         min_docs_threshold = 2
+    # --- ЭТАП 1: РАСЧЕТ ВЕСОВ TF-IDF ДЛЯ ВСЕХ СЛОВ (ОТНОСИТЕЛЬНЫЙ TF) ---
+    word_weights = {}
+    
+    # Предрасчет количества вхождений слов для каждого документа
+    # word_counts_per_doc[i][word] = count
+    word_counts_per_doc = []
+    for d in comp_docs:
+        word_counts_per_doc.append(Counter(d['body']))
+
+    for w in vocab:
+        df = doc_freqs[w]
+        if df == 0: continue
+        
+        # IDF (Smoothed standard: log((N+1)/(df+1)) + 1)
+        # Это предотвращает деление на ноль и дает вес > 0 даже для слов, встречающихся везде
+        idf = math.log((N + 1) / (df + 1)) + 1
+        
+        # Считаем относительный TF для каждого документа (Count / Total Words)
+        # И берем медиану по топу
+        rel_tfs = []
+        for i in range(N):
+            doc_len = c_lens[i]
+            if doc_len > 0:
+                count = word_counts_per_doc[i][w]
+                rel_tfs.append(count / doc_len)
+            else:
+                rel_tfs.append(0)
+                
+        med_rel_tf = np.median(rel_tfs)
+        
+        # Итоговый вес TF-IDF
+        weight = med_rel_tf * idf
+        word_weights[w] = weight
+        
+        # Сохраняем промежуточные данные для таблицы (чтобы не пересчитывать)
+        # Нам понадобятся для таблицы: weight, idf, med_rel_tf
+        # Но сохраним просто weight в словаре word_weights
+
+    # --- ЭТАП 2: ФОРМИРОВАНИЕ ЯДРА (S_LSI) ПО УСЛОВИЯМ ПОЛЬЗОВАТЕЛЯ ---
+    # Условие 1: Частота > 50%
+    min_docs_threshold = math.ceil(N * 0.50)
     if min_docs_threshold < 1: min_docs_threshold = 1
     
-    S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
-    S_LSI = {w for w in S_LSI if w.lower() not in GARBAGE_LATIN_STOPLIST}
+    # Условие 2: Вес TF-IDF >= 0.0042
+    TF_IDF_THRESHOLD = 0.0042 
     
+    # Условие 3: Ограничить количество до 70
+    MAX_MAIN_WORDS = 70
+    
+    # Сначала отбираем кандидатов
+    lsi_candidates = []
+    for w, freq in doc_freqs.items():
+        if w in GARBAGE_LATIN_STOPLIST: continue
+        weight = word_weights.get(w, 0)
+        
+        if freq >= min_docs_threshold and weight >= TF_IDF_THRESHOLD:
+            lsi_candidates.append((w, weight))
+            
+    # Сортируем кандидатов по весу (от большего к меньшему)
+    lsi_candidates.sort(key=lambda x: x[1], reverse=True)
+    
+    # Обрезаем топ-70
+    S_LSI = set([x[0] for x in lsi_candidates[:MAX_MAIN_WORDS]])
+
     total_lsi_count = len(S_LSI)
 
+    # --- ЭТАП 3: РАЗБИЕНИЕ НА СПИСКИ УПУЩЕННОГО ---
     missing_semantics_high = []
     missing_semantics_low = []
     my_lemmas_set = set(my_lemmas) 
@@ -496,18 +553,21 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         if word not in my_lemmas_set:
             if len(word) < 2: continue
             if word.isdigit(): continue
-            percent = int((freq / N) * 100)
-            item = {'word': word, 'percent': percent}
             
-            # РАЗДЕЛЕНИЕ НА ОСНОВНЫЕ И ДОПОЛНИТЕЛЬНЫЕ
-            if freq >= min_docs_threshold:
+            percent = int((freq / N) * 100)
+            weight = word_weights.get(word, 0)
+            item = {'word': word, 'percent': percent, 'weight': weight}
+            
+            # Логика разделения
+            if word in S_LSI:
                 missing_semantics_high.append(item)
             else:
-                # В "хвост" берем если встретилось хотя бы у 2 (или если всего мало конкурентов)
+                # В хвост берем все остальное, если частота не единичная
                 if N <= 5 or freq >= 2:
                     missing_semantics_low.append(item)
     
-    missing_semantics_high.sort(key=lambda x: x['percent'], reverse=True)
+    # Сортируем High список по ВЕСУ (TF-IDF), Low - по частоте
+    missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
         
     table_depth, table_hybrid = [], []
@@ -515,21 +575,23 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     total_important_words = 0
     words_in_range = 0
     
+    # Расчет данных для таблиц
     for word in vocab:
         if word in GARBAGE_LATIN_STOPLIST: continue
         
         df = doc_freqs[word]
         if df < 2 and word not in my_lemmas: continue 
         
-        my_tf_total = my_lemmas.count(word)        
+        my_tf_count = my_lemmas.count(word)        
         forms_set = all_forms_map.get(word, set())
         forms_str = ", ".join(sorted(list(forms_set))) if forms_set else word
         
-        c_total_tfs = [d['body'].count(word) for d in comp_docs]
+        # Для таблицы глубины и границ по-прежнему нужны абсолютные вхождения
+        c_counts = [word_counts_per_doc[i][word] for i in range(N)]
         
-        mean_total = np.mean(c_total_tfs)
-        med_total = np.median(c_total_tfs)
-        max_total = np.max(c_total_tfs)
+        mean_total = np.mean(c_counts)
+        med_total = np.median(c_counts)
+        max_total = np.max(c_counts)
         
         base_min = min(mean_total, med_total)
         
@@ -543,14 +605,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         action_diff = 0
         action_text = "✅"
         
-        if my_tf_total < rec_min:
+        if my_tf_count < rec_min:
             status = "Недоспам"
-            action_diff = int(round(rec_min - my_tf_total))
+            action_diff = int(round(rec_min - my_tf_count))
             if action_diff == 0: action_diff = 1
             action_text = f"+{action_diff}"
-        elif my_tf_total > rec_max:
+        elif my_tf_count > rec_max:
             status = "Переспам"
-            action_diff = int(round(my_tf_total - rec_max))
+            action_diff = int(round(my_tf_count - rec_max))
             if action_diff == 0: action_diff = 1
             action_text = f"-{action_diff}"
         else:
@@ -558,34 +620,46 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             
         if word in S_LSI:
             total_important_words += 1
-
-        idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
-        idf = max(0.1, idf) 
+            
+        # Данные TF-IDF для таблицы (уже посчитаны)
+        weight_top = word_weights.get(word, 0)
         
+        # Считаем вес для ВАС (Your TF-IDF)
+        # Your TF = count / my_len
+        my_rel_tf = (my_tf_count / my_len) if my_len > 0 else 0
+        # IDF тот же самый
+        idf_val = math.log((N + 1) / (df + 1)) + 1
+        weight_my = my_rel_tf * idf_val
+
+        depth_percent = 0
         if rec_median > 0.1:
-            depth_percent = int(round((my_tf_total / rec_median) * 100))
+            depth_percent = int(round((my_tf_count / rec_median) * 100))
         else:
-            depth_percent = 0 if my_tf_total == 0 else 100
+            depth_percent = 0 if my_tf_count == 0 else 100
         depth_percent = min(100, depth_percent)
 
-        if med_total > 0.5 or my_tf_total > 0:
+        if med_total > 0.5 or my_tf_count > 0:
             table_depth.append({
                 "Слово": word, 
                 "Словоформы": forms_str, 
-                "Вхождений у вас": my_tf_total,
+                "Вхождений у вас": my_tf_count,
                 "Медиана ТОП (норм.)": round(rec_median, 1),
                 "Минимум (рек)": rec_min,
                 "Максимум (рек)": rec_max,
                 "Глубина %": depth_percent,
                 "Статус": status,
                 "Рекомендация": action_text,
-                "is_missing": (status == "Недоспам" and my_tf_total == 0),
+                "is_missing": (status == "Недоспам" and my_tf_count == 0),
                 "sort_val": abs(action_diff) if status != "Норма" else 0
             })
             
+            # В таблице гибрида выводим теперь правильные малые веса
             table_hybrid.append({
-                "Слово": word, "TF-IDF ТОП": round(np.median(c_total_tfs) * idf, 2), "TF-IDF у вас": round(my_tf_total * idf, 2),
-                "Сайтов": df, "Переспам": max_total
+                "Слово": word, 
+                "TF-IDF ТОП": round(weight_top, 4), # 4 знака, т.к. числа маленькие (0.0042)
+                "TF-IDF у вас": round(weight_my, 4),
+                "Сайтов": df, 
+                "Переспам": max_total
             })
 
     table_rel = []
@@ -612,7 +686,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             else:
                 width_score_val = 0
             
-            # ГЛУБИНА (для конкурентов - чуть строже: не просто наличие, а хоть какая-то частотность)
+            # ГЛУБИНА
             hits = 0
             check_words = [w for w in S_LSI if w in words_bounds_map]
             for w in check_words:
@@ -1265,7 +1339,7 @@ with tab_seo:
                 # 1. ОСНОВНЫЕ СЛОВА (ВАЖНЫЕ)
                 if high:
                     st.markdown("##### ⭐️ Основные связанные слова (Важные)")
-                    st.markdown("Эти слова встречаются у БОЛЬШИНСТВА конкурентов (повышенный приоритет). Их отсутствие сильно снижает балл «Ширина».")
+                    st.markdown("Эти слова встречаются у большинства конкурентов (>50%) и имеют высокий вес TF-IDF (>= 0.0042).")
                     
                     words_list_h = [item['word'] for item in high]
                     # Формируем строку через запятую
@@ -1281,7 +1355,7 @@ with tab_seo:
                 # 2. ДОПОЛНИТЕЛЬНЫЕ СЛОВА (ХВОСТ)
                 if low:
                     st.markdown("##### 🔹 Дополнительный список связанных слов")
-                    st.markdown("Встречаются реже, но могут улучшить охват тематики.")
+                    st.markdown("Слова с меньшим весом или частотой.")
                     
                     words_list_l = [item['word'] for item in low]
                     text_cloud_l = ", ".join(words_list_l)
