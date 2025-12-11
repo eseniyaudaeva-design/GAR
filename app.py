@@ -476,9 +476,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "missing_semantics_low": []
         }
 
-    # Нормировка длины
+    # Длины текстов
     c_lens = [len(d['body']) for d in comp_docs]
     median_len = np.median(c_lens)
+    
+    # AvgL (Средняя длина текста конкурентов) для BM25
+    avg_dl = np.mean(c_lens) if c_lens else 0
     
     if median_len > 0 and my_len > 0 and settings['norm']:
         norm_k = my_len / median_len
@@ -499,81 +502,126 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for d in comp_docs:
         word_counts_per_doc.append(Counter(d['body']))
 
-    # --- ЭТАП 1: TF-IDF ---
-    word_weights = {}
+    # --- ЭТАП 1: TF-IDF (вес слов) ---
+    word_idf_map = {}
     for lemma in vocab:
         df = doc_freqs[lemma]
         if df == 0: continue
-        
+        # Стандартный IDF
         idf = math.log((N + 1) / (df + 1)) + 1
-        
-        rel_tfs = []
-        for i in range(N):
-            doc_len = c_lens[i]
-            if doc_len > 0:
-                count = word_counts_per_doc[i][lemma]
-                rel_tfs.append(count / doc_len)
-            else:
-                rel_tfs.append(0)
-                
-        med_rel_tf = np.median(rel_tfs)
-        weight = med_rel_tf * idf
-        word_weights[lemma] = weight
+        word_idf_map[lemma] = idf
 
-    # --- ЭТАП 2: ЯДРО (S_WIDTH_CORE) И СПИСКИ ---
-    
+    # --- ЭТАП 2: ЯДРО (S_WIDTH_CORE) ---
     S_WIDTH_CORE = set()
     missing_semantics_high = []
     missing_semantics_low = []
     
     my_full_lemmas_set = set(my_lemmas) | set(my_anchors)
+    lsi_candidates_weighted = [] # Для таблиц
 
-    lsi_candidates_weighted = []
-    
-    for lemma, freq in doc_freqs.items():
+    # Расчет статистик слов
+    for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
         c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
-        
         med_val = np.median(c_counts)
-        percent = int((freq / N) * 100)
-        weight = word_weights.get(lemma, 0)
+        percent = int((doc_freqs[lemma] / N) * 100)
+        
+        # Получаем вес слова для сортировки
+        # Для сортировки используем упрощенный вес: IDF * Median_TF
+        # (в таблице Hybrid используется сложный TF-IDF, здесь упростим для скорости сбора ядра)
+        weight_simple = word_idf_map.get(lemma, 0) * med_val
         
         if med_val > 0:
-            lsi_candidates_weighted.append((lemma, weight))
+            lsi_candidates_weighted.append((lemma, weight_simple))
 
-        # === ИСПРАВЛЕННАЯ ЛОГИКА ===
-        # Строго >= 1. Если 0.5 — это меньше 1, значит игнорируем.
+        # === УСЛОВИЕ ЯДРА (Strict) ===
         is_width_word = False
         if med_val >= 1: 
             S_WIDTH_CORE.add(lemma)
             is_width_word = True
         
+        # Списки упущенного
         if lemma not in my_full_lemmas_set:
             if len(lemma) < 2: continue
             if lemma.isdigit(): continue
             
-            item = {'word': lemma, 'percent': percent, 'weight': weight}
+            item = {'word': lemma, 'percent': percent, 'weight': weight_simple}
             
-            # Попадает в "Важные", только если Медиана >= 1
             if is_width_word:
                 missing_semantics_high.append(item)
-            
-            # Если медиана < 1 (например 0.5 или 0), но слово популярное
             elif percent >= 30:
                  missing_semantics_low.append(item)
-    
+
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
     
+    # Для таблицы Depth сортируем по весу
     lsi_candidates_weighted.sort(key=lambda x: x[1], reverse=True)
     S_DEPTH_TOP70 = set([x[0] for x in lsi_candidates_weighted[:70]])
 
-    # --- ЭТАП 3: ТАБЛИЦЫ ---
+    # --- ЭТАП 3: РАСЧЕТ BM25 (НОВАЯ ЛОГИКА ГЛУБИНЫ) ---
+    
+    def calculate_bm25_for_doc(doc_tokens, doc_len):
+        """
+        Считает 'сырой' BM25 документа, суммируя веса только по словам из S_WIDTH_CORE.
+        Формула: Sum( IDF * (TF * 2.2) / (TF + 1.2 * (0.25 + 0.75 * L/AvgL)) )
+        """
+        if avg_dl == 0 or doc_len == 0: return 0
+        
+        score = 0
+        counts = Counter(doc_tokens)
+        
+        # Знаменатель K, зависящий от длины документа
+        # 1.2 * (0.25 + 0.75 * L/AvgL)
+        K = 1.2 * (0.25 + 0.75 * (doc_len / avg_dl))
+        
+        # Суммируем ТОЛЬКО по значимым словам (S_WIDTH_CORE)
+        # Если суммировать все, мусор забьет сигнал.
+        # Если S_WIDTH_CORE пустой, берем S_DEPTH_TOP70
+        target_words = S_WIDTH_CORE if S_WIDTH_CORE else S_DEPTH_TOP70
+        
+        for word in target_words:
+            if word not in counts: continue
+            
+            tf = counts[word]
+            idf = word_idf_map.get(word, 0)
+            
+            # Формула BM25 (компонента TF)
+            # (TF * 2.2) / (TF + K)
+            term_weight = (tf * 2.2) / (tf + K)
+            
+            score += idf * term_weight
+            
+        return score
+
+    # 3.1. BM25 для конкурентов
+    comp_bm25_scores = []
+    for i in range(N):
+        s = calculate_bm25_for_doc(comp_docs[i]['body'], c_lens[i])
+        comp_bm25_scores.append(s)
+        
+    # 3.2. Медиана BM25 ТОПа
+    if comp_bm25_scores:
+        median_bm25_top = np.median(comp_bm25_scores)
+    else:
+        median_bm25_top = 0
+        
+    # 3.3. Лимит спама (100 баллов)
+    # Если медиана 0, ставим заглушку 1, чтобы не делить на 0
+    spam_limit = median_bm25_top * 1.25
+    if spam_limit == 0: spam_limit = 1 
+
+    # 3.4. BM25 для ВАС
+    my_bm25_raw = calculate_bm25_for_doc(my_lemmas, my_len)
+    
+    # 3.5. Итоговый балл глубины для ВАС
+    my_depth_score_final = int(round((my_bm25_raw / spam_limit) * 100))
+
+    # --- ЭТАП 4: ТАБЛИЦЫ ДЕТАЛИЗАЦИИ ---
     table_depth, table_hybrid = [], []
-    words_bounds_map = {}
-    total_important_words_depth = 0
     words_in_range_depth = 0
+    total_important_words_depth = 0
     
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
@@ -591,22 +639,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         max_total = np.max(c_counts)
         mean_total = np.mean(c_counts)
         
-        # --- ИСПРАВЛЕНИЕ РЕКОМЕНДАЦИЙ ---
         base_min = min(mean_total, med_total)
         
-        # Используем int(), чтобы отбросить дробную часть.
-        # 0.9 -> 0
-        # 0.5 -> 0
-        # 1.1 -> 1
-        rec_min = int(base_min * norm_k)
-        rec_max = int(max_total * norm_k)
+        # Округление рекомендаций ВВЕРХ (ceil)
+        rec_min = int(math.ceil(base_min * norm_k))
+        rec_max = int(round(max_total * norm_k)) # Max можно обычно округлять
+        if rec_max < rec_min: rec_max = rec_min # Защита
         
-        # Для расчета глубины (процентов) оставляем дробную медиану, чтобы график был точнее,
-        # но bounds записываем целочисленные
         rec_median = med_total * norm_k 
         
-        words_bounds_map[lemma] = {'min': rec_min, 'max': rec_max}
-
         status = "Норма"
         action_diff = 0
         action_text = "✅"
@@ -621,24 +662,17 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             action_diff = int(round(my_tf_count - rec_max))
             if action_diff == 0: action_diff = 1
             action_text = f"-{action_diff}"
-        else:
-            words_in_range_depth += 1
-            
-        if lemma in S_DEPTH_TOP70:
-            total_important_words_depth += 1
-            
-        weight_top = word_weights.get(lemma, 0)
         
-        my_rel_tf = (my_tf_count / my_len) if my_len > 0 else 0
-        idf_val = math.log((N + 1) / (df + 1)) + 1
-        weight_my = my_rel_tf * idf_val
-
+        # Расчет "процентной глубины" для конкретного слова (визуализация в таблице)
         depth_percent = 0
         if rec_median > 0.1:
             depth_percent = int(round((my_tf_count / rec_median) * 100))
         else:
             depth_percent = 0 if my_tf_count == 0 else 100
         depth_percent = min(100, depth_percent)
+
+        # Для таблицы гибрид нужен вес
+        weight_hybrid = word_idf_map.get(lemma, 0) * (my_tf_count / my_len if my_len > 0 else 0)
 
         table_depth.append({
             "Слово": lemma, 
@@ -656,77 +690,66 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         table_hybrid.append({
             "Слово": lemma, 
-            "TF-IDF ТОП": round(weight_top, 4), 
-            "TF-IDF у вас": round(weight_my, 4),
+            "TF-IDF ТОП": round(word_idf_map.get(lemma, 0) * (med_total / avg_dl if avg_dl > 0 else 0), 4), 
+            "TF-IDF у вас": round(weight_hybrid, 4),
             "Сайтов": df, 
             "Переспам": max_total
         })
 
-    # --- ЭТАП 4: РАСЧЕТ ИТОГОВЫХ БАЛЛОВ ---
+    # --- ЭТАП 5: РАСЧЕТ ИТОГОВ (ШИРИНА) ---
     
     total_width_core_count = len(S_WIDTH_CORE)
     
     def calculate_width_score_rule_90(lemmas_set):
         if total_width_core_count == 0: return 0
-        
         intersection_count = len(lemmas_set.intersection(S_WIDTH_CORE))
         ratio = intersection_count / total_width_core_count
-        
-        if ratio >= 0.9:
-            return 100
-        else:
-            score = (ratio / 0.9) * 100
-            return int(round(score))
+        if ratio >= 0.9: return 100
+        else: return int(round((ratio / 0.9) * 100))
 
     table_rel = []
     
-    # Конкуренты
-    for item in original_results:
+    # Конкуренты в таблице
+    for i, item in enumerate(original_results):
         url = item['url']
         pos = item['pos']
         domain = urlparse(url).netloc
-        parsed_data = next((d for d in comp_data_full if d.get('url') == url), None)
+        
+        # Находим данные конкурента
+        # Используем индекс i, так как comp_bm25_scores мы строили по порядку (0..N)
+        # Но original_results может быть больше N (если часть не скачалась), нужно сопоставлять аккуратно
+        
+        # Ищем распарсенные данные
+        parsed_entry = next((d for d in comp_data_full if d.get('url') == url), None)
         
         width_score_val = 0
-        depth_score_val = 0 
+        depth_score_val_bm25 = 0 
         
-        if parsed_data and parsed_data.get('body_text'):
-            p_lemmas, _ = process_text_detailed(parsed_data['body_text'], settings)
-            p_counts = Counter(p_lemmas)
+        if parsed_entry and parsed_entry.get('body_text'):
+            p_lemmas, _ = process_text_detailed(parsed_entry['body_text'], settings)
             p_set = set(p_lemmas)
             
+            # Ширина
             width_score_val = calculate_width_score_rule_90(p_set)
             
-            # Глубина (по Top-70)
-            hits = 0
-            check_words = [w for w in S_DEPTH_TOP70 if w in words_bounds_map]
-            for w in check_words:
-                cnt = p_counts[w]
-                if cnt > 0: hits += 1
-            if len(check_words) > 0:
-                depth_score_val = int(round((hits / len(check_words)) * 100))
-            else:
-                depth_score_val = 0
+            # Глубина (BM25)
+            # Нам нужно найти этот документ в comp_docs, чтобы взять его посчитанный BM25
+            # Или пересчитать (проще пересчитать, т.к. индексы могут не совпасть при фильтрации)
+            c_score_raw = calculate_bm25_for_doc(p_lemmas, len(p_lemmas))
+            depth_score_val_bm25 = int(round((c_score_raw / spam_limit) * 100))
                 
             width_score_val = min(100, width_score_val)
-            depth_score_val = min(100, depth_score_val)
+            # depth_score_val_bm25 НЕ ограничиваем 100, чтобы видеть переспам (140 и т.д.)
             
         table_rel.append({
             "Домен": domain, "Позиция": pos,
             "Ширина (балл)": width_score_val,
-            "Глубина (балл)": depth_score_val
+            "Глубина (балл)": depth_score_val_bm25
         })
         
-    # Вы
+    # Вы в таблице
     my_score_w = calculate_width_score_rule_90(my_full_lemmas_set)
-    
-    if total_important_words_depth > 0:
-        my_score_d_new = int(round((words_in_range_depth / total_important_words_depth) * 100))
-    else:
-        my_score_d_new = 0
-    
     my_score_w = min(100, my_score_w)
-    my_score_d_new = min(100, my_score_d_new)
     
     if my_data and my_data.get('domain'):
         my_label = f"{my_data['domain']} (Вы)"
@@ -736,7 +759,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     table_rel.append({
         "Домен": my_label, 
         "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
-        "Ширина (балл)": my_score_w, "Глубина (балл)": my_score_d_new
+        "Ширина (балл)": my_score_w, "Глубина (балл)": my_depth_score_final
     })
     
     table_rel_df = pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
@@ -744,7 +767,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     return {
         "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid),
         "relevance_top": table_rel_df,
-        "my_score": {"width": my_score_w, "depth": my_score_d_new},
+        "my_score": {"width": my_score_w, "depth": my_depth_score_final},
         "missing_semantics_high": missing_semantics_high,
         "missing_semantics_low": missing_semantics_low
     }
@@ -1692,6 +1715,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
