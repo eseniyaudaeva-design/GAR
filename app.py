@@ -405,31 +405,66 @@ def parse_page(url, settings):
         return None
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
-    # ... [предыдущий код до doc_freqs] ...
+    all_forms_map = defaultdict(set)
     
-    # 1. РАСЧЕТ IDF (один раз для всей коллекции)
-    # Собираем все слова из всех документов
-    all_docs_words = []
-    for d in comp_docs:
-        all_docs_words.extend(d['body'])
+    if not my_data or not my_data.get('body_text'):
+        my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
+    else:
+        my_lemmas, my_forms = process_text_detailed(my_data['body_text'], settings)
+        my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
+        my_len = len(my_lemmas)
+        for k, v in my_forms.items():
+            all_forms_map[k].update(v)
+
+    # ПАРСИНГ ДАННЫХ КОНКУРЕНТОВ
+    comp_data_parsed = [d for d in comp_data_full if d.get('body_text')]
     
-    total_docs_count = len(comp_docs)
-    word_doc_freq = Counter()
+    comp_docs = []  # ИНИЦИАЛИЗАЦИЯ СПИСКА
+    for p in comp_data_parsed:
+        body, c_forms = process_text_detailed(p['body_text'], settings)
+        anchor, _ = process_text_detailed(p['anchor_text'], settings)
+        comp_docs.append({'body': body, 'anchor': anchor})
+        for k, v in c_forms.items():
+            all_forms_map[k].update(v)
     
-    # Считаем в скольких документах встречается каждое слово
-    for d in comp_docs:
-        unique_words = set(d['body'])
-        for w in unique_words:
-            word_doc_freq[w] += 1
-    
-    # Рассчитываем IDF для каждого слова
-    idf_dict = {}
-    for word, doc_count in word_doc_freq.items():
-        if doc_count > 0:
-            # Стандартная формула IDF
-            idf_dict[word] = math.log((total_docs_count + 1) / (doc_count + 0.5))
+    if not comp_docs:
+        table_rel_fallback = []
+        for item in original_results:
+            domain = urlparse(item['url']).netloc
+            table_rel_fallback.append({
+                "Домен": domain, 
+                "Позиция": item['pos'],
+                "Ширина (балл)": 0, "Глубина (балл)": 0
+            })
+        
+        if my_data and my_data.get('domain'):
+            my_label = f"{my_data['domain']} (Вы)"
         else:
-            idf_dict[word] = 0
+            my_label = "Ваш сайт"
+        
+        table_rel_fallback.append({
+            "Домен": my_label, 
+            "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
+            "Ширина (балл)": 0, "Глубина (балл)": 0
+        })
+        
+        table_rel_df = pd.DataFrame(table_rel_fallback).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
+        return {
+            "depth": pd.DataFrame(), 
+            "hybrid": pd.DataFrame(), 
+            "relevance_top": table_rel_df, 
+            "my_score": {"width": 0, "depth": 0}, 
+            "missing_semantics_high": [], 
+            "missing_semantics_low": []
+        }
+
+    total_docs_count = len(comp_docs)
+    
+    # 1. РАСЧЕТ ЧАСТОТ СЛОВ
+    doc_freqs = Counter()
+    for d in comp_docs:
+        for w in set(d['body']): 
+            doc_freqs[w] += 1
     
     # 2. ВАЖНЫЕ СЛОВА (те, что встречаются хотя бы у половины конкурентов)
     min_docs_threshold = math.ceil(total_docs_count * 0.50)
@@ -440,7 +475,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                       if w.lower() not in GARBAGE_LATIN_STOPLIST 
                       and len(w) > 2}
     
-    # 3. НОРМИРОВАНИЕ (как в ГАРПРО)
+    # 3. РАСЧЕТ НОРМИРОВАНИЯ
     c_lens = [len(d['body']) for d in comp_docs]
     median_len = np.median(c_lens)
     
@@ -449,7 +484,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     else:
         norm_coefficient = 1.0
     
-    # 4. РАСЧЕТ ДИАПАЗОНОВ (с учетом нормирования)
+    # 4. СОЗДАЕМ ВОКАБУЛЯР И РАСЧЕТ ДИАПАЗОНОВ
+    vocab = set(my_lemmas)
+    for d in comp_docs: 
+        vocab.update(d['body'])
+    vocab = sorted(list(vocab))
+    
     words_bounds_map = {}
     
     for word in vocab:
@@ -469,11 +509,11 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         norm_median = median_tf * norm_coefficient
         norm_max = max_tf * norm_coefficient
         
-        # Минимум = медиана (после нормирования)
+        # Минимум = медиана (после нормирования), округляем
         rec_min = int(round(norm_median))
         rec_max = int(round(norm_max))
         
-        # Если слово редко встречается, можно взять среднее или минимум
+        # Если слово редко встречается, но есть у конкурентов
         if rec_min == 0 and median_tf > 0:
             rec_min = 1
         
@@ -484,7 +524,67 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             'norm_median': norm_median
         }
     
-    # 5. РАСЧЕТ ШИРИНЫ И ГЛУБИНЫ ДЛЯ КАЖДОГО ДОКУМЕНТА
+    # 5. РАСЧЕТ ДЛЯ ТАБЛИЦЫ DEPTH И HYBRID (оставляем ваш существующий код)
+    table_depth, table_hybrid = [], []
+    words_in_range = 0
+    
+    for word in vocab:
+        if word in GARBAGE_LATIN_STOPLIST: 
+            continue
+        
+        df = doc_freqs[word]
+        if df < 2 and word not in my_lemmas: 
+            continue 
+        
+        my_tf_total = my_lemmas.count(word)        
+        forms_set = all_forms_map.get(word, set())
+        forms_str = ", ".join(sorted(list(forms_set))) if forms_set else word
+        
+        c_total_tfs = [d['body'].count(word) for d in comp_docs]
+        
+        mean_total = np.mean(c_total_tfs)
+        med_total = np.median(c_total_tfs)
+        max_total = np.max(c_total_tfs)
+        
+        base_min = min(mean_total, med_total)
+        
+        rec_min = int(round(base_min * norm_coefficient))
+        rec_max = int(round(max_total * norm_coefficient))
+        rec_median = med_total * norm_coefficient
+        
+        status = "Норма"
+        action_diff = 0
+        action_text = "✅"
+        
+        if my_tf_total < rec_min:
+            status = "Недоспам"
+            action_diff = int(round(rec_min - my_tf_total))
+            if action_diff == 0: action_diff = 1
+            action_text = f"+{action_diff}"
+        elif my_tf_total > rec_max:
+            status = "Переспам"
+            action_diff = int(round(my_tf_total - rec_max))
+            if action_diff == 0: action_diff = 1
+            action_text = f"-{action_diff}"
+        else:
+            words_in_range += 1
+            
+        if med_total > 0.5 or my_tf_total > 0:
+            table_depth.append({
+                "Слово": word, 
+                "Словоформы": forms_str, 
+                "Вхождений у вас": my_tf_total,
+                "Медиана ТОП (норм.)": round(rec_median, 1),
+                "Минимум (рек)": rec_min,
+                "Максимум (рек)": rec_max,
+                "Глубина %": int(round((my_tf_total / rec_median) * 100)) if rec_median > 0 else 0,
+                "Статус": status,
+                "Рекомендация": action_text,
+                "is_missing": (status == "Недоспам" and my_tf_total == 0),
+                "sort_val": abs(action_diff) if status != "Норма" else 0
+            })
+    
+    # 6. РАСЧЕТ ШИРИНЫ И ГЛУБИНЫ ДЛЯ ТАБЛИЦЫ RELEVANCE
     table_rel = []
     
     # Сначала для конкурентов
@@ -532,11 +632,10 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Глубина (балл)": min(100, depth_score)
         })
     
-    # 6. РАСЧЕТ ДЛЯ ВАШЕГО САЙТА
+    # 7. РАСЧЕТ ДЛЯ ВАШЕГО САЙТА
     if my_data and my_data.get('body_text'):
-        my_lemmas, _ = process_text_detailed(my_data['body_text'], settings)
-        my_counts = Counter(my_lemmas)
         my_set = set(my_lemmas)
+        my_counts = Counter(my_lemmas)
         
         # Ширина для вашего сайта
         if important_words:
@@ -567,7 +666,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         my_width_score = 0
         my_depth_score = 0
     
-    # 7. ДОБАВЛЯЕМ ВАШ САЙТ В ТАБЛИЦУ
+    # 8. ДОБАВЛЯЕМ ВАШ САЙТ В ТАБЛИЦУ
     if my_data and my_data.get('domain'):
         my_label = f"{my_data['domain']} (Вы)"
     else:
@@ -580,140 +679,60 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "Глубина (балл)": min(100, my_depth_score)
     })
     
-    # 8. СОЗДАЕМ DataFrame
     table_rel_df = pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
     
-    # ... [остальной код остается прежним] ...
+    # 9. MISSING SEMANTICS (оставляем ваш существующий код)
+    missing_semantics_high = []
+    missing_semantics_low = []
+    my_lemmas_set = set(my_lemmas) 
+    
+    for word, freq in doc_freqs.items():
+        if word in GARBAGE_LATIN_STOPLIST: continue
+        if word not in my_lemmas_set:
+            if len(word) < 2: continue
+            if word.isdigit(): continue
+            percent = int((freq / total_docs_count) * 100)
+            item = {'word': word, 'percent': percent}
+            if freq >= min_docs_threshold:
+                missing_semantics_high.append(item)
+            else:
+                if total_docs_count <= 5 or freq >= 2:
+                    missing_semantics_low.append(item)
+    
+    missing_semantics_high.sort(key=lambda x: x['percent'], reverse=True)
+    missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
+    
+    # 10. HYBRID TABLE (TF-IDF) - оставляем ваш существующий код
+    table_hybrid = []
+    for word in vocab:
+        if word in GARBAGE_LATIN_STOPLIST: continue
+        
+        df = doc_freqs[word]
+        if df < 2 and word not in my_lemmas: continue
+        
+        my_tf_total = my_lemmas.count(word)
+        
+        c_total_tfs = [d['body'].count(word) for d in comp_docs]
+        
+        idf = math.log((total_docs_count - df + 0.5) / (df + 0.5) + 1)
+        idf = max(0.1, idf)
+        
+        table_hybrid.append({
+            "Слово": word, 
+            "TF-IDF ТОП": round(np.median(c_total_tfs) * idf, 2), 
+            "TF-IDF у вас": round(my_tf_total * idf, 2),
+            "Сайтов": df, 
+            "Переспам": np.max(c_total_tfs)
+        })
     
     return {
-        "depth": pd.DataFrame(table_depth),
+        "depth": pd.DataFrame(table_depth), 
         "hybrid": pd.DataFrame(table_hybrid),
         "relevance_top": table_rel_df,
         "my_score": {"width": my_width_score, "depth": my_depth_score},
         "missing_semantics_high": missing_semantics_high,
         "missing_semantics_low": missing_semantics_low
     }
-
-# ==========================================
-# 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (FINAL)
-# ==========================================
-
-def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
-    if df.empty:
-        st.info(f"{title_text}: Нет данных.")
-        return
-
-    st.markdown(f"### {title_text}")
-    
-    search_query = st.text_input(f"🔍 Поиск по таблице ({title_text})", key=f"{key_prefix}_search")
-    if search_query:
-        mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
-        df = df[mask]
-    
-    if df.empty:
-        st.warning("Ничего не найдено.")
-        return
-
-    if f'{key_prefix}_sort_col' not in st.session_state:
-        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if default_sort_col in df.columns else df.columns[0]
-    if f'{key_prefix}_sort_order' not in st.session_state:
-        st.session_state[f'{key_prefix}_sort_order'] = "Убывание" 
-
-    with st.container():
-        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
-        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
-        with col_s1:
-            sort_col = st.selectbox(
-                "🗂 Сортировать по:", 
-                df.columns, 
-                key=f"{key_prefix}_sort_box",
-                index=list(df.columns).index(st.session_state[f'{key_prefix}_sort_col']) if st.session_state[f'{key_prefix}_sort_col'] in df.columns else 0
-            )
-            st.session_state[f'{key_prefix}_sort_col'] = sort_col
-        with col_s2:
-            sort_order = st.radio(
-                "Порядок:", 
-                ["Убывание", "Возрастание"], 
-                horizontal=True,
-                key=f"{key_prefix}_order_box",
-                index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
-            )
-            st.session_state[f'{key_prefix}_sort_order'] = sort_order
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    ascending = (sort_order == "Возрастание")
-    if "sort_val" in df.columns and default_sort_col == "Рекомендация":
-         df = df.sort_values(by="sort_val", ascending=ascending)
-    elif "Добавить" in sort_col or "+/-" in sort_col:
-        df['_temp_sort'] = df[sort_col].abs()
-        df = df.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
-    else:
-        df = df.sort_values(by=sort_col, ascending=ascending)
-
-    df = df.reset_index(drop=True)
-    df.index = df.index + 1
-    
-    ROWS_PER_PAGE = 20
-    if f'{key_prefix}_page' not in st.session_state:
-        st.session_state[f'{key_prefix}_page'] = 1
-        
-    total_rows = len(df)
-    total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
-    if total_pages == 0: total_pages = 1
-    
-    current_page = st.session_state[f'{key_prefix}_page']
-    if current_page > total_pages: current_page = total_pages
-    if current_page < 1: current_page = 1
-    st.session_state[f'{key_prefix}_page'] = current_page
-    
-    start_idx = (current_page - 1) * ROWS_PER_PAGE
-    end_idx = start_idx + ROWS_PER_PAGE
-    
-    df_view = df.iloc[start_idx:end_idx]
-
-    def highlight_rows(row):
-        base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
-        styles = []
-        status = row.get("Статус", "")
-        
-        for col_name in row.index:
-            cell_style = base_style
-            if col_name == "Статус":
-                if status == "Недоспам":
-                    cell_style += "color: #D32F2F; font-weight: bold;" 
-                elif status == "Переспам":
-                    cell_style += "color: #E65100; font-weight: bold;" 
-                elif status == "Норма":
-                    cell_style += "color: #2E7D32; font-weight: bold;" 
-            
-            styles.append(cell_style)
-        return styles
-    
-    cols_to_hide = ["is_missing", "sort_val"]
-    
-    styled_df = df_view.style.apply(highlight_rows, axis=1)
-    
-    dynamic_height = (len(df_view) * 35) + 40 
-    
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
-        height=dynamic_height, 
-        column_config={c: None for c in cols_to_hide}
-    )
-    
-    c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
-    with c_btn_prev:
-        if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
-            st.session_state[f'{key_prefix}_page'] -= 1
-            st.rerun()
-    with c_info:
-        st.markdown(f"<div style='text-align: center; margin-top: 10px; color:{TEXT_COLOR}'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
-    with c_btn_next:
-        if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
-            st.session_state[f'{key_prefix}_page'] += 1
-            st.rerun()
-    st.markdown("---")
 
 # ==========================================
 # 6. ЛОГИКА ДЛЯ PERPLEXITY (AI GEN)
@@ -1505,6 +1524,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
