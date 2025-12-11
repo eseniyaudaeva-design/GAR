@@ -1153,6 +1153,8 @@ def generate_html_table(client, user_prompt, seo_keywords_data=None):
         1. Use them NATURALLY. Do not just list them.
         2. YOU MUST DECLINE/CONJUGATE these words (change endings, case, number) so they fit the Russian grammar perfectly.
         3. Distribute these occurrences across the tables generated.
+        4. HIGHLIGHTING: Wrap every occurrence of these keywords (in any form) with <b> tags.
+           Example: if the keyword is "труба", output "<b>трубы</b>" or "<b>трубой</b>".
         """
 
     system_instruction = f"""
