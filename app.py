@@ -431,18 +431,41 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     # Если данных нет совсем - отдаем заглушку
     if not comp_docs:
-        # (код заглушки остается таким же, как был, для краткости опущен)
+        table_rel_fallback = []
+        for item in original_results:
+            domain = urlparse(item['url']).netloc
+            table_rel_fallback.append({
+                "Домен": domain, 
+                "Позиция": item['pos'],
+                "Ширина (балл)": 0, "Глубина (балл)": 0
+            })
+        
+        if my_data and my_data.get('domain'):
+            my_label = f"{my_data['domain']} (Вы)"
+        else:
+            my_label = "Ваш сайт"
+        
+        table_rel_fallback.append({
+            "Домен": my_label, 
+            "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1,
+            "Ширина (балл)": 0, "Глубина (балл)": 0
+        })
+        
+        table_rel_df = pd.DataFrame(table_rel_fallback).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
         return {
-            "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), 
-            "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}, 
-            "missing_semantics_high": [], "missing_semantics_low": []
+            "depth": pd.DataFrame(), 
+            "hybrid": pd.DataFrame(), 
+            "relevance_top": table_rel_df, 
+            "my_score": {"width": 0, "depth": 0}, 
+            "missing_semantics_high": [], 
+            "missing_semantics_low": []
         }
 
-    # 3. Расчет LSI ядра (Слова, встречающиеся у >50% конкурентов)
+    # 3. Расчет LSI ядра
     c_lens = [len(d['body']) for d in comp_docs]
     median_len = np.median(c_lens)
     
-    # Коэффициент нормирования (как в ГАР: отношение длины сайта к медиане)
+    # Коэффициент нормирования
     if median_len > 0 and my_len > 0 and settings['norm']:
         norm_k = my_len / median_len
     else:
@@ -451,7 +474,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     N = len(comp_docs)
     doc_freqs = Counter()
     
-    # Считаем DF (Document Frequency)
     for d in comp_docs:
         unique_words_in_doc = set(d['body'])
         for w in unique_words_in_doc:
@@ -460,32 +482,28 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     min_docs_threshold = math.ceil(N * 0.50) 
     if min_docs_threshold < 1: min_docs_threshold = 1
     
-    # Формируем список LSI слов (исключая стоп-слова)
     S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
     S_LSI = {w for w in S_LSI if w.lower() not in GARBAGE_LATIN_STOPLIST}
-    sorted_lsi = sorted(list(S_LSI)) # Фиксируем порядок для векторов
+    sorted_lsi = sorted(list(S_LSI)) 
     total_lsi_count = len(sorted_lsi)
 
-    # 4. Расчет "Идеального вектора" (Медианные значения частот в ТОПе)
-    # Это эталон "Глубины"
+    # 4. Расчет "Идеального вектора" и границ
     ideal_vector = []
     words_bounds_map = {}
     
     for word in sorted_lsi:
-        # Собираем частоты этого слова по всем конкурентам
         tf_list = [d['body'].count(word) for d in comp_docs]
         med_tf = np.median(tf_list)
         mean_tf = np.mean(tf_list)
         max_tf = np.max(tf_list)
         
-        ideal_vector.append(med_tf) # Вектор медиан
+        ideal_vector.append(med_tf) 
         
-        # Для таблицы рекомендаций
         rec_min = int(round(min(mean_tf, med_tf) * norm_k))
         rec_max = int(round(max_tf * norm_k))
         words_bounds_map[word] = {'min': rec_min, 'max': rec_max, 'median_raw': med_tf}
 
-    # 5. Функция расчета косинусного сходства (для Глубины)
+    # 5. Функция расчета косинусного сходства
     def get_cosine_similarity(vec_a, vec_b):
         dot_product = sum(a * b for a, b in zip(vec_a, vec_b))
         norm_a = math.sqrt(sum(a * a for a in vec_a))
@@ -495,17 +513,16 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         return dot_product / (norm_a * norm_b)
 
     # ==========================
-    # РАСЧЕТ ТАБЛИЦЫ РЕЛЕВАНТНОСТИ (ШИРИНА И ГЛУБИНА)
+    # РАСЧЕТ ТАБЛИЦЫ РЕЛЕВАНТНОСТИ
     # ==========================
     table_rel = []
     
-    # A. Проход по конкурентам
+    # A. Конкуренты
     for item in original_results:
         url = item['url']
         pos = item['pos']
         domain = urlparse(url).netloc
         
-        # Ищем распаршенные данные для этого URL
         doc_data = next((d for d in comp_docs if d['url'] == url), None)
         
         if doc_data and total_lsi_count > 0:
@@ -513,20 +530,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             doc_counter = Counter(doc_lemmas)
             doc_set = set(doc_lemmas)
             
-            # --- ШИРИНА (ОХВАТ) ---
-            # Сколько слов из LSI ядра есть на странице
+            # ШИРИНА
             intersection_count = len(doc_set.intersection(S_LSI))
             width_score = (intersection_count / total_lsi_count) * 100
             
-            # --- ГЛУБИНА (СХОДСТВО ОБЛАКА) ---
-            # Строим вектор частот конкурента по LSI словам
+            # ГЛУБИНА (Косинусное сходство)
             comp_vector = [doc_counter[w] for w in sorted_lsi]
-            
-            # Считаем сходство с идеальным (медианным) вектором
-            # Это покажет, насколько распределение слов похоже на "эталонное"
             similarity = get_cosine_similarity(comp_vector, ideal_vector)
             depth_score = similarity * 100
-            
         else:
             width_score = 0
             depth_score = 0
@@ -538,33 +549,21 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Глубина (балл)": int(round(depth_score))
         })
         
-    # B. Расчет для ВАС
+    # B. Ваш сайт
     my_width_score = 0
     my_depth_score = 0
     
     if total_lsi_count > 0:
-        # ШИРИНА
         my_lemmas_set = set(my_lemmas)
         my_intersection = len(my_lemmas_set.intersection(S_LSI))
         my_width_score = (my_intersection / total_lsi_count) * 100
         
-        # ГЛУБИНА
-        # Важно: Для нас применяем нормировку, чтобы сравняться с ТОПом
-        # Если наш текст короткий, мы "виртуально" растягиваем частоты
-        # (Или наоборот, если ГАР сравнивает плотность, то вектора сами это учитывают через угол)
-        # Но чтобы соответствовать рекомендациям "добавь +2 слова", лучше использовать сырые данные,
-        # однако для Similarity лучше использовать пропорции.
-        # В данном случае Cosine Similarity не зависит от длины вектора (масштаба), только от угла.
-        # Поэтому можно подавать сырые данные.
-        
         my_counter = Counter(my_lemmas)
         my_vector = [my_counter[w] for w in sorted_lsi]
-        
         my_similarity = get_cosine_similarity(my_vector, ideal_vector)
         my_depth_score = my_similarity * 100
 
-    # Добавляем нас в таблицу
-    my_label = f"{my_data['domain']} (Вы)" if my_data.get('domain') else "Ваш сайт"
+    my_label = f"{my_data['domain']} (Вы)" if my_data and my_data.get('domain') else "Ваш сайт"
     my_pos_label = my_serp_pos if my_serp_pos > 0 else len(original_results) + 1
     
     table_rel.append({
@@ -577,14 +576,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     table_rel_df = pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
 
     # ==========================
-    # РАСЧЕТ ТАБЛИЦ ДЕТАЛИЗАЦИИ (РЕКОМЕНДАЦИИ) - Оставляем как было, но чуть правим
+    # РАСЧЕТ ТАБЛИЦ ДЕТАЛИЗАЦИИ
     # ==========================
     missing_semantics_high = []
     missing_semantics_low = []
     table_depth = []
     table_hybrid = []
     
-    # Списки упущенной семантики
     my_lemmas_set = set(my_lemmas)
     for word, freq in doc_freqs.items():
         if word in GARBAGE_LATIN_STOPLIST: continue
@@ -602,7 +600,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     missing_semantics_high.sort(key=lambda x: x['percent'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
 
-    # Таблица рекомендаций (Depth Detail)
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
     vocab = sorted(list(vocab))
@@ -610,34 +607,29 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for word in vocab:
         if word in GARBAGE_LATIN_STOPLIST: continue
         
-        # Работаем только с важными словами (или теми что есть у нас)
         if word not in words_bounds_map and word not in my_lemmas: continue
         
         df = doc_freqs[word]
-        # Отсекаем совсем мусор для таблицы
         if df < 2 and word not in my_lemmas: continue
         
         my_tf_total = my_lemmas.count(word)
         forms_set = all_forms_map.get(word, set())
         forms_str = ", ".join(sorted(list(forms_set))) if forms_set else word
         
-        # Получаем границы, рассчитанные ранее
         if word in words_bounds_map:
             rec_min = words_bounds_map[word]['min']
             rec_max = words_bounds_map[word]['max']
             median_raw = words_bounds_map[word]['median_raw']
             
-            # TF-IDF для гибридной таблицы
             idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
             idf = max(0.1, idf)
             
             rec_median_norm = median_raw * norm_k
         else:
-            # Если слово есть у нас, но нет в LSI (или мало у кого)
             rec_min, rec_max, rec_median_norm = 0, 0, 0
+            median_raw = 0  # <--- ИСПРАВЛЕНИЕ ТУТ: Добавлена инициализация
             idf = 0
 
-        # Статусы
         status = "Норма"
         action_diff = 0
         action_text = "✅"
@@ -653,7 +645,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             if action_diff == 0: action_diff = 1
             action_text = f"-{action_diff}"
             
-        # % заполнения глубины для конкретного слова
         if rec_median_norm > 0.1:
             depth_percent_word = int(round((my_tf_total / rec_median_norm) * 100))
         else:
@@ -680,7 +671,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 "TF-IDF ТОП": round(median_raw * idf, 2), 
                 "TF-IDF у вас": round(my_tf_total * idf, 2),
                 "Сайтов": df, 
-                "Переспам": rec_max # Показываем нормированный макс
+                "Переспам": rec_max 
             })
 
     return {
@@ -1603,4 +1594,5 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
