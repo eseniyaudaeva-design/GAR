@@ -1376,7 +1376,6 @@ with tab_seo:
                 # 1. ОСНОВНЫЕ СЛОВА (ВАЖНЫЕ)
                 if high:
                     st.markdown("##### ⭐️ Основные связанные слова (Важные)")
-                    st.markdown("Слова, которые **отсутствуют у вас**, но встречаются у большинства конкурентов (Медиана > 0 И на >30% сайтов).")
                     
                     words_list_h = [item['word'] for item in high]
                     # Формируем строку через запятую
@@ -1693,6 +1692,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
