@@ -476,14 +476,24 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for w in set(d['body']): doc_freqs[w] += 1
         
     # ==========================================
+    # ОПРЕДЕЛЕНИЕ LSI-ЯДРА (S_LSI) ДЛЯ РАСЧЕТА ШИРИНЫ
+    # ==========================================
+    # Порог: Слово должно встречаться минимум у 30% конкурентов
+    min_docs_threshold = math.ceil(N * 0.30)
+    # Защита от слишком малого порога, если конкурентов мало (например, 2-3)
+    if min_docs_threshold < 2 and N >= 2:
+        min_docs_threshold = 2
+    
+    # Формируем множество эталонных лемм (Ядро)
+    S_LSI = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
+    total_lsi_count = len(S_LSI)
+
+    # ==========================================
     # РАСЧЕТ УПУЩЕННОЙ СЕМАНТИКИ (2 СПИСКА)
     # ==========================================
     missing_semantics_high = []
     missing_semantics_low = []
     my_lemmas_set = set(my_lemmas) 
-    
-    # Порог: Слово должно встречаться минимум у 30% конкурентов
-    min_docs_threshold = math.ceil(N * 0.30)
     
     for word, freq in doc_freqs.items():
         # Если слова нет у нас
@@ -529,7 +539,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         c_total_tfs = [d['body'].count(word) for d in comp_docs]
         
-        # --- НОВАЯ ЛОГИКА РАСЧЕТА ГЛУБИНЫ (МЕДИАНА +- 20%) ---
+        # --- ЛОГИКА РАСЧЕТА ГЛУБИНЫ (МЕДИАНА +- 20%) ---
         median_raw = np.median(c_total_tfs)
         
         # Нормализованная медиана (Цель)
@@ -603,46 +613,54 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     # --- ТОП РЕЛЕВАНТНОСТИ ---
     table_rel = []
+    
+    # 1. Расчет ширины для конкурентов (Охват S_LSI)
     competitor_stats_raw = []
     for item in original_results:
         url = item['url']
         pos = item['pos']
         domain = urlparse(url).netloc
         parsed_data = next((d for d in comp_data_full if d.get('url') == url), None)
-        raw_width = 0
-        raw_depth = 0
+        
+        width_score_val = 0
+        depth_score_val = 0 # Заглушка, так как глубина теперь у каждого своя сложная
+        
         if parsed_data and parsed_data.get('body_text'):
             p_lemmas, _ = process_text_detailed(parsed_data['body_text'], settings)
-            relevant_lemmas = [w for w in p_lemmas if w in vocab] 
-            raw_width = len(set(relevant_lemmas))
-            raw_depth = len(relevant_lemmas)
-        competitor_stats_raw.append({
-            "domain": domain, "pos": pos, 
-            "raw_w": raw_width, "raw_d": raw_depth
-        })
-
-    max_width_top = max([c['raw_w'] for c in competitor_stats_raw]) if competitor_stats_raw else 1
-    max_depth_top = max([c['raw_d'] for c in competitor_stats_raw]) if competitor_stats_raw else 1
-    
-    for c in competitor_stats_raw:
-        score_w = int(round((c['raw_w'] / max_width_top) * 100))
-        score_d = int(round((c['raw_d'] / max_depth_top) * 100))
+            p_set = set(p_lemmas)
+            
+            # НОВАЯ ФОРМУЛА ШИРИНЫ: Пересечение с ядром / Размер ядра
+            intersection_count = len(p_set.intersection(S_LSI))
+            if total_lsi_count > 0:
+                width_score_val = int(round((intersection_count / total_lsi_count) * 100))
+            else:
+                width_score_val = 0
+                
+            # Для глубины в таблице конкурентов мы просто берем кол-во слов из ядра,
+            # но для простоты оставим старую логику или 0, так как метрика "Глубина" 
+            # (Depth Score) сложна для конкурента (надо считать медиану без него самого и т.д.)
+            # Чтобы не усложнять, покажем просто ширину. А "Глубина (балл)" сделаем как % попадания в ядро по длине?
+            # Лучше просто оставим ширину как главную метрику.
+            
         table_rel.append({
-            "Домен": c['domain'], "Позиция": c['pos'],
-            "Ширина (балл)": score_w, "Глубина (балл)": score_d
+            "Домен": domain, "Позиция": pos,
+            "Ширина (балл)": width_score_val,
+            "Глубина (балл)": 0 # Заглушка или можно убрать столбец
         })
         
-    my_relevant = [w for w in my_lemmas if w in vocab]
-    my_raw_w = len(set(my_relevant))
+    # 2. Расчет ширины и глубины для ВАС
+    my_intersection_count = len(set(my_lemmas).intersection(S_LSI))
+    if total_lsi_count > 0:
+        my_score_w = int(round((my_intersection_count / total_lsi_count) * 100))
+    else:
+        my_score_w = 0
     
-    # Новый расчет общего балла глубины
+    # Новый расчет общего балла глубины (из прошлого шага)
     # Процент слов, которые находятся в диапазоне нормы или выше (покрыты)
     if total_important_words > 0:
         my_score_d_new = int(round((words_in_range / total_important_words) * 100))
     else:
         my_score_d_new = 0
-    
-    my_score_w = int(round((my_raw_w / max_width_top) * 100))
     
     if my_data and my_data.get('domain'):
         my_label = f"{my_data['domain']} (Вы)"
