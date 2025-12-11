@@ -7,7 +7,7 @@ import re
 from collections import Counter, defaultdict
 import math
 import concurrent.futures
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, unquote
 import inspect
 import time
 import json
@@ -1340,11 +1340,46 @@ with tab_ai:
 # ------------------------------------------
 with tab_tags:
     st.title("🏷️ Генератор плитки тегов")
-    st.markdown("Вставьте список ссылок (каждая с новой строки). Скрипт перейдет по ним, заберет название страницы (H1) и сформирует HTML-код плитки.")
+    st.markdown("Вставьте список ссылок (каждая с новой строки). Скрипт возьмет данные из URL (translit -> rus) и сформирует HTML-код плитки.")
     
-    urls_input = st.text_area("Список ссылок", height=200, placeholder="https://site.ru/catalog/filter/1/\nhttps://site.ru/catalog/filter/2/", key="tag_urls_input")
+    urls_input = st.text_area("Список ссылок", height=200, placeholder="https://site.ru/catalog/filter/gost-is-8732_78/\nhttps://site.ru/catalog/filter/diametr_mm-is-25/", key="tag_urls_input")
     
-    if st.button("Сгенерировать плитку", type="primary", key="btn_gen_tags"):
+    # ФУНКЦИЯ ОБРАТНОЙ ТРАНСЛИТЕРАЦИИ
+    def custom_reverse_translit(slug):
+        # 0. Очистка от SEO мусора в URL (битрикс фильтры)
+        text = slug.lower()
+        text = text.replace("-is-", " ") # Убираем конструкцию фильтра
+        text = text.replace("_", " ")    # Убираем разделители
+        text = text.replace("-", " ")
+        
+        # 1. Словарь замен (сначала длинные сочетания!)
+        translit_map = {
+            'shch': 'щ', 'sh': 'ш', 'ch': 'ч', 'zh': 'ж', 'yu': 'ю', 'ya': 'я', 'yo': 'ё',
+            'kh': 'х', 'ts': 'ц', 'ph': 'ф',
+            'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г', 'd': 'д', 'e': 'е', 
+            'z': 'з', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 
+            'n': 'н', 'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 
+            'u': 'у', 'f': 'ф', 'y': 'ы'
+        }
+        
+        # Специфические замены для технарей/SEO
+        text = text.replace("gost", "ГОСТ")
+        text = text.replace("mm", "мм")
+        
+        # Основной цикл замены
+        for eng, rus in translit_map.items():
+            # Если уже заменили (например gost), не трогаем
+            # Используем временный плейсхолдер для ГОСТ, чтобы не сломать? 
+            # Проще просто аккуратно менять lower case части
+            if eng in text:
+                text = text.replace(eng, rus)
+        
+        # Вернем ГОСТ в апперкейс, если он там есть
+        text = text.replace("гост", "ГОСТ")
+        
+        return text.strip().capitalize()
+
+    if st.button("Сгенерировать плитку (из URL)", type="primary", key="btn_gen_tags"):
         if not urls_input.strip():
             st.error("Введите ссылки!")
             st.stop()
@@ -1353,47 +1388,26 @@ with tab_tags:
         
         results_tags = []
         
-        # Функция парсинга заголовка H1
-        def fetch_h1_title(url):
+        for url in urls_list:
             try:
-                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-                r = requests.get(url, headers=headers, timeout=10)
-                if r.status_code == 200:
-                    r.encoding = 'utf-8' # Force utf-8 usually for Russian sites
-                    soup = BeautifulSoup(r.text, 'html.parser')
-                    
-                    # 1. Пробуем H1
-                    h1 = soup.find('h1')
-                    if h1:
-                        return h1.get_text(strip=True)
-                    
-                    # 2. Пробуем Title
-                    if soup.title:
-                        return soup.title.get_text(strip=True)
-                        
-                return "Нет заголовка"
-            except:
-                return "Ошибка доступа"
-
-        # Многопоточный сбор
-        with st.status("Сбор заголовков...", expanded=True) as status:
-            progress_bar = st.progress(0)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                future_to_url = {executor.submit(fetch_h1_title, url): url for url in urls_list}
+                # Парсим URL
+                parsed = urlparse(url)
+                path = parsed.path
+                if path.endswith('/'): 
+                    path = path[:-1]
                 
-                completed_count = 0
-                for future in concurrent.futures.as_completed(future_to_url):
-                    url = future_to_url[future]
-                    try:
-                        name = future.result()
-                        results_tags.append({'url': url, 'name': name})
-                    except Exception as exc:
-                        results_tags.append({'url': url, 'name': "Ошибка"})
-                    
-                    completed_count += 1
-                    progress_bar.progress(completed_count / len(urls_list))
-            
-            status.update(label="Готово!", state="complete")
+                # Берем последний сегмент (slug)
+                slug = path.split('/')[-1]
+                
+                # Транслитерируем в русский
+                if slug:
+                    name = custom_reverse_translit(slug)
+                else:
+                    name = "Главная"
+                
+                results_tags.append({'url': url, 'name': name})
+            except Exception:
+                results_tags.append({'url': url, 'name': "Ошибка URL"})
         
         # Генерация HTML
         if results_tags:
@@ -1405,5 +1419,5 @@ with tab_tags:
                 
             html_output += '</div>\n</div>\n</div>'
             
-            st.success("HTML код сгенерирован:")
+            st.success("HTML код сгенерирован (на основе ссылок):")
             st.code(html_output, language='html')
