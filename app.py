@@ -473,12 +473,29 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
         
-    # ВАЖНЫЕ СЛОВА - используем порог 30% вместо 50% (как было в рабочей версии 80/68)
-    min_docs_threshold = math.ceil(N * 0.30) 
+    # ВАЖНЫЕ СЛОВА - БЕРЕМ БОЛЬШЕ СЛОВ (как в ГАРПРО)
+    # 1. Слова, которые есть хотя бы у 25% конкурентов
+    min_docs_threshold = math.ceil(N * 0.25) 
     if min_docs_threshold < 1: min_docs_threshold = 1
     
-    important_words = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
-    important_words = {w for w in important_words if w.lower() not in GARBAGE_LATIN_STOPLIST and len(w) > 2}
+    # 2. ИЛИ слова из топ-150 самых частых слов
+    all_competitor_words = []
+    for d in comp_docs:
+        all_competitor_words.extend(d['body'])
+    word_freq_all = Counter(all_competitor_words)
+    
+    important_words_by_threshold = {w for w, freq in doc_freqs.items() if freq >= min_docs_threshold}
+    important_words_by_freq = {w for w, cnt in word_freq_all.most_common(150) 
+                              if w.lower() not in GARBAGE_LATIN_STOPLIST and len(w) > 2}
+    
+    # Объединяем оба подхода
+    important_words = important_words_by_threshold.union(important_words_by_freq)
+    
+    # Фильтруем мусор
+    important_words = {w for w in important_words 
+                      if w.lower() not in GARBAGE_LATIN_STOPLIST 
+                      and len(w) > 2 
+                      and not w.isdigit()}
     
     # РАСЧЕТ ТАБЛИЦЫ DEPTH
     table_depth, table_hybrid = [], []
@@ -500,13 +517,18 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         med_total = np.median(c_total_tfs)
         max_total = np.max(c_total_tfs)
         
-        base_min = min(mean_total, med_total)
+        # В ГАРПРО используют медиану для минимальной рекомендации
+        base_min = med_total  # Используем медиану вместо min(mean, median)
         
         rec_min = int(round(base_min * norm_coefficient))
         rec_max = int(round(max_total * norm_coefficient))
         rec_median = med_total * norm_coefficient 
         
-        words_bounds_map[word] = {'min': rec_min, 'max': rec_max}
+        # Если rec_min = 0 но медиана > 0, ставим rec_min = 1
+        if rec_min == 0 and med_total > 0:
+            rec_min = 1
+        
+        words_bounds_map[word] = {'min': rec_min, 'max': rec_max, 'median': med_total}
 
         status = "Норма"
         action_diff = 0
@@ -586,14 +608,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             'lemmas_set': set(my_lemmas)
         })
     
-    # Ключевое изменение: добавляем слова из вашего сайта в important_words если они есть у конкурентов
-    if my_data and my_data.get('body_text'):
-        for word in set(my_lemmas):
-            if word not in important_words and doc_freqs.get(word, 0) >= 1:
-                # Если слово есть у вас и хотя бы у 1 конкурента, добавляем его
-                important_words.add(word)
-    
-    # РАСЧЕТ ДЛЯ КАЖДОГО ДОКУМЕНТА
+    # РАСЧЕТ ДЛЯ КАЖДОГО ДОКУМЕНТА (одинаковая логика для всех)
     for doc in all_docs_data:
         # ШИРИНА: процент важных слов, которые есть в документе
         if important_words:
@@ -602,8 +617,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         else:
             width_score = 0
         
-        # ГЛУБИНА: процент важных слов, которые есть в документе в достаточном количестве
-        # Мягче: если слово есть хотя бы 1 раз и rec_min > 0, или если rec_min = 0 то хотя бы 1 раз
+        # ГЛУБИНА: более мягкий критерий как в ГАРПРО
         depth_hits = 0
         total_important_words_checked = 0
         
@@ -612,20 +626,19 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 word_count = doc['counts'][word]
                 bounds = words_bounds_map[word]
                 
-                # Мягкий критерий как в ГАРПРО
+                # МЯГКИЙ КРИТЕРИЙ (как в ГАРПРО):
+                # 1. Если слово есть в документе хотя бы 1 раз
+                # 2. И его количество не меньше чем 50% от минимальной рекомендации
+                
                 if word_count > 0:
                     if bounds['min'] == 0:
                         # Если минимальная рекомендация 0, достаточно 1 вхождения
-                        if word_count >= 1:
-                            depth_hits += 1
+                        depth_hits += 1
                     else:
-                        # Если минимальная рекомендация > 0, нужно хотя бы 1 вхождение
-                        # (в ГАРПРО критерий мягче)
-                        if word_count >= 1:
+                        # Нужно хотя бы 50% от минимальной рекомендации (мягче)
+                        required = max(1, int(bounds['min'] * 0.5))
+                        if word_count >= required:
                             depth_hits += 1
-                            # Для более точного совпадения можно использовать:
-                            # if word_count >= max(1, bounds['min'] * 0.5):  # хотя бы 50% от min
-                            #     depth_hits += 1
                 
                 total_important_words_checked += 1
         
@@ -634,15 +647,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         else:
             depth_score = 0
         
-        # Небольшая корректировка для приближения к ГАРПРО
-        if "Вы)" in doc['domain']:
-            # Для вашего сайта добавляем немного
-            width_score = min(100, width_score + 15)  # +15%
-            depth_score = min(100, depth_score + 18)  # +18%
-        else:
-            # Для конкурентов тоже немного повышаем значения
-            width_score = min(100, width_score + 5)
-            depth_score = min(100, depth_score + 8)
+        # Ограничиваем значения 0-100
+        width_score = min(100, max(0, width_score))
+        depth_score = min(100, max(0, depth_score))
         
         table_rel.append({
             "Домен": doc['domain'],
@@ -651,7 +658,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Глубина (балл)": depth_score
         })
     
-    # ОТДЕЛЬНЫЙ РАСЧЕТ ДЛЯ ВАШЕГО САЙТА
+    # ОТДЕЛЬНЫЙ РАСЧЕТ ДЛЯ ВАШЕГО САЙТА (только для my_score)
     my_score_w = 0
     my_score_d = 0
     
@@ -675,20 +682,16 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 
                 if word_count > 0:
                     if bounds['min'] == 0:
-                        if word_count >= 1:
-                            my_depth_hits += 1
+                        my_depth_hits += 1
                     else:
-                        if word_count >= 1:  # Мягкий критерий
+                        required = max(1, int(bounds['min'] * 0.5))
+                        if word_count >= required:
                             my_depth_hits += 1
                 
                 my_total_checked += 1
         
         if my_total_checked > 0:
             my_score_d = int(round((my_depth_hits / my_total_checked) * 100))
-        
-        # Корректировка для приближения к ГАРПРО
-        my_score_w = min(100, my_score_w + 15)
-        my_score_d = min(100, my_score_d + 18)
     
     # Сортируем по позиции
     table_rel_df = pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True)
@@ -698,7 +701,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     missing_semantics_low = []
     my_lemmas_set = set(my_lemmas) 
     
-    min_docs_threshold_for_missing = math.ceil(N * 0.30)
+    min_docs_threshold_for_missing = math.ceil(N * 0.25)
     
     for word, freq in doc_freqs.items():
         if word in GARBAGE_LATIN_STOPLIST: continue
@@ -1639,6 +1642,7 @@ with tab_tables:
         if st.button("Сбросить", key="reset_table"):
             st.session_state.table_html_result = None
             st.rerun()
+
 
 
 
