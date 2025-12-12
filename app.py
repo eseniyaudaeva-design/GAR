@@ -272,183 +272,110 @@ def get_yandex_dict_info(text, api_key):
         pass
     return {'lemma': text, 'pos': 'unknown'}
 
-# --- ФУНКЦИЯ КЛАССИФИКАЦИИ v4.1 (Исправленная логика наречий) ---
+# --- ФУНКЦИЯ КЛАССИФИКАЦИИ v4.2 (Full Coverage) ---
 def classify_semantics_with_api(words_list, yandex_key):
-    # 1. СПИСКИ И ПАТТЕРНЫ
-    
+    # Паттерны для размеров и ГОСТов
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     gost_pattern = re.compile(r'(гост|din|ту|iso|ст|сп)\s?\d+', re.IGNORECASE)
 
-    # UI и Навигация (Технический мусор сайта)
+    # 1. СТОП-СЛОВА (Только явный мусор и коммерция)
     SITE_UI_GARBAGE = {
-        'меню', 'поиск', 'главная', 'карта', 'сайт', 'личный', 'кабинет', 
-        'вход', 'регистрация', 'корзина', 'избранное', 'сравнение', 'профиль',
-        'телефон', 'адрес', 'контакты', 'email', 'звонок', 'callback', 
-        'отзыв', 'отзывы', 'вопрос', 'ответ', 'менеджер', 'консультация',
-        'политика', 'конфиденциальность', 'соглашение', 'оферта', 'cookie',
-        'соглашаться', 'согласие', 'принимать', 'отправить', 'подписаться',
-        'ошибка', 'успешно', 'кнопка', 'форма', 'поле', 'обзор', 'новости', 'статьи',
-        'характеристика', 'описание', 'параметр', 'свойство', 'артикул', 'код',
-        'калькулятор', 'фильтр', 'сортировка', 'показать', 'сбросить',
-        'имя', 'фамилия', 'сообщение', 'файл', 'документ', 'сертификат',
-        'категория', 'раздел', 'список', 'вид', 'тип', 'класс', 'серия',
-        'рейтинг', 'наличие', 'склад', 'производитель', 'бренд', 'марка',
-        'вес', 'длина', 'ширина', 'высота', 'толщина', 'диаметр', 'размер',
-        'объем', 'масса', 'тонна', 'метр', 'шт', 'кг', 'упаковка', 
-        'интернет', 'магазин', 'каталог', 'год', 'день', 'час', 'время'
+        'меню', 'поиск', 'главная', 'карта', 'сайт', 'личный', 'кабинет', 'вход', 'регистрация', 'корзина', 
+        'избранное', 'телефон', 'адрес', 'контакты', 'email', 'звонок', 'callback', 'отзыв', 'вопрос', 'ответ', 
+        'менеджер', 'политика', 'конфиденциальность', 'соглашение', 'cookie', 'соглашаться', 'подписаться', 
+        'ошибка', 'успешно', 'кнопка', 'форма', 'обзор', 'новости', 'статьи', 'характеристика', 'описание', 
+        'параметр', 'артикул', 'код', 'калькулятор', 'фильтр', 'сортировка', 'показать', 'сбросить', 
+        'наличие', 'склад', 'производитель', 'бренд', 'марка', 'вес', 'длина', 'ширина', 'высота', 'толщина', 
+        'диаметр', 'размер', 'объем', 'масса', 'тонна', 'метр', 'шт', 'кг', 'упаковка', 'интернет', 'магазин', 
+        'каталог', 'год', 'день', 'час', 'время'
     }
 
-    # КОММЕРЧЕСКИЕ СЛОВА (Существительные, Прилагательные, Наречия)
     COMMERCIAL_WORDS = {
-        # Существительные
-        'купить', 'заказать', 'цена', 'цены', 'прайс', 'стоимость', 
-        'продажа', 'недорого', 'дешево', 'дорого', 'скидка', 'акция', 
-        'распродажа', 'оптом', 'розница', 'руб', 'рублей', 'уе',
-        'заказ', 'оплата', 'платеж', 'рассрочка', 'кредит', 'лизинг',
-        'доставка', 'самовывоз', 'отгрузка', 'поставка', 'транспорт', 'логистика',
-        'гарантия', 'возврат', 'обмен',
-        
-        # Наречия (Adverbs) - Явно коммерческие
-        'выгодно', 'дешево', 'быстро', 'срочно', 'недорого', 'бесплатно',
-        'качественно', 'профессионально', 'круглосуточно', 'ежедневно', 
-        'оптом', 'розницу', 'надежно', 'доступно',
-
-        # Прилагательные (Маркетинговые, не технические)
-        'выгодный', 'низкий', 'высокий', 'лучший', 'качественный', 'надежный',
-        'большой', 'малый', 'удобный', 'быстрый', 'бесплатный', 'хороший',
-        'доступный', 'индивидуальный', 'профессиональный', 'собственный',
-        'официальный', 'уникальный', 'широкий', 'огромный', 'различный',
-        'специальный', 'универсальный', 'прочий', 'другой', 'весь', 'любой',
-        'готовый', 'сложный', 'простой'
+        'купить', 'заказать', 'цена', 'цены', 'прайс', 'стоимость', 'продажа', 'недорого', 'дешево', 'дорого', 
+        'скидка', 'акция', 'распродажа', 'оптом', 'розница', 'руб', 'рублей', 'уе', 'заказ', 'оплата', 'платеж', 
+        'рассрочка', 'кредит', 'лизинг', 'доставка', 'самовывоз', 'отгрузка', 'поставка', 'транспорт', 'логистика', 
+        'гарантия', 'возврат', 'обмен', 
+        'выгодно', 'дешево', 'быстро', 'срочно', 'недорого', 'бесплатно', 'качественно', 'профессионально', 
+        'круглосуточно', 'ежедневно', 'оптом', 'розницу', 'надежно', 'доступно',
+        'выгодный', 'низкий', 'высокий', 'лучший', 'качественный', 'надежный', 'большой', 'малый', 'удобный', 
+        'быстрый', 'бесплатный', 'хороший', 'доступный', 'индивидуальный', 'профессиональный', 'собственный', 
+        'официальный', 'уникальный', 'широкий', 'огромный', 'различный', 'специальный', 'универсальный', 
+        'прочий', 'другой', 'весь', 'любой', 'готовый', 'сложный', 'простой'
     }
 
-    # Гео-корни
-    GEO_ROOTS = [
-        'москв', 'питер', 'спб', 'екб', 'екатерин', 'росси', 'рф', 'город', 'област',
-        'новгород', 'казан', 'киев', 'минск', 'алматы', 'самара', 'омск', 'челябин',
-        'ростов', 'уфа', 'волгоград', 'перм', 'краснояр', 'воронеж', 'саратов', 'краснодар',
-        'тюмен', 'ижевск', 'тольятти', 'барнаул', 'иркутск', 'ульяновск', 'хабаровск'
-    ]
-    
-    # Услуги
-    SERVICE_KEYWORDS = {
-        'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'укладка', 
-        'проектирование', 'изоляция', 'сверление', 'грунтовка', 'покраска', 'услуга',
-        'металлообработка', 'обработка', 'строительство', 'ремонт', 'производство', 'изготовление',
-        'нарезка', 'вальцовка', 'анодирование', 'перфорация'
-    }
+    GEO_ROOTS = ['москв', 'питер', 'спб', 'екб', 'екатерин', 'росси', 'рф', 'город', 'област', 'новгород', 'казан', 'киев', 'минск', 'алматы', 'самара', 'омск', 'челябин', 'ростов', 'уфа', 'волгоград', 'перм', 'краснояр', 'воронеж', 'саратов', 'краснодар', 'тюмен', 'ижевск', 'тольятти', 'барнаул', 'иркутск', 'ульяновск', 'хабаровск']
+    SERVICE_KEYWORDS = {'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'укладка', 'проектирование', 'изоляция', 'сверление', 'грунтовка', 'покраска', 'услуга', 'металлообработка', 'обработка', 'строительство', 'ремонт', 'производство', 'изготовление', 'нарезка', 'вальцовка', 'анодирование', 'перфорация'}
 
-    categories = {
-        'products': set(),
-        'services': set(),
-        'commercial': set(),
-        'dimensions': set()
-    }
-
-    # 2. ПРЕДВАРИТЕЛЬНАЯ ФИЛЬТРАЦИЯ
+    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set()}
     api_candidates = []
 
+    # 2. ПРЕДВАРИТЕЛЬНЫЙ ОТБОР
     for word in words_list:
-        word_lower = word.lower()
-
-        # Размеры
-        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or gost_pattern.search(word_lower) or word_lower.isdigit():
-            categories['dimensions'].add(word_lower)
-            continue
+        w_lower = word.lower()
         
-        # Явная коммерция по словарю
-        if word_lower in COMMERCIAL_WORDS:
-            categories['commercial'].add(word_lower)
-            continue
+        # Сразу ловим глаголы на -ться/-тся (частая ошибка API)
+        if w_lower.endswith('ться') or w_lower.endswith('тся'):
+            categories['commercial'].add(w_lower); continue
 
-        # UI мусор
-        if word_lower in SITE_UI_GARBAGE:
-            categories['commercial'].add(word_lower) # Можно создать отдельную категорию 'ui', но обычно commercial хватает
-            continue
+        if dim_pattern.search(w_lower) or grade_pattern.match(w_lower) or gost_pattern.search(w_lower) or w_lower.isdigit():
+            categories['dimensions'].add(w_lower); continue
         
-        # Гео
-        if any(root in word_lower for root in GEO_ROOTS):
-            categories['commercial'].add(word_lower)
-            continue
+        if w_lower in COMMERCIAL_WORDS or w_lower in SITE_UI_GARBAGE or any(r in w_lower for r in GEO_ROOTS):
+            categories['commercial'].add(w_lower); continue
+            
+        if w_lower in SERVICE_KEYWORDS or w_lower.endswith('обработка'):
+            categories['services'].add(w_lower); continue
+            
+        api_candidates.append(w_lower)
 
-        # Услуги
-        if word_lower in SERVICE_KEYWORDS or word_lower.endswith('обработка'):
-            categories['services'].add(word_lower)
-            continue
-
-        api_candidates.append(word_lower)
-
-    # 3. ЗАПРОС К API (Части речи)
-    yandex_results = {} 
-    
+    # 3. ЗАПРОСЫ К API / PYMORPHY
+    yandex_results = {}
     if api_candidates and yandex_key:
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             future_to_word = {executor.submit(get_yandex_dict_info, w, yandex_key): w for w in api_candidates}
             for future in concurrent.futures.as_completed(future_to_word):
-                orig_word = future_to_word[future]
-                try:
-                    res = future.result()
-                    yandex_results[orig_word] = res
-                except:
-                    yandex_results[orig_word] = {'lemma': orig_word, 'pos': 'unknown'}
+                orig = future_to_word[future]
+                try: yandex_results[orig] = future.result()
+                except: yandex_results[orig] = {'lemma': orig, 'pos': 'unknown'}
     else:
-        # Fallback на pymorphy
+        # Fallback если нет ключа
         for w in api_candidates:
+            pos = 'unknown'
+            lemma = w
             if morph:
                 p = morph.parse(w)[0]
-                pos = 'unknown'
+                lemma = p.normal_form
                 if 'NOUN' in p.tag: pos = 'noun'
-                if 'ADJF' in p.tag or 'ADJS' in p.tag: pos = 'adjective'
-                if 'VERB' in p.tag or 'INFN' in p.tag: pos = 'verb'
-                if 'ADVB' in p.tag: pos = 'adverb'
-                if 'PRTF' in p.tag: pos = 'participle'
-                yandex_results[w] = {'lemma': p.normal_form, 'pos': pos}
-            else:
-                yandex_results[w] = {'lemma': w, 'pos': 'unknown'}
+                elif 'ADJF' in p.tag or 'ADJS' in p.tag: pos = 'adjective'
+                elif 'VERB' in p.tag or 'INFN' in p.tag: pos = 'verb'
+                elif 'ADVB' in p.tag: pos = 'adverb'
+                elif 'PRTF' in p.tag: pos = 'participle'
+            yandex_results[w] = {'lemma': lemma, 'pos': pos}
 
     # 4. ФИНАЛЬНОЕ РАСПРЕДЕЛЕНИЕ
     for word in api_candidates:
         info = yandex_results.get(word, {'lemma': word, 'pos': 'unknown'})
-        lemma = info['lemma']
-        pos = info['pos']
-
-        if lemma in categories['commercial'] or lemma in categories['products']:
-            continue
+        lemma, pos = info['lemma'], info['pos']
         
+        if lemma in categories['commercial'] or lemma in categories['products']: continue
         if lemma in COMMERCIAL_WORDS or lemma in SITE_UI_GARBAGE:
+            categories['commercial'].add(lemma); continue
+
+        # Логика распределения
+        if pos in ['verb', 'adverb']:
             categories['commercial'].add(lemma)
-            continue
-
-        # --- ГЛАВНАЯ ЛОГИКА ---
-        
-        # 1. ГЛАГОЛЫ и НАРЕЧИЯ -> КОММЕРЦИЯ
-        # Глаголы (использоваться) и Наречия (срочно)
-        if pos == 'verb' or pos == 'adverb':
+        elif pos == 'noun' and len(lemma) > 2:
+            categories['products'].add(lemma)
+        elif pos == 'adjective' and len(lemma) > 2:
+            categories['products'].add(lemma)
+        elif pos == 'participle':
+            categories['products'].add(lemma)
+        elif pos == 'unknown' and len(lemma) > 2:
+            # Если словарь не знает слово, но оно длинное и не в стоп-листе - скорее всего это специфичный товар
+            categories['products'].add(lemma)
+        else:
             categories['commercial'].add(lemma)
-            continue
-            
-        # 2. СУЩЕСТВИТЕЛЬНЫЕ -> ТОВАРЫ
-        if pos == 'noun':
-            if len(lemma) > 2:
-                categories['products'].add(lemma)
-            continue
-
-        # 3. ПРИЛАГАТЕЛЬНЫЕ -> ТОВАРЫ (Технические)
-        # Коммерческие прилагательные (выгодный) уже отсеяны списком COMMERCIAL_WORDS выше
-        if pos == 'adjective':
-            if len(lemma) > 2:
-                categories['products'].add(lemma)
-            continue
-            
-        # 4. ПРИЧАСТИЯ -> ТОВАРЫ
-        if pos == 'participle':
-             categories['products'].add(lemma)
-             continue
-
-        # Если Unknown
-        if pos == 'unknown' and len(lemma) > 3:
-             categories['products'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
 
@@ -1083,7 +1010,7 @@ with tab_seo:
         st.checkbox("Нормировать по длине", True, key="settings_norm")
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
-    # --- ЛОГИКА АНАЛИЗА (ВНУТРИ ВКЛАДКИ) ---
+# --- ЛОГИКА АНАЛИЗА (ВНУТРИ ВКЛАДКИ) ---
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         settings = {'noindex': st.session_state.settings_noindex, 'alt_title': st.session_state.settings_alt, 'numbers': st.session_state.settings_numbers, 'norm': st.session_state.settings_norm, 'ua': st.session_state.settings_ua, 'custom_stops': st.session_state.settings_stops.split()}
@@ -1092,6 +1019,7 @@ with tab_seo:
         
         current_input_type = st.session_state.get("my_page_source_radio")
         
+        # 1. СКАЧИВАЕМ ВАШУ СТРАНИЦУ
         if current_input_type == "Релевантная страница на вашем сайте":
             with st.spinner("Скачивание вашей страницы..."):
                 my_data = parse_page(st.session_state.my_url_input, settings)
@@ -1100,14 +1028,14 @@ with tab_seo:
         elif current_input_type == "Исходный код страницы или текст":
             my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
 
+        # 2. ПОЛУЧАЕМ СПИСОК КОНКУРЕНТОВ
         target_urls_raw = []
         current_source_val = st.session_state.get("competitor_source_radio")
         current_source_type = "API" if "API" in current_source_val else "Ручной список"
 
         if current_source_type == "API":
-            # Проверка наличия ключа перед запуском
             if not ARSENKIN_TOKEN:
-                st.error("Отсутствует API токен Arsenkin. Введите его в настройках или в secrets.toml")
+                st.error("Отсутствует API токен Arsenkin. Введите его в настройках.")
                 st.stop()
                 
             with st.spinner("API Arsenkin..."):
@@ -1133,6 +1061,7 @@ with tab_seo:
 
         if not target_urls_raw: st.error("Нет конкурентов."); st.stop()
 
+        # 3. СКАЧИВАЕМ КОНКУРЕНТОВ И СЧИТАЕМ МЕТРИКИ
         comp_data_full = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(parse_page, u['url'], settings): u['url'] for u in target_urls_raw}
@@ -1144,32 +1073,29 @@ with tab_seo:
                 prog.progress(done / total)
         prog.empty()
 
-        with st.spinner("Расчет метрик..."):
-            st.session_state.analysis_results = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
+        with st.spinner("Расчет метрик и классификация..."):
+            # === ВОТ ЭТОТ КУСОК, КОТОРЫЙ ВЫ СПРАШИВАЛИ ===
+            res = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
+            st.session_state.analysis_results = res
             st.session_state.analysis_done = True
-
-            # ==========================================
-            # КЛАССИФИКАЦИЯ
-            # ==========================================
-            res = st.session_state.analysis_results
-
-            words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
-
-            if not words_to_check:
-                st.session_state.categorized_products = []
-                st.session_state.categorized_services = []
-                st.session_state.categorized_commercial = []
-                st.session_state.categorized_dimensions = []
-            else:
-                with st.spinner("Уточнение семантики через Яндекс Словарь..."):
-                    # Передаем текущий (возможно введенный вручную) ключ
-                    categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
-
-                st.session_state.categorized_products = categorized['products']
-                st.session_state.categorized_services = categorized['services']
-                st.session_state.categorized_commercial = categorized['commercial']
-                st.session_state.categorized_dimensions = categorized['dimensions']
-
+            
+            # 4. Classify (ИСПРАВЛЕНИЕ: БЕРЕМ ВСЕ СЛОВА БЕЗ ЛИМИТОВ)
+            # Берем "Важные" (High) + "Дополнительные" (Low)
+            high_words = [x['word'] for x in res.get('missing_semantics_high', [])]
+            low_words = [x['word'] for x in res.get('missing_semantics_low', [])]
+            
+            # Объединяем списки, чтобы ничего не потерять
+            all_missing_words = list(set(high_words + low_words))
+            
+            # Запускаем классификацию для ВСЕГО списка
+            with st.spinner(f"Классификация {len(all_missing_words)} слов..."):
+                cats = classify_semantics_with_api(all_missing_words, YANDEX_DICT_KEY)
+            
+            st.session_state.categorized_products = cats['products']
+            st.session_state.categorized_services = cats['services']
+            st.session_state.categorized_commercial = cats['commercial']
+            st.session_state.categorized_dimensions = cats['dimensions']
+            
             st.rerun()
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
@@ -1495,3 +1421,4 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
