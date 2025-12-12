@@ -43,6 +43,8 @@ if 'table_html_result' not in st.session_state:
 # --- НОВЫЕ СОСТОЯНИЯ ДЛЯ КЛАССИФИКАЦИИ ---
 if 'categorized_products' not in st.session_state:
     st.session_state.categorized_products = []
+if 'categorized_services' not in st.session_state:
+    st.session_state.categorized_services = []
 if 'categorized_commercial' not in st.session_state:
     st.session_state.categorized_commercial = []
 if 'categorized_dimensions' not in st.session_state:
@@ -61,7 +63,7 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 # 1. КОНФИГУРАЦИЯ СТРАНИЦЫ И СПИСКИ
 # ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO v2.1", page_icon="📊")
+st.set_page_config(layout="wide", page_title="GAR PRO v2.3 (Secure)", page_icon="📊")
 
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
@@ -95,6 +97,7 @@ def check_password():
         st.markdown('<div class="auth-logo-box"><h3>Вход в систему</h3></div>', unsafe_allow_html=True)
         password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
         if st.button("ВОЙТИ", type="primary", use_container_width=True):
+            # Простой пароль для примера
             if password == "jfV6Xel-Q7vp-_s2UYPO":
                 st.session_state.authenticated = True
                 st.rerun()
@@ -106,9 +109,30 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 3. НАСТРОЙКИ API И РЕГИОНОВ
+# 3. ПОЛУЧЕНИЕ API КЛЮЧЕЙ (БЕЗОПАСНО)
 # ==========================================
-ARSENKIN_TOKEN = "43acbbb60cb7989c05914ff21be45379"
+# Мы НЕ пишем ключи здесь. Мы читаем их из st.secrets
+
+# Попытка получить Arsenkin Token
+if "arsenkin_token" in st.session_state:
+    ARSENKIN_TOKEN = st.session_state.arsenkin_token
+else:
+    # Пробуем достать из secrets.toml
+    try:
+        ARSENKIN_TOKEN = st.secrets["api"]["arsenkin_token"]
+    except (FileNotFoundError, KeyError):
+        ARSENKIN_TOKEN = None
+
+# Попытка получить Yandex Key
+if "yandex_dict_key" in st.session_state:
+    YANDEX_DICT_KEY = st.session_state.yandex_dict_key
+else:
+    # Пробуем достать из secrets.toml
+    try:
+        YANDEX_DICT_KEY = st.secrets["api"]["yandex_dict_key"]
+    except (FileNotFoundError, KeyError):
+        YANDEX_DICT_KEY = None
+
 
 REGION_MAP = {
     "Москва": {"ya": 213, "go": 1011969},
@@ -194,14 +218,44 @@ except Exception as e:
     USE_NLP = False
     st.sidebar.error(f"Ошибка загрузки NLP: {e}")
 
-# --- ФУНКЦИЯ КЛАССИФИКАЦИИ СЕМАНТИКИ (ИСПРАВЛЕННАЯ v2.3) ---
-def classify_semantics_perfect(words_list, morph):
-    # ==========================================
-    # 1. СПИСКИ-ИСКЛЮЧЕНИЯ (ЧЕРНЫЕ СПИСКИ)
-    # ==========================================
+# --- ФУНКЦИЯ ЗАПРОСА К ЯНДЕКС СЛОВАРЮ ---
+def get_yandex_dict_info(text, api_key):
+    """
+    Возвращает нормальную форму (лемму) и часть речи (pos) через API Яндекса.
+    """
+    if not api_key:
+        # Если ключа нет, просто возвращаем слово как есть
+        return {'lemma': text, 'pos': 'unknown'}
+        
+    url = "https://dictionary.yandex.net/api/v1/dicservice.json/lookup"
+    params = {
+        'key': api_key,
+        'lang': 'ru-ru', 
+        'text': text,
+        'ui': 'ru'
+    }
+    try:
+        r = requests.get(url, params=params, timeout=2)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get('def'):
+                # Берем первое определение
+                first_def = data['def'][0]
+                lemma = first_def.get('text', text)
+                pos = first_def.get('pos', 'unknown')
+                return {'lemma': lemma, 'pos': pos}
+    except:
+        pass
+    return {'lemma': text, 'pos': 'unknown'}
+
+# --- ФУНКЦИЯ КЛАССИФИКАЦИИ С API ЯНДЕКСА ---
+def classify_semantics_with_api(words_list, yandex_key):
+    # 1. СПИСКИ-ИСКЛЮЧЕНИЯ
     
-    # 1.1 UI И ОБЩИЕ СЛОВА САЙТА (Это НЕ товары и НЕ услуги)
-    # Слова, которые есть почти на любом сайте.
+    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
+    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
+    gost_pattern = re.compile(r'(гост|din|ту|iso|ст|сп)\s?\d+', re.IGNORECASE)
+
     SITE_UI_GARBAGE = {
         'меню', 'поиск', 'главная', 'карта', 'сайт', 'личный', 'кабинет', 
         'вход', 'регистрация', 'корзина', 'избранное', 'сравнение', 'профиль',
@@ -215,11 +269,10 @@ def classify_semantics_perfect(words_list, morph):
         'категория', 'раздел', 'список', 'вид', 'тип', 'класс', 'серия',
         'рейтинг', 'наличие', 'склад', 'производитель', 'бренд', 'марка',
         'вес', 'длина', 'ширина', 'высота', 'толщина', 'диаметр', 'размер',
-        'объем', 'масса', 'тонна', 'метр', 'шт', 'кг', 'упаковка', 'цена'
+        'объем', 'масса', 'тонна', 'метр', 'шт', 'кг', 'упаковка', 'цена',
+        'интернет', 'магазин', 'каталог', 'год'
     }
 
-    # 1.2 КОММЕРЦИЯ (Строго деньги и логистика)
-    # Доставка перенесена сюда, так как это условие поставки.
     COMMERCIAL_WORDS = {
         'купить', 'заказать', 'цена', 'цены', 'прайс', 'стоимость', 
         'продажа', 'недорого', 'дешево', 'дорого', 'скидка', 'акция', 
@@ -229,120 +282,112 @@ def classify_semantics_perfect(words_list, morph):
         'гарантия', 'возврат', 'обмен'
     }
 
-    # 1.3 ГЕО (Города и регионы)
-    # Если слово здесь - оно улетает в коммерцию/гео
     GEO_ROOTS = [
         'москв', 'питер', 'спб', 'екб', 'екатерин', 'росси', 'рф', 'город', 'област',
         'новгород', 'казан', 'киев', 'минск', 'алматы', 'самара', 'омск', 'челябин',
         'ростов', 'уфа', 'волгоград', 'перм', 'краснояр', 'воронеж', 'саратов', 'краснодар',
         'тюмен', 'ижевск', 'тольятти', 'барнаул', 'иркутск', 'ульяновск', 'хабаровск'
     ]
-
-    # Регулярки
-    # Размеры: 2х200, 10*10, 50x50
-    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
-    # ГОСТы и Марки с цифрами (Ст3, ГОСТ 1050)
-    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
-    gost_pattern = re.compile(r'(гост|din|ту|iso)\s?\d+', re.IGNORECASE)
-
-    # ==========================================
-    # 2. ИНИЦИАЛИЗАЦИЯ
-    # ==========================================
-    categories = {
-        'products': set(),    # Товары
-        'services': set(),    # Услуги (процессы)
-        'commercial': set(),  # Коммерция + Гео + UI мусор
-        'dimensions': set(),  # Размеры
-        'other': set()
+    
+    SERVICE_KEYWORDS = {
+        'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'укладка', 
+        'проектирование', 'изоляция', 'сверление', 'грунтовка', 'покраска', 'услуга'
     }
 
-    # ==========================================
-    # 3. ЛОГИКА (Sieve Method)
-    # ==========================================
+    categories = {
+        'products': set(),
+        'services': set(),
+        'commercial': set(),
+        'dimensions': set()
+    }
+
+    # 2. ПРЕДВАРИТЕЛЬНАЯ ФИЛЬТРАЦИЯ
+    api_candidates = []
+
     for word in words_list:
         word_lower = word.lower()
-        
-        # --- СИТО 1: ТЕХНИЧКА (Размеры) ---
-        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or gost_pattern.search(word_lower):
-            categories['dimensions'].add(word_lower)
-            continue
-        
-        # Если слово - просто цифра, это размер/количество
-        if word_lower.isdigit():
-            categories['dimensions'].add(word_lower)
-            continue
 
-        # Лемматизация
+        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or gost_pattern.search(word_lower) or word_lower.isdigit():
+            categories['dimensions'].add(word_lower)
+            continue
+        
         if morph:
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
-            tag = p.tag
         else:
             lemma = word_lower
-            tag = set()
 
-        # --- СИТО 2: ЧЕРНЫЕ СПИСКИ (UI и Коммерция) ---
-        
-        # 2.1 UI Мусор -> в Коммерцию (или можно сделать отдельную категорию 'trash')
-        if lemma in SITE_UI_GARBAGE:
-            categories['commercial'].add(lemma) # Считаем это "общим" словом
-            continue
-            
-        # 2.2 Коммерция (Доставка, Оплата) -> в Коммерцию
-        if lemma in COMMERCIAL_WORDS:
+        if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS:
             categories['commercial'].add(lemma)
             continue
-            
-        # 2.3 Гео -> в Коммерцию
-        if any(root in lemma for root in GEO_ROOTS) or (morph and 'Geox' in tag):
+        
+        if any(root in lemma for root in GEO_ROOTS):
             categories['commercial'].add(lemma)
             continue
 
-        # --- СИТО 3: УСЛУГИ (Морфология, а не корни) ---
-        # Мы НЕ используем корни типа "резк", "свар".
-        # Мы ищем признаки ПРОЦЕССА.
+        if lemma in SERVICE_KEYWORDS:
+            categories['services'].add(lemma)
+            continue
+
+        api_candidates.append(word_lower)
+
+    # 3. ЗАПРОС К API YANDEX
+    yandex_results = {} 
+    
+    if api_candidates and yandex_key:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_word = {executor.submit(get_yandex_dict_info, w, yandex_key): w for w in api_candidates}
+            for future in concurrent.futures.as_completed(future_to_word):
+                orig_word = future_to_word[future]
+                try:
+                    res = future.result()
+                    yandex_results[orig_word] = res
+                except:
+                    yandex_results[orig_word] = {'lemma': orig_word, 'pos': 'unknown'}
+    else:
+        # Если ключа нет, используем fallback
+        for w in api_candidates:
+             yandex_results[w] = {'lemma': w, 'pos': 'unknown'}
+
+    # 4. РАСПРЕДЕЛЕНИЕ
+    for word in api_candidates:
+        info = yandex_results.get(word, {'lemma': word, 'pos': 'unknown'})
+        lemma = info['lemma']
+        pos = info['pos']
         
+        if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS:
+            categories['commercial'].add(lemma)
+            continue
+
         is_service = False
-        
-        # 3.1 Глаголы и Инфинитивы (Гнуть, Резать, Варить) - всегда услуги
-        if morph and ('VERB' in tag or 'INFN' in tag):
-            is_service = True
-            
-        # 3.2 Существительные на -НИЕ / -ЕНИЕ (Сверление, Хранение, Проектирование)
-        # Это самый надежный признак процесса в русском языке без словаря.
         if lemma.endswith('ние') or lemma.endswith('ение'):
             is_service = True
-            
-        # 3.3 (Опционально) Слова на -ЦИЯ (Изоляция, Оцинковка - сложно, мб товар)
-        # Лучше не рисковать. "Изоляция" может быть материалом (товар).
+        elif lemma in SERVICE_KEYWORDS:
+            is_service = True
         
         if is_service:
             categories['services'].add(lemma)
             continue
 
-        # --- СИТО 4: ТОВАРЫ (Остаток) ---
-        # Если это Существительное или Прилагательное, и оно не попало в списки выше
-        if morph:
-            if 'NOUN' in tag or 'ADJF' in tag or 'ADJS' in tag:
-                if len(lemma) > 2: # Игнор предлогов
-                    categories['products'].add(lemma)
-            else:
-                categories['other'].add(lemma)
-        else:
-            # Fallback без морфологии
+        if pos == 'noun':
             if len(lemma) > 2:
                 categories['products'].add(lemma)
+        elif pos == 'unknown':
+            if len(lemma) > 2:
+                categories['products'].add(lemma)
+        else:
+            categories['commercial'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
 
-# --- ФУНКЦИЯ РАБОТЫ С API ARSENKIN ---
-def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
+# --- ФУНКЦИЯ API ARSENKIN ---
+def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
 
     headers = {
-        "Authorization": f"Bearer {ARSENKIN_TOKEN}",
+        "Authorization": f"Bearer {api_token}",
         "Content-type": "application/json"
     }
 
@@ -434,7 +479,6 @@ def get_arsenkin_urls(query, engine_type, region_name, depth_val=10):
            collect[0][0] and isinstance(collect[0][0], list):
             final_url_list = collect[0][0]
         else:
-            # Альтернативная структура
             unique_urls = set()
             for engine_data in collect:
                 if isinstance(engine_data, dict):
@@ -542,7 +586,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for k, v in c_forms.items(): all_forms_map[k].update(v)
 
     if not comp_docs:
-        # Fallback empty logic
         return { "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": pd.DataFrame(),
             "my_score": {"width": 0, "depth": 0}, "missing_semantics_high": [], "missing_semantics_low": [] }
 
@@ -939,7 +982,25 @@ with tab_seo:
             st.session_state.start_analysis_flag = True
 
     with col_sidebar:
-        st.markdown("#####⚙️ Настройки")
+        st.markdown("#####⚙️ Настройки API")
+        
+        # ЛОГИКА ВВОДА КЛЮЧЕЙ ЕСЛИ ИХ НЕТ В СЕКРЕТАХ
+        # Если ключи не найдены в st.secrets (например, локальный запуск без файла secrets.toml),
+        # предложим ввести их вручную.
+        
+        if not ARSENKIN_TOKEN:
+             new_arsenkin = st.text_input("Arsenkin Token", type="password", key="input_arsenkin")
+             if new_arsenkin:
+                 st.session_state.arsenkin_token = new_arsenkin
+                 ARSENKIN_TOKEN = new_arsenkin # Обновляем для текущего прогона
+        
+        if not YANDEX_DICT_KEY:
+             new_yandex = st.text_input("Yandex Dict Key", type="password", key="input_yandex")
+             if new_yandex:
+                 st.session_state.yandex_dict_key = new_yandex
+                 YANDEX_DICT_KEY = new_yandex
+
+        st.markdown("#####⚙️ Настройки поиска")
         st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
         st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
         st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
@@ -957,7 +1018,6 @@ with tab_seo:
 
         my_data, my_domain, my_serp_pos = None, "", 0
         
-        # Получаем тип ввода из session_state
         current_input_type = st.session_state.get("my_page_source_radio")
         
         if current_input_type == "Релевантная страница на вашем сайте":
@@ -969,13 +1029,17 @@ with tab_seo:
             my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
 
         target_urls_raw = []
-        # Получаем тип источника из session_state
         current_source_val = st.session_state.get("competitor_source_radio")
         current_source_type = "API" if "API" in current_source_val else "Ручной список"
 
         if current_source_type == "API":
+            # Проверка наличия ключа перед запуском
+            if not ARSENKIN_TOKEN:
+                st.error("Отсутствует API токен Arsenkin. Введите его в настройках или в secrets.toml")
+                st.stop()
+                
             with st.spinner("API Arsenkin..."):
-                found = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region)
+                found = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN)
                 if not found: st.stop()
 
                 excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
@@ -1009,31 +1073,28 @@ with tab_seo:
         prog.empty()
 
         with st.spinner("Расчет метрик..."):
-            # 1. Считаем математику (этот код у вас уже есть, его не трогаем)
             st.session_state.analysis_results = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
             st.session_state.analysis_done = True
 
             # ==========================================
-            # 2. НОВАЯ ЛОГИКА КЛАССИФИКАЦИИ (ВСТАВЛЯТЬ СЮДА)
+            # КЛАССИФИКАЦИЯ
             # ==========================================
             res = st.session_state.analysis_results
 
-            # Берем слова только из "Важные" (missing_semantics_high)
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
 
             if not words_to_check:
-                # Если список пуст, очищаем категории
                 st.session_state.categorized_products = []
                 st.session_state.categorized_services = []
                 st.session_state.categorized_commercial = []
                 st.session_state.categorized_dimensions = []
             else:
-                # Вызываем новую "Идеальную" функцию
-                categorized = classify_semantics_perfect(words_to_check, morph)
+                with st.spinner("Уточнение семантики через Яндекс Словарь..."):
+                    # Передаем текущий (возможно введенный вручную) ключ
+                    categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
 
-                # Сохраняем результаты в 4 категории
                 st.session_state.categorized_products = categorized['products']
-                st.session_state.categorized_services = categorized['services']     # <-- Новый блок
+                st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
                 st.session_state.categorized_dimensions = categorized['dimensions']
 
@@ -1044,22 +1105,28 @@ with tab_seo:
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
 
-        # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (3 БЛОКА) ---
-        with st.expander("🛒 Результат автоматической группировки слов (из блока ВАЖНЫЕ)", expanded=True):
-            c1, c2, c3 = st.columns(3)
+        # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (4 БЛОКА) ---
+        with st.expander("🛒 Результат группировки слов (С учетом Яндекс API)", expanded=True):
+            c1, c2 = st.columns(2)
+            c3, c4 = st.columns(2)
 
             # БЛОК 1: ТОВАРЫ
             with c1:
-                st.info(f"🧱 Товарные слова ({len(st.session_state.categorized_products)})")
+                st.info(f"🧱 Товары / Objects ({len(st.session_state.categorized_products)})")
                 st.caption(", ".join(st.session_state.categorized_products))
 
-            # БЛОК 2: КОММЕРЦИЯ (Глаголы, Деньги, Города)
+            # БЛОК 2: УСЛУГИ
             with c2:
-                st.warning(f"💰 Коммерция / Гео ({len(st.session_state.categorized_commercial)})")
+                st.error(f"🛠️ Услуги / Действия ({len(st.session_state.categorized_services)})")
+                st.caption(", ".join(st.session_state.categorized_services))
+            
+            # БЛОК 3: КОММЕРЦИЯ (Глаголы, Деньги, Города)
+            with c3:
+                st.warning(f"💰 Коммерция / Гео / Общее ({len(st.session_state.categorized_commercial)})")
                 st.caption(", ".join(st.session_state.categorized_commercial))
 
-            # БЛОК 3: РАЗМЕРЫ И МАРКИ
-            with c3:
+            # БЛОК 4: РАЗМЕРЫ И МАРКИ
+            with c4:
                 dims = st.session_state.get('categorized_dimensions', [])
                 st.success(f"📏 Размеры и Марки ({len(dims)})")
                 st.caption(", ".join(dims))
@@ -1243,4 +1310,3 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
-
