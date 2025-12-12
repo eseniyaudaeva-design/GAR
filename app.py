@@ -1201,7 +1201,7 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (SMART MASS PRODUCTION v12)
+# Вкладка 3: ТЕГИ (SMART MASS PRODUCTION v15)
 # ------------------------------------------
 with tab_tags:
     st.title("🏷️ Генератор плитки тегов (Smart SEO)")
@@ -1210,8 +1210,10 @@ with tab_tags:
     **🚀 Режим Smart Mass Production:**
     1. Парсит категорию и собирает страницы, куда нужно внедрить теги.
     2. Берет ваши ключевые слова и ищет релевантные ссылки в базе (`.txt`).
-    3. **✨ MAGIС:** Генерирует анкоры ссылок **автоматически на основе URL**, используя обратный транслит и **Яндекс.Спеллер**.
-       *Пример: ссылка `.../anody/` -> анкор "Аноды"*.
+    3. **✨ MAGIС:** Генерирует анкоры ссылок автоматически:
+       *   **ГОСТ:** `09g2s` -> **09Г2С**
+       *   **Импорт:** `s355j2` -> **S355J2**
+       *   **Текст:** `anody` -> **Аноды** (через Яндекс.Спеллер)
     """)
 
     # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
@@ -1244,7 +1246,7 @@ with tab_tags:
             pass
         return text
 
-def smart_reverse_translit(slug):
+    def smart_reverse_translit(slug):
         """
         Умный парсинг Slug -> Человеческое название (v15: Hybrid GOST/Latin)
         """
@@ -1366,7 +1368,6 @@ def smart_reverse_translit(slug):
         return result[0].upper() + result[1:] if result else ""
 
     # --- ИНТЕРФЕЙС ---
-    # Вот здесь была ошибка отступа. Теперь всё выровнено по 4 пробела.
     col_t1, col_t2 = st.columns([1, 1])
     
     with col_t1:
@@ -1444,7 +1445,7 @@ def smart_reverse_translit(slug):
         status_box.write(f"✅ Товары сопоставлены: {len(product_candidates_map)} шт.")
 
         # 3. Генерация
-        status_box.write("🧠 Генерация анкоров (Smart Translit)...")
+        status_box.write("🧠 Генерация анкоров (Smart Translit v15)...")
         final_rows = []
         prog_bar = st.progress(0)
         
@@ -1465,7 +1466,7 @@ def smart_reverse_translit(slug):
                     if valid_candidates:
                         chosen_url = random.choice(valid_candidates)
                         
-                        # SMART NAME
+                        # SMART NAME GENERATION
                         try:
                             parsed = urlparse(chosen_url)
                             path_parts = parsed.path.strip('/').split('/')
@@ -1552,6 +1553,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
