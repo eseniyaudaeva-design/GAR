@@ -1137,12 +1137,12 @@ with tab_seo:
 
             # БЛОК 1: ТОВАРЫ
             with c1:
-                st.info(f"🧱 Товары / Objects ({len(st.session_state.categorized_products)})")
+                st.info(f"🧱 Товары ({len(st.session_state.categorized_products)})")
                 st.caption(", ".join(st.session_state.categorized_products))
 
             # БЛОК 2: УСЛУГИ
             with c2:
-                st.error(f"🛠️ Услуги / Действия ({len(st.session_state.categorized_services)})")
+                st.error(f"🛠️ Услуги ({len(st.session_state.categorized_services)})")
                 st.caption(", ".join(st.session_state.categorized_services))
             
             # БЛОК 3: КОММЕРЦИЯ (Глаголы, Деньги, Города)
@@ -1153,7 +1153,7 @@ with tab_seo:
             # БЛОК 4: РАЗМЕРЫ И МАРКИ
             with c4:
                 dims = st.session_state.get('categorized_dimensions', [])
-                st.success(f"📏 Размеры и Марки ({len(dims)})")
+                st.success(f"📏 Размеры и марки ({len(dims)})")
                 st.caption(", ".join(dims))
 
         high = results.get('missing_semantics_high', [])
@@ -1335,5 +1335,6 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
