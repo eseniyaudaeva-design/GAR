@@ -1261,6 +1261,7 @@ with tab_tags:
             '12x18n10t': '12Х18Н10Т', '08x18n10': '08Х18Н10',
             '40x': '40Х', '20x': '20Х', '65g': '65Г',
             'd16t': 'Д16Т', 'amg': 'АМг', 'ad31': 'АД31',
+            'tig': 'TIG'
             # Полимеры
             'pvc': 'ПВХ', 'pnd': 'ПНД', 'pvd': 'ПВД',
             # Сокращения
@@ -1553,6 +1554,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
