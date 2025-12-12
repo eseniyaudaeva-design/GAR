@@ -1226,108 +1226,174 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (ВЕРСИЯ v11 - Auto-Fix через Yandex Speller API)
+# Вкладка 3: ТЕГИ (V12 - Mass Gen + Auto-Fix Yandex Speller)
 # ------------------------------------------
+with tab_tags:
+    st.title("🏷️ Генератор плитки тегов (Mass Production + AI Fix)")
+    
+    st.markdown("""
+    **Логика работы v12:**
+    1. Скрипт парсит **URL категории** (собирает цели).
+    2. Берет список **Товаров** (Ключей).
+    3. Ищет в вашем **.txt файле** наиболее подходящую ссылку для каждого товара.
+    4. **✨ MAGIС:** Берет "хвост" найденной ссылки (slug), делает обратный транслит и **исправляет ошибки через Яндекс.Спеллер**.
+       *Пример: нашел ссылку `.../setka-stalnaya/` -> превратил в текст "Сетка стальная"*
+    """)
 
-def spell_check_yandex(text):
-    """
-    Отправляет текст в Яндекс.Спеллер и возвращает исправленную версию.
-    Это избавляет нас от написания словарей вручную.
-    """
-    if not text: return ""
+    # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ВНУТРИ ВКЛАДКИ) ---
+    def spell_check_yandex(text):
+        """Отправляет текст в Яндекс.Спеллер для исправления"""
+        if not text: return ""
+        url = "https://speller.yandex.net/services/spellservice.json/checkText"
+        params = {"text": text, "lang": "ru", "options": 518}
+        try:
+            r = requests.get(url, params=params, timeout=1.0)
+            if r.status_code == 200:
+                data = r.json()
+                fixed_text = text
+                # Исправляем ошибки
+                for error in data:
+                    if error.get('s'):
+                        fixed_text = fixed_text.replace(error['word'], error['s'][0])
+                return fixed_text
+        except:
+            pass
+        return text
+
+    def improved_reverse_translit(text):
+        """Транслит (Latin -> Cyrillic) + Яндекс.Спеллер"""
+        # 1. Чистка
+        text = text.lower().strip()
+        # Убираем расширения файлов если есть
+        text = re.sub(r'\.html|\.php|\.htm', '', text)
+        text = text.replace('_', ' ').replace('/', '')
+        text = text.replace('-', ' ')
+
+        # 2. Спецсимволы
+        replacements = [
+            ('shch', 'щ'), ('sch', 'щ'), ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
+            ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), ('ts', 'ц')
+        ]
+        for eng, rus in replacements:
+            text = text.replace(eng, rus)
+
+        # 3. Буквы
+        mapping = {
+            'a': 'а', 'b': 'б', 'c': 'к', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
+            'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
+            'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
+            'v': 'в', 'w': 'в', 'x': 'кс', 'z': 'з', 'y': 'и' # y часто как и
+        }
+        
+        # Улучшенная обработка окончаний (простая эвристика)
+        text = text.replace('yy', 'ый').replace('iy', 'ий').replace('ij', 'ий')
+        
+        chars = []
+        for c in text:
+            chars.append(mapping.get(c, c))
+        raw_rus = "".join(chars)
+
+        # 4. Проверка орфографии Яндексом
+        final_text = spell_check_yandex(raw_rus)
+        return final_text.capitalize()
+
+    # --- ИНТЕРФЕЙС ---
+    col_t1, col_t2 = st.columns([1, 1])
     
-    url = "https://speller.yandex.net/services/spellservice.json/checkText"
-    params = {
-        "text": text,
-        "lang": "ru",
-        "options": 518 # Игнорировать URL, цифры и т.д.
-    }
-    
-    try:
-        # Отправляем запрос (таймаут 1 сек, чтобы не висело долго)
-        r = requests.get(url, params=params, timeout=1.5)
-        if r.status_code == 200:
-            data = r.json()
-            # Яндекс возвращает список ошибок. Проходим по ним и заменяем.
-            # data пример: [{'word': 'филтровая', 's': ['фильтровая']}]
+    with col_t1:
+        st.markdown("##### 🔗 Источник")
+        category_url = st.text_input("URL Категории (откуда собрать список подфильтров)", placeholder="https://site.ru/catalog/truba/")
+        
+        st.markdown("##### 📂 База ссылок")
+        uploaded_file = st.file_uploader("Загрузите файл ссылок (.txt)", type=["txt"], key="urls_uploader_mass_v4")
+
+    with col_t2:
+        st.markdown("##### 📝 Ключевые слова (Товары)")
+        raw_products = st.session_state.get('categorized_products', [])
+        default_text = "\n".join(raw_products) if raw_products else ""
+        
+        products_input = st.text_area(
+            "Список товаров (будут искаться в базе):", 
+            value=default_text, 
+            height=200, 
+            key="tags_products_edit_v12"
+        )
+        products = [line.strip() for line in products_input.split('\n') if line.strip()]
+
+    # --- ЗАПУСК ---
+    st.markdown("---")
+    if st.button("🚀 Спарсить и собрать Excel (Smart)", key="btn_tags_smart_gen", disabled=(not products or not uploaded_file or not category_url)):
+        
+        status_box = st.status("🚀 Запуск процесса...", expanded=True)
+        
+        # 1. Парсинг категории
+        status_box.write(f"🕵️ Парсим категорию: {category_url}")
+        target_urls_list = []
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            r = requests.get(category_url, headers=headers, timeout=10)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                tags_container = soup.find(class_='popular-tags-inner')
+                if tags_container:
+                    for link in tags_container.find_all('a'):
+                        href = link.get('href')
+                        if href: target_urls_list.append(urljoin(category_url, href))
+        except Exception as e:
+            status_box.error(f"Ошибка парсинга: {e}")
+            st.stop()
             
-            # Сортируем ошибки с конца, чтобы замена не сбила индексы (хотя replace проще)
-            fixed_text = text
-            for error in data:
-                if error.get('s'): # Если есть варианты исправления
-                    wrong_word = error['word']
-                    correct_word = error['s'][0] # Берем первый (самый вероятный) вариант
+        if not target_urls_list:
+            status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)")
+            st.stop()
+            
+        status_box.write(f"✅ Найдено целей: {len(target_urls_list)}")
+
+        # 2. Чтение базы ссылок
+        status_box.write("📂 Индексация базы ссылок...")
+        stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
+        all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
+        
+        # Карта: Товар -> Список ссылок
+        product_candidates_map = {}
+        for p in products:
+            tr = transliterate_text(p)
+            if len(tr) >= 3:
+                matches = [u for u in all_txt_links if tr in u]
+                if matches: product_candidates_map[p] = matches
+        
+        status_box.write(f"✅ Товары сопоставлены ({len(product_candidates_map)} шт.)")
+
+        # 3. Генерация (с Яндексом)
+        status_box.write("🧠 Генерация 'умных' анкоров через Яндекс.Спеллер...")
+        final_rows = []
+        prog_bar = st.progress(0)
+        
+        # Создаем сессию для ускорения запросов к API
+        with requests.Session() as session:
+            for i, target_url in enumerate(target_urls_list):
+                current_page_tags = []
+                
+                for prod_name, candidates in product_candidates_map.items():
+                    # Исключаем self-link
+                    valid = [u for u in candidates if u.rstrip('/') != target_url.rstrip('/')]
                     
-                    # Заменяем слово целиком (с границами слов, чтобы не задеть части)
-                    # Но для простоты в тегах можно и обычный replace
-                    fixed_text = fixed_text.replace(wrong_word, correct_word)
-            
-            return fixed_text
-    except:
-        # Если интернета нет или ошибка - возвращаем как было
-        pass
-        
-    return text
-
-def improved_reverse_translit(text):
-    """
-    Транслит (Латиница -> Кириллица) + Яндекс.Спеллер
-    """
-    # 1. Базовая чистка
-    text = text.lower().replace('_', ' ').replace('/', '')
-    text = text.replace('-', ' ')
-
-    # 2. Группы символов
-    replacements = [
-        ('shch', 'щ'), ('sch', 'щ'), ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
-        ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), ('ts', 'ц')
-    ]
-    for eng, rus in replacements:
-        text = text.replace(eng, rus)
-
-    # 3. Базовые замены букв
-    text = text.replace('c', 'ц')
-    text = text.replace('yy', 'ый')
-    text = text.replace('iy', 'ий')
-    text = text.replace('j', 'й')
-    text = re.sub(r'(?<=[aeiouаеёиоуыэюя])y', 'й', text)
-    text = text.replace('y', 'ы')
-
-    mapping = {
-        'a': 'а', 'b': 'б', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
-        'h': 'х', 'i': 'и', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
-        'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
-        'v': 'в', 'w': 'в', 'x': 'х', 'z': 'з'
-    }
-    
-    chars = [mapping.get(c, c) for c in text]
-    raw_rus = "".join(chars)
-
-    # 4. --- МАГИЯ: ОТПРАВЛЯЕМ ЯНДЕКСУ НА ПРОВЕРКУ ---
-    # Например: "сетка филтровая" -> "сетка фильтровая"
-    # "балка сталная" -> "балка стальная"
-    final_text = spell_check_yandex(raw_rus)
-
-    return final_text.capitalize()
-
-
-def generate_smart_name(word, base_noun):
-    """Генерация имени если нет ссылки (через морфологию)"""
-    word = word.strip()
-    if not base_noun or not morph:
-        return word.capitalize()
-    try:
-        parsed_noun = morph.parse(base_noun)[0]
-        noun_tag = parsed_noun.tag
-        parsed_word = morph.parse(word)[0]
-        
-        if 'ADJF' in parsed_word.tag or 'PRTF' in parsed_word.tag:
-            inflected = parsed_word.inflect({noun_tag.gender, noun_tag.number} - {None})
-            if inflected:
-                return f"{inflected.word.capitalize()} {base_noun.lower()}"
-        return word.capitalize()
-    except:
-        return word.capitalize()
+                    if valid:
+                        chosen_url = random.choice(valid)
+                        
+                        # --- ЛОГИКА ИМЕНОВАНИЯ (SMART) ---
+                        # Пытаемся вытащить slug из URL
+                        try:
+                            # Берем последнюю часть URL (slug)
+                            parsed = urlparse(chosen_url)
+                            path_parts = parsed.path.strip('/').split('/')
+                            slug = path_parts[-1] if path_parts else prod_name
+                            
+                            # Если slug слишком короткий или странный, берем имя товара
+                            if len(slug) < 3:
+                                anchor_text = prod_name.capitalize()
+                            else:
+                                # Магия: Slug -> Russian Text ->
 
 # ------------------------------------------
 # Вкладка 3: ТЕГИ (АВТОНОМНЫЙ РЕЖИМ + РЕДАКТИРОВАНИЕ)
@@ -1539,6 +1605,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
