@@ -192,14 +192,13 @@ except Exception as e:
     USE_NLP = False
     st.sidebar.error(f"Ошибка загрузки NLP: {e}")
 
-# --- ФУНКЦИЯ КЛАССИФИКАЦИИ СЕМАНТИКИ (NEW) ---
+# --- ИСПРАВЛЕННАЯ ФУНКЦИЯ КЛАССИФИКАЦИИ ---
 def classify_semantics_smart(words_list, morph):
     """
-    1. Приводит слова к лемме (нормальной форме).
-    2. Распределяет по категориям (Размеры, Коммерция, Товары).
-    Возвращает словарь со списками ЛЕММ.
+    1. Приводит слова к лемме.
+    2. Распределяет по категориям.
     """
-    # Корни для поиска коммерции (работают по леммам)
+    # РАСШИРЕННЫЙ СПИСОК КОРНЕЙ
     commercial_roots = [
         'куп', 'цен', 'стоим', 'прайс', 'продаж',
         'заказ', 'достав', 'плат', 'оплат', 
@@ -210,10 +209,10 @@ def classify_semantics_smart(words_list, morph):
         'гарант', 'сертиф', 'отзыв', 
         'руб', 'грн', 'usd', 'eur', 
         'наличи', 'склад', 'магазин', 
-        'менедж', 'консульт', 'вопрос', 'клиент'
+        'менедж', 'консульт', 'вопрос', 'клиент',
+        'возврат', 'обмен', 'обрат' # <-- Добавил ваши слова
     ]
 
-    # Регулярки
     dim_pattern = re.compile(r'(\d+[хx*]\d+)|(\d+\s?мм)|(l=\d+)|(dn\d+)|(d\d+)|(ф\d+)', re.IGNORECASE)
     standard_pattern = re.compile(r'(гост|din|ту)\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
@@ -227,18 +226,19 @@ def classify_semantics_smart(words_list, morph):
     }
 
     for word in words_list:
-        # 1. ПРИНУДИТЕЛЬНАЯ ЛЕММАТИЗАЦИЯ
         if morph:
-            p = morph.parse(word.lower())[0]
-            lemma = p.normal_form 
-            tag = p.tag
+            try:
+                p = morph.parse(word.lower())[0]
+                lemma = p.normal_form 
+                tag = p.tag
+            except:
+                lemma = word.lower()
+                tag = set()
         else:
             lemma = word.lower()
             tag = set()
 
-        # 2. ПРОВЕРКИ (Используем lemma)
-        
-        # Размеры и стандарты
+        # 1. РАЗМЕРЫ (Сразу относим их и в dimensions)
         if dim_pattern.search(lemma) or standard_pattern.search(lemma):
             categories['dimensions'].add(lemma)
             continue
@@ -246,12 +246,12 @@ def classify_semantics_smart(words_list, morph):
             categories['dimensions'].add(lemma) 
             continue
 
-        # Коммерция (по корням)
+        # 2. КОММЕРЦИЯ (Проверка корней)
         if any(root in lemma for root in commercial_roots):
             categories['commercial'].add(lemma)
             continue
 
-        # Морфология
+        # 3. МОРФОЛОГИЯ
         if morph:
             # Глаголы -> Коммерция
             if 'VERB' in tag or 'INFN' in tag:
@@ -261,11 +261,12 @@ def classify_semantics_smart(words_list, morph):
             if 'NOUN' in tag:
                 categories['products'].add(lemma)
                 continue
-            # Прилагательные -> Характеристики
+            # Прилагательные -> Товарные характеристики (тоже кидаем в товары)
             if 'ADJF' in tag or 'ADJS' in tag:
                 categories['adjectives'].add(lemma)
                 continue
         
+        # Если NLP не сработал или категория не определена
         categories['other'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -943,8 +944,20 @@ with tab_seo:
             words_to_check = [x['word'] for x in res['missing_semantics_high']] + [x['word'] for x in res['missing_semantics_low']]
             categorized = classify_semantics_smart(words_to_check, morph)
             
-            # Сохраняем товарные слова (products + adjectives) в сессию для Тегов
-            prod_lemmas = categorized['products'] + categorized['adjectives']
+# ...
+            # --- АВТО-КЛАССИФИКАЦИЯ СЛОВ ---
+            res = st.session_state.analysis_results
+            words_to_check = [x['word'] for x in res['missing_semantics_high']] + [x['word'] for x in res['missing_semantics_low']]
+            
+            categorized = classify_semantics_smart(words_to_check, morph)
+            
+            # ВАЖНО: Объединяем Товары + Прилагательные + Размеры в один список для тегов
+            prod_lemmas = categorized['products'] + categorized['adjectives'] + categorized['dimensions']
+            
+            # Если Pymorphy не сработал (списки пусты), берем 'other' как резерв, но фильтруем короткие
+            if not prod_lemmas and not morph:
+                 prod_lemmas = [w for w in categorized['other'] if len(w) > 3]
+
             st.session_state.categorized_products = sorted(list(set(prod_lemmas)))
             st.session_state.categorized_commercial = categorized['commercial']
             
@@ -1146,3 +1159,4 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
