@@ -39,6 +39,11 @@ if 'tags_html_result' not in st.session_state:
 if 'table_html_result' not in st.session_state:
     st.session_state.table_html_result = None
 
+# --- ВАЖНОЕ ИСПРАВЛЕНИЕ: ПЕРЕМЕННАЯ ДЛЯ ХРАНЕНИЯ ССЫЛОК ---
+if 'persistent_urls' not in st.session_state:
+    st.session_state['persistent_urls'] = ""
+# ---------------------------------------------------------
+
 if not hasattr(inspect, 'getargspec'):
     def getargspec(func):
         spec = inspect.getfullargspec(func)
@@ -1260,7 +1265,19 @@ with tab_seo:
 
         if source_type == "Ручной список":
             st.markdown("### Введите список URL")
-            st.text_area("Вставьте ссылки здесь (каждая с новой строки)", height=200, key="manual_urls_ui")
+            
+            # --- ФИКС: ИСПОЛЬЗУЕМ ВЕЧНУЮ ПЕРЕМЕННУЮ ---
+            def update_manual_urls():
+                st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
+
+            st.text_area(
+                "Вставьте ссылки здесь (каждая с новой строки)", 
+                height=200, 
+                key="manual_urls_widget",
+                value=st.session_state['persistent_urls'],
+                on_change=update_manual_urls
+            )
+            # ------------------------------------------
 
         st.markdown("### Редактируемые списки")
         excludes = st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=200, key="settings_excludes")
@@ -1309,7 +1326,9 @@ with tab_seo:
         if source_type == "API" and not st.session_state.get('query_input'):
             st.error("Введите поисковой запрос!")
             st.stop()
-        if source_type == "Ручной список" and not st.session_state.get("manual_urls_ui", "").strip():
+            
+        # --- ФИКС: ПРОВЕРЯЕМ persistent_urls ВМЕСТО WIDGET KEY ---
+        if source_type == "Ручной список" and not st.session_state.get("persistent_urls", "").strip():
             st.error("Введите список URL конкурентов!")
             st.stop()
             
@@ -1380,16 +1399,11 @@ with tab_seo:
 
             target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
             
-            # --- НОВАЯ ЛОГИКА: СОХРАНЯЕМ ССЫЛКИ В ПОЛЕ РУЧНОГО ВВОДА ---
-            # Извлекаем чистые URL
+            # --- ФИКС: СОХРАНЯЕМ В ВЕЧНУЮ ПЕРЕМЕННУЮ ---
             extracted_urls_list = [item['url'] for item in target_urls_raw]
-            
-            # Формируем строку с разделителем переноса строки
             urls_text_block = "\n".join(extracted_urls_list)
-            
-            # Записываем в session_state
-            st.session_state['manual_urls_ui'] = urls_text_block
-            # -----------------------------------------------------------
+            st.session_state['persistent_urls'] = urls_text_block
+            # -------------------------------------------
             
             collected_competitors_count = len(target_urls_raw)
             st.info(f"Получено уникальных URL: {len(found_results)}. Выбрано **{collected_competitors_count}** релевантных конкурентов. Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
@@ -1398,7 +1412,8 @@ with tab_seo:
                  st.text_area("Отобранные URL:", value=urls_text_block, height=200, disabled=True)
 
         else:
-            raw_urls = st.session_state.get("manual_urls_ui", "")
+            # --- ФИКС: ЧИТАЕМ ИЗ ВЕЧНОЙ ПЕРЕМЕННОЙ ---
+            raw_urls = st.session_state.get("persistent_urls", "")
             if raw_urls:
                 urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
                 target_urls_raw = [{'url': u, 'pos': i+1} for i, u in enumerate(urls)]
@@ -1848,4 +1863,3 @@ with tab_tables:
             if st.button("Сбросить результат", key="reset_table"):
                 st.session_state.table_html_result = None
                 st.rerun()
-
