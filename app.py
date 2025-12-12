@@ -996,13 +996,13 @@ with st.spinner("Расчет метрик..."):
             st.rerun()
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
-        results = st.session_state.analysis_results
-        st.success("Анализ готов!")
-        st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
-        
-        # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (3 БЛОКА) ---
-        with st.expander("🛒 Результат автоматической группировки слов", expanded=True):
-            c1, c2, c3 = st.columns(3)
+    results = st.session_state.analysis_results
+    st.success("Анализ готов!")
+    st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
+    
+    # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (3 БЛОКА) ---
+    with st.expander("🛒 Результат автоматической группировки слов", expanded=True):
+        c1, c2, c3 = st.columns(3)
             
             # БЛОК 1: ТОВАРЫ
             with c1: 
@@ -1200,4 +1200,5 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
