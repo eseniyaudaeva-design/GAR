@@ -1226,99 +1226,165 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (ОБНОВЛЕННАЯ ПОД TXT ФАЙЛ + RANDOM)
+# Вкладка 3: ТЕГИ (ОБНОВЛЕННАЯ ВЕРСИЯ v3)
 # ------------------------------------------
 with tab_tags:
     st.title("🏷️ Генератор плитки тегов")
     
     st.markdown("""
     **Режим: Умная перелинковка (SEO Matching)**
-    Скрипт берет слова из блока **"🧱 Товары"** (вкладка SEO Анализ) и ищет подходящие страницы в вашем файле ссылок.
+    Скрипт берет слова из поля ниже и ищет подходящие страницы в вашем файле ссылок.
     """)
 
-    # 1. Получаем список товаров из Session State
-    products = st.session_state.get('categorized_products', [])
-    
-    # Если товаров нет, показываем предупреждение
-    if not products:
-        st.warning("⚠️ Сначала проведите анализ на вкладке 'SEO Анализ', чтобы получить список товарных слов.")
-    else:
-        st.info(f"Найдено товарных слов для поиска: **{len(products)}** ({', '.join(products[:10])}...)")
+    # 1. Подготовка списка слов (из Session State или пустой)
+    auto_products = st.session_state.get('categorized_products', [])
+    default_text_value = ", ".join(auto_products) if auto_products else ""
 
-        # 2. Загрузчик файла
-        uploaded_file = st.file_uploader("Загрузите файл со ссылками (.txt)", type=["txt"], key="urls_uploader")
-        
-        # Показываем пример, что ожидаем внутри
-        with st.expander("Какой формат файла нужен?", expanded=False):
-            st.code("""https://site.ru/catalog/anod-mednyy/
+    # 2. Редактируемое поле ввода (как просили на скрине)
+    st.markdown("### Список товарных слов (можно редактировать)")
+    tags_input_text = st.text_area(
+        "Введите слова через запятую", 
+        value=default_text_value, 
+        height=150, 
+        key="tags_manual_input",
+        help="Эти слова будут искаться в URL адресах файла."
+    )
+
+    # 3. Загрузчик файла
+    uploaded_file = st.file_uploader("Загрузите файл со ссылками (.txt)", type=["txt"], key="urls_uploader")
+    
+    with st.expander("Какой формат файла нужен?", expanded=False):
+        st.code("""https://site.ru/catalog/anod-mednyy/
 https://site.ru/catalog/balka-bu/
 https://site.ru/catalog/vtulki-rti/
 ... (каждая ссылка с новой строки)""", language="text")
 
-        if st.button("🚀 Найти совпадения и создать плитку", key="btn_match_tags_txt"):
-            if not uploaded_file:
-                st.error("Пожалуйста, загрузите файл со ссылками.")
-                st.stop()
-
-            # Читаем файл
-            stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
-            all_urls = [line.strip() for line in stringio.readlines() if line.strip()]
-
-            if not all_urls:
-                st.error("Файл пуст.")
-                st.stop()
-
-            st.success(f"Загружено ссылок: {len(all_urls)}")
-
-            # 3. ЛОГИКА СОПОСТАВЛЕНИЯ
-            matched_tags = []
+    if st.button("🚀 Найти совпадения и создать плитку", key="btn_match_tags_txt"):
+        # Парсим слова из текстового поля
+        if not tags_input_text.strip():
+            st.warning("Список слов пуст.")
+            st.stop()
             
-            # Прогресс бар
-            progress_bar = st.progress(0)
-            
-            for idx, word in enumerate(products):
-                translit_word = transliterate_text(word)
-                if len(translit_word) < 3: 
-                    continue 
+        # Разбиваем по запятым и чистим
+        products_to_process = [x.strip() for x in tags_input_text.split(',') if x.strip()]
 
-                # Ищем все URL, содержащие этот транслит
-                candidates = [u for u in all_urls if translit_word in u]
+        if not uploaded_file:
+            st.error("Пожалуйста, загрузите файл со ссылками.")
+            st.stop()
+
+        # Читаем файл ссылок
+        stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
+        all_urls = [line.strip() for line in stringio.readlines() if line.strip()]
+
+        if not all_urls:
+            st.error("Файл со ссылками пуст.")
+            st.stop()
+
+        st.success(f"Обрабатываем слов: {len(products_to_process)} | Ссылок в файле: {len(all_urls)}")
+
+        # 4. ЛОГИКА СОПОСТАВЛЕНИЯ
+        matched_tags = []
+        progress_bar = st.progress(0)
+        
+        for idx, word in enumerate(products_to_process):
+            translit_word = transliterate_text(word)
+            # Пропускаем слишком короткие слова, чтобы избежать мусора
+            if len(translit_word) < 2: 
+                continue 
+
+            candidates = []
+            
+            for url in all_urls:
+                # --- ЛОГИКА "ПОСЛЕ catalog/" ---
+                url_lower = url.lower()
                 
-                if candidates:
-                    # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
-                    # Берем СЛУЧАЙНУЮ ссылку из найденных кандидатов
-                    best_match = random.choice(candidates)
-                    
-                    matched_tags.append({
-                        'name': word.capitalize(),
-                        'url': best_match
-                    })
-                
-                progress_bar.progress((idx + 1) / len(products))
-            
-            progress_bar.empty()
+                # Если есть /catalog/, ищем только после него
+                if '/catalog/' in url_lower:
+                    search_scope = url_lower.split('/catalog/', 1)[1]
+                else:
+                    # Если нет catalog, берем путь (path) без домена
+                    try:
+                        parsed = urlparse(url_lower)
+                        search_scope = parsed.path
+                    except:
+                        search_scope = url_lower # Фолбэк
 
-            # 4. ВЫВОД РЕЗУЛЬТАТА
-            if not matched_tags:
-                st.warning("Совпадений не найдено. Проверьте транслитерацию или список ссылок.")
+                # Проверяем вхождение транслита в обрезанную часть URL
+                if translit_word in search_scope:
+                    candidates.append(url)
+            
+            # --- ФОРМИРОВАНИЕ РЕЗУЛЬТАТА ---
+            if candidates:
+                # Если нашли ссылки - берем случайную
+                best_match = random.choice(candidates)
+                matched_tags.append({
+                    'name': word.capitalize(),
+                    'url': best_match,
+                    'has_link': True
+                })
             else:
-                st.subheader(f"✅ Найдено совпадений: {len(matched_tags)}")
-                
-                # Генерация HTML
-                html_output = '<div class="popular-tags">\n' + "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in matched_tags]) + '\n</div>'
-                
-                st.session_state.tags_html_result = html_output
-                st.rerun()
+                # Если ссылок не нашли - все равно добавляем слово, но без ссылки
+                matched_tags.append({
+                    'name': word.capitalize(),
+                    'url': '#',
+                    'has_link': False
+                })
+            
+            progress_bar.progress((idx + 1) / len(products_to_process))
+        
+        progress_bar.empty()
+
+        # 5. ВЫВОД РЕЗУЛЬТАТА (HTML)
+        st.subheader(f"✅ Сгенерировано тегов: {len(matched_tags)}")
+        
+        # Генерируем HTML
+        # Если есть ссылка -> <a>, если нет -> <span> (визуально похожий, но неактивный)
+        html_parts = []
+        for item in matched_tags:
+            if item['has_link']:
+                html_parts.append(f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>')
+            else:
+                # Спан для тегов без ссылок
+                html_parts.append(f'    <span class="tag-link tag-empty">{item["name"]}</span>')
+
+        html_output = '<div class="popular-tags">\n' + "\n".join(html_parts) + '\n</div>'
+        
+        # Добавляем CSS для красоты прямо в вывод, чтобы было видно разницу
+        style_block = """
+<style>
+.popular-tags { display: flex; flex-wrap: wrap; gap: 10px; }
+.tag-link { 
+    padding: 5px 10px; 
+    border: 1px solid #ccc; 
+    border-radius: 4px; 
+    text-decoration: none; 
+    color: #333; 
+    background: #f9f9f9;
+    font-size: 14px;
+}
+.tag-link:hover { background: #e0e0e0; }
+.tag-empty { 
+    color: #888; 
+    border-color: #eee; 
+    background: #fff;
+    cursor: default;
+}
+</style>
+"""
+        st.session_state.tags_html_result = style_block + html_output
+        st.rerun()
 
     # Блок отображения результата
     if st.session_state.tags_html_result:
-        st.markdown("### Результат (HTML код):")
-        st.code(st.session_state.tags_html_result, language='html')
+        t_view, t_code = st.tabs(["👁️ Предпросмотр", "💻 HTML Код"])
         
-        st.markdown("### Предпросмотр (Визуально):")
-        st.markdown(st.session_state.tags_html_result, unsafe_allow_html=True)
+        with t_view:
+            st.markdown(st.session_state.tags_html_result, unsafe_allow_html=True)
+            
+        with t_code:
+            st.text_area("Скопируйте HTML:", st.session_state.tags_html_result, height=300)
         
-        if st.button("Сброс", key="reset_tags_txt"):
+        if st.button("Сброс результата", key="reset_tags_txt"):
             st.session_state.tags_html_result = None
             st.rerun()
 
@@ -1354,6 +1420,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
