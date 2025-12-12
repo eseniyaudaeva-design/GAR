@@ -1354,7 +1354,7 @@ with tab_seo:
             
 target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
         
-            extracted_urls_list = [item['url'] for item in target_urls_raw]
+extracted_urls_list = [item['url'] for item in target_urls_raw]
 
             urls_text_block = "\n".join(extracted_urls_list)
 
@@ -1819,5 +1819,6 @@ with tab_tables:
             if st.button("Сбросить результат", key="reset_table"):
                 st.session_state.table_html_result = None
                 st.rerun()
+
 
 
