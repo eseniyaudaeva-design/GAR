@@ -184,6 +184,34 @@ st.markdown(f"""
         .text-bold {{ font-weight: 600; }}
         .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR}; }}
         section[data-testid="stSidebar"] {{ background-color: #FFFFFF !important; border-left: 1px solid {BORDER_COLOR} !important; }}
+        
+        /* FIX: Убираем блюр и затемнение при выполнении скрипта */
+        .stApp > header {{ background-color: transparent !important; }}
+        
+        /* Заставляем поля ввода выглядеть активными даже когда скрипт работает */
+        .stTextInput input:disabled, .stTextArea textarea:disabled, .stSelectbox div[aria-disabled="true"] {{
+            opacity: 1 !important;
+            background-color: {LIGHT_BG_MAIN} !important;
+            color: {TEXT_COLOR} !important;
+            cursor: text !important;
+            -webkit-text-fill-color: {TEXT_COLOR} !important;
+            border-color: {BORDER_COLOR} !important;
+        }}
+        
+        /* Кнопки тоже оставляем яркими, но показываем курсор ожидания, чтобы было понятно */
+        .stButton button:disabled {{
+            opacity: 1 !important;
+            background-color: {PRIMARY_COLOR} !important;
+            color: white !important;
+            cursor: progress !important;
+        }}
+        
+        /* Убираем общее затемнение страницы */
+        div[data-testid="stAppViewContainer"] {{
+            filter: none !important;
+            opacity: 1 !important;
+            transition: none !important;
+        }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -1820,3 +1848,4 @@ with tab_tables:
             if st.button("Сбросить результат", key="reset_table"):
                 st.session_state.table_html_result = None
                 st.rerun()
+
