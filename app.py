@@ -45,7 +45,7 @@ if 'categorized_products' not in st.session_state:
     st.session_state.categorized_products = []
 if 'categorized_commercial' not in st.session_state:
     st.session_state.categorized_commercial = []
-if 'categorized_dimensions' not in st.session_state:  # 3-й блок
+if 'categorized_dimensions' not in st.session_state:
     st.session_state.categorized_dimensions = []
 
 # Переменная для хранения ссылок
@@ -194,15 +194,16 @@ except Exception as e:
     USE_NLP = False
     st.sidebar.error(f"Ошибка загрузки NLP: {e}")
 
-# --- ФУНКЦИЯ КЛАССИФИКАЦИИ СЕМАНТИКИ (SMART) ---
+# --- ФУНКЦИЯ КЛАССИФИКАЦИИ СЕМАНТИКИ (ИСПРАВЛЕННАЯ v2.3) ---
 def classify_semantics_smart(words_list, morph):
     """
-    Исправленная классификация v2.2:
-    - Размеры: проверяются ДО лемматизации (ловит 2х200х300).
-    - Коммерция: убран корень 'руб' (конфликтовал с тРУБопровод, РУБка), добавлены города.
-    - Товары: теперь включают технические глаголы (рубка, калибровать) как процессы.
+    Версия 2.3:
+    1. Улучшенная регулярка для размеров: ловит 2х600х1500, 100x200, 50*50, 4х10.
+    2. Расширенный список ГЕО (чтобы города не падали в товары).
+    3. Приоритет проверок: Размеры -> Коммерция/Гео -> Товары.
     """
-    # 1. КОРНИ КОММЕРЦИИ
+    
+    # 1. КОРНИ КОММЕРЦИИ (без корня 'руб', чтобы не цеплять технические слова)
     commercial_roots = [
         'куп', 'цен', 'стоим', 'прайс', 'продаж',
         'заказ', 'достав', 'плат', 'оплат',
@@ -217,17 +218,26 @@ def classify_semantics_smart(words_list, morph):
         'возврат', 'обмен', 'обрат'
     ]
 
-    # 2. ГЕО КОРНИ (Расширенный список)
+    # 2. ГЕО КОРНИ (Сильно расширенный список)
     geo_roots = [
         'москв', 'питер', 'спб', 'екб', 'екатерин', 'донец', 'город', 'област', 'росси', 'рф',
         'челябин', 'воронеж', 'волгоград', 'владивосток', 'новгород', 'краснодар', 'красноярск',
-        'ижевск', 'иркурск', 'казан', 'кемерово', 'киев', 'минск', 'алматы', 'ростов', 'самара',
-        'омск', 'уфа', 'перм'
+        'ижевск', 'иркутск', 'казан', 'кемерово', 'киев', 'минск', 'алматы', 'ростов', 'самара',
+        'омск', 'уфа', 'перм', 'тюмен', 'саратов', 'тольятти', 'барнаул', 'ульяновск', 'хабаровск',
+        'ярославль', 'махачкала', 'томск', 'оренбург', 'новокузнец', 'рязан', 'астрахан', 'набережн',
+        'пенза', 'липецк', 'киров', 'чебоксар', 'тула', 'калининград', 'курск', 'улан', 'ставропол',
+        'севастопол', 'твер', 'магнит', 'сочи', 'брянск'
     ]
 
-    # Регулярки
-    dim_pattern = re.compile(r'\d+[хx*]\d+', re.IGNORECASE)
+    # Регулярка для размеров (Строгая)
+    # Ловит: 600х1500, 2х200х300, 10*10, 50х50, 100x200 (лат/кир)
+    # \d+ - цифры, [хx*×] - разделители, \d+ - цифры.
+    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+(?:[\.\,]\d+)?', re.IGNORECASE)
+    
+    # Регулярка для ГОСТов
     standard_pattern = re.compile(r'(гост|din|ту)\s?\d+', re.IGNORECASE)
+    
+    # Регулярка для Марок (Ст3, 09Г2С)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
 
     categories = {
@@ -241,11 +251,15 @@ def classify_semantics_smart(words_list, morph):
     for word in words_list:
         word_lower = word.lower()
 
-        # --- 1. ПРОВЕРКА РАЗМЕРОВ (НА СЫРОМ СЛОВЕ) ---
-        if dim_pattern.search(word_lower) or standard_pattern.search(word_lower):
+        # --- 1. ПРОВЕРКА РАЗМЕРОВ (ПРИОРИТЕТ 1) ---
+        if dim_pattern.search(word_lower):
             categories['dimensions'].add(word_lower)
             continue
-        # Марки (Ст3, 09Г2С)
+        
+        if standard_pattern.search(word_lower):
+            categories['dimensions'].add(word_lower)
+            continue
+            
         if grade_pattern.match(word_lower) and any(c.isdigit() for c in word_lower):
             categories['dimensions'].add(word_lower)
             continue
@@ -263,7 +277,8 @@ def classify_semantics_smart(words_list, morph):
             lemma = word_lower
             tag = set()
 
-        # --- 2. КОММЕРЦИЯ И ГЕО ---
+        # --- 2. КОММЕРЦИЯ И ГЕО (ПРИОРИТЕТ 2) ---
+        # Проверяем корни
         if any(root in lemma for root in commercial_roots):
             categories['commercial'].add(lemma)
             continue
@@ -272,12 +287,18 @@ def classify_semantics_smart(words_list, morph):
             categories['commercial'].add(lemma)
             continue
 
-        if morph and 'Geox' in tag:
+        # Pymorphy Гео тег
+        if morph and ('Geox' in tag or 'Surn' in tag): # Surn иногда ловит фамилии-бренды, но лучше перебдеть
             categories['commercial'].add(lemma)
             continue
 
-        # --- 3. ТОВАРЫ ---
+        # --- 3. ТОВАРЫ (ПРИОРИТЕТ 3) ---
         if morph:
+            # Исключаем цифры, которые не попали в размеры (просто 100, 200) - чаще всего мусор или кол-во
+            if lemma.isdigit():
+                 categories['other'].add(lemma)
+                 continue
+
             if 'VERB' in tag or 'INFN' in tag:
                 categories['products'].add(lemma)
                 continue
@@ -914,7 +935,7 @@ with tab_seo:
 
         my_data, my_domain, my_serp_pos = None, "", 0
         
-        # Получаем тип ввода из session_state, так как мы внутри блока if
+        # Получаем тип ввода из session_state
         current_input_type = st.session_state.get("my_page_source_radio")
         
         if current_input_type == "Релевантная страница на вашем сайте":
@@ -973,24 +994,31 @@ with tab_seo:
             # 2. АВТО-КЛАССИФИКАЦИЯ
             res = st.session_state.analysis_results
 
-            # БЕРЕМ ТОЛЬКО 'missing_semantics_high' (ВАЖНЫЕ)
-            words_to_check = [x['word'] for x in res['missing_semantics_high']]
+            # --- ИСПРАВЛЕНИЕ: БЕРЕМ ТОЛЬКО 'missing_semantics_high' (ВАЖНЫЕ) ---
+            # Игнорируем low, чтобы мусор не попадал в блоки
+            words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
 
-            # Классифицируем
-            categorized = classify_semantics_smart(words_to_check, morph)
+            if not words_to_check:
+                # Если важных слов нет, оставляем списки пустыми (лучше пусто, чем мусор)
+                st.session_state.categorized_products = []
+                st.session_state.categorized_commercial = []
+                st.session_state.categorized_dimensions = []
+            else:
+                # Классифицируем
+                categorized = classify_semantics_smart(words_to_check, morph)
 
-            # БЛОК 1: ТОВАРЫ
-            prod_lemmas = categorized['products'] + categorized['adjectives']
-            if not morph and not prod_lemmas:
-                 prod_lemmas = [w for w in categorized['other'] if len(w) > 3]
+                # БЛОК 1: ТОВАРЫ
+                prod_lemmas = categorized['products'] + categorized['adjectives']
+                if not morph and not prod_lemmas:
+                     prod_lemmas = [w for w in categorized['other'] if len(w) > 3]
 
-            st.session_state.categorized_products = sorted(list(set(prod_lemmas)))
+                st.session_state.categorized_products = sorted(list(set(prod_lemmas)))
 
-            # БЛОК 2: КОММЕРЦИЯ
-            st.session_state.categorized_commercial = categorized['commercial']
+                # БЛОК 2: КОММЕРЦИЯ
+                st.session_state.categorized_commercial = categorized['commercial']
 
-            # БЛОК 3: РАЗМЕРЫ
-            st.session_state.categorized_dimensions = categorized['dimensions']
+                # БЛОК 3: РАЗМЕРЫ
+                st.session_state.categorized_dimensions = categorized['dimensions']
 
             st.rerun()
 
@@ -1000,7 +1028,7 @@ with tab_seo:
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
 
         # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (3 БЛОКА) ---
-        with st.expander("🛒 Результат автоматической группировки слов", expanded=True):
+        with st.expander("🛒 Результат автоматической группировки слов (из блока ВАЖНЫЕ)", expanded=True):
             c1, c2, c3 = st.columns(3)
 
             # БЛОК 1: ТОВАРЫ
