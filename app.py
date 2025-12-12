@@ -13,6 +13,7 @@ import time
 import json
 import io
 import os
+import random
 
 # Попытка импорта openai
 try:
@@ -1205,101 +1206,99 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (ОБНОВЛЕННАЯ)
+# Вкладка 3: ТЕГИ (ОБНОВЛЕННАЯ ПОД TXT ФАЙЛ + RANDOM)
 # ------------------------------------------
 with tab_tags:
     st.title("🏷️ Генератор плитки тегов")
-    mode = st.radio("Режим работы", ["Простой сбор заголовков (по списку)", "Умная перелинковка (SEO Matching)"], horizontal=True)
+    
+    st.markdown("""
+    **Режим: Умная перелинковка (SEO Matching)**
+    Скрипт берет слова из блока **"🧱 Товары"** (вкладка SEO Анализ) и ищет подходящие страницы в вашем файле ссылок.
+    """)
 
-    if mode == "Простой сбор заголовков (по списку)":
-        urls_input = st.text_area("Список ссылок для плитки", height=150, placeholder="https://site.ru/1\nhttps://site.ru/2")
-        if st.button("Сгенерировать плитку", key="btn_gen_tags_simple"):
-            if not urls_input: st.error("Нет ссылок"); st.stop()
+    # 1. Получаем список товаров из Session State
+    products = st.session_state.get('categorized_products', [])
+    
+    # Если товаров нет, показываем предупреждение
+    if not products:
+        st.warning("⚠️ Сначала проведите анализ на вкладке 'SEO Анализ', чтобы получить список товарных слов.")
+    else:
+        st.info(f"Найдено товарных слов для поиска: **{len(products)}** ({', '.join(products[:10])}...)")
 
-            def fetch_h1(url):
-                try:
-                    r = requests.get(url, headers={'User-Agent': st.session_state.settings_ua}, timeout=5)
-                    s = BeautifulSoup(r.text, 'html.parser')
-                    return s.find('h1').get_text(strip=True) if s.find('h1') else s.title.get_text(strip=True)
-                except: return "Ошибка"
+        # 2. Загрузчик файла
+        uploaded_file = st.file_uploader("Загрузите файл со ссылками (.txt)", type=["txt"], key="urls_uploader")
+        
+        # Показываем пример, что ожидаем внутри
+        with st.expander("Какой формат файла нужен?", expanded=False):
+            st.code("""https://site.ru/catalog/anod-mednyy/
+https://site.ru/catalog/balka-bu/
+https://site.ru/catalog/vtulki-rti/
+... (каждая ссылка с новой строки)""", language="text")
 
-            res_tags = []
-            with st.status("Сбор...", expanded=True):
-                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-                    futs = {ex.submit(fetch_h1, u.strip()): u.strip() for u in urls_input.split('\n') if u.strip()}
-                    for f in concurrent.futures.as_completed(futs):
-                        res_tags.append({'url': futs[f], 'name': f.result()})
+        if st.button("🚀 Найти совпадения и создать плитку", key="btn_match_tags_txt"):
+            if not uploaded_file:
+                st.error("Пожалуйста, загрузите файл со ссылками.")
+                st.stop()
 
-            html = '<div class="tags">\n' + "\n".join([f'<a href="{i["url"]}">{i["name"]}</a>' for i in res_tags]) + '\n</div>'
-            st.session_state.tags_html_result = html
-            st.rerun()
+            # Читаем файл
+            stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
+            all_urls = [line.strip() for line in stringio.readlines() if line.strip()]
 
-    else: # УМНЫЙ РЕЖИМ
-        st.markdown("**Как это работает:** Скрипт берет 'Товарные слова' из SEO анализа и ищет под них страницы на вашем сайте (из списка ниже).")
-        products = st.session_state.get('categorized_products', [])
+            if not all_urls:
+                st.error("Файл пуст.")
+                st.stop()
 
-        if not products:
-            st.warning("⚠️ Сначала проведите SEO анализ на первой вкладке, чтобы получить список слов.")
-        else:
-            st.info(f"Будем искать страницы для слов: {', '.join(products[:10])} ... (Всего {len(products)})")
+            st.success(f"Загружено ссылок: {len(all_urls)}")
 
-        sitemap_text = st.text_area("Список ВСЕХ страниц сайта (Sitemap)", height=150, placeholder="https://site.ru/catalog/truba\nhttps://site.ru/catalog/list")
+            # 3. ЛОГИКА СОПОСТАВЛЕНИЯ
+            matched_tags = []
+            
+            # Прогресс бар
+            progress_bar = st.progress(0)
+            
+            for idx, word in enumerate(products):
+                translit_word = transliterate_text(word)
+                if len(translit_word) < 3: 
+                    continue 
 
-        if st.button("Найти совпадения и создать плитку", key="btn_match_tags"):
-            if not sitemap_text: st.error("Введите URL сайта"); st.stop()
+                # Ищем все URL, содержащие этот транслит
+                candidates = [u for u in all_urls if translit_word in u]
+                
+                if candidates:
+                    # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+                    # Берем СЛУЧАЙНУЮ ссылку из найденных кандидатов
+                    best_match = random.choice(candidates)
+                    
+                    matched_tags.append({
+                        'name': word.capitalize(),
+                        'url': best_match
+                    })
+                
+                progress_bar.progress((idx + 1) / len(products))
+            
+            progress_bar.empty()
 
-            # Функция сканера с лемматизацией заголовка
-            def fetch_and_lemmatize(url, morph):
-                try:
-                    r = requests.get(url, headers={'User-Agent': st.session_state.settings_ua}, timeout=5)
-                    if r.status_code != 200: return None
-                    s = BeautifulSoup(r.text, 'html.parser')
-                    h1 = s.find('h1').get_text(strip=True) if s.find('h1') else (s.title.get_text(strip=True) if s.title else "")
-                    if not h1: return None
-
-                    # Лемматизируем заголовок
-                    words = re.findall(r'[а-яА-ЯёЁa-zA-Z]+', h1.lower())
-                    lemmas_set = set()
-                    if morph:
-                        for w in words: lemmas_set.add(morph.parse(w)[0].normal_form)
-                    else: lemmas_set = set(words)
-                    return {'url': url, 'orig_h1': h1, 'lemmas': lemmas_set}
-                except: return None
-
-            site_db = []
-            with st.status("Сканирование страниц сайта...", expanded=True):
-                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-                    futs = [ex.submit(fetch_and_lemmatize, u.strip(), morph) for u in sitemap_text.split('\n') if u.strip()]
-                    for f in concurrent.futures.as_completed(futs):
-                        if res := f.result(): site_db.append(res)
-
-            st.success(f"Просканировано: {len(site_db)} стр.")
-
-            matched = []
-            used_urls = set()
-            for prod_lemma in products:
-                best_match = None
-                min_len = 999
-                for page in site_db:
-                    if prod_lemma in page['lemmas']:
-                        if len(page['lemmas']) < min_len: # Приоритет коротким заголовкам (разделам)
-                            min_len = len(page['lemmas'])
-                            best_match = page
-
-                if best_match and best_match['url'] not in used_urls:
-                    matched.append({'name': prod_lemma.capitalize(), 'url': best_match['url']})
-                    used_urls.add(best_match['url'])
-
-            if not matched:
-                st.warning("Совпадений не найдено.")
+            # 4. ВЫВОД РЕЗУЛЬТАТА
+            if not matched_tags:
+                st.warning("Совпадений не найдено. Проверьте транслитерацию или список ссылок.")
             else:
-                html = '<div class="popular-tags">\n' + "\n".join([f'<a href="{i["url"]}" class="tag-link">{i["name"]}</a>' for i in matched]) + '\n</div>'
-                st.session_state.tags_html_result = html
+                st.subheader(f"✅ Найдено совпадений: {len(matched_tags)}")
+                
+                # Генерация HTML
+                html_output = '<div class="popular-tags">\n' + "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in matched_tags]) + '\n</div>'
+                
+                st.session_state.tags_html_result = html_output
                 st.rerun()
 
+    # Блок отображения результата
     if st.session_state.tags_html_result:
+        st.markdown("### Результат (HTML код):")
         st.code(st.session_state.tags_html_result, language='html')
-        if st.button("Сброс", key="reset_tags"):
+        
+        st.markdown("### Предпросмотр (Визуально):")
+        st.markdown(st.session_state.tags_html_result, unsafe_allow_html=True)
+        
+        if st.button("Сброс", key="reset_tags_txt"):
             st.session_state.tags_html_result = None
             st.rerun()
 
@@ -1335,6 +1334,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
