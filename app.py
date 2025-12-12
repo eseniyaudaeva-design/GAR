@@ -1353,15 +1353,12 @@ with tab_seo:
             target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
             
 target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
-            
-            # --- НОВАЯ ЛОГИКА: СОХРАНЯЕМ ССЫЛКИ В ПОЛЕ РУЧНОГО ВВОДА ---
-            # Извлекаем чистые URL
+        
             extracted_urls_list = [item['url'] for item in target_urls_raw]
-            # Формируем строку с разделителем переноса строки
+
             urls_text_block = "\n".join(extracted_urls_list)
-            # Записываем в session_state, который привязан к текстовому полю "manual_urls_ui"
+
             st.session_state['manual_urls_ui'] = urls_text_block
-            # -----------------------------------------------------------
 
             collected_competitors_count = len(target_urls_raw)
             
@@ -1822,4 +1819,5 @@ with tab_tables:
             if st.button("Сбросить результат", key="reset_table"):
                 st.session_state.table_html_result = None
                 st.rerun()
+
 
