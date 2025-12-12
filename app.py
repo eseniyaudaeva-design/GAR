@@ -1349,7 +1349,7 @@ https://site.ru/catalog/vtulki-rti/
 
         html_output = '<div class="popular-tags">\n' + "\n".join(html_parts) + '\n</div>'
         
-        st.session_state.tags_html_result = style_block + html_output
+        st.session_state.tags_html_result = html_output
         st.rerun()
 
     # Блок отображения результата
@@ -1398,6 +1398,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
