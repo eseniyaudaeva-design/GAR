@@ -23,9 +23,6 @@ except ImportError:
 # ==========================================
 # 0. ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
 # ==========================================
-if 'categorized_dimensions' not in st.session_state:
-    st.session_state.categorized_dimensions = []
-    
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
@@ -45,9 +42,11 @@ if 'table_html_result' not in st.session_state:
 
 # --- НОВЫЕ СОСТОЯНИЯ ДЛЯ КЛАССИФИКАЦИИ ---
 if 'categorized_products' not in st.session_state:
-    st.session_state.categorized_products = [] # Список товарных лемм
+    st.session_state.categorized_products = [] 
 if 'categorized_commercial' not in st.session_state:
     st.session_state.categorized_commercial = []
+if 'categorized_dimensions' not in st.session_state: # 3-й блок
+    st.session_state.categorized_dimensions = []
 
 # Переменная для хранения ссылок
 if 'persistent_urls' not in st.session_state:
@@ -62,7 +61,7 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 # 1. КОНФИГУРАЦИЯ СТРАНИЦЫ И СПИСКИ
 # ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO v2.0", page_icon="📊")
+st.set_page_config(layout="wide", page_title="GAR PRO v2.1", page_icon="📊")
 
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
@@ -195,15 +194,15 @@ except Exception as e:
     USE_NLP = False
     st.sidebar.error(f"Ошибка загрузки NLP: {e}")
 
-# --- ИСПРАВЛЕННАЯ ФУНКЦИЯ КЛАССИФИКАЦИИ ---
+# --- ФУНКЦИЯ КЛАССИФИКАЦИИ СЕМАНТИКИ (SMART) ---
 def classify_semantics_smart(words_list, morph):
     """
-    Классификация v2:
-    - Commercial: действия, деньги, возврат, + ГОРОДА.
+    Классификация v2.1:
+    - Commercial: действия, деньги, возврат, + ГОРОДА/ГЕО.
     - Dimensions: размеры, марки (отдельный блок).
     - Products: товары (существительные) + свойства (прилагательные).
     """
-    # 1. КОРНИ КОММЕРЦИИ (Добавил города и гео-корни)
+    # 1. КОРНИ КОММЕРЦИИ (Включая города)
     commercial_roots = [
         'куп', 'цен', 'стоим', 'прайс', 'продаж',
         'заказ', 'достав', 'плат', 'оплат', 
@@ -227,7 +226,7 @@ def classify_semantics_smart(words_list, morph):
 
     categories = {
         'commercial': set(), 
-        'dimensions': set(), # Это пойдет в 3-й блок
+        'dimensions': set(), # 3-й блок
         'products': set(),   
         'adjectives': set(), 
         'other': set()       
@@ -256,7 +255,6 @@ def classify_semantics_smart(words_list, morph):
             continue
 
         # 2. КОММЕРЦИЯ + ГОРОДА
-        # Проверка по корням
         if any(root in lemma for root in commercial_roots):
             categories['commercial'].add(lemma)
             continue
@@ -949,7 +947,7 @@ with tab_seo:
                 prog.progress(done / total)
         prog.empty()
 
-with st.spinner("Расчет метрик..."):
+        with st.spinner("Расчет метрик..."):
             # 1. Считаем математику (BM25, Ширина/Глубина)
             st.session_state.analysis_results = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
             st.session_state.analysis_done = True
@@ -978,33 +976,11 @@ with st.spinner("Расчет метрик..."):
             
             st.rerun()
 
-        if st.session_state.analysis_done and st.session_state.analysis_results:
+    if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-        # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ ---
-        with st.expander("🛒 Найденные товарные категории (для Генератора тегов)"):
-            c1, c2, c3 = st.columns(3)
-            with c1: 
-                st.info(f"Товары ({len(st.session_state.categorized_products)})")
-                st.caption(", ".join(st.session_state.categorized_products[:30]))
-            with c2:
-                st.warning(f"Коммерция ({len(st.session_state.categorized_commercial)})")
-                st.caption(", ".join(st.session_state.categorized_commercial[:30]))
-            with c3:
-                st.write("Эти слова автоматически распределены.")
-
-        high = results.get('missing_semantics_high', [])
-        low = results.get('missing_semantics_low', [])
-        if high or low:
-            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
-
-        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
         # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (3 БЛОКА) ---
         with st.expander("🛒 Результат автоматической группировки слов", expanded=True):
             c1, c2, c3 = st.columns(3)
@@ -1025,6 +1001,17 @@ with st.spinner("Расчет метрик..."):
                 dims = st.session_state.get('categorized_dimensions', [])
                 st.success(f"📏 Размеры и Марки ({len(dims)})")
                 st.caption(", ".join(dims))
+
+        high = results.get('missing_semantics_high', [])
+        low = results.get('missing_semantics_low', [])
+        if high or low:
+            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
+                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
+                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+
+        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
 # Вкладка 2: AI
@@ -1194,6 +1181,3 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
-
-
-
