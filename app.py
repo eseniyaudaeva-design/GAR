@@ -15,6 +15,26 @@ import io
 import os
 import random
 
+def transliterate_text(text):
+    """
+    Превращает 'Швеллер' в 'shveller', 'Анод' в 'anod'.
+    Используется для нечеткого поиска товара в URL.
+    """
+    mapping = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
+        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+        'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+        'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+    }
+    result = []
+    for char in text.lower():
+        if char in mapping:
+            result.append(mapping[char])
+        elif char.isalnum() or char == '-':
+            result.append(char)
+    return "".join(result)
+
 # Попытка импорта openai
 try:
     import openai
@@ -1334,6 +1354,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
