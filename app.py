@@ -1330,7 +1330,7 @@ def generate_smart_name(word, base_noun):
         return word.capitalize()
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (АВТОНОМНЫЙ РЕЖИМ + ПАРСИНГ)
+# Вкладка 3: ТЕГИ (АВТОНОМНЫЙ РЕЖИМ + РЕДАКТИРОВАНИЕ)
 # ------------------------------------------
 with tab_tags:
     st.title("🏷️ Генератор плитки тегов (Mass Production)")
@@ -1339,34 +1339,53 @@ with tab_tags:
     **Как это работает:**
     1. Скрипт заходит на указанный **URL категории**.
     2. Собирает оттуда все ссылки на подфильтры (теги).
-    3. Берет список **Товаров** (из вкладки SEO) и ищет для них ссылки в вашем **.txt файле**.
-    4. Генерирует Excel, где для каждого подфильтра создана своя плитка тегов (без ссылок на самих себя).
+    3. Берет список **Товаров** (вы можете отредактировать его ниже) и ищет для них ссылки в вашем **.txt файле**.
+    4. Генерирует Excel, где для каждого подфильтра создана своя плитка тегов.
     """)
 
     # 1. Вводные данные
-    col_t1, col_t2 = st.columns(2)
+    col_t1, col_t2 = st.columns([1, 1])
     
     with col_t1:
-        category_url = st.text_input("🔗 URL Категории (откуда собрать список подфильтров)", placeholder="https://site.ru/catalog/truba/")
-    
-    with col_t2:
-        # Проверка наличия товаров из SEO
-        products = st.session_state.get('categorized_products', [])
-        if not products:
-            st.error("❌ Список товаров пуст. Сначала сделайте 'SEO Анализ'.")
-        else:
-            st.success(f"✅ Товаров для перелинковки: {len(products)}")
+        st.markdown("##### 🔗 Источник")
+        category_url = st.text_input("URL Категории (откуда собрать список подфильтров)", placeholder="https://site.ru/catalog/truba/")
+        
+        st.markdown("##### 📂 База ссылок")
+        uploaded_file = st.file_uploader("Загрузите файл со ссылками сайта (.txt)", type=["txt"], key="urls_uploader_mass_v3")
 
-    # 2. Загрузчик файла с донорами ссылок
-    st.markdown("---")
-    uploaded_file = st.file_uploader("📂 Загрузите файл со всеми ссылками сайта (.txt)", type=["txt"], key="urls_uploader_mass_v2")
-    
+    with col_t2:
+        st.markdown("##### 📝 Список товаров (Ключи)")
+        
+        # Получаем данные из SEO анализа, если они есть
+        raw_products = st.session_state.get('categorized_products', [])
+        
+        # Преобразуем в строку для текстового поля
+        default_text = "\n".join(raw_products) if raw_products else ""
+        
+        # Поле для редактирования
+        products_input = st.text_area(
+            "Отредактируйте список (каждое слово с новой строки):", 
+            value=default_text, 
+            height=200, 
+            key="tags_products_edit",
+            help="Эти слова будут искаться в вашем txt файле. Вы можете добавить свои."
+        )
+        
+        # Формируем финальный список товаров из поля ввода
+        products = [line.strip() for line in products_input.split('\n') if line.strip()]
+        
+        if products:
+            st.caption(f"✅ Готово к работе: {len(products)} слов(а)")
+        else:
+            st.caption("⚠️ Список пуст")
+
     # Кнопка запуска
-    if st.button("🚀 Спарсить категорию и собрать Excel", key="btn_tags_mass_parse", disabled=(not products or not uploaded_file or not category_url)):
+    st.markdown("---")
+    if st.button("🚀 Спарсить категорию и собрать Excel", key="btn_tags_mass_parse_manual", disabled=(not products or not uploaded_file or not category_url)):
         
         status_box = st.status("Начинаем работу...", expanded=True)
         
-        # --- ЭТАП 1: ПАРСИНГ КАТЕГОРИИ (ПОЛУЧЕНИЕ СПИСКА ЦЕЛЕЙ) ---
+        # --- ЭТАП 1: ПАРСИНГ КАТЕГОРИИ ---
         status_box.write(f"🕵️ Подключаемся к {category_url}...")
         
         target_urls_list = []
@@ -1376,14 +1395,12 @@ with tab_tags:
             
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
-                # Ищем блок тегов (как в AI генераторе)
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
                     links = tags_container.find_all('a')
                     for link in links:
                         href = link.get('href')
                         if href:
-                            # Превращаем относительные ссылки в абсолютные
                             full_url = urljoin(category_url, href)
                             target_urls_list.append(full_url)
                 else:
@@ -1403,8 +1420,8 @@ with tab_tags:
 
         status_box.write(f"✅ Найдено страниц-подфильтров: {len(target_urls_list)}")
 
-        # --- ЭТАП 2: ОБРАБОТКА TXT ФАЙЛА И ИНДЕКСАЦИЯ ---
-        status_box.write("📂 Читаем файл ссылок и индексируем товары...")
+        # --- ЭТАП 2: ИНДЕКСАЦИЯ ССЫЛОК ПО ТОВАРАМ ---
+        status_box.write("📂 Обработка списка ссылок и поиск совпадений...")
         
         stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
         all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
@@ -1413,27 +1430,24 @@ with tab_tags:
             status_box.error("Файл ссылок пуст.")
             st.stop()
 
-        # Создаем карту: Товар -> Список ссылок
         product_candidates_map = {}
         
-        # Оптимизация: создаем пары (имя, транслит)
+        # Создаем пары (имя, транслит) из ТОГО, ЧТО ВВЕЛ ПОЛЬЗОВАТЕЛЬ
         product_translit_pairs = []
         for p in products:
             tr = transliterate_text(p)
             if len(tr) >= 3:
                 product_translit_pairs.append((p, tr))
 
-        # Пробегаем по товарам и ищем вхождения в ссылках
-        # (Это может занять время, если файл ссылок огромный)
+        # Поиск совпадений
         for prod_name, prod_translit in product_translit_pairs:
-            # Ищем ссылки, содержащие транслит товара
             matches = [u for u in all_txt_links if prod_translit in u]
             if matches:
                 product_candidates_map[prod_name] = matches
         
-        status_box.write(f"✅ Индексация завершена. Сопоставлено {len(product_candidates_map)} товаров.")
+        status_box.write(f"✅ Индексация завершена. Найдено ссылок для {len(product_candidates_map)} товаров.")
 
-        # --- ЭТАП 3: ГЕНЕРАЦИЯ ДЛЯ КАЖДОЙ СТРАНИЦЫ ---
+        # --- ЭТАП 3: ГЕНЕРАЦИЯ ---
         status_box.write("⚙️ Генерируем уникальные плитки...")
         
         final_rows = []
@@ -1443,28 +1457,20 @@ with tab_tags:
             
             current_page_tags = []
             
-            # Проходим по всем доступным товарам
             for prod_name, candidates in product_candidates_map.items():
-                
-                # 1. Исключаем ссылку на саму себя (Target URL)
-                # Нормализация: убираем слэш в конце для сравнения
+                # Исключаем ссылку на саму себя
                 norm_target = target_url.rstrip('/')
                 valid_candidates = [u for u in candidates if u.rstrip('/') != norm_target]
                 
                 if valid_candidates:
-                    # 2. Берем случайную ссылку из валидных
                     chosen_url = random.choice(valid_candidates)
-                    
                     current_page_tags.append({
                         'name': prod_name.capitalize(),
                         'url': chosen_url
                     })
             
-            # 3. Формируем HTML
             if current_page_tags:
-                # Перемешиваем теги для естественности
                 random.shuffle(current_page_tags)
-                
                 html_block = '<div class="popular-tags">\n' + \
                              "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in current_page_tags]) + \
                              '\n</div>'
@@ -1472,8 +1478,8 @@ with tab_tags:
                 html_block = "<!-- Нет подходящих тегов -->"
             
             final_rows.append({
-                'Page URL (Where to put)': target_url,
-                'Tags HTML Code': html_block
+                'Page URL': target_url,
+                'Tags HTML': html_block
             })
             
             prog_bar.progress((i + 1) / len(target_urls_list))
@@ -1481,7 +1487,7 @@ with tab_tags:
         prog_bar.empty()
         status_box.update(label="Готово!", state="complete", expanded=False)
 
-        # --- ЭТАП 4: СОХРАНЕНИЕ В EXCEL ---
+        # --- ЭТАП 4: СОХРАНЕНИЕ ---
         df_tags_result = pd.DataFrame(final_rows)
         
         buffer = io.BytesIO()
@@ -1493,19 +1499,13 @@ with tab_tags:
             
         excel_bytes = buffer.getvalue()
         
-        st.success("🎉 Генерация завершена!")
-        
-        c_down1, c_down2 = st.columns([1, 2])
-        with c_down1:
-            st.download_button(
-                label="📥 Скачать Excel",
-                data=excel_bytes,
-                file_name="mass_tags_generation.xlsx",
-                mime="application/vnd.ms-excel"
-            )
-        
-        with st.expander("👀 Предпросмотр данных"):
-            st.dataframe(df_tags_result.head())
+        st.success("🎉 Успешно!")
+        st.download_button(
+            label="📥 Скачать Excel",
+            data=excel_bytes,
+            file_name="tags_tiles_generated.xlsx",
+            mime="application/vnd.ms-excel"
+        )
 
 # ------------------------------------------
 # Вкладка 4: ТАБЛИЦЫ
@@ -1539,6 +1539,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
