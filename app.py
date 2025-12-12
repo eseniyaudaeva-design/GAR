@@ -197,12 +197,13 @@ except Exception as e:
 # --- ФУНКЦИЯ КЛАССИФИКАЦИИ СЕМАНТИКИ (SMART) ---
 def classify_semantics_smart(words_list, morph):
     """
-    Классификация v2.1:
-    - Commercial: действия, деньги, возврат, + ГОРОДА/ГЕО.
-    - Dimensions: размеры, марки (отдельный блок).
-    - Products: товары (существительные) + свойства (прилагательные).
+    Исправленная классификация v2.2:
+    - Размеры: проверяются ДО лемматизации (ловит 2х200х300).
+    - Коммерция: убран корень 'руб' (конфликтовал с тРУБопровод, РУБка), добавлены города.
+    - Товары: теперь включают технические глаголы (рубка, калибровать) как процессы.
     """
-    # 1. КОРНИ КОММЕРЦИИ (Включая города)
+    # 1. КОРНИ КОММЕРЦИИ
+    # ВАЖНО: Убрал 'руб', чтобы не цепляло 'трубопровод', 'рубка'. Заменил на 'рубл'.
     commercial_roots = [
         'куп', 'цен', 'стоим', 'прайс', 'продаж',
         'заказ', 'достав', 'плат', 'оплат', 
@@ -211,65 +212,82 @@ def classify_semantics_smart(words_list, morph):
         'вход', 'регистр', 'личн', 'кабин', 
         'корзин', 'избран', 'сравн', 
         'гарант', 'сертиф', 'отзыв', 
-        'руб', 'грн', 'usd', 'eur', 
+        'рубл', 'гривн', 'usd', 'eur',  # Исправил валюты
         'наличи', 'склад', 'магазин', 
         'менедж', 'консульт', 'вопрос', 'клиент',
-        'возврат', 'обмен', 'обрат',
-        # ГЕО КОРНИ
-        'москв', 'питер', 'спб', 'екб', 'город', 'област', 'росси', 'рф'
+        'возврат', 'обмен', 'обрат'
+    ]
+
+    # 2. ГЕО КОРНИ (Расширенный список)
+    geo_roots = [
+        'москв', 'питер', 'спб', 'екб', 'екатерин', 'донец', 'город', 'област', 'росси', 'рф',
+        'челябин', 'воронеж', 'волгоград', 'владивосток', 'новгород', 'краснодар', 'красноярск',
+        'ижевск', 'иркурск', 'казан', 'кемерово', 'киев', 'минск', 'алматы', 'ростов', 'самара',
+        'омск', 'уфа', 'перм'
     ]
 
     # Регулярки
-    dim_pattern = re.compile(r'(\d+[хx*]\d+)|(\d+\s?мм)|(l=\d+)|(dn\d+)|(d\d+)|(ф\d+)', re.IGNORECASE)
+    # Размеры: ловит 600х1500, 2х200х200 (латиница x и кириллица х)
+    dim_pattern = re.compile(r'\d+[хx*]\d+', re.IGNORECASE) 
     standard_pattern = re.compile(r'(гост|din|ту)\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
 
     categories = {
         'commercial': set(), 
-        'dimensions': set(), # 3-й блок
+        'dimensions': set(), 
         'products': set(),   
         'adjectives': set(), 
         'other': set()       
     }
 
     for word in words_list:
-        # Лемматизация
+        word_lower = word.lower()
+        
+        # --- 1. ПРОВЕРКА РАЗМЕРОВ (НА СЫРОМ СЛОВЕ) ---
+        # Важно делать это ДО лемматизации, чтобы не ломать 'х' между цифрами
+        if dim_pattern.search(word_lower) or standard_pattern.search(word_lower):
+            categories['dimensions'].add(word_lower)
+            continue
+        # Марки (Ст3, 09Г2С) - тоже на сыром, но можно и лемму, если она не меняется
+        if grade_pattern.match(word_lower) and any(c.isdigit() for c in word_lower):
+            categories['dimensions'].add(word_lower)
+            continue
+
+        # Лемматизация для остальных проверок
         if morph:
             try:
-                p = morph.parse(word.lower())[0]
+                p = morph.parse(word_lower)[0]
                 lemma = p.normal_form 
                 tag = p.tag
             except:
-                lemma = word.lower()
+                lemma = word_lower
                 tag = set()
         else:
-            lemma = word.lower()
+            lemma = word_lower
             tag = set()
 
-        # 1. РАЗМЕРЫ И МАРКИ (Приоритет №1 -> в 3-й блок)
-        if dim_pattern.search(lemma) or standard_pattern.search(lemma):
-            categories['dimensions'].add(lemma)
-            continue
-        if grade_pattern.match(lemma) and any(c.isdigit() for c in lemma):
-            categories['dimensions'].add(lemma) 
-            continue
-
-        # 2. КОММЕРЦИЯ + ГОРОДА
+        # --- 2. КОММЕРЦИЯ И ГЕО ---
+        # Проверка по корням
         if any(root in lemma for root in commercial_roots):
             categories['commercial'].add(lemma)
             continue
         
-        # Проверка через NLP на Географию (Geox)
+        if any(root in lemma for root in geo_roots):
+            categories['commercial'].add(lemma) # Города кидаем в коммерцию/гео
+            continue
+
         if morph and 'Geox' in tag:
             categories['commercial'].add(lemma)
             continue
 
-        # 3. МОРФОЛОГИЯ (Товары)
+        # --- 3. ТОВАРЫ (Все остальное смысловое) ---
         if morph:
-            # Глаголы -> Коммерция
+            # Если глагол, но НЕ коммерческий (рубка, калибровать, выдерживать) -> считаем тех.процессом (Товар/Услуга)
             if 'VERB' in tag or 'INFN' in tag:
-                categories['commercial'].add(lemma)
+                # Раньше мы кидали ВСЕ глаголы в коммерцию. Теперь - в товары (как процессы).
+                categories['products'].add(lemma)
                 continue
+                
             # Существительные -> Товары
             if 'NOUN' in tag:
                 categories['products'].add(lemma)
@@ -947,23 +965,24 @@ with tab_seo:
                 prog.progress(done / total)
         prog.empty()
 
-        with st.spinner("Расчет метрик..."):
-            # 1. Считаем математику (BM25, Ширина/Глубина)
+with st.spinner("Расчет метрик..."):
+            # 1. Считаем математику
             st.session_state.analysis_results = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
             st.session_state.analysis_done = True
             
-            # 2. АВТО-КЛАССИФИКАЦИЯ СЛОВ (НОВАЯ ЛОГИКА)
+            # 2. АВТО-КЛАССИФИКАЦИЯ
             res = st.session_state.analysis_results
-            words_to_check = [x['word'] for x in res['missing_semantics_high']] + \
-                             [x['word'] for x in res['missing_semantics_low']]
+            
+            # --- ИСПРАВЛЕНИЕ: БЕРЕМ ТОЛЬКО 'missing_semantics_high' (ВАЖНЫЕ) ---
+            # Раньше было: high + low. Теперь только high.
+            words_to_check = [x['word'] for x in res['missing_semantics_high']] 
             
             # Классифицируем
             categorized = classify_semantics_smart(words_to_check, morph)
             
-            # БЛОК 1: ТОВАРЫ (Существительные + Прилагательные)
-            # Они пойдут в генератор тегов
+            # БЛОК 1: ТОВАРЫ (Существительные + Прилагательные + Тех.Глаголы)
             prod_lemmas = categorized['products'] + categorized['adjectives']
-            if not morph and not prod_lemmas: # Фолбэк, если NLP сломался
+            if not morph and not prod_lemmas:
                  prod_lemmas = [w for w in categorized['other'] if len(w) > 3]
 
             st.session_state.categorized_products = sorted(list(set(prod_lemmas)))
@@ -971,7 +990,7 @@ with tab_seo:
             # БЛОК 2: КОММЕРЦИЯ (+ Города)
             st.session_state.categorized_commercial = categorized['commercial']
             
-            # БЛОК 3: РАЗМЕРЫ (Отдельно)
+            # БЛОК 3: РАЗМЕРЫ
             st.session_state.categorized_dimensions = categorized['dimensions']
             
             st.rerun()
@@ -1181,3 +1200,4 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
