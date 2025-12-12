@@ -1373,22 +1373,26 @@ with tab_tags:
         st.markdown("##### 📂 База ссылок")
         uploaded_file = st.file_uploader("Файл со ссылками (.txt)", type=["txt"], key="urls_uploader_smart")
 
-with col_t2:
+    with col_t2:
         st.markdown("##### 📝 Список товаров (Ключи поиска)")
         
-        # 1. Проверяем, есть ли уже значение в Session State. Если нет - инициализируем.
+        # 1. Проверяем, существует ли ключ в session_state. 
+        # Если нет (первый запуск) — заполняем его данными из categorized_products.
+        # Если да (после анализа или ввода вручную) — используем существующее значение.
         if "tags_products_edit_smart" not in st.session_state:
             raw_products = st.session_state.get('categorized_products', [])
             st.session_state.tags_products_edit_smart = "\n".join(raw_products) if raw_products else ""
 
-        # 2. Рисуем виджет БЕЗ параметра value (он сам возьмет значение из key)
+        # 2. Создаем виджет БЕЗ аргумента 'value'. 
+        # Streamlit сам возьмет значение из st.session_state['tags_products_edit_smart'].
         products_input = st.text_area(
             "Список товаров (будут искаться в базе):", 
-            # value=... УДАЛЕНО, так как используется key
             height=200, 
             key="tags_products_edit_smart",
             help="Скрипт будет искать ссылки, содержащие эти слова (в транслите)."
         )
+        
+        # Превращаем текст обратно в список для скрипта
         products = [line.strip() for line in products_input.split('\n') if line.strip()]
 
     # --- ЗАПУСК ---
@@ -1553,6 +1557,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
