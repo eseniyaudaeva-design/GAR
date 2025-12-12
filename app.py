@@ -1244,62 +1244,126 @@ with tab_tags:
             pass
         return text
 
-    def smart_reverse_translit(slug):
+def smart_reverse_translit(slug):
         """
-        Умный обратный транслит (Исправленная версия):
-        anody -> аноды
-        alyuminiy -> алюминий
-        truba-profilnaya -> труба профильная
+        Умный парсинг Slug -> Человеческое название (v15: Hybrid GOST/Latin)
         """
-        # 1. Чистка
-        text = slug.lower().strip()
-        text = re.sub(r'\.html|\.php|\.htm', '', text)
-        text = text.replace('_', ' ').replace('/', '')
-        text = text.replace('-', ' ')
-
-        # 2. Сложные сочетания
-        replacements = [
-            ('shch', 'щ'), ('sch', 'щ'), 
-            ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
-            ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), 
-            ('ts', 'ц'), ('tc', 'ц'), ('kh', 'х')
-        ]
-        for eng, rus in replacements:
-            text = text.replace(eng, rus)
-
-        # 3. Умная обработка окончаний
-        text = re.sub(r'iy(?=\s|$)', 'ий', text)
-        text = re.sub(r'yy(?=\s|$)', 'ый', text)
-        text = text.replace('ij', 'ий')
-        
-        # Исправление для 'y' на конце (anody -> аноды)
-        text = re.sub(r'y(?=\s|$)', 'ы', text)
-
-        # 4. Посимвольная карта
-        mapping = {
-            'a': 'а', 'b': 'б', 'c': 'к', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
-            'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
-            'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
-            'v': 'в', 'w': 'в', 'x': 'х', 'z': 'з', 
-            'y': 'ы', 
-            'q': 'к'
+        # --- 1. ТОЧНЫЙ СЛОВАРЬ (Переопределяет любую логику) ---
+        TECHNICAL_DICT = {
+            # Самые ходовые ГОСТы (транслит -> кириллица)
+            'gost': 'ГОСТ', 'tu': 'ТУ',
+            'st3': 'Ст3', 'st3sp': 'Ст3сп', 'st3ps': 'Ст3пс',
+            '09g2s': '09Г2С', '17g1s': '17Г1С',
+            'a500c': 'А500С', 'a500s': 'А500С', 'v500s': 'В500С', # Важно! с -> С (кириллица)
+            'a240': 'А240', 'a400': 'А400', 'a500': 'А500',
+            '12x18n10t': '12Х18Н10Т', '08x18n10': '08Х18Н10',
+            '40x': '40Х', '20x': '20Х', '65g': '65Г',
+            'd16t': 'Д16Т', 'amg': 'АМг', 'ad31': 'АД31',
+            # Полимеры
+            'pvc': 'ПВХ', 'pnd': 'ПНД', 'pvd': 'ПВД',
+            # Сокращения
+            'hk': 'Х/К', 'gk': 'Г/К', 'bp': 'ВР'
         }
-        
-        chars = []
-        for c in text:
-            if c >= 'а' and c <= 'я':
-                chars.append(c)
-            elif c == 'ё':
-                chars.append(c)
-            else:
-                chars.append(mapping.get(c, c))
-                
-        raw_rus = "".join(chars)
 
-        # 5. Яндекс Спеллер
-        final_text = spell_check_yandex_cached(raw_rus)
+        # --- 2. ЕДИНИЦЫ ИЗМЕРЕНИЯ ---
+        UNITS_MAP = {
+            'mm': 'мм', 'cm': 'см', 'm': 'м', 'kg': 'кг', 't': 'т', 
+            'sht': 'шт', 'rub': 'руб'
+        }
+
+        # --- 3. МАРКЕРЫ ЗАПАДНЫХ МАРОК (Оставляем латиницей) ---
+        # Если слово начинается с этого -> Uppercase (без транслита)
+        LATIN_STARTS = ('aisi', 'astm', 'din', 'en', 'hardox', 'weldox', 'magnelis', 'ruukki', 'ssab')
         
-        return final_text.capitalize()
+        # Если слово содержит эти буквы (маркеры евро-стандартов), то скорее всего это латиница
+        # J (S355J2), W (Weldox), Q (S460Q), R (S235JR) - в транслите ГОСТа J и Q почти не юзают.
+        LATIN_CHARS_MARKERS = ['j', 'q', 'w'] 
+        
+        # Специфичные европейские марки стали (S + цифры, P + цифры и т.д.)
+        # Регулярка ловит: s355, p265, l450 и т.д.
+        EURO_GRADE_PATTERN = re.compile(r'^[sple]\d{3}[a-z0-9]*$', re.IGNORECASE)
+
+        # --- НАЧАЛО ОБРАБОТКИ ---
+        slug = slug.lower().strip()
+        slug = re.sub(r'\.html|\.php|\.htm', '', slug)
+        slug = slug.replace('_', '-').replace('/', '-')
+        
+        parts = [p for p in slug.split('-') if p]
+        final_words = []
+
+        for part in parts:
+            # A. ПРОВЕРКА ПО СЛОВАРЮ (Приоритет №1)
+            if part in TECHNICAL_DICT:
+                final_words.append(TECHNICAL_DICT[part])
+                continue
+
+            # B. ПРОВЕРКА НА РАЗМЕР (100mm -> 100мм)
+            is_unit = False
+            for eng_unit, rus_unit in UNITS_MAP.items():
+                if part.endswith(eng_unit) and part[:-len(eng_unit)].replace('.', '').isdigit():
+                    num = part[:-len(eng_unit)]
+                    final_words.append(f"{num}{rus_unit}")
+                    is_unit = True
+                    break
+            if is_unit: continue
+
+            # C. ПРОВЕРКА НА ЛАТИНСКУЮ МАРКУ (Приоритет №2)
+            # 1. Известные бренды/стандарты (hardox, aisi...)
+            if part.startswith(LATIN_STARTS):
+                final_words.append(part.upper())
+                continue
+            
+            # 2. Наличие специфичных латинских букв (S355J2, AISI)
+            if any(marker in part for marker in LATIN_CHARS_MARKERS):
+                final_words.append(part.upper())
+                continue
+            
+            # 3. Евро-паттерны (S355, P265...)
+            if EURO_GRADE_PATTERN.match(part):
+                final_words.append(part.upper())
+                continue
+
+            # D. ТРАНСЛИТЕРАЦИЯ (ГОСТ и Обычные слова)
+            
+            # Подготовка текста (Cyrillic mapping)
+            text = part
+            replacements = [
+                ('shch', 'щ'), ('sch', 'щ'), ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
+                ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), ('ts', 'ц'), ('tc', 'ц'), ('kh', 'х')
+            ]
+            for eng, rus in replacements:
+                text = text.replace(eng, rus)
+
+            text = re.sub(r'iy(?=\s|$)', 'ий', text)
+            text = re.sub(r'yy(?=\s|$)', 'ый', text)
+            text = text.replace('ij', 'ий')
+            text = re.sub(r'y(?=\s|$)', 'ы', text)
+
+            mapping = {
+                'a': 'а', 'b': 'б', 'c': 'к', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
+                'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
+                'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
+                'v': 'в', 'w': 'в', 'x': 'х', 'z': 'з', 'y': 'ы', 'q': 'к'
+            }
+            chars = []
+            for c in text:
+                chars.append(mapping.get(c, c))
+            rus_text = "".join(chars)
+
+            # E. ЭВРИСТИКА ГОСТА (Приоритет №3)
+            # Если после транслита в слове остались цифры -> это ГОСТ марка -> CAPS
+            # Пример: 09g2s -> 09г2с -> 09Г2С
+            if any(char.isdigit() for char in rus_text) and len(rus_text) < 10:
+                 final_words.append(rus_text.upper())
+            else:
+                # Обычное слово -> Прогоняем через Спеллер (если длинное)
+                if len(rus_text) > 3:
+                     rus_text = spell_check_yandex_cached(rus_text)
+                final_words.append(rus_text)
+
+        # Сборка фразы (Первая буква заглавная)
+        result = " ".join(final_words)
+        return result[0].upper() + result[1:] if result else ""
 
     # --- ИНТЕРФЕЙС ---
     # Вот здесь была ошибка отступа. Теперь всё выровнено по 4 пробела.
@@ -1488,6 +1552,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
