@@ -1352,8 +1352,24 @@ with tab_seo:
 
             target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
             
+target_urls_raw = filtered_results_all[:TARGET_COMPETITORS]
+            
+            # --- НОВАЯ ЛОГИКА: СОХРАНЯЕМ ССЫЛКИ В ПОЛЕ РУЧНОГО ВВОДА ---
+            # Извлекаем чистые URL
+            extracted_urls_list = [item['url'] for item in target_urls_raw]
+            # Формируем строку с разделителем переноса строки
+            urls_text_block = "\n".join(extracted_urls_list)
+            # Записываем в session_state, который привязан к текстовому полю "manual_urls_ui"
+            st.session_state['manual_urls_ui'] = urls_text_block
+            # -----------------------------------------------------------
+
             collected_competitors_count = len(target_urls_raw)
+            
+            # Выводим уведомление и Expander, чтобы сразу видеть список
             st.info(f"Получено уникальных URL: {len(found_results)}. Выбрано **{collected_competitors_count}** релевантных конкурентов. Ваш сайт в ТОПе: **{'Да (Поз. ' + str(my_serp_pos) + ')' if my_serp_pos > 0 else 'Нет'}**.")
+            
+            with st.expander(f"✅ Список конкурентов скопирован в поле 'Ручной список' (Нажмите для просмотра)", expanded=False):
+                 st.text_area("Отобранные URL:", value=urls_text_block, height=200, disabled=True)
 
         else:
             raw_urls = st.session_state.get("manual_urls_ui", "")
@@ -1806,3 +1822,4 @@ with tab_tables:
             if st.button("Сбросить результат", key="reset_table"):
                 st.session_state.table_html_result = None
                 st.rerun()
+
