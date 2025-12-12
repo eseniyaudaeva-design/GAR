@@ -1528,48 +1528,141 @@ with tab_tags:
 # ------------------------------------------
 # Вкладка 4: ТАБЛИЦЫ
 # ------------------------------------------
+# ------------------------------------------
+# Вкладка 4: ТАБЛИЦЫ (MASS GEN v2)
+# ------------------------------------------
 with tab_tables:
-    st.title("🧩 Генератор таблиц")
-    pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl")
-    prompt_tbl = st.text_area("Описание таблицы")
+    st.title("🧩 Генератор таблиц (Mass Production)")
+    
+    # 1. Настройки доступа и источника
+    c_set1, c_set2 = st.columns(2)
+    with c_set1:
+        pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl")
+    with c_set2:
+        target_url_tbl = st.text_input("URL Родительской категории (источник тегов)", placeholder="https://site.ru/catalog/armatura/", key="url_source_tbl")
 
-    # Авто-выбор топ-4 слов для добавления
-    top_missing = []
-    if st.session_state.analysis_results:
-        df = st.session_state.analysis_results['depth']
-        mask = df['Рекомендация'].astype(str).str.startswith('+')
-        df_miss = df[mask].copy()
-        df_miss['val'] = df_miss['Рекомендация'].apply(lambda x: int(str(x).replace('+','')))
-        top_missing = [{'word': r['Слово'], 'count': r['val']} for _, r in df_miss.sort_values('val', ascending=False).head(4).iterrows()]
+    st.markdown("---")
 
-    if top_missing:
-        st.info(f"Слова для внедрения: {', '.join([x['word'] for x in top_missing])}")
+    # 2. Настройка количества и описания таблиц
+    st.subheader("⚙️ Конфигурация таблиц")
+    
+    num_tables = st.selectbox("Сколько таблиц генерировать для каждого урла?", [1, 2, 3, 4, 5], key="num_tables_select")
+    
+    table_prompts = []
+    
+    # Динамическое создание полей ввода
+    st.info("📝 Опишите, что должно быть в каждой таблице. ИИ наполнит их данными, специфичными для конкретного товара.")
+    
+    cols_prompts = st.columns(num_tables)
+    for i in range(num_tables):
+        with cols_prompts[i]:
+            def_val = f"Технические характеристики" if i == 0 else f"Размеры и вес"
+            prompt_text = st.text_area(f"Таблица №{i+1} (Описание)", value=def_val, height=150, key=f"tbl_prompt_{i}")
+            table_prompts.append(prompt_text)
 
-    if st.button("Сгенерировать", key="btn_gen_tbl"):
-        if not openai: st.error("Нет openai"); st.stop()
+    # 3. Логика запуска
+    if st.button("🚀 Запустить генерацию таблиц", key="btn_gen_tbl_mass", disabled=(not pplx_key_tbl or not target_url_tbl)):
+        
+        # Инициализация клиента
+        if not openai: 
+            st.error("Библиотека openai не установлена/не найдена.")
+            st.stop()
+            
         client = openai.OpenAI(api_key=pplx_key_tbl, base_url="https://api.perplexity.ai")
-        with st.spinner("Генерация..."):
-            res = generate_html_table(client, prompt_tbl, top_missing)
-            st.session_state.table_html_result = res
-            st.rerun()
+        
+        status_box = st.status("⏳ Анализ категории...", expanded=True)
+        
+        # А. Парсинг тегов (используем ту же функцию, что и в AI вкладке)
+        try:
+            _, tags_data, err_msg = get_page_data_for_gen(target_url_tbl)
+            if err_msg or not tags_data:
+                status_box.error(f"Ошибка сбора тегов: {err_msg if err_msg else 'Теги не найдены'}")
+                st.stop()
+            
+            # Ограничитель на случай сбоя парсинга (чтобы не сжечь бюджет, если тегов 1000)
+            status_box.write(f"✅ Найдено товаров (тегов): {len(tags_data)}")
+        except Exception as e:
+            status_box.error(f"Критическая ошибка: {e}")
+            st.stop()
 
-    if st.session_state.table_html_result:
-        t1, t2 = st.tabs(["👁️ View", "💻 Code"])
-        with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
-        with t2: st.code(st.session_state.table_html_result, language='html')
+        # Б. Генерация
+        all_table_rows = []
+        progress_bar = st.progress(0)
+        
+        total_steps = len(tags_data)
+        
+        for idx, tag_item in enumerate(tags_data):
+            tag_name = tag_item['name']
+            tag_url = tag_item['url']
+            
+            status_box.write(f"⚙️ Обработка: {tag_name}...")
+            
+            # Формируем строку данных
+            row_data = {'URL': tag_url, 'Название': tag_name}
+            
+            # Генерируем каждую таблицу по очереди
+            for tbl_i, prompt_desc in enumerate(table_prompts):
+                
+                # Специальный промт для уникальности
+                system_instruction = "You are a senior technical data specialist. Output ONLY HTML code. No markdown formatting, no backticks, no introduction."
+                user_prompt = f"""
+                CONTEXT: The specific product/sub-category is "{tag_name}".
+                TASK: Generate a technical HTML table based on this description: "{prompt_desc}".
+                CRITICAL REQUIREMENTS:
+                1. The data inside the table MUST be specific to "{tag_name}", not generic.
+                2. Style: <table style="width:100%; border-collapse: collapse; border: 2px solid black;">, headers with background #f0f0f0.
+                3. Return ONLY the HTML <table>...</table> code.
+                """
+                
+                try:
+                    response = client.chat.completions.create(
+                        model="sonar-pro", 
+                        messages=[
+                            {"role": "system", "content": system_instruction}, 
+                            {"role": "user", "content": user_prompt}
+                        ], 
+                        temperature=0.5 # Чуть ниже температура для большей точности данных
+                    )
+                    html_content = response.choices[0].message.content
+                    
+                    # Очистка от маркдауна, если ИИ все же добавил его
+                    html_content = re.sub(r'```html', '', html_content)
+                    html_content = re.sub(r'```', '', html_content).strip()
+                    
+                    row_data[f'Table {tbl_i+1}'] = html_content
+                    
+                except Exception as e:
+                    row_data[f'Table {tbl_i+1}'] = f"Error: {e}"
+            
+            all_table_rows.append(row_data)
+            progress_bar.progress((idx + 1) / total_steps)
 
+        # В. Завершение и сохранение
+        status_box.update(label="✅ Генерация завершена!", state="complete", expanded=False)
+        
+        df_tables = pd.DataFrame(all_table_rows)
+        
+        # Сохранение в Session State для отображения кнопки скачивания
+        st.session_state.tables_gen_df = df_tables
+        
+        # Создание Excel в памяти
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_tables.to_excel(writer, index=False)
+        st.session_state.tables_excel_bytes = buffer.getvalue()
+        
+        st.success(f"Готово! Сгенерировано таблиц для {len(df_tables)} страниц.")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    # 4. Вывод результатов и скачивание
+    if 'tables_gen_df' in st.session_state and st.session_state.tables_gen_df is not None:
+        st.markdown("### 📥 Результаты")
+        
+        st.download_button(
+            label="Скачать Excel файл",
+            data=st.session_state.tables_excel_bytes,
+            file_name="generated_tables.xlsx",
+            mime="application/vnd.ms-excel",
+            type="primary"
+        )
+        
+        st.dataframe(st.session_state.tables_gen_df.head(), use_container_width=True)
