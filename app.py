@@ -23,6 +23,9 @@ except ImportError:
 # ==========================================
 # 0. ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
 # ==========================================
+if 'categorized_dimensions' not in st.session_state:
+    st.session_state.categorized_dimensions = []
+    
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
@@ -195,10 +198,12 @@ except Exception as e:
 # --- ИСПРАВЛЕННАЯ ФУНКЦИЯ КЛАССИФИКАЦИИ ---
 def classify_semantics_smart(words_list, morph):
     """
-    1. Приводит слова к лемме.
-    2. Распределяет по категориям.
+    Классификация v2:
+    - Commercial: действия, деньги, возврат, + ГОРОДА.
+    - Dimensions: размеры, марки (отдельный блок).
+    - Products: товары (существительные) + свойства (прилагательные).
     """
-    # РАСШИРЕННЫЙ СПИСОК КОРНЕЙ
+    # 1. КОРНИ КОММЕРЦИИ (Добавил города и гео-корни)
     commercial_roots = [
         'куп', 'цен', 'стоим', 'прайс', 'продаж',
         'заказ', 'достав', 'плат', 'оплат', 
@@ -210,22 +215,26 @@ def classify_semantics_smart(words_list, morph):
         'руб', 'грн', 'usd', 'eur', 
         'наличи', 'склад', 'магазин', 
         'менедж', 'консульт', 'вопрос', 'клиент',
-        'возврат', 'обмен', 'обрат' # <-- Добавил ваши слова
+        'возврат', 'обмен', 'обрат',
+        # ГЕО КОРНИ
+        'москв', 'питер', 'спб', 'екб', 'город', 'област', 'росси', 'рф'
     ]
 
+    # Регулярки
     dim_pattern = re.compile(r'(\d+[хx*]\d+)|(\d+\s?мм)|(l=\d+)|(dn\d+)|(d\d+)|(ф\d+)', re.IGNORECASE)
     standard_pattern = re.compile(r'(гост|din|ту)\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
 
     categories = {
         'commercial': set(), 
-        'dimensions': set(),
+        'dimensions': set(), # Это пойдет в 3-й блок
         'products': set(),   
         'adjectives': set(), 
         'other': set()       
     }
 
     for word in words_list:
+        # Лемматизация
         if morph:
             try:
                 p = morph.parse(word.lower())[0]
@@ -238,7 +247,7 @@ def classify_semantics_smart(words_list, morph):
             lemma = word.lower()
             tag = set()
 
-        # 1. РАЗМЕРЫ (Сразу относим их и в dimensions)
+        # 1. РАЗМЕРЫ И МАРКИ (Приоритет №1 -> в 3-й блок)
         if dim_pattern.search(lemma) or standard_pattern.search(lemma):
             categories['dimensions'].add(lemma)
             continue
@@ -246,12 +255,18 @@ def classify_semantics_smart(words_list, morph):
             categories['dimensions'].add(lemma) 
             continue
 
-        # 2. КОММЕРЦИЯ (Проверка корней)
+        # 2. КОММЕРЦИЯ + ГОРОДА
+        # Проверка по корням
         if any(root in lemma for root in commercial_roots):
             categories['commercial'].add(lemma)
             continue
+        
+        # Проверка через NLP на Географию (Geox)
+        if morph and 'Geox' in tag:
+            categories['commercial'].add(lemma)
+            continue
 
-        # 3. МОРФОЛОГИЯ
+        # 3. МОРФОЛОГИЯ (Товары)
         if morph:
             # Глаголы -> Коммерция
             if 'VERB' in tag or 'INFN' in tag:
@@ -261,12 +276,11 @@ def classify_semantics_smart(words_list, morph):
             if 'NOUN' in tag:
                 categories['products'].add(lemma)
                 continue
-            # Прилагательные -> Товарные характеристики (тоже кидаем в товары)
+            # Прилагательные -> Товары (свойства)
             if 'ADJF' in tag or 'ADJS' in tag:
                 categories['adjectives'].add(lemma)
                 continue
         
-        # Если NLP не сработал или категория не определена
         categories['other'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -935,31 +949,32 @@ with tab_seo:
                 prog.progress(done / total)
         prog.empty()
 
-        with st.spinner("Расчет метрик..."):
+with st.spinner("Расчет метрик..."):
+            # 1. Считаем математику (BM25, Ширина/Глубина)
             st.session_state.analysis_results = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
             st.session_state.analysis_done = True
             
-            # --- АВТО-КЛАССИФИКАЦИЯ СЛОВ ---
+            # 2. АВТО-КЛАССИФИКАЦИЯ СЛОВ (НОВАЯ ЛОГИКА)
             res = st.session_state.analysis_results
-            words_to_check = [x['word'] for x in res['missing_semantics_high']] + [x['word'] for x in res['missing_semantics_low']]
+            words_to_check = [x['word'] for x in res['missing_semantics_high']] + \
+                             [x['word'] for x in res['missing_semantics_low']]
+            
+            # Классифицируем
             categorized = classify_semantics_smart(words_to_check, morph)
             
-# ...
-            # --- АВТО-КЛАССИФИКАЦИЯ СЛОВ ---
-            res = st.session_state.analysis_results
-            words_to_check = [x['word'] for x in res['missing_semantics_high']] + [x['word'] for x in res['missing_semantics_low']]
-            
-            categorized = classify_semantics_smart(words_to_check, morph)
-            
-            # ВАЖНО: Объединяем Товары + Прилагательные + Размеры в один список для тегов
-            prod_lemmas = categorized['products'] + categorized['adjectives'] + categorized['dimensions']
-            
-            # Если Pymorphy не сработал (списки пусты), берем 'other' как резерв, но фильтруем короткие
-            if not prod_lemmas and not morph:
+            # БЛОК 1: ТОВАРЫ (Существительные + Прилагательные)
+            # Они пойдут в генератор тегов
+            prod_lemmas = categorized['products'] + categorized['adjectives']
+            if not morph and not prod_lemmas: # Фолбэк, если NLP сломался
                  prod_lemmas = [w for w in categorized['other'] if len(w) > 3]
 
             st.session_state.categorized_products = sorted(list(set(prod_lemmas)))
+            
+            # БЛОК 2: КОММЕРЦИЯ (+ Города)
             st.session_state.categorized_commercial = categorized['commercial']
+            
+            # БЛОК 3: РАЗМЕРЫ (Отдельно)
+            st.session_state.categorized_dimensions = categorized['dimensions']
             
             st.rerun()
 
@@ -990,6 +1005,26 @@ with tab_seo:
         render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+        # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (3 БЛОКА) ---
+        with st.expander("🛒 Результат автоматической группировки слов", expanded=True):
+            c1, c2, c3 = st.columns(3)
+            
+            # БЛОК 1: ТОВАРЫ
+            with c1: 
+                st.info(f"🧱 Товарные слова ({len(st.session_state.categorized_products)})")
+                st.caption(", ".join(st.session_state.categorized_products))
+                
+            # БЛОК 2: КОММЕРЦИЯ (Глаголы, Деньги, Города)
+            with c2:
+                st.warning(f"💰 Коммерция / Гео ({len(st.session_state.categorized_commercial)})")
+                st.caption(", ".join(st.session_state.categorized_commercial))
+                
+            # БЛОК 3: РАЗМЕРЫ И МАРКИ
+            with c3:
+                # Берем данные из новой переменной
+                dims = st.session_state.get('categorized_dimensions', [])
+                st.success(f"📏 Размеры и Марки ({len(dims)})")
+                st.caption(", ".join(dims))
 
 # ------------------------------------------
 # Вкладка 2: AI
@@ -1159,4 +1194,5 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
