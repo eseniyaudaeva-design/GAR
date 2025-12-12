@@ -1226,107 +1226,166 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (ОБНОВЛЕННАЯ ВЕРСИЯ v3)
+# Вкладка 3: ТЕГИ (ВЕРСИЯ v5 - С умным склонением названий)
 # ------------------------------------------
+
+# 1. Функция обратной транслитерации (для найденных ссылок)
+def reverse_transliterate_text(text):
+    text = text.replace('-', ' ').replace('_', ' ').replace('/', '')
+    mapping = {
+        'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г', 'd': 'д', 'e': 'е', 'z': 'з', 'i': 'и', 
+        'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н', 'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 
+        't': 'т', 'u': 'у', 'f': 'ф', 'h': 'х', 'y': 'ы'
+    }
+    complex_mapping = {
+        'sch': 'щ', 'sh': 'ш', 'ch': 'ч', 'zh': 'ж', 'ts': 'ц', 'yu': 'ю', 'ya': 'я',
+        'yo': 'ё', 'jj': 'й', 'y': 'й'
+    }
+    for eng, rus in complex_mapping.items():
+        text = text.replace(eng, rus)
+    result = []
+    for char in text:
+        if char in mapping: result.append(mapping[char])
+        else: result.append(char)
+    return "".join(result)
+
+# 2. Функция умного формирования названия (для слов БЕЗ ссылок)
+def generate_smart_name(word, base_noun):
+    """
+    Если word='Тканый', а base_noun='Сетка' -> возвращает 'Тканая сетка'
+    Если word='Анкер', а base_noun='Сетка' -> возвращает 'Анкер' (так как это сущ.)
+    """
+    word = word.strip()
+    if not base_noun or not morph:
+        return word.capitalize()
+
+    try:
+        # Анализируем базовое существительное (например, "Труба" -> Женский род)
+        parsed_noun = morph.parse(base_noun)[0]
+        noun_tag = parsed_noun.tag
+        
+        # Анализируем слово из списка
+        parsed_word = morph.parse(word)[0]
+        
+        # Если слово - Прилагательное (ADJF) или Причастие (PRTF)
+        if 'ADJF' in parsed_word.tag or 'PRTF' in parsed_word.tag:
+            # Склоняем прилагательное под род и число существительного
+            inflected = parsed_word.inflect({noun_tag.gender, noun_tag.number} - {None})
+            if inflected:
+                # Результат: "Сварная" + " " + "сетка"
+                return f"{inflected.word.capitalize()} {base_noun.lower()}"
+        
+        # Если слово - Существительное, оставляем как есть (нельзя сказать "Анкер сетка")
+        return word.capitalize()
+        
+    except Exception as e:
+        return word.capitalize()
+
 with tab_tags:
-    st.title("🏷️ Генератор плитки тегов")
+    st.title("🏷️ Генератор плитки тегов (Smart SEO)")
     
     st.markdown("""
-    **Режим: Умная перелинковка (SEO Matching)**
-    Скрипт берет слова из поля ниже и ищет подходящие страницы в вашем файле ссылок.
+    **Логика работы:**
+    1. **Есть ссылка:** Название берется из URL (расшифровывается транслит).
+    2. **Нет ссылки:** Скрипт берет ваше слово и добавляет к нему «Основное существительное», согласуя окончания.
+       *Пример: слово «Тканый» + база «Сетка» = «Тканая сетка»*
     """)
 
-    # 1. Подготовка списка слов (из Session State или пустой)
+    # --- ИНТЕРФЕЙС ---
+    c_input1, c_input2 = st.columns([2, 1])
+    
+    # Список слов
     auto_products = st.session_state.get('categorized_products', [])
     default_text_value = ", ".join(auto_products) if auto_products else ""
-
-    # 2. Редактируемое поле ввода (как просили на скрине)
-    st.markdown("### Список товарных слов (можно редактировать)")
-    tags_input_text = st.text_area(
-        "Введите слова через запятую", 
-        value=default_text_value, 
-        height=150, 
-        key="tags_manual_input",
-        help="Эти слова будут искаться в URL адресах файла."
-    )
-
-    # 3. Загрузчик файла
-    uploaded_file = st.file_uploader("Загрузите файл со ссылками (.txt)", type=["txt"], key="urls_uploader")
     
-    with st.expander("Какой формат файла нужен?", expanded=False):
-        st.code("""https://site.ru/catalog/anod-mednyy/
-https://site.ru/catalog/balka-bu/
-https://site.ru/catalog/vtulki-rti/
-... (каждая ссылка с новой строки)""", language="text")
+    with c_input1:
+        st.markdown("##### 1. Список слов (Прилагательные/Свойства)")
+        tags_input_text = st.text_area(
+            "Вставьте слова через запятую", 
+            value=default_text_value, 
+            height=100, 
+            key="tags_manual_input",
+            help="Например: Тканый, Сварной, Медный"
+        )
 
-    if st.button("🚀 Найти совпадения и создать плитку", key="btn_match_tags_txt"):
-        # Парсим слова из текстового поля
+    with c_input2:
+        st.markdown("##### 2. Основное сущ. (Контекст)")
+        base_noun_input = st.text_input(
+            "Для формирования названий", 
+            placeholder="Например: Сетка",
+            key="base_noun_input",
+            help="Если ссылка не найдется, скрипт добавит это слово. 'Тканый' -> 'Тканая сетка'"
+        )
+
+    # Загрузчик
+    uploaded_file = st.file_uploader("3. Файл со ссылками (.txt)", type=["txt"], key="urls_uploader")
+
+    if st.button("🚀 Сгенерировать блок тегов", key="btn_match_tags_txt"):
+        # Проверки
         if not tags_input_text.strip():
             st.warning("Список слов пуст.")
             st.stop()
-            
-        # Разбиваем по запятым и чистим
+        
         products_to_process = [x.strip() for x in tags_input_text.split(',') if x.strip()]
+        
+        all_urls = []
+        if uploaded_file:
+            stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
+            all_urls = [line.strip() for line in stringio.readlines() if line.strip()]
 
-        if not uploaded_file:
-            st.error("Пожалуйста, загрузите файл со ссылками.")
-            st.stop()
-
-        # Читаем файл ссылок
-        stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
-        all_urls = [line.strip() for line in stringio.readlines() if line.strip()]
-
-        if not all_urls:
-            st.error("Файл со ссылками пуст.")
-            st.stop()
-
-        st.success(f"Обрабатываем слов: {len(products_to_process)} | Ссылок в файле: {len(all_urls)}")
-
-        # 4. ЛОГИКА СОПОСТАВЛЕНИЯ
         matched_tags = []
         progress_bar = st.progress(0)
         
         for idx, word in enumerate(products_to_process):
             translit_word = transliterate_text(word)
-            # Пропускаем слишком короткие слова, чтобы избежать мусора
-            if len(translit_word) < 2: 
-                continue 
+            if len(translit_word) < 2: continue 
 
             candidates = []
             
-            for url in all_urls:
-                # --- ЛОГИКА "ПОСЛЕ catalog/" ---
-                url_lower = url.lower()
-                
-                # Если есть /catalog/, ищем только после него
-                if '/catalog/' in url_lower:
-                    search_scope = url_lower.split('/catalog/', 1)[1]
-                else:
-                    # Если нет catalog, берем путь (path) без домена
-                    try:
-                        parsed = urlparse(url_lower)
-                        search_scope = parsed.path
-                    except:
-                        search_scope = url_lower # Фолбэк
+            # --- ПОИСК ССЫЛКИ ---
+            if all_urls:
+                for url in all_urls:
+                    url_lower = url.lower()
+                    # Определяем область поиска (после /catalog/ или весь путь)
+                    search_scope = ""
+                    if '/catalog/' in url_lower:
+                        search_scope = url_lower.split('/catalog/', 1)[1]
+                    else:
+                        try: search_scope = urlparse(url_lower).path
+                        except: search_scope = url_lower
 
-                # Проверяем вхождение транслита в обрезанную часть URL
-                if translit_word in search_scope:
-                    candidates.append(url)
+                    if translit_word in search_scope:
+                        candidates.append({'full_url': url, 'slug': search_scope})
             
             # --- ФОРМИРОВАНИЕ РЕЗУЛЬТАТА ---
             if candidates:
-                # Если нашли ссылки - берем случайную
-                best_match = random.choice(candidates)
+                # ВАРИАНТ 1: ССЫЛКА НАЙДЕНА
+                chosen = random.choice(candidates)
+                
+                # Пытаемся вытащить имя из URL (самый релевантный кусок пути)
+                slug_parts = chosen['slug'].strip('/').split('/')
+                best_part = slug_parts[0]
+                for part in slug_parts:
+                    if translit_word in part:
+                        best_part = part
+                        break
+                
+                # Обратный транслит (iz-url -> В текст)
+                human_name = reverse_transliterate_text(best_part).capitalize()
+                
                 matched_tags.append({
-                    'name': word.capitalize(),
-                    'url': best_match,
+                    'name': human_name,
+                    'url': chosen['full_url'],
                     'has_link': True
                 })
             else:
-                # Если ссылок не нашли - все равно добавляем слово, но без ссылки
+                # ВАРИАНТ 2: ССЫЛКА НЕ НАЙДЕНА (ГЕНЕРАЦИЯ ИМЕНИ)
+                # Используем умное склонение
+                smart_name = generate_smart_name(word, base_noun_input)
+                
                 matched_tags.append({
-                    'name': word.capitalize(),
-                    'url': '#',
+                    'name': smart_name,
+                    'url': None,
                     'has_link': False
                 })
             
@@ -1334,35 +1393,56 @@ https://site.ru/catalog/vtulki-rti/
         
         progress_bar.empty()
 
-        # 5. ВЫВОД РЕЗУЛЬТАТА (HTML)
-        st.subheader(f"✅ Сгенерировано тегов: {len(matched_tags)}")
+        # 4. ГЕНЕРАЦИЯ HTML
+        html_lines = []
+        html_lines.append('<div class="popular-tags-text">')
+        html_lines.append('  <div class="popular-tags-inner-text">')
+        html_lines.append('    <div class="tag-items">')
         
-        # Генерируем HTML
-        # Если есть ссылка -> <a>, если нет -> <span> (визуально похожий, но неактивный)
-        html_parts = []
         for item in matched_tags:
             if item['has_link']:
-                html_parts.append(f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>')
+                html_lines.append(f'      <a href="{item["url"]}" class="tag-item">{item["name"]}</a>')
             else:
-                # Спан для тегов без ссылок
-                html_parts.append(f'    <span class="tag-link tag-empty">{item["name"]}</span>')
-
-        html_output = '<div class="popular-tags">\n' + "\n".join(html_parts) + '\n</div>'
+                # Тег без ссылки (просили без ссылки, но с текстом)
+                html_lines.append(f'      <span class="tag-item tag-empty">{item["name"]}</span>')
+                
+        html_lines.append('    </div>')
+        html_lines.append('  </div>')
+        html_lines.append('</div>')
         
-        st.session_state.tags_html_result = html_output
+        final_html = "\n".join(html_lines)
+        st.session_state.tags_html_result = final_html
         st.rerun()
 
     # Блок отображения результата
     if st.session_state.tags_html_result:
-        t_view, t_code = st.tabs(["👁️ Предпросмотр", "💻 HTML Код"])
+        st.subheader("✅ Результат")
+        st.info("Скопируйте код нажав на иконку справа вверху блока:")
         
-        with t_view:
-            st.markdown(st.session_state.tags_html_result, unsafe_allow_html=True)
-            
-        with t_code:
-            st.text_area("Скопируйте HTML:", st.session_state.tags_html_result, height=300)
+        st.code(st.session_state.tags_html_result, language='html')
         
-        if st.button("Сброс результата", key="reset_tags_txt"):
+        st.markdown("### Предпросмотр")
+        # CSS только для визуализации внутри админки
+        preview_style = """
+        <style>
+        .tag-items { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag-item { 
+            background: #f3f4f6; 
+            padding: 6px 12px; 
+            border-radius: 4px; 
+            text-decoration: none; 
+            color: #1f2937; 
+            font-size: 14px; 
+            border: 1px solid #e5e7eb;
+            font-family: sans-serif;
+        }
+        .tag-item:hover { background: #e5e7eb; }
+        .tag-empty { color: #555; background: #fff; border-style: dashed; cursor: default; }
+        </style>
+        """
+        st.markdown(preview_style + st.session_state.tags_html_result, unsafe_allow_html=True)
+        
+        if st.button("🔄 Сбросить", key="reset_tags_v5"):
             st.session_state.tags_html_result = None
             st.rerun()
 
@@ -1398,6 +1478,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
