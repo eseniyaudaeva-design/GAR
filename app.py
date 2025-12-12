@@ -1349,28 +1349,6 @@ https://site.ru/catalog/vtulki-rti/
 
         html_output = '<div class="popular-tags">\n' + "\n".join(html_parts) + '\n</div>'
         
-        # Добавляем CSS для красоты прямо в вывод, чтобы было видно разницу
-        style_block = """
-<style>
-.popular-tags { display: flex; flex-wrap: wrap; gap: 10px; }
-.tag-link { 
-    padding: 5px 10px; 
-    border: 1px solid #ccc; 
-    border-radius: 4px; 
-    text-decoration: none; 
-    color: #333; 
-    background: #f9f9f9;
-    font-size: 14px;
-}
-.tag-link:hover { background: #e0e0e0; }
-.tag-empty { 
-    color: #888; 
-    border-color: #eee; 
-    background: #fff;
-    cursor: default;
-}
-</style>
-"""
         st.session_state.tags_html_result = style_block + html_output
         st.rerun()
 
@@ -1420,6 +1398,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
