@@ -937,18 +937,15 @@ def get_page_data_for_gen(url):
             if tag_url: tags_data.append({'name': link.get_text(strip=True), 'url': tag_url})
     return base_text, tags_data, None
 
-def generate_five_blocks(client, base_text, tag_name, seo_words=None):
+def generate_five_blocks(client, base_text, tag_name):
     if not base_text: return ["Error: No base text"] * 5
     system_instruction = "Ты — профессиональный технический копирайтер. Напиши 5 HTML блоков. Не используй markdown."
-    keywords_instruction = ""
-    if seo_words and len(seo_words) > 0:
-        keywords_str = ", ".join(seo_words)
-        keywords_instruction = f"Включи эти слова (склоняя их) и выдели <b>: {keywords_str}"
-
-    user_prompt = f"""ВВОДНЫЕ: Тег "{tag_name}". База: \"\"\"{base_text[:3000]}\"\"\" {keywords_instruction}
+    
+    user_prompt = f"""ВВОДНЫЕ: Тег "{tag_name}". База: \"\"\"{base_text[:3000]}\"\"\"
     ЗАДАЧА: 5 блоков. Структура: h2/h3, абзац, вводная фраза:, список, заключение. Без [1] ссылок. Разделитель: |||BLOCK_SEP|||"""
 
     try:
+        # Убрали seo_words из аргументов
         response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
         content = response.choices[0].message.content
         content = re.sub(r'\[\d+\]', '', content).replace("```html", "").replace("```", "")
@@ -957,13 +954,10 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
         return blocks[:5]
     except Exception as e: return [f"API Error: {str(e)}"] * 5
 
-def generate_html_table(client, user_prompt, seo_keywords_data=None):
-    seo_instruction = ""
-    if seo_keywords_data:
-        words_desc = [f"- '{item['word']}': {item['count']} times" for item in seo_keywords_data]
-        seo_instruction = f"MANDATORY SEO: Use these words ({', '.join(words_desc)}). Wrap in <b>."
-
-    system_instruction = f"Generate HTML tables. Inline CSS: table border 2px solid black, th bg #f0f0f0. {seo_instruction} No markdown."
+def generate_html_table(client, user_prompt):
+    # Убрали seo_instruction про MANDATORY SEO и жирный шрифт
+    
+    system_instruction = f"Generate HTML tables. Inline CSS: table border 2px solid black, th bg #f0f0f0. No markdown."
     try:
         response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
         return re.sub(r'\[\d+\]', '', response.choices[0].message.content).replace("```html", "").replace("```", "").strip()
@@ -1543,6 +1537,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
