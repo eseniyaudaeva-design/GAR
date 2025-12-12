@@ -1211,11 +1211,12 @@ with tab_tags:
     1. Парсит категорию и собирает страницы, куда нужно внедрить теги.
     2. Берет ваши ключевые слова и ищет релевантные ссылки в базе (`.txt`).
     3. **✨ MAGIС:** Генерирует анкоры ссылок **автоматически на основе URL**, используя обратный транслит и **Яндекс.Спеллер**.
-       *Пример: ссылка `.../setka-razuvay/` -> анкор "Сетка рабица" (после исправления)*.
+       *Пример: ссылка `.../anody/` -> анкор "Аноды"*.
     """)
 
-    # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (Определяем внутри вкладки или глобально) ---
-    # Кэш для спеллера, чтобы ускорить работу и не дублировать запросы
+    # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+    
+    # Кэш для спеллера
     if 'speller_cache' not in st.session_state:
         st.session_state.speller_cache = {}
 
@@ -1243,10 +1244,10 @@ with tab_tags:
             pass
         return text
 
-def smart_reverse_translit(slug):
+    def smart_reverse_translit(slug):
         """
-        Умный обратный транслит:
-        anody -> аноды (а не аноди)
+        Умный обратный транслит (Исправленная версия):
+        anody -> аноды
         alyuminiy -> алюминий
         truba-profilnaya -> труба профильная
         """
@@ -1256,7 +1257,7 @@ def smart_reverse_translit(slug):
         text = text.replace('_', ' ').replace('/', '')
         text = text.replace('-', ' ')
 
-        # 2. Сложные сочетания (порядок важен!)
+        # 2. Сложные сочетания
         replacements = [
             ('shch', 'щ'), ('sch', 'щ'), 
             ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
@@ -1266,15 +1267,12 @@ def smart_reverse_translit(slug):
         for eng, rus in replacements:
             text = text.replace(eng, rus)
 
-        # 3. Умная обработка окончаний ДО посимвольной замены
-        # iy в конце слова -> ий (vitaliy -> виталий)
+        # 3. Умная обработка окончаний
         text = re.sub(r'iy(?=\s|$)', 'ий', text)
-        # yy в конце слова -> ый (krasnyy -> красный)
         text = re.sub(r'yy(?=\s|$)', 'ый', text)
-        # ij -> ий
         text = text.replace('ij', 'ий')
         
-        # ГЛАВНОЕ ИСПРАВЛЕНИЕ: y в конце слова -> ы (anody -> аноды)
+        # Исправление для 'y' на конце (anody -> аноды)
         text = re.sub(r'y(?=\s|$)', 'ы', text)
 
         # 4. Посимвольная карта
@@ -1283,13 +1281,12 @@ def smart_reverse_translit(slug):
             'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
             'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
             'v': 'в', 'w': 'в', 'x': 'х', 'z': 'з', 
-            'y': 'ы', # Теперь y внутри слова тоже ы (vyl -> выл). Для 'и' есть 'i'.
+            'y': 'ы', 
             'q': 'к'
         }
         
         chars = []
         for c in text:
-            # Если символ уже русский (от replacements), оставляем, иначе мапим
             if c >= 'а' and c <= 'я':
                 chars.append(c)
             elif c == 'ё':
@@ -1299,13 +1296,13 @@ def smart_reverse_translit(slug):
                 
         raw_rus = "".join(chars)
 
-        # 5. Исправление через Яндекс (на случай опечаток или сложных случаев)
+        # 5. Яндекс Спеллер
         final_text = spell_check_yandex_cached(raw_rus)
         
-        # 6. Косметика
         return final_text.capitalize()
 
     # --- ИНТЕРФЕЙС ---
+    # Вот здесь была ошибка отступа. Теперь всё выровнено по 4 пробела.
     col_t1, col_t2 = st.columns([1, 1])
     
     with col_t1:
@@ -1317,7 +1314,6 @@ def smart_reverse_translit(slug):
 
     with col_t2:
         st.markdown("##### 📝 Список товаров (Ключи поиска)")
-        # Автоподстановка из SEO анализа
         raw_products = st.session_state.get('categorized_products', [])
         default_text = "\n".join(raw_products) if raw_products else ""
         
@@ -1336,7 +1332,7 @@ def smart_reverse_translit(slug):
         
         status_box = st.status("🚀 Запуск процесса...", expanded=True)
         
-        # 1. Парсинг категории
+        # 1. Парсинг
         status_box.write(f"🕵️ Парсим категорию: {category_url}")
         target_urls_list = []
         try:
@@ -1350,106 +1346,86 @@ def smart_reverse_translit(slug):
                         href = link.get('href')
                         if href: target_urls_list.append(urljoin(category_url, href))
                 else:
-                    status_box.warning("Не найден блок .popular-tags-inner. Попробуем собрать все ссылки из контента...")
-                    # Fallback: собираем все ссылки из main, если есть, или body
+                    status_box.warning("Не найден блок .popular-tags-inner. Ищем ссылки в контенте...")
                     main_area = soup.find('main') or soup.body
                     if main_area:
                         for link in main_area.find_all('a'):
                             href = link.get('href')
-                            if href and '/catalog/' in href: # Простой фильтр
+                            if href and '/catalog/' in href:
                                 target_urls_list.append(urljoin(category_url, href))
-                    
         except Exception as e:
             status_box.error(f"Ошибка парсинга: {e}")
             st.stop()
             
-        # Убираем дубли
         target_urls_list = list(set(target_urls_list))
         
         if not target_urls_list:
-            status_box.error("Целевые страницы не найдены. Проверьте URL или селекторы.")
+            status_box.error("Целевые страницы не найдены.")
             st.stop()
             
-        status_box.write(f"✅ Найдено страниц для обработки: {len(target_urls_list)}")
+        status_box.write(f"✅ Найдено страниц: {len(target_urls_list)}")
 
-        # 2. Чтение базы ссылок
+        # 2. Индексация базы
         status_box.write("📂 Индексация базы ссылок...")
         stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
         all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
         
-        # Карта: Товар (ключ) -> Список найденных URL
-        # Предварительный поиск, чтобы не искать внутри цикла генерации
         product_candidates_map = {}
         for p in products:
             tr = transliterate_text(p)
             if len(tr) >= 3:
-                # Ищем в базе ссылок те, которые содержат транслит товара
                 matches = [u for u in all_txt_links if tr in u.lower()]
                 if matches: product_candidates_map[p] = matches
         
-        status_box.write(f"✅ Товары сопоставлены с базой ({len(product_candidates_map)} шт.)")
+        status_box.write(f"✅ Товары сопоставлены: {len(product_candidates_map)} шт.")
 
-        # 3. Генерация (с Яндексом)
-        status_box.write("🧠 Генерация 'умных' анкоров (Reverse Translit + Yandex Speller)...")
+        # 3. Генерация
+        status_box.write("🧠 Генерация анкоров (Smart Translit)...")
         final_rows = []
         prog_bar = st.progress(0)
         
-        # Используем Session для повторных запросов
         with requests.Session() as session:
             for i, target_url in enumerate(target_urls_list):
                 current_page_tags = []
                 
-                # Для каждой страницы выбираем случайные теги из доступных товаров
-                # Берем все доступные ключи и перемешиваем
                 available_products = list(product_candidates_map.keys())
                 random.shuffle(available_products)
-                
-                # Лимит тегов на страницу (например, 12-20)
                 limit = random.randint(12, 20)
                 selected_products = available_products[:limit]
                 
                 for prod_name in selected_products:
                     candidates = product_candidates_map[prod_name]
-                    # Исключаем ссылку на саму себя
                     norm_target = target_url.rstrip('/')
                     valid_candidates = [u for u in candidates if u.rstrip('/') != norm_target]
                     
                     if valid_candidates:
                         chosen_url = random.choice(valid_candidates)
                         
-                        # --- ЛОГИКА SMART NAME v11 ---
-                        # Пытаемся вытащить slug из URL
+                        # SMART NAME
                         try:
                             parsed = urlparse(chosen_url)
                             path_parts = parsed.path.strip('/').split('/')
-                            # Берем последнюю часть, если она не пустая, иначе предпоследнюю
                             slug = path_parts[-1] if path_parts[-1] else (path_parts[-2] if len(path_parts)>1 else "")
                             
                             if not slug or len(slug) < 3:
-                                # Fallback: если slug плохой, берем имя товара
                                 anchor_text = prod_name.capitalize()
                             else:
-                                # ✨ Магия: Slug -> Russian Text -> Yandex Fix
                                 anchor_text = smart_reverse_translit(slug)
-                                
                         except:
                             anchor_text = prod_name.capitalize()
-                        # -----------------------------
                         
                         current_page_tags.append({
                             'name': anchor_text,
                             'url': chosen_url
                         })
                 
-                # Формируем HTML
                 if current_page_tags:
-                    # Еще раз мешаем для визуальной естественности
                     random.shuffle(current_page_tags)
                     html_block = '<div class="popular-tags">\n' + \
                                  "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in current_page_tags]) + \
                                  '\n</div>'
                 else:
-                    html_block = "<!-- Нет подходящих тегов -->"
+                    html_block = "<!-- Нет тегов -->"
                 
                 final_rows.append({
                     'Page URL': target_url,
@@ -1459,9 +1435,9 @@ def smart_reverse_translit(slug):
                 prog_bar.progress((i + 1) / len(target_urls_list))
 
         prog_bar.empty()
-        status_box.update(label="Готово! Excel сгенерирован.", state="complete", expanded=False)
+        status_box.update(label="Готово!", state="complete", expanded=False)
 
-        # 4. Сохранение
+        # 4. Скачивание
         df_tags_result = pd.DataFrame(final_rows)
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -1472,9 +1448,9 @@ def smart_reverse_translit(slug):
             
         excel_bytes = buffer.getvalue()
         
-        st.success(f"🎉 Сгенерировано {len(final_rows)} блоков тегов!")
+        st.success(f"🎉 Сгенерировано {len(final_rows)} блоков.")
         st.download_button(
-            label="📥 Скачать Smart Tags (Excel)",
+            label="📥 Скачать Excel",
             data=excel_bytes,
             file_name="smart_tags_tiles.xlsx",
             mime="application/vnd.ms-excel"
@@ -1512,5 +1488,6 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
