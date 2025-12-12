@@ -1201,166 +1201,246 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (АВТОНОМНЫЙ РЕЖИМ + РЕДАКТИРОВАНИЕ)
+# Вкладка 3: ТЕГИ (SMART MASS PRODUCTION v12)
 # ------------------------------------------
 with tab_tags:
-    st.title("🏷️ Генератор плитки тегов (Mass Production)")
+    st.title("🏷️ Генератор плитки тегов (Smart SEO)")
     
     st.markdown("""
-    **Как это работает:**
-    1. Скрипт заходит на указанный **URL категории**.
-    2. Собирает оттуда все ссылки на подфильтры (теги).
-    3. Берет список **Товаров** (вы можете отредактировать его ниже) и ищет для них ссылки в вашем **.txt файле**.
-    4. Генерирует Excel, где для каждого подфильтра создана своя плитка тегов.
+    **🚀 Режим Smart Mass Production:**
+    1. Парсит категорию и собирает страницы, куда нужно внедрить теги.
+    2. Берет ваши ключевые слова и ищет релевантные ссылки в базе (`.txt`).
+    3. **✨ MAGIС:** Генерирует анкоры ссылок **автоматически на основе URL**, используя обратный транслит и **Яндекс.Спеллер**.
+       *Пример: ссылка `.../setka-razuvay/` -> анкор "Сетка рабица" (после исправления)*.
     """)
 
-    # 1. Вводные данные
+    # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (Определяем внутри вкладки или глобально) ---
+    # Кэш для спеллера, чтобы ускорить работу и не дублировать запросы
+    if 'speller_cache' not in st.session_state:
+        st.session_state.speller_cache = {}
+
+    def spell_check_yandex_cached(text):
+        """Проверка орфографии с кэшированием"""
+        if not text: return ""
+        if text in st.session_state.speller_cache:
+            return st.session_state.speller_cache[text]
+            
+        url = "https://speller.yandex.net/services/spellservice.json/checkText"
+        params = {"text": text, "lang": "ru", "options": 518}
+        try:
+            r = requests.get(url, params=params, timeout=1.0)
+            if r.status_code == 200:
+                data = r.json()
+                fixed_text = text
+                for error in data:
+                    if error.get('s'):
+                        fixed_text = fixed_text.replace(error['word'], error['s'][0])
+                
+                # Сохраняем в кэш
+                st.session_state.speller_cache[text] = fixed_text
+                return fixed_text
+        except:
+            pass
+        return text
+
+    def smart_reverse_translit(slug):
+        """
+        Превращает 'truba-profilnaya-20x20' -> 'Труба профильная 20х20'
+        """
+        # 1. Чистка от расширений и мусора
+        text = slug.lower().strip()
+        text = re.sub(r'\.html|\.php|\.htm', '', text)
+        text = text.replace('_', ' ').replace('/', '')
+        text = text.replace('-', ' ')
+
+        # 2. Обратный транслит (базовый)
+        replacements = [
+            ('shch', 'щ'), ('sch', 'щ'), ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
+            ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), ('ts', 'ц')
+        ]
+        for eng, rus in replacements:
+            text = text.replace(eng, rus)
+
+        # Простые замены символов
+        mapping = {
+            'a': 'а', 'b': 'б', 'c': 'к', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
+            'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
+            'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
+            'v': 'в', 'w': 'в', 'x': 'кс', 'z': 'з', 'y': 'и'
+        }
+        
+        # Эвристика окончаний
+        text = text.replace('yy', 'ый').replace('iy', 'ий').replace('ij', 'ий')
+        
+        chars = []
+        for c in text:
+            chars.append(mapping.get(c, c))
+        raw_rus = "".join(chars)
+
+        # 3. Исправление через Яндекс
+        final_text = spell_check_yandex_cached(raw_rus)
+        
+        # 4. Косметика (Первая буква заглавная)
+        return final_text.capitalize()
+
+    # --- ИНТЕРФЕЙС ---
     col_t1, col_t2 = st.columns([1, 1])
     
     with col_t1:
-        st.markdown("##### 🔗 Источник")
-        category_url = st.text_input("URL Категории (откуда собрать список подфильтров)", placeholder="https://site.ru/catalog/truba/")
+        st.markdown("##### 🔗 Источник (Откуда парсим)")
+        category_url = st.text_input("URL Категории (где собрать список подкатегорий)", placeholder="https://site.ru/catalog/truba/")
         
         st.markdown("##### 📂 База ссылок")
-        uploaded_file = st.file_uploader("Загрузите файл со ссылками сайта (.txt)", type=["txt"], key="urls_uploader_mass_v3")
+        uploaded_file = st.file_uploader("Файл со ссылками (.txt)", type=["txt"], key="urls_uploader_smart")
 
     with col_t2:
-        st.markdown("##### 📝 Список товаров (Ключи)")
-        
-        # Получаем данные из SEO анализа, если они есть
+        st.markdown("##### 📝 Список товаров (Ключи поиска)")
+        # Автоподстановка из SEO анализа
         raw_products = st.session_state.get('categorized_products', [])
-        
-        # Преобразуем в строку для текстового поля
         default_text = "\n".join(raw_products) if raw_products else ""
         
-        # Поле для редактирования
         products_input = st.text_area(
-            "Отредактируйте список (каждое слово с новой строки):", 
+            "Список товаров (будут искаться в базе):", 
             value=default_text, 
             height=200, 
-            key="tags_products_edit",
-            help="Эти слова будут искаться в вашем txt файле. Вы можете добавить свои."
+            key="tags_products_edit_smart",
+            help="Скрипт будет искать ссылки, содержащие эти слова (в транслите)."
         )
-        
-        # Формируем финальный список товаров из поля ввода
         products = [line.strip() for line in products_input.split('\n') if line.strip()]
-        
-        if products:
-            st.caption(f"✅ Готово к работе: {len(products)} слов(а)")
-        else:
-            st.caption("⚠️ Список пуст")
 
-    # Кнопка запуска
+    # --- ЗАПУСК ---
     st.markdown("---")
-    if st.button("🚀 Спарсить категорию и собрать Excel", key="btn_tags_mass_parse_manual", disabled=(not products or not uploaded_file or not category_url)):
+    if st.button("🚀 Запустить Smart-генерацию", key="btn_tags_smart_gen", disabled=(not products or not uploaded_file or not category_url)):
         
-        status_box = st.status("Начинаем работу...", expanded=True)
+        status_box = st.status("🚀 Запуск процесса...", expanded=True)
         
-        # --- ЭТАП 1: ПАРСИНГ КАТЕГОРИИ ---
-        status_box.write(f"🕵️ Подключаемся к {category_url}...")
-        
+        # 1. Парсинг категории
+        status_box.write(f"🕵️ Парсим категорию: {category_url}")
         target_urls_list = []
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
             r = requests.get(category_url, headers=headers, timeout=15)
-            
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
-                    links = tags_container.find_all('a')
-                    for link in links:
+                    for link in tags_container.find_all('a'):
                         href = link.get('href')
-                        if href:
-                            full_url = urljoin(category_url, href)
-                            target_urls_list.append(full_url)
+                        if href: target_urls_list.append(urljoin(category_url, href))
                 else:
-                    status_box.error("Не найден блок с классом .popular-tags-inner на странице.")
-                    st.stop()
-            else:
-                status_box.error(f"Ошибка доступа к сайту: код {r.status_code}")
-                st.stop()
-                
+                    status_box.warning("Не найден блок .popular-tags-inner. Попробуем собрать все ссылки из контента...")
+                    # Fallback: собираем все ссылки из main, если есть, или body
+                    main_area = soup.find('main') or soup.body
+                    if main_area:
+                        for link in main_area.find_all('a'):
+                            href = link.get('href')
+                            if href and '/catalog/' in href: # Простой фильтр
+                                target_urls_list.append(urljoin(category_url, href))
+                    
         except Exception as e:
-            status_box.error(f"Ошибка соединения: {e}")
+            status_box.error(f"Ошибка парсинга: {e}")
             st.stop()
-
-        if not target_urls_list:
-            status_box.error("Теги на странице не найдены.")
-            st.stop()
-
-        status_box.write(f"✅ Найдено страниц-подфильтров: {len(target_urls_list)}")
-
-        # --- ЭТАП 2: ИНДЕКСАЦИЯ ССЫЛОК ПО ТОВАРАМ ---
-        status_box.write("📂 Обработка списка ссылок и поиск совпадений...")
+            
+        # Убираем дубли
+        target_urls_list = list(set(target_urls_list))
         
+        if not target_urls_list:
+            status_box.error("Целевые страницы не найдены. Проверьте URL или селекторы.")
+            st.stop()
+            
+        status_box.write(f"✅ Найдено страниц для обработки: {len(target_urls_list)}")
+
+        # 2. Чтение базы ссылок
+        status_box.write("📂 Индексация базы ссылок...")
         stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
         all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
-
-        if not all_txt_links:
-            status_box.error("Файл ссылок пуст.")
-            st.stop()
-
-        product_candidates_map = {}
         
-        # Создаем пары (имя, транслит) из ТОГО, ЧТО ВВЕЛ ПОЛЬЗОВАТЕЛЬ
-        product_translit_pairs = []
+        # Карта: Товар (ключ) -> Список найденных URL
+        # Предварительный поиск, чтобы не искать внутри цикла генерации
+        product_candidates_map = {}
         for p in products:
             tr = transliterate_text(p)
             if len(tr) >= 3:
-                product_translit_pairs.append((p, tr))
-
-        # Поиск совпадений
-        for prod_name, prod_translit in product_translit_pairs:
-            matches = [u for u in all_txt_links if prod_translit in u]
-            if matches:
-                product_candidates_map[prod_name] = matches
+                # Ищем в базе ссылок те, которые содержат транслит товара
+                matches = [u for u in all_txt_links if tr in u.lower()]
+                if matches: product_candidates_map[p] = matches
         
-        status_box.write(f"✅ Индексация завершена. Найдено ссылок для {len(product_candidates_map)} товаров.")
+        status_box.write(f"✅ Товары сопоставлены с базой ({len(product_candidates_map)} шт.)")
 
-        # --- ЭТАП 3: ГЕНЕРАЦИЯ ---
-        status_box.write("⚙️ Генерируем уникальные плитки...")
-        
+        # 3. Генерация (с Яндексом)
+        status_box.write("🧠 Генерация 'умных' анкоров (Reverse Translit + Yandex Speller)...")
         final_rows = []
         prog_bar = st.progress(0)
         
-        for i, target_url in enumerate(target_urls_list):
-            
-            current_page_tags = []
-            
-            for prod_name, candidates in product_candidates_map.items():
-                # Исключаем ссылку на саму себя
-                norm_target = target_url.rstrip('/')
-                valid_candidates = [u for u in candidates if u.rstrip('/') != norm_target]
+        # Используем Session для повторных запросов
+        with requests.Session() as session:
+            for i, target_url in enumerate(target_urls_list):
+                current_page_tags = []
                 
-                if valid_candidates:
-                    chosen_url = random.choice(valid_candidates)
-                    current_page_tags.append({
-                        'name': prod_name.capitalize(),
-                        'url': chosen_url
-                    })
-            
-            if current_page_tags:
-                random.shuffle(current_page_tags)
-                html_block = '<div class="popular-tags">\n' + \
-                             "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in current_page_tags]) + \
-                             '\n</div>'
-            else:
-                html_block = "<!-- Нет подходящих тегов -->"
-            
-            final_rows.append({
-                'Page URL': target_url,
-                'Tags HTML': html_block
-            })
-            
-            prog_bar.progress((i + 1) / len(target_urls_list))
-            
-        prog_bar.empty()
-        status_box.update(label="Готово!", state="complete", expanded=False)
+                # Для каждой страницы выбираем случайные теги из доступных товаров
+                # Берем все доступные ключи и перемешиваем
+                available_products = list(product_candidates_map.keys())
+                random.shuffle(available_products)
+                
+                # Лимит тегов на страницу (например, 12-20)
+                limit = random.randint(12, 20)
+                selected_products = available_products[:limit]
+                
+                for prod_name in selected_products:
+                    candidates = product_candidates_map[prod_name]
+                    # Исключаем ссылку на саму себя
+                    norm_target = target_url.rstrip('/')
+                    valid_candidates = [u for u in candidates if u.rstrip('/') != norm_target]
+                    
+                    if valid_candidates:
+                        chosen_url = random.choice(valid_candidates)
+                        
+                        # --- ЛОГИКА SMART NAME v11 ---
+                        # Пытаемся вытащить slug из URL
+                        try:
+                            parsed = urlparse(chosen_url)
+                            path_parts = parsed.path.strip('/').split('/')
+                            # Берем последнюю часть, если она не пустая, иначе предпоследнюю
+                            slug = path_parts[-1] if path_parts[-1] else (path_parts[-2] if len(path_parts)>1 else "")
+                            
+                            if not slug or len(slug) < 3:
+                                # Fallback: если slug плохой, берем имя товара
+                                anchor_text = prod_name.capitalize()
+                            else:
+                                # ✨ Магия: Slug -> Russian Text -> Yandex Fix
+                                anchor_text = smart_reverse_translit(slug)
+                                
+                        except:
+                            anchor_text = prod_name.capitalize()
+                        # -----------------------------
+                        
+                        current_page_tags.append({
+                            'name': anchor_text,
+                            'url': chosen_url
+                        })
+                
+                # Формируем HTML
+                if current_page_tags:
+                    # Еще раз мешаем для визуальной естественности
+                    random.shuffle(current_page_tags)
+                    html_block = '<div class="popular-tags">\n' + \
+                                 "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in current_page_tags]) + \
+                                 '\n</div>'
+                else:
+                    html_block = "<!-- Нет подходящих тегов -->"
+                
+                final_rows.append({
+                    'Page URL': target_url,
+                    'Tags HTML': html_block
+                })
+                
+                prog_bar.progress((i + 1) / len(target_urls_list))
 
-        # --- ЭТАП 4: СОХРАНЕНИЕ ---
+        prog_bar.empty()
+        status_box.update(label="Готово! Excel сгенерирован.", state="complete", expanded=False)
+
+        # 4. Сохранение
         df_tags_result = pd.DataFrame(final_rows)
-        
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_tags_result.to_excel(writer, index=False)
@@ -1370,11 +1450,11 @@ with tab_tags:
             
         excel_bytes = buffer.getvalue()
         
-        st.success("🎉 Успешно!")
+        st.success(f"🎉 Сгенерировано {len(final_rows)} блоков тегов!")
         st.download_button(
-            label="📥 Скачать Excel",
+            label="📥 Скачать Smart Tags (Excel)",
             data=excel_bytes,
-            file_name="tags_tiles_generated.xlsx",
+            file_name="smart_tags_tiles.xlsx",
             mime="application/vnd.ms-excel"
         )
 
@@ -1410,3 +1490,4 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
