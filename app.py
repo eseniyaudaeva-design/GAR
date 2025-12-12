@@ -1074,22 +1074,17 @@ with tab_seo:
         prog.empty()
 
         with st.spinner("Расчет метрик и классификация..."):
-            # === ВОТ ЭТОТ КУСОК, КОТОРЫЙ ВЫ СПРАШИВАЛИ ===
             res = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
             st.session_state.analysis_results = res
             st.session_state.analysis_done = True
             
-            # 4. Classify (ИСПРАВЛЕНИЕ: БЕРЕМ ВСЕ СЛОВА БЕЗ ЛИМИТОВ)
-            # Берем "Важные" (High) + "Дополнительные" (Low)
-            high_words = [x['word'] for x in res.get('missing_semantics_high', [])]
-            low_words = [x['word'] for x in res.get('missing_semantics_low', [])]
+            # --- ИСПРАВЛЕНИЕ: БЕРЕМ ТОЛЬКО ВАЖНЫЕ (ШИРИНА) ---
+            # Игнорируем low_words (дополнительные)
+            words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             
-            # Объединяем списки, чтобы ничего не потерять
-            all_missing_words = list(set(high_words + low_words))
-            
-            # Запускаем классификацию для ВСЕГО списка
-            with st.spinner(f"Классификация {len(all_missing_words)} слов..."):
-                cats = classify_semantics_with_api(all_missing_words, YANDEX_DICT_KEY)
+            # Запускаем классификацию ТОЛЬКО для важных слов
+            with st.spinner(f"Классификация {len(words_to_check)} слов (Ширина)..."):
+                cats = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
             
             st.session_state.categorized_products = cats['products']
             st.session_state.categorized_services = cats['services']
@@ -1421,4 +1416,5 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
