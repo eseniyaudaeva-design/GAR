@@ -1226,105 +1226,93 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (ВЕРСИЯ v9 - Универсальный словарьный фикс)
+# Вкладка 3: ТЕГИ (ВЕРСИЯ v11 - Auto-Fix через Yandex Speller API)
 # ------------------------------------------
 
-def autofix_spelling(word):
+def spell_check_yandex(text):
     """
-    Пытается исправить "битые" слова с помощью словаря Pymorphy.
-    Решает проблему сталная -> стальная, авиаcионная -> авиационная.
+    Отправляет текст в Яндекс.Спеллер и возвращает исправленную версию.
+    Это избавляет нас от написания словарей вручную.
     """
-    if not morph:
-        return word
-        
-    # Если слово уже известно словарю - не трогаем
-    if morph.word_is_known(word):
-        return word
-        
-    # ЭВРИСТИКА 1: Пропущенный мягкий знак перед Н (лн -> льн)
-    # Исправляет: сталная, профилная, котелная, строителная...
-    if 'лн' in word:
-        candidate = word.replace('лн', 'льн')
-        if morph.word_is_known(candidate):
-            return candidate
-
-    # ЭВРИСТИКА 2: Латинская 'c' вместо 'ц' (если просочилась)
-    if 'c' in word:
-        candidate = word.replace('c', 'ц')
-        if morph.word_is_known(candidate):
-            return candidate
-            
-    # ЭВРИСТИКА 3: Пропущенный мягкий знак на конце (метал -> металл/металь)
-    # Тут сложнее, так как "метал" может быть не найден, а "металл" найден.
-    # Но для тегов важнее окончания прилагательных.
+    if not text: return ""
     
-    return word
+    url = "https://speller.yandex.net/services/spellservice.json/checkText"
+    params = {
+        "text": text,
+        "lang": "ru",
+        "options": 518 # Игнорировать URL, цифры и т.д.
+    }
+    
+    try:
+        # Отправляем запрос (таймаут 1 сек, чтобы не висело долго)
+        r = requests.get(url, params=params, timeout=1.5)
+        if r.status_code == 200:
+            data = r.json()
+            # Яндекс возвращает список ошибок. Проходим по ним и заменяем.
+            # data пример: [{'word': 'филтровая', 's': ['фильтровая']}]
+            
+            # Сортируем ошибки с конца, чтобы замена не сбила индексы (хотя replace проще)
+            fixed_text = text
+            for error in data:
+                if error.get('s'): # Если есть варианты исправления
+                    wrong_word = error['word']
+                    correct_word = error['s'][0] # Берем первый (самый вероятный) вариант
+                    
+                    # Заменяем слово целиком (с границами слов, чтобы не задеть части)
+                    # Но для простоты в тегах можно и обычный replace
+                    fixed_text = fixed_text.replace(wrong_word, correct_word)
+            
+            return fixed_text
+    except:
+        # Если интернета нет или ошибка - возвращаем как было
+        pass
+        
+    return text
 
 def improved_reverse_translit(text):
     """
-    Транслит + Проверка словарем.
+    Транслит (Латиница -> Кириллица) + Яндекс.Спеллер
     """
-    # 1. Подготовка
+    # 1. Базовая чистка
     text = text.lower().replace('_', ' ').replace('/', '')
     text = text.replace('-', ' ')
 
     # 2. Группы символов
     replacements = [
-        ('sch', 'щ'), ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
-        ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'),
-        ('ts', 'ц')
+        ('shch', 'щ'), ('sch', 'щ'), ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
+        ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), ('ts', 'ц')
     ]
     for eng, rus in replacements:
         text = text.replace(eng, rus)
 
-    # 3. Базовые замены
-    text = text.replace('yy', 'ый') # mednyy -> медный
-    text = text.replace('iy', 'ий') # alyuminiy -> алюминий
+    # 3. Базовые замены букв
+    text = text.replace('c', 'ц')
+    text = text.replace('yy', 'ый')
+    text = text.replace('iy', 'ий')
     text = text.replace('j', 'й')
-    
-    # Гласная + y = й
     text = re.sub(r'(?<=[aeiouаеёиоуыэюя])y', 'й', text)
-    # Согласная + y = ы
     text = text.replace('y', 'ы')
-    
-    # Одиночные
+
     mapping = {
-        'a': 'а', 'b': 'б', 'c': 'ц', 'd': 'д', 'e': 'е', 'f': 'ф', 
-        'g': 'г', 'h': 'х', 'i': 'и', 'k': 'к', 'l': 'л', 'm': 'м', 
-        'n': 'н', 'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 
-        'u': 'у', 'v': 'в', 'w': 'в', 'x': 'х', 'z': 'з'
+        'a': 'а', 'b': 'б', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
+        'h': 'х', 'i': 'и', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
+        'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
+        'v': 'в', 'w': 'в', 'x': 'х', 'z': 'з'
     }
     
     chars = [mapping.get(c, c) for c in text]
     raw_rus = "".join(chars)
 
-    # 4. --- УМНЫЙ ФИКС СЛОВ (MILLION WORDS FIX) ---
-    words = raw_rus.split(' ')
-    fixed_words = []
-    
-    for w in words:
-        # Сначала пробуем словарь
-        w_fixed = autofix_spelling(w)
-        
-        # Если словарь не помог, применяем старый добрый хардкод для корней,
-        # которые словарь может не знать (специфичные термины)
-        if w_fixed == w and not morph.word_is_known(w):
-             # Резервный список окончаний, если слово совсем не знакомо
-            if w.endswith('стал'): w = w + 'ь'
-            elif w.endswith('профил'): w = w + 'ь'
-            elif w.endswith('панел'): w = w + 'ь'
-            elif w.endswith('детал'): w = w + 'ь'
-            elif w.endswith('мед'): w = w + 'ь'
-            elif w == 'цеп': w = 'цепь'
-        else:
-            w = w_fixed
-            
-        fixed_words.append(w)
+    # 4. --- МАГИЯ: ОТПРАВЛЯЕМ ЯНДЕКСУ НА ПРОВЕРКУ ---
+    # Например: "сетка филтровая" -> "сетка фильтровая"
+    # "балка сталная" -> "балка стальная"
+    final_text = spell_check_yandex(raw_rus)
 
-    return " ".join(fixed_words).capitalize()
+    return final_text.capitalize()
 
 
 def generate_smart_name(word, base_noun):
+    """Генерация имени если нет ссылки (через морфологию)"""
     word = word.strip()
     if not base_noun or not morph:
         return word.capitalize()
@@ -1342,8 +1330,10 @@ def generate_smart_name(word, base_noun):
         return word.capitalize()
 
 with tab_tags:
-    st.title("🏷️ Генератор плитки тегов (Auto-Fix)")
+    st.title("🏷️ Генератор плитки тегов (Auto AI)")
     
+    st.info("💡 Используется Яндекс.Спеллер для автоматического исправления ошибок транслитерации (сталная -> стальная).")
+
     # --- ВВОД ДАННЫХ ---
     c_input1, c_input2 = st.columns([2, 1])
     auto_products = st.session_state.get('categorized_products', [])
@@ -1351,18 +1341,11 @@ with tab_tags:
     
     with c_input1:
         st.markdown("##### 1. Список слов")
-        tags_input_text = st.text_area(
-            "Слова для поиска", 
-            value=default_text_value, height=100, key="tags_manual_input"
-        )
+        tags_input_text = st.text_area("Слова для поиска", value=default_text_value, height=100, key="tags_manual_input")
 
     with c_input2:
         st.markdown("##### 2. Основное сущ.")
-        base_noun_input = st.text_input(
-            "Контекст (Сетка, Труба...)", 
-            placeholder="Например: Сетка",
-            key="base_noun_input"
-        )
+        base_noun_input = st.text_input("Контекст (Сетка, Труба...)", placeholder="Например: Сетка", key="base_noun_input")
 
     uploaded_file = st.file_uploader("3. Файл со ссылками (.txt)", type=["txt"], key="urls_uploader")
 
@@ -1381,60 +1364,49 @@ with tab_tags:
         matched_tags = []
         progress_bar = st.progress(0)
         
-        for idx, word in enumerate(products_to_process):
-            # Транслит для поиска
-            translit_word = transliterate_text(word)
-            if len(translit_word) < 2: continue 
+        # Создаем сессию один раз для ускорения
+        with requests.Session() as session:
+            for idx, word in enumerate(products_to_process):
+                translit_word = transliterate_text(word)
+                if len(translit_word) < 2: continue 
 
-            candidates = []
-            
-            if all_urls:
-                for url in all_urls:
-                    url_lower = url.lower()
-                    search_scope = ""
-                    if '/catalog/' in url_lower:
-                        search_scope = url_lower.split('/catalog/', 1)[1]
-                    else:
-                        try: search_scope = urlparse(url_lower).path
-                        except: search_scope = url_lower
+                candidates = []
+                
+                if all_urls:
+                    for url in all_urls:
+                        url_lower = url.lower()
+                        search_scope = ""
+                        if '/catalog/' in url_lower:
+                            search_scope = url_lower.split('/catalog/', 1)[1]
+                        else:
+                            try: search_scope = urlparse(url_lower).path
+                            except: search_scope = url_lower
 
-                    if translit_word in search_scope:
-                        candidates.append({'full_url': url, 'slug': search_scope})
-            
-            # --- ЛОГИКА ---
-            if candidates:
-                chosen = random.choice(candidates)
+                        if translit_word in search_scope:
+                            candidates.append({'full_url': url, 'slug': search_scope})
                 
-                # Парсим URL
-                slug_parts = chosen['slug'].strip('/').split('/')
-                # Ищем лучшую часть URL
-                best_part = slug_parts[-1]
-                for part in slug_parts:
-                    if translit_word in part:
-                        best_part = part
-                        break
+                if candidates:
+                    chosen = random.choice(candidates)
+                    
+                    slug_parts = chosen['slug'].strip('/').split('/')
+                    best_part = slug_parts[-1]
+                    for part in slug_parts:
+                        if translit_word in part:
+                            best_part = part
+                            break
+                    
+                    # В этой версии внутри вызывается Яндекс Спеллер
+                    human_name = improved_reverse_translit(best_part)
+                    
+                    matched_tags.append({'name': human_name, 'url': chosen['full_url'], 'has_link': True})
+                else:
+                    smart_name = generate_smart_name(word, base_noun_input)
+                    matched_tags.append({'name': smart_name, 'url': None, 'has_link': False})
                 
-                # Применяем УМНЫЙ обратный транслит
-                human_name = improved_reverse_translit(best_part)
-                
-                matched_tags.append({
-                    'name': human_name,
-                    'url': chosen['full_url'],
-                    'has_link': True
-                })
-            else:
-                smart_name = generate_smart_name(word, base_noun_input)
-                matched_tags.append({
-                    'name': smart_name,
-                    'url': None,
-                    'has_link': False
-                })
-            
-            progress_bar.progress((idx + 1) / len(products_to_process))
+                progress_bar.progress((idx + 1) / len(products_to_process))
         
         progress_bar.empty()
 
-        # ГЕНЕРАЦИЯ HTML
         html_lines = []
         html_lines.append('<div class="popular-tags-text">')
         html_lines.append('  <div class="popular-tags-inner-text">')
@@ -1450,15 +1422,14 @@ with tab_tags:
         html_lines.append('  </div>')
         html_lines.append('</div>')
         
-        final_html = "\n".join(html_lines)
-        st.session_state.tags_html_result = final_html
+        st.session_state.tags_html_result = "\n".join(html_lines)
         st.rerun()
 
     if st.session_state.tags_html_result:
         st.subheader("✅ Готовый HTML код")
         st.code(st.session_state.tags_html_result, language='html')
         
-        if st.button("Очистить", key="reset_tags_v9"):
+        if st.button("Очистить", key="reset_tags_v11"):
             st.session_state.tags_html_result = None
             st.rerun()
 
@@ -1494,6 +1465,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
