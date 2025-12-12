@@ -1180,26 +1180,43 @@ with tab_ai:
     if st.button("🚀 Начать генерацию", key="btn_start_gen", disabled=not pplx_key):
         st.session_state.ai_generated_df = None
         if not openai: st.error("Нет openai"); st.stop()
+        
+        # Инициализация клиента
         client = openai.OpenAI(api_key=pplx_key, base_url="https://api.perplexity.ai")
 
         with st.status("Генерация...", expanded=True) as status:
             base_text, tags, err = get_page_data_for_gen(target_url_gen)
             if err or not tags: st.error(err or "Нет тегов"); st.stop()
 
-            seo_list = [x['word'] for x in st.session_state.analysis_results.get('missing_semantics_high', []) if x['word'] not in GARBAGE_LATIN_STOPLIST][:15] if st.session_state.analysis_results else []
+            # Переменная seo_list удалена, так как больше не используется в функции генерации
 
             all_rows = []
             bar = st.progress(0)
+            
             for i, tag in enumerate(tags):
-                blocks = generate_five_blocks(client, base_text, tag['name'], seo_list)
-                all_rows.append({'TagName': tag['name'], 'URL': tag['url'], 'IP_PROP4839': blocks[0], 'IP_PROP4816': blocks[1], 'IP_PROP4838': blocks[2], 'IP_PROP4829': blocks[3], 'IP_PROP4831': blocks[4], **STATIC_DATA_GEN})
+                # ИСПРАВЛЕНИЕ: теперь передается только 3 аргумента
+                blocks = generate_five_blocks(client, base_text, tag['name'])
+                
+                all_rows.append({
+                    'TagName': tag['name'], 
+                    'URL': tag['url'], 
+                    'IP_PROP4839': blocks[0], 
+                    'IP_PROP4816': blocks[1], 
+                    'IP_PROP4838': blocks[2], 
+                    'IP_PROP4829': blocks[3], 
+                    'IP_PROP4831': blocks[4], 
+                    **STATIC_DATA_GEN
+                })
                 bar.progress((i+1)/len(tags))
 
             df = pd.DataFrame(all_rows)
             st.session_state.ai_generated_df = df
+            
             buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df.to_excel(writer, index=False)
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: 
+                df.to_excel(writer, index=False)
             st.session_state.ai_excel_bytes = buffer.getvalue()
+            
             st.rerun()
 
     if st.session_state.ai_generated_df is not None:
@@ -1666,3 +1683,4 @@ with tab_tables:
         )
         
         st.dataframe(st.session_state.tables_gen_df.head(), use_container_width=True)
+
