@@ -130,33 +130,26 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 3. ПОЛУЧЕНИЕ API КЛЮЧЕЙ (БЕЗОПАСНО & УНИВЕРСАЛЬНО)
+# 3. ПОЛУЧЕНИЕ API КЛЮЧЕЙ (БЕЗОПАСНО)
 # ==========================================
-def get_secret(key_name):
-    """Ищет ключ в session_state, затем в secrets[api], затем в secrets root"""
-    # 1. Session State (ручной ввод)
-    if key_name in st.session_state and st.session_state[key_name]:
-        return st.session_state[key_name]
-    
-    # 2. Secrets [api] section
+# Попытка получить Arsenkin Token
+if "arsenkin_token" in st.session_state:
+    ARSENKIN_TOKEN = st.session_state.arsenkin_token
+else:
     try:
-        if "api" in st.secrets and key_name in st.secrets["api"]:
-            return st.secrets["api"][key_name]
-    except FileNotFoundError:
-        pass
-        
-    # 3. Secrets root
-    try:
-        if key_name in st.secrets:
-            return st.secrets[key_name]
-    except FileNotFoundError:
-        pass
-        
-    return None
+        ARSENKIN_TOKEN = st.secrets["api"]["arsenkin_token"]
+    except (FileNotFoundError, KeyError):
+        ARSENKIN_TOKEN = None
 
-ARSENKIN_TOKEN = get_secret("arsenkin_token")
-YANDEX_DICT_KEY = get_secret("yandex_dict_key")
-PERPLEXITY_KEY_AUTO = get_secret("perplexity_key")
+# Попытка получить Yandex Key
+if "yandex_dict_key" in st.session_state:
+    YANDEX_DICT_KEY = st.session_state.yandex_dict_key
+else:
+    try:
+        YANDEX_DICT_KEY = st.secrets["api"]["yandex_dict_key"]
+    except (FileNotFoundError, KeyError):
+        YANDEX_DICT_KEY = None
+
 
 REGION_MAP = {
     "Москва": {"ya": 213, "go": 1011969},
@@ -248,7 +241,6 @@ def get_yandex_dict_info(text, api_key):
     Возвращает нормальную форму (лемму) и часть речи (pos) через API Яндекса.
     """
     if not api_key:
-        # Если ключа нет, просто возвращаем слово как есть
         return {'lemma': text, 'pos': 'unknown'}
         
     url = "https://dictionary.yandex.net/api/v1/dicservice.json/lookup"
@@ -263,7 +255,6 @@ def get_yandex_dict_info(text, api_key):
         if r.status_code == 200:
             data = r.json()
             if data.get('def'):
-                # Берем первое определение
                 first_def = data['def'][0]
                 lemma = first_def.get('text', text)
                 pos = first_def.get('pos', 'unknown')
@@ -272,143 +263,147 @@ def get_yandex_dict_info(text, api_key):
         pass
     return {'lemma': text, 'pos': 'unknown'}
 
-# --- ФУНКЦИЯ КЛАССИФИКАЦИИ v7.0 (Smart Service Detection) ---
+# --- ФУНКЦИЯ КЛАССИФИКАЦИИ С API ЯНДЕКСА ---
 def classify_semantics_with_api(words_list, yandex_key):
-    # Паттерны
+    # 1. СПИСКИ-ИСКЛЮЧЕНИЯ И ПАТТЕРНЫ
+    
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     gost_pattern = re.compile(r'(гост|din|ту|iso|ст|сп)\s?\d+', re.IGNORECASE)
 
-    # 1. ЧЕРНЫЙ СПИСОК (ЯВНАЯ КОММЕРЦИЯ И МУСОР)
-    BLACKLIST = {
-        # Интерфейс
-        'меню', 'поиск', 'главная', 'карта', 'сайт', 'личный', 'кабинет', 'вход', 'регистрация', 'корзина', 
-        'избранное', 'телефон', 'адрес', 'контакты', 'email', 'звонок', 'callback', 'отзыв', 'вопрос', 'ответ', 
-        'менеджер', 'политика', 'конфиденциальность', 'соглашение', 'cookie', 'соглашаться', 'подписаться', 
-        'ошибка', 'успешно', 'кнопка', 'форма', 'обзор', 'новости', 'статьи', 'калькулятор', 'фильтр', 
-        'сортировка', 'показать', 'сбросить', 'интернет', 'магазин', 'каталог', 'год', 'день', 'час', 'время',
-        'еще', 'весь', 'наш', 'ваш', 'мы', 'вы',
-        
-        # Торговля (Коммерческие глаголы и сущ)
-        'купить', 'заказать', 'цена', 'цены', 'прайс', 'стоимость', 'продажа', 'недорого', 'дешево', 'дорого', 
-        'скидка', 'акция', 'распродажа', 'оптом', 'розница', 'руб', 'рублей', 'уе', 'заказ', 'оплата', 'платеж', 
-        'рассрочка', 'кредит', 'лизинг', 'доставка', 'самовывоз', 'отгрузка', 'поставка', 'транспорт', 'логистика', 
-        'гарантия', 'возврат', 'обмен', 'наличие', 'склад', 'остаток',
-        
-        # Общие слова (не товары)
-        'вес', 'длина', 'ширина', 'высота', 'толщина', 'диаметр', 'размер', 'объем', 'масса', 'тонна', 'метр', 
-        'шт', 'кг', 'упаковка', 'характеристика', 'описание', 'параметр', 'свойство', 'артикул', 'код', 
-        'марка', 'бренд', 'производитель', 'стандарт', 'гост', 'соответствие', 'сертификат', 'документ', 'паспорт',
-        'преимущество', 'особенность', 'применение', 'назначение', 'условие', 'требование',
-        
-        # Наречия
-        'выгодно', 'дешево', 'быстро', 'срочно', 'недорого', 'бесплатно', 'качественно', 'профессионально', 
-        'надежно', 'доступно', 'круглосуточно', 'ежедневно',
-        
-        # Маркетинговые прилагательные
-        'выгодный', 'низкий', 'высокий', 'лучший', 'качественный', 'надежный', 'большой', 'малый', 'удобный', 
-        'быстрый', 'бесплатный', 'хороший', 'доступный', 'индивидуальный', 'профессиональный', 'собственный', 
-        'официальный', 'уникальный', 'широкий', 'огромный', 'различный', 'специальный', 'универсальный', 
-        'прочий', 'другой', 'готовый', 'сложный', 'простой', 'любой'
+    # UI и Навигация
+    SITE_UI_GARBAGE = {
+        'меню', 'поиск', 'главная', 'карта', 'сайт', 'личный', 'кабинет', 
+        'вход', 'регистрация', 'корзина', 'избранное', 'сравнение', 'профиль',
+        'телефон', 'адрес', 'контакты', 'email', 'звонок', 'callback', 
+        'отзыв', 'отзывы', 'вопрос', 'ответ', 'менеджер', 'консультация',
+        'политика', 'конфиденциальность', 'соглашение', 'оферта', 'cookie',
+        'соглашаться', 'согласие', 'принимать', 'отправить',
+        'ошибка', 'успешно', 'кнопка', 'форма', 'поле', 'обзор', 'новости', 'статьи',
+        'характеристика', 'описание', 'параметр', 'свойство', 'артикул', 'код',
+        'калькулятор', 'фильтр', 'сортировка', 'показать', 'сбросить',
+        'имя', 'фамилия', 'сообщение', 'файл', 'документ', 'сертификат',
+        'категория', 'раздел', 'список', 'вид', 'тип', 'класс', 'серия',
+        'рейтинг', 'наличие', 'склад', 'производитель', 'бренд', 'марка',
+        'вес', 'длина', 'ширина', 'высота', 'толщина', 'диаметр', 'размер',
+        'объем', 'масса', 'тонна', 'метр', 'шт', 'кг', 'упаковка', 'цена',
+        'интернет', 'магазин', 'каталог', 'год'
     }
-    
-    # 2. СЕМАНТИКА УСЛУГ (КОРНИ)
-    # Если слово содержит эти корни, это скорее всего услуга, а не товар
-    # (исключая слова, которые являются товарами, например "прокат" имеет корень "кат", но это товар)
-    SERVICE_ROOTS = [
-        'рез', 'руб', 'гиб', 'гну', 'вар', 'свар', 'цин', 'цинк', 'монт', 'клад', 'проект', 
-        'изол', 'сверл', 'грунт', 'крас', 'шлиф', 'вальц', 'перф', 'точ', 'фрез', 'работ',
-        'строй', 'ремонт', 'изготов', 'производ'
+
+    # Коммерция + Маркетинговые прилагательные
+    COMMERCIAL_WORDS = {
+        'купить', 'заказать', 'цена', 'цены', 'прайс', 'стоимость', 
+        'продажа', 'недорого', 'дешево', 'дорого', 'скидка', 'акция', 
+        'распродажа', 'оптом', 'розница', 'руб', 'рублей', 'уе',
+        'заказ', 'оплата', 'платеж', 'рассрочка', 'кредит', 'лизинг',
+        'доставка', 'самовывоз', 'отгрузка', 'поставка', 'транспорт', 'логистика',
+        'гарантия', 'возврат', 'обмен',
+        'выгодный', 'низкий', 'высокий', 'лучший', 'качественный', 'надежный',
+        'большой', 'малый', 'удобный', 'быстрый', 'бесплатный', 'хороший',
+        'доступный', 'индивидуальный', 'профессиональный', 'собственный',
+        'официальный', 'уникальный', 'широкий', 'огромный', 'различный'
+    }
+
+    GEO_ROOTS = [
+        'москв', 'питер', 'спб', 'екб', 'екатерин', 'росси', 'рф', 'город', 'област',
+        'новгород', 'казан', 'киев', 'минск', 'алматы', 'самара', 'омск', 'челябин',
+        'ростов', 'уфа', 'волгоград', 'перм', 'краснояр', 'воронеж', 'саратов', 'краснодар',
+        'тюмен', 'ижевск', 'тольятти', 'барнаул', 'иркутск', 'ульяновск', 'хабаровск'
     ]
     
-    # Исключения для услуг (слова с корнями услуг, которые на самом деле товары)
-    # Пример: "сварка" (услуга) vs "сварной" (свойство товара), "цинк" (товар) vs "оцинковка" (услуга)
-    # Но обычно прилагательные (сварной) лучше оставлять в товарах как уточнение.
-    
-    GEO_ROOTS = ['москв', 'питер', 'спб', 'екб', 'екатерин', 'росси', 'рф', 'город', 'област', 'новгород', 'казан', 'киев', 'минск', 'алматы', 'самара', 'омск', 'челябин', 'ростов', 'уфа', 'волгоград', 'перм', 'краснояр', 'воронеж', 'саратов', 'краснодар', 'тюмен', 'ижевск', 'тольятти', 'барнаул', 'иркутск', 'ульяновск', 'хабаровск']
+    SERVICE_KEYWORDS = {
+        'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'укладка', 
+        'проектирование', 'изоляция', 'сверление', 'грунтовка', 'покраска', 'услуга',
+        'металлообработка', 'обработка', 'строительство', 'ремонт', 'производство', 'изготовление'
+    }
 
-    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set()}
+    categories = {
+        'products': set(),
+        'services': set(),
+        'commercial': set(),
+        'dimensions': set()
+    }
+
+    # 2. ПРЕДВАРИТЕЛЬНАЯ ФИЛЬТРАЦИЯ
     api_candidates = []
 
-    # 3. ПЕРВИЧНЫЙ ОТСЕВ
     for word in words_list:
-        w_lower = word.lower()
-        
-        if dim_pattern.search(w_lower) or grade_pattern.match(w_lower) or gost_pattern.search(w_lower) or w_lower.isdigit():
-            categories['dimensions'].add(w_lower); continue
-            
-        if w_lower in BLACKLIST or any(r in w_lower for r in GEO_ROOTS):
-            categories['commercial'].add(w_lower); continue
-            
-        api_candidates.append(w_lower)
+        word_lower = word.lower()
 
-    # 4. ОПРЕДЕЛЕНИЕ ЧАСТИ РЕЧИ (API / Pymorphy)
-    yandex_results = {}
+        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or gost_pattern.search(word_lower) or word_lower.isdigit():
+            categories['dimensions'].add(word_lower)
+            continue
+        
+        if morph:
+            p = morph.parse(word_lower)[0]
+            lemma = p.normal_form
+        else:
+            lemma = word_lower
+
+        if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS:
+            categories['commercial'].add(lemma)
+            continue
+        
+        if any(root in lemma for root in GEO_ROOTS):
+            categories['commercial'].add(lemma)
+            continue
+
+        if lemma in SERVICE_KEYWORDS or lemma.endswith('обработка'):
+            categories['services'].add(lemma)
+            continue
+
+        api_candidates.append(word_lower)
+
+    # 3. ЗАПРОС К API YANDEX
+    yandex_results = {} 
+    
     if api_candidates and yandex_key:
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             future_to_word = {executor.submit(get_yandex_dict_info, w, yandex_key): w for w in api_candidates}
             for future in concurrent.futures.as_completed(future_to_word):
-                orig = future_to_word[future]
-                try: yandex_results[orig] = future.result()
-                except: yandex_results[orig] = {'lemma': orig, 'pos': 'unknown'}
+                orig_word = future_to_word[future]
+                try:
+                    res = future.result()
+                    yandex_results[orig_word] = res
+                except:
+                    yandex_results[orig_word] = {'lemma': orig_word, 'pos': 'unknown'}
     else:
         for w in api_candidates:
-            pos = 'unknown'
-            lemma = w
-            if morph:
-                p = morph.parse(w)[0]
-                lemma = p.normal_form
-                if 'NOUN' in p.tag: pos = 'noun'
-                elif 'ADJF' in p.tag or 'ADJS' in p.tag: pos = 'adjective'
-                elif 'VERB' in p.tag or 'INFN' in p.tag: pos = 'verb'
-                elif 'ADVB' in p.tag: pos = 'adverb'
-                elif 'PRTF' in p.tag: pos = 'participle'
-                elif 'GRND' in p.tag: pos = 'verb' # Деепричастие туда же
-            yandex_results[w] = {'lemma': lemma, 'pos': pos}
+             yandex_results[w] = {'lemma': w, 'pos': 'unknown'}
 
-    # 5. ИНТЕЛЛЕКТУАЛЬНОЕ РАСПРЕДЕЛЕНИЕ
+    # 4. РАСПРЕДЕЛЕНИЕ
     for word in api_candidates:
         info = yandex_results.get(word, {'lemma': word, 'pos': 'unknown'})
-        lemma, pos = info['lemma'], info['pos']
+        lemma = info['lemma']
+        pos = info['pos']
         
-        # Если уже распределено
-        if lemma in categories['dimensions'] or lemma in categories['commercial']: continue
-        if lemma in BLACKLIST: categories['commercial'].add(lemma); continue
-
-        # --- АНАЛИЗ НА УСЛУГУ ---
-        # Проверяем корни услуг
-        is_service_root = any(root in lemma for root in SERVICE_ROOTS)
-        
-        # Если это ГЛАГОЛ (резать, оцинковать, использоваться)
-        if pos == 'verb' or pos == 'infinitive':
-            if is_service_root:
-                # Если корень "производственный" -> Услуга
-                categories['services'].add(lemma)
-            else:
-                # Если корень левый (использоваться, звонить, мочь) -> Коммерция/Общее
-                categories['commercial'].add(lemma)
+        if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS:
+            categories['commercial'].add(lemma)
             continue
-            
-        # Если это СУЩЕСТВИТЕЛЬНОЕ
+
+        is_service = False
+        if lemma.endswith('ние') or lemma.endswith('ение'):
+            is_service = True
+        elif lemma.endswith('обработка'):
+            is_service = True
+        elif lemma in SERVICE_KEYWORDS:
+            is_service = True
+        
+        if is_service:
+            categories['services'].add(lemma)
+            continue
+
         if pos == 'noun':
-            # Проверка на отглагольные существительные (резка, сверление)
-            if is_service_root and (lemma.endswith('ка') or lemma.endswith('ние') or lemma.endswith('ция')):
-                categories['services'].add(lemma)
-            elif len(lemma) > 2:
-                # Иначе считаем товаром (Труба, Сталь, Лист)
-                categories['products'].add(lemma)
-            continue
-
-        # Если это ПРИЛАГАТЕЛЬНОЕ или ПРИЧАСТИЕ
-        if pos == 'adjective' or pos == 'participle':
-            # Прилагательные (сварной, оцинкованный) обычно идут в товары как характеристика
             if len(lemma) > 2:
                 categories['products'].add(lemma)
-            continue
-            
-        # Если UNKNOWN
-        if len(lemma) > 2:
-             categories['products'].add(lemma)
+        elif pos == 'adjective' or pos == 'participle': 
+            if len(lemma) > 2:
+                categories['products'].add(lemma)
+        elif pos == 'unknown':
+            if len(lemma) > 2:
+                categories['products'].add(lemma)
+        else:
+            categories['commercial'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
 
@@ -502,7 +497,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
         else:
             unique_urls = set()
             if 'result' in res_data and isinstance(res_data['result'], list):
-                return res_data['result']  # Fallback
+                return res_data['result']
             return []
 
         final_url_list = []
@@ -1016,21 +1011,17 @@ with tab_seo:
     with col_sidebar:
         st.markdown("#####⚙️ Настройки API")
         
-        # БЕЗОПАСНЫЙ ВВОД КЛЮЧЕЙ
         if not ARSENKIN_TOKEN:
-             st.warning("⚠️ Требуется Arsenkin Token")
-             new_arsenkin = st.text_input("Введите токен Arsenkin", type="password", key="input_arsenkin")
+             new_arsenkin = st.text_input("Arsenkin Token", type="password", key="input_arsenkin")
              if new_arsenkin:
                  st.session_state.arsenkin_token = new_arsenkin
-                 st.rerun()
-        else:
-             st.success("✅ Arsenkin Token загружен")
+                 ARSENKIN_TOKEN = new_arsenkin 
         
         if not YANDEX_DICT_KEY:
-             new_yandex = st.text_input("Yandex Dict Key (опционально)", type="password", key="input_yandex")
+             new_yandex = st.text_input("Yandex Dict Key", type="password", key="input_yandex")
              if new_yandex:
                  st.session_state.yandex_dict_key = new_yandex
-                 st.rerun()
+                 YANDEX_DICT_KEY = new_yandex
 
         st.markdown("#####⚙️ Настройки поиска")
         st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
@@ -1043,7 +1034,7 @@ with tab_seo:
         st.checkbox("Нормировать по длине", True, key="settings_norm")
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
-# --- ЛОГИКА АНАЛИЗА (ВНУТРИ ВКЛАДКИ) ---
+    # --- ЛОГИКА АНАЛИЗА (ВНУТРИ ВКЛАДКИ) ---
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         settings = {'noindex': st.session_state.settings_noindex, 'alt_title': st.session_state.settings_alt, 'numbers': st.session_state.settings_numbers, 'norm': st.session_state.settings_norm, 'ua': st.session_state.settings_ua, 'custom_stops': st.session_state.settings_stops.split()}
@@ -1052,7 +1043,6 @@ with tab_seo:
         
         current_input_type = st.session_state.get("my_page_source_radio")
         
-        # 1. СКАЧИВАЕМ ВАШУ СТРАНИЦУ
         if current_input_type == "Релевантная страница на вашем сайте":
             with st.spinner("Скачивание вашей страницы..."):
                 my_data = parse_page(st.session_state.my_url_input, settings)
@@ -1061,14 +1051,13 @@ with tab_seo:
         elif current_input_type == "Исходный код страницы или текст":
             my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
 
-        # 2. ПОЛУЧАЕМ СПИСОК КОНКУРЕНТОВ
         target_urls_raw = []
         current_source_val = st.session_state.get("competitor_source_radio")
         current_source_type = "API" if "API" in current_source_val else "Ручной список"
 
         if current_source_type == "API":
             if not ARSENKIN_TOKEN:
-                st.error("Отсутствует API токен Arsenkin. Введите его в настройках.")
+                st.error("Отсутствует API токен Arsenkin. Введите его в настройках или в secrets.toml")
                 st.stop()
                 
             with st.spinner("API Arsenkin..."):
@@ -1094,7 +1083,6 @@ with tab_seo:
 
         if not target_urls_raw: st.error("Нет конкурентов."); st.stop()
 
-        # 3. СКАЧИВАЕМ КОНКУРЕНТОВ И СЧИТАЕМ МЕТРИКИ
         comp_data_full = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(parse_page, u['url'], settings): u['url'] for u in target_urls_raw}
@@ -1106,24 +1094,36 @@ with tab_seo:
                 prog.progress(done / total)
         prog.empty()
 
-        with st.spinner("Расчет метрик и классификация..."):
-            res = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
-            st.session_state.analysis_results = res
+        with st.spinner("Расчет метрик..."):
+            st.session_state.analysis_results = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
             st.session_state.analysis_done = True
-            
-            # --- ИСПРАВЛЕНИЕ: БЕРЕМ ТОЛЬКО ВАЖНЫЕ (ШИРИНА) ---
-            # Игнорируем low_words (дополнительные)
+
+            # ==========================================
+            # КЛАССИФИКАЦИЯ
+            # ==========================================
+            res = st.session_state.analysis_results
+
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
-            
-            # Запускаем классификацию ТОЛЬКО для важных слов
-            with st.spinner(f"Классификация {len(words_to_check)} слов (Ширина)..."):
-                cats = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
-            
-            st.session_state.categorized_products = cats['products']
-            st.session_state.categorized_services = cats['services']
-            st.session_state.categorized_commercial = cats['commercial']
-            st.session_state.categorized_dimensions = cats['dimensions']
-            
+
+            if not words_to_check:
+                st.session_state.categorized_products = []
+                st.session_state.categorized_services = []
+                st.session_state.categorized_commercial = []
+                st.session_state.categorized_dimensions = []
+            else:
+                with st.spinner("Уточнение семантики через Яндекс Словарь..."):
+                    categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
+
+                st.session_state.categorized_products = categorized['products']
+                st.session_state.categorized_services = categorized['services']
+                st.session_state.categorized_commercial = categorized['commercial']
+                st.session_state.categorized_dimensions = categorized['dimensions']
+                
+                # --- ИСПРАВЛЕНИЕ: ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ПОЛЕЙ ВВОДА ДЛЯ ТЕГОВ ---
+                products_str = "\n".join(st.session_state.categorized_products)
+                st.session_state['tags_products_edit'] = products_str
+                # --------------------------------------------------------------------
+
             st.rerun()
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
@@ -1131,27 +1131,22 @@ with tab_seo:
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
 
-        # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (4 БЛОКА) ---
         with st.expander("🛒 Результат группировки слов (С учетом Яндекс API)", expanded=True):
             c1, c2 = st.columns(2)
             c3, c4 = st.columns(2)
 
-            # БЛОК 1: ТОВАРЫ
             with c1:
                 st.info(f"🧱 Товары ({len(st.session_state.categorized_products)})")
                 st.caption(", ".join(st.session_state.categorized_products))
 
-            # БЛОК 2: УСЛУГИ
             with c2:
                 st.error(f"🛠️ Услуги ({len(st.session_state.categorized_services)})")
                 st.caption(", ".join(st.session_state.categorized_services))
             
-            # БЛОК 3: КОММЕРЦИЯ (Глаголы, Деньги, Города)
             with c3:
                 st.warning(f"💰 Коммерция / Гео / Общее ({len(st.session_state.categorized_commercial)})")
                 st.caption(", ".join(st.session_state.categorized_commercial))
 
-            # БЛОК 4: РАЗМЕРЫ И МАРКИ
             with c4:
                 dims = st.session_state.get('categorized_dimensions', [])
                 st.success(f"📏 Размеры и марки ({len(dims)})")
@@ -1173,11 +1168,7 @@ with tab_seo:
 # ------------------------------------------
 with tab_ai:
     st.title("AI Генератор (Perplexity)")
-    
-    # Автоподстановка ключа Perplexity
-    default_pplx = PERPLEXITY_KEY_AUTO if PERPLEXITY_KEY_AUTO else ""
-    pplx_key = st.text_input("Perplexity API Key", value=default_pplx, type="password", key="pplx_key_input")
-    
+    pplx_key = st.text_input("Perplexity API Key", type="password", key="pplx_key_input")
     target_url_gen = st.text_input("URL Страницы (донор тегов)", key="pplx_url_input")
 
     if st.button("🚀 Начать генерацию", key="btn_start_gen", disabled=not pplx_key):
@@ -1210,78 +1201,20 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (V12 - Mass Gen + Auto-Fix Yandex Speller)
+# Вкладка 3: ТЕГИ (АВТОНОМНЫЙ РЕЖИМ + РЕДАКТИРОВАНИЕ)
 # ------------------------------------------
 with tab_tags:
-    st.title("🏷️ Генератор плитки тегов (Mass Production + AI Fix)")
+    st.title("🏷️ Генератор плитки тегов (Mass Production)")
     
     st.markdown("""
-    **Логика работы v12:**
-    1. Скрипт парсит **URL категории** (собирает цели).
-    2. Берет список **Товаров** (Ключей).
-    3. Ищет в вашем **.txt файле** наиболее подходящую ссылку для каждого товара.
-    4. **✨ MAGIС:** Берет "хвост" найденной ссылки (slug), делает обратный транслит и **исправляет ошибки через Яндекс.Спеллер**.
-       *Пример: нашел ссылку `.../setka-stalnaya/` -> превратил в текст "Сетка стальная"*
+    **Как это работает:**
+    1. Скрипт заходит на указанный **URL категории**.
+    2. Собирает оттуда все ссылки на подфильтры (теги).
+    3. Берет список **Товаров** (вы можете отредактировать его ниже) и ищет для них ссылки в вашем **.txt файле**.
+    4. Генерирует Excel, где для каждого подфильтра создана своя плитка тегов.
     """)
 
-    # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ВНУТРИ ВКЛАДКИ) ---
-    def spell_check_yandex(text):
-        """Отправляет текст в Яндекс.Спеллер для исправления"""
-        if not text: return ""
-        url = "https://speller.yandex.net/services/spellservice.json/checkText"
-        params = {"text": text, "lang": "ru", "options": 518}
-        try:
-            r = requests.get(url, params=params, timeout=1.0)
-            if r.status_code == 200:
-                data = r.json()
-                fixed_text = text
-                # Исправляем ошибки
-                for error in data:
-                    if error.get('s'):
-                        fixed_text = fixed_text.replace(error['word'], error['s'][0])
-                return fixed_text
-        except:
-            pass
-        return text
-
-    def improved_reverse_translit(text):
-        """Транслит (Latin -> Cyrillic) + Яндекс.Спеллер"""
-        # 1. Чистка
-        text = text.lower().strip()
-        # Убираем расширения файлов если есть
-        text = re.sub(r'\.html|\.php|\.htm', '', text)
-        text = text.replace('_', ' ').replace('/', '')
-        text = text.replace('-', ' ')
-
-        # 2. Спецсимволы
-        replacements = [
-            ('shch', 'щ'), ('sch', 'щ'), ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
-            ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), ('ts', 'ц')
-        ]
-        for eng, rus in replacements:
-            text = text.replace(eng, rus)
-
-        # 3. Буквы
-        mapping = {
-            'a': 'а', 'b': 'б', 'c': 'к', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
-            'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
-            'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
-            'v': 'в', 'w': 'в', 'x': 'кс', 'z': 'з', 'y': 'и' # y часто как и
-        }
-        
-        # Улучшенная обработка окончаний (простая эвристика)
-        text = text.replace('yy', 'ый').replace('iy', 'ий').replace('ij', 'ий')
-        
-        chars = []
-        for c in text:
-            chars.append(mapping.get(c, c))
-        raw_rus = "".join(chars)
-
-        # 4. Проверка орфографии Яндексом
-        final_text = spell_check_yandex(raw_rus)
-        return final_text.capitalize()
-
-    # --- ИНТЕРФЕЙС ---
+    # 1. Вводные данные
     col_t1, col_t2 = st.columns([1, 1])
     
     with col_t1:
@@ -1289,140 +1222,168 @@ with tab_tags:
         category_url = st.text_input("URL Категории (откуда собрать список подфильтров)", placeholder="https://site.ru/catalog/truba/")
         
         st.markdown("##### 📂 База ссылок")
-        uploaded_file = st.file_uploader("Загрузите файл ссылок (.txt)", type=["txt"], key="urls_uploader_mass_v4")
+        uploaded_file = st.file_uploader("Загрузите файл со ссылками сайта (.txt)", type=["txt"], key="urls_uploader_mass_v3")
 
     with col_t2:
-        st.markdown("##### 📝 Ключевые слова (Товары)")
+        st.markdown("##### 📝 Список товаров (Ключи)")
+        
+        # Получаем данные из SEO анализа, если они есть
         raw_products = st.session_state.get('categorized_products', [])
+        
+        # Преобразуем в строку для текстового поля
         default_text = "\n".join(raw_products) if raw_products else ""
         
+        # Поле для редактирования
         products_input = st.text_area(
-            "Список товаров (будут искаться в базе):", 
+            "Отредактируйте список (каждое слово с новой строки):", 
             value=default_text, 
             height=200, 
-            key="tags_products_edit_v12"
+            key="tags_products_edit",
+            help="Эти слова будут искаться в вашем txt файле. Вы можете добавить свои."
         )
+        
+        # Формируем финальный список товаров из поля ввода
         products = [line.strip() for line in products_input.split('\n') if line.strip()]
+        
+        if products:
+            st.caption(f"✅ Готово к работе: {len(products)} слов(а)")
+        else:
+            st.caption("⚠️ Список пуст")
 
-    # --- ЗАПУСК ---
+    # Кнопка запуска
     st.markdown("---")
-    if st.button("🚀 Спарсить и собрать Excel (Smart)", key="btn_tags_smart_gen", disabled=(not products or not uploaded_file or not category_url)):
+    if st.button("🚀 Спарсить категорию и собрать Excel", key="btn_tags_mass_parse_manual", disabled=(not products or not uploaded_file or not category_url)):
         
-        status_box = st.status("🚀 Запуск процесса...", expanded=True)
+        status_box = st.status("Начинаем работу...", expanded=True)
         
-        # 1. Парсинг категории
-        status_box.write(f"🕵️ Парсим категорию: {category_url}")
+        # --- ЭТАП 1: ПАРСИНГ КАТЕГОРИИ ---
+        status_box.write(f"🕵️ Подключаемся к {category_url}...")
+        
         target_urls_list = []
         try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            r = requests.get(category_url, headers=headers, timeout=10)
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            r = requests.get(category_url, headers=headers, timeout=15)
+            
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
-                    for link in tags_container.find_all('a'):
+                    links = tags_container.find_all('a')
+                    for link in links:
                         href = link.get('href')
-                        if href: target_urls_list.append(urljoin(category_url, href))
+                        if href:
+                            full_url = urljoin(category_url, href)
+                            target_urls_list.append(full_url)
+                else:
+                    status_box.error("Не найден блок с классом .popular-tags-inner на странице.")
+                    st.stop()
+            else:
+                status_box.error(f"Ошибка доступа к сайту: код {r.status_code}")
+                st.stop()
+                
         except Exception as e:
-            status_box.error(f"Ошибка парсинга: {e}")
+            status_box.error(f"Ошибка соединения: {e}")
             st.stop()
-            
-        if not target_urls_list:
-            status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)")
-            st.stop()
-            
-        status_box.write(f"✅ Найдено целей: {len(target_urls_list)}")
 
-        # 2. Чтение базы ссылок
-        status_box.write("📂 Индексация базы ссылок...")
+        if not target_urls_list:
+            status_box.error("Теги на странице не найдены.")
+            st.stop()
+
+        status_box.write(f"✅ Найдено страниц-подфильтров: {len(target_urls_list)}")
+
+        # --- ЭТАП 2: ИНДЕКСАЦИЯ ССЫЛОК ПО ТОВАРАМ ---
+        status_box.write("📂 Обработка списка ссылок и поиск совпадений...")
+        
         stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
         all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
-        
-        # Карта: Товар -> Список ссылок
+
+        if not all_txt_links:
+            status_box.error("Файл ссылок пуст.")
+            st.stop()
+
         product_candidates_map = {}
+        
+        # Создаем пары (имя, транслит) из ТОГО, ЧТО ВВЕЛ ПОЛЬЗОВАТЕЛЬ
+        product_translit_pairs = []
         for p in products:
             tr = transliterate_text(p)
             if len(tr) >= 3:
-                matches = [u for u in all_txt_links if tr in u]
-                if matches: product_candidates_map[p] = matches
-        
-        status_box.write(f"✅ Товары сопоставлены ({len(product_candidates_map)} шт.)")
+                product_translit_pairs.append((p, tr))
 
-        # 3. Генерация (с Яндексом)
-        status_box.write("🧠 Генерация 'умных' анкоров через Яндекс.Спеллер...")
+        # Поиск совпадений
+        for prod_name, prod_translit in product_translit_pairs:
+            matches = [u for u in all_txt_links if prod_translit in u]
+            if matches:
+                product_candidates_map[prod_name] = matches
+        
+        status_box.write(f"✅ Индексация завершена. Найдено ссылок для {len(product_candidates_map)} товаров.")
+
+        # --- ЭТАП 3: ГЕНЕРАЦИЯ ---
+        status_box.write("⚙️ Генерируем уникальные плитки...")
+        
         final_rows = []
         prog_bar = st.progress(0)
         
-        # Создаем сессию для ускорения запросов к API
-        with requests.Session() as session:
-            for i, target_url in enumerate(target_urls_list):
-                current_page_tags = []
+        for i, target_url in enumerate(target_urls_list):
+            
+            current_page_tags = []
+            
+            for prod_name, candidates in product_candidates_map.items():
+                # Исключаем ссылку на саму себя
+                norm_target = target_url.rstrip('/')
+                valid_candidates = [u for u in candidates if u.rstrip('/') != norm_target]
                 
-                for prod_name, candidates in product_candidates_map.items():
-                    # Исключаем self-link
-                    valid = [u for u in candidates if u.rstrip('/') != target_url.rstrip('/')]
-                    
-                    if valid:
-                        chosen_url = random.choice(valid)
-                        
-                        # --- ЛОГИКА ИМЕНОВАНИЯ (SMART) ---
-                        # Пытаемся вытащить slug из URL
-                        try:
-                            # Берем последнюю часть URL (slug)
-                            parsed = urlparse(chosen_url)
-                            path_parts = parsed.path.strip('/').split('/')
-                            slug = path_parts[-1] if path_parts else prod_name
-                            
-                            # Если slug слишком короткий или странный, берем имя товара
-                            if len(slug) < 3:
-                                anchor_text = prod_name.capitalize()
-                            else:
-                                # Магия: Slug -> Russian Text -> Spell Check
-                                anchor_text = improved_reverse_translit(slug)
-                        except:
-                            anchor_text = prod_name.capitalize()
-                        
-                        current_page_tags.append({
-                            'name': anchor_text,
-                            'url': chosen_url
-                        })
-                
-                # Формируем HTML
-                if current_page_tags:
-                    random.shuffle(current_page_tags)
-                    html = '<div class="popular-tags">\n' + \
-                           "\n".join([f'    <a href="{t["url"]}" class="tag-link">{t["name"]}</a>' for t in current_page_tags]) + \
-                           '\n</div>'
-                else:
-                    html = "<!-- Empty -->"
-                
-                final_rows.append({'Page URL': target_url, 'Tags HTML': html})
-                prog_bar.progress((i + 1) / len(target_urls_list))
-
+                if valid_candidates:
+                    chosen_url = random.choice(valid_candidates)
+                    current_page_tags.append({
+                        'name': prod_name.capitalize(),
+                        'url': chosen_url
+                    })
+            
+            if current_page_tags:
+                random.shuffle(current_page_tags)
+                html_block = '<div class="popular-tags">\n' + \
+                             "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in current_page_tags]) + \
+                             '\n</div>'
+            else:
+                html_block = "<!-- Нет подходящих тегов -->"
+            
+            final_rows.append({
+                'Page URL': target_url,
+                'Tags HTML': html_block
+            })
+            
+            prog_bar.progress((i + 1) / len(target_urls_list))
+            
         prog_bar.empty()
         status_box.update(label="Готово!", state="complete", expanded=False)
 
-        # 4. Сохранение
-        df_res = pd.DataFrame(final_rows)
+        # --- ЭТАП 4: СОХРАНЕНИЕ ---
+        df_tags_result = pd.DataFrame(final_rows)
+        
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df_res.to_excel(writer, index=False)
-            writer.sheets['Sheet1'].set_column('A:A', 60)
-            writer.sheets['Sheet1'].set_column('B:B', 100)
+            df_tags_result.to_excel(writer, index=False)
+            worksheet = writer.sheets['Sheet1']
+            worksheet.set_column('A:A', 60)
+            worksheet.set_column('B:B', 100)
             
-        st.success("🎉 Сгенерировано с умными анкорами!")
-        st.download_button("📥 Скачать Excel", buffer.getvalue(), "smart_tags.xlsx", "application/vnd.ms-excel")
+        excel_bytes = buffer.getvalue()
+        
+        st.success("🎉 Успешно!")
+        st.download_button(
+            label="📥 Скачать Excel",
+            data=excel_bytes,
+            file_name="tags_tiles_generated.xlsx",
+            mime="application/vnd.ms-excel"
+        )
 
 # ------------------------------------------
 # Вкладка 4: ТАБЛИЦЫ
 # ------------------------------------------
 with tab_tables:
     st.title("🧩 Генератор таблиц")
-    
-    # Автоподстановка ключа Perplexity
-    default_pplx_tbl = PERPLEXITY_KEY_AUTO if PERPLEXITY_KEY_AUTO else ""
-    pplx_key_tbl = st.text_input("Perplexity API Key", value=default_pplx_tbl, type="password", key="pplx_key_tbl")
-    
+    pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl")
     prompt_tbl = st.text_area("Описание таблицы")
 
     # Авто-выбор топ-4 слов для добавления
