@@ -916,7 +916,7 @@ with tab_seo:
         st.checkbox("Нормировать по длине", True, key="settings_norm")
         st.checkbox("Исключать агрегаторы", True, key="settings_agg") 
 
-    if st.session_state.get('start_analysis_flag'):
+if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         settings = {'noindex': st.session_state.settings_noindex, 'alt_title': st.session_state.settings_alt, 'numbers': st.session_state.settings_numbers, 'norm': st.session_state.settings_norm, 'ua': st.session_state.settings_ua, 'custom_stops': st.session_state.settings_stops.split()}
         
@@ -965,7 +965,7 @@ with tab_seo:
                 prog.progress(done / total)
         prog.empty()
 
-with st.spinner("Расчет метрик..."):
+        with st.spinner("Расчет метрик..."):
             # 1. Считаем математику
             st.session_state.analysis_results = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
             st.session_state.analysis_done = True
@@ -974,20 +974,19 @@ with st.spinner("Расчет метрик..."):
             res = st.session_state.analysis_results
             
             # --- ИСПРАВЛЕНИЕ: БЕРЕМ ТОЛЬКО 'missing_semantics_high' (ВАЖНЫЕ) ---
-            # Раньше было: high + low. Теперь только high.
             words_to_check = [x['word'] for x in res['missing_semantics_high']] 
             
             # Классифицируем
             categorized = classify_semantics_smart(words_to_check, morph)
             
-            # БЛОК 1: ТОВАРЫ (Существительные + Прилагательные + Тех.Глаголы)
+            # БЛОК 1: ТОВАРЫ
             prod_lemmas = categorized['products'] + categorized['adjectives']
             if not morph and not prod_lemmas:
                  prod_lemmas = [w for w in categorized['other'] if len(w) > 3]
 
             st.session_state.categorized_products = sorted(list(set(prod_lemmas)))
             
-            # БЛОК 2: КОММЕРЦИЯ (+ Города)
+            # БЛОК 2: КОММЕРЦИЯ
             st.session_state.categorized_commercial = categorized['commercial']
             
             # БЛОК 3: РАЗМЕРЫ
@@ -996,13 +995,29 @@ with st.spinner("Расчет метрик..."):
             st.rerun()
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
-    results = st.session_state.analysis_results
-    st.success("Анализ готов!")
-    st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
-    
-    # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (3 БЛОКА) ---
-    with st.expander("🛒 Результат автоматической группировки слов", expanded=True):
-        c1, c2, c3 = st.columns(3)
+        results = st.session_state.analysis_results
+        st.success("Анализ готов!")
+        st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
+        
+        # --- БЛОК ВИЗУАЛИЗАЦИИ КАТЕГОРИЙ (3 БЛОКА) ---
+        with st.expander("🛒 Результат автоматической группировки слов", expanded=True):
+            c1, c2, c3 = st.columns(3)
+            
+            # БЛОК 1: ТОВАРЫ
+            with c1: 
+                st.info(f"🧱 Товарные слова ({len(st.session_state.categorized_products)})")
+                st.caption(", ".join(st.session_state.categorized_products))
+                
+            # БЛОК 2: КОММЕРЦИЯ (Глаголы, Деньги, Города)
+            with c2:
+                st.warning(f"💰 Коммерция / Гео ({len(st.session_state.categorized_commercial)})")
+                st.caption(", ".join(st.session_state.categorized_commercial))
+                
+            # БЛОК 3: РАЗМЕРЫ И МАРКИ
+            with c3:
+                dims = st.session_state.get('categorized_dimensions', [])
+                st.success(f"📏 Размеры и Марки ({len(dims)})")
+                st.caption(", ".join(dims))
             
             # БЛОК 1: ТОВАРЫ
             with c1: 
@@ -1200,5 +1215,6 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
