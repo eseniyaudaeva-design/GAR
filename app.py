@@ -1106,7 +1106,6 @@ with tab_seo:
             # КЛАССИФИКАЦИЯ
             # ==========================================
             res = st.session_state.analysis_results
-
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
 
             if not words_to_check:
@@ -1115,7 +1114,8 @@ with tab_seo:
                 st.session_state.categorized_commercial = []
                 st.session_state.categorized_dimensions = []
             else:
-                with st.spinner("Уточнение семантики через Яндекс Словарь..."):
+                # Здесь вызывается ваша новая функция классификации
+                with st.spinner("Уточнение семантики (Pymorphy)..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
 
                 st.session_state.categorized_products = categorized['products']
@@ -1123,10 +1123,12 @@ with tab_seo:
                 st.session_state.categorized_commercial = categorized['commercial']
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 
-                # --- ИСПРАВЛЕНИЕ: ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ПОЛЕЙ ВВОДА ДЛЯ ТЕГОВ ---
+                # ==========================================================
+                # ВСТАВИТЬ ЭТИ СТРОКИ СЮДА:
+                # Принудительно обновляем виджет во вкладке "Генератор тегов"
+                # ==========================================================
                 products_str = "\n".join(st.session_state.categorized_products)
-                st.session_state['tags_products_edit'] = products_str
-                # --------------------------------------------------------------------
+                st.session_state['tags_products_edit_smart'] = products_str  # <--- ДОБАВИТЬ ВОТ ЭТО
 
             st.rerun()
 
@@ -1547,6 +1549,7 @@ with tab_tables:
         t1, t2 = st.tabs(["👁️ View", "💻 Code"])
         with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
         with t2: st.code(st.session_state.table_html_result, language='html')
+
 
 
 
