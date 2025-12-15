@@ -1368,6 +1368,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 # ------------------------------------------
 # Вкладка 6: БОКОВОЕ МЕНЮ (NEW)
 # ------------------------------------------
@@ -1586,6 +1587,7 @@ with tab_sidebar:
 
             st.success("Меню сгенерировано!")
             st.text_area("Результат HTML", value=full_html, height=400)
+
 
 
 
