@@ -1420,13 +1420,14 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
             st.text_area("HTML Код", value=st.session_state.promo_html_preview, height=200)
 
 # ------------------------------------------
-# Вкладка 6: БОКОВОЕ МЕНЮ (EXCEL + SCANNER + MANUAL)
+# ------------------------------------------
+# Вкладка 6: БОКОВОЕ МЕНЮ (EXCEL + SCANNER)
 # ------------------------------------------
 with tab_sidebar:
     st.header("📑 Генератор HTML бокового меню (Mass Excel)")
     st.info("""
     **Логика работы:**
-    1. **Меню:** Берется из загруженного .txt файла **ИЛИ** из текстового поля вручную.
+    1. **Меню:** Берется из загруженного .txt файла.
     2. **Цели:** Скрипт сканирует **URL Категории**, чтобы найти теги (страницы, куда вставить это меню).
     3. **Результат:** Excel файл, где для каждого тега прописан HTML код меню.
     """)
@@ -1439,9 +1440,8 @@ with tab_sidebar:
 
     with col_sb2:
         st.markdown("##### 2. Структура меню")
-        st.caption("Загрузите файл или вставьте ссылки вручную (можно одновременно)")
+        st.caption("Загрузите файл со списком ссылок для меню")
         sidebar_file = st.file_uploader("Загрузить список (.txt)", type=["txt"], key="sidebar_uploader_mass")
-        sidebar_manual_text = st.text_area("ИЛИ вставьте ссылки вручную (каждая с новой строки)", height=200, key="sidebar_manual_input")
 
     # Шаблон стилей и скриптов (неизменный)
     SIDEBAR_ASSETS = """
@@ -1556,30 +1556,22 @@ with tab_sidebar:
 </script>
 """
 
-    if st.button("🚀 Создать Excel", disabled=not sidebar_cat_url, key="btn_gen_sidebar_mass"):
+    if st.button("🚀 Создать Excel", disabled=(not sidebar_cat_url or not sidebar_file), key="btn_gen_sidebar_mass"):
         status_box = st.status("⚙️ Обработка...", expanded=True)
         
         # 1. ГЕНЕРАЦИЯ HTML МЕНЮ (Один раз для всех)
         try:
-            status_box.write("🔨 Сборка меню из ссылок...")
+            status_box.write("🔨 Сборка меню из файла...")
             
-            # --- СБОР ССЫЛОК ИЗ ДВУХ ИСТОЧНИКОВ ---
-            urls = []
-            
-            # А) Из файла
-            if sidebar_file:
-                stringio = io.StringIO(sidebar_file.getvalue().decode("utf-8"))
-                urls.extend([line.strip() for line in stringio.readlines() if line.strip()])
-            
-            # Б) Из текстового поля
-            if sidebar_manual_text:
-                urls.extend([line.strip() for line in sidebar_manual_text.split('\n') if line.strip()])
+            # --- СБОР ССЫЛОК ИЗ ФАЙЛА ---
+            stringio = io.StringIO(sidebar_file.getvalue().decode("utf-8"))
+            urls = [line.strip() for line in stringio.readlines() if line.strip()]
             
             # Удаляем дубликаты
             urls = list(dict.fromkeys(urls))
             
             if not urls:
-                status_box.error("❌ Список ссылок для меню пуст! Загрузите файл или вставьте ссылки вручную.")
+                status_box.error("❌ Файл пуст!")
                 st.stop()
             
             tree = {}
