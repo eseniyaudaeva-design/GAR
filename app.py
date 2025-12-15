@@ -714,7 +714,7 @@ def generate_html_table(client, user_prompt, seo_keywords_data=None):
 # ==========================================
 # 7. ИНТЕРФЕЙС (TABS)
 # ==========================================
-tab_seo, tab_ai, tab_tags, tab_tables, tab_promo = st.tabs(["📊 SEO Анализ", "🤖 AI Генерация", "🏷️ Генератор тегов", "🧩 Таблицы", "🔥 Генератор блока акций"])
+tab_seo, tab_ai, tab_tags, tab_tables, tab_promo = st.tabs(["📊 SEO Анализ", "🤖 AI Генерация", "🏷️ Генератор тегов", "🧩 Таблицы", "🔥 Генератор акций"])
 
 # ------------------------------------------
 # Вкладка 1: SEO
@@ -1368,6 +1368,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 
 
 
