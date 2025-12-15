@@ -948,66 +948,73 @@ with tab_tags:
         st.download_button(label="📥 Скачать Excel", data=buffer.getvalue(), file_name="tags_tiles_smart.xlsx")
 
 # ------------------------------------------
-# Вкладка 4: ТАБЛИЦЫ (Спец. версия v2.1 - Dropdown)
+# Вкладка 4: ТАБЛИЦЫ (Smart V3 - Auto Context + Style)
 # ------------------------------------------
 with tab_tables:
-    st.header("🧩 Генератор HTML таблиц (Mass Gen)")
-    st.caption("Генерирует уникальные таблицы для каждого тега из категории. Каждая таблица — отдельный столбец в Excel.")
+    st.header("🧩 Генератор HTML таблиц (Smart Style)")
+    st.caption("Автоматически определяет товар по URL категории + Тегу. Генерирует таблицы с жестким стилем (черные рамки).")
 
-    # -- Инициализация состояния для таблиц --
+    # -- Инициализация состояния --
     if 'tables_generated_df' not in st.session_state:
         st.session_state.tables_generated_df = None
     if 'tables_excel_data' not in st.session_state:
         st.session_state.tables_excel_data = None
 
-    # -- Настройки API и Парсинга --
+    # -- Настройки --
     col_tbl_1, col_tbl_2 = st.columns([2, 1])
     with col_tbl_1:
-        pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl_v2")
-        parent_cat_url = st.text_input("URL Категории (источник тегов)", placeholder="https://site.ru/catalog/truba/")
+        pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl_v3")
+        parent_cat_url = st.text_input("URL Категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/nikel/")
     
     with col_tbl_2:
-        # ЗАМЕНА: Ползунок -> Выпадающий список
-        num_tables = st.selectbox("Количество таблиц на страницу", options=[1, 2, 3, 4, 5], index=1, key="num_tables_select")
+        num_tables = st.selectbox("Количество таблиц на страницу", options=[1, 2, 3, 4, 5], index=1, key="num_tables_select_v3")
         
-    # -- Настройка заголовков таблиц --
+    # -- Темы таблиц --
     if num_tables > 0:
-        st.markdown(f"### 📝 Темы таблиц ({num_tables} шт.)")
-        # Создаем контейнер для полей ввода, чтобы они шли сеткой
-        cols_prompts = st.columns(num_tables) if num_tables <= 3 else st.columns(3) # Чтобы не было слишком узко
+        st.markdown(f"### 📝 Темы таблиц")
+        st.caption("Нейросеть сама поймет, о каком товаре речь. Здесь укажите только название блока (например: 'Характеристики').")
+        cols_prompts = st.columns(num_tables) if num_tables <= 3 else st.columns(3)
         
         table_prompts = []
+        defaults = ["Характеристики", "Размеры и вес", "Химический состав", "Условия поставки", "Применение"]
+        
         for i in range(num_tables):
-            # Распределяем по колонкам (если больше 3, будет перенос строк автоматом в Streamlit это сложно, поэтому просто список)
-            def_val = "Характеристики"
-            if i == 1: def_val = "Размеры и вес"
-            elif i == 2: def_val = "Химический состав"
-            elif i == 3: def_val = "Применение"
-            elif i == 4: def_val = "Условия доставки"
-            
-            t_title = st.text_input(f"Заголовок таблицы №{i+1}", value=def_val, key=f"tbl_title_{i}")
+            def_val = defaults[i] if i < len(defaults) else f"Таблица {i+1}"
+            t_title = st.text_input(f"Заголовок {i+1}", value=def_val, key=f"tbl_title_v3_{i}")
             table_prompts.append(t_title)
 
     st.markdown("---")
 
     # -- Логика генерации --
-    if st.button("🚀 Запустить генерацию таблиц", key="btn_gen_tbl_mass", disabled=(not pplx_key_tbl or not parent_cat_url)):
+    if st.button("🚀 Запустить генерацию", key="btn_gen_tbl_smart", disabled=(not pplx_key_tbl or not parent_cat_url)):
         if not openai:
             st.error("Библиотека OpenAI не найдена.")
             st.stop()
         
         client = openai.OpenAI(api_key=pplx_key_tbl, base_url="https://api.perplexity.ai")
+        status_box = st.status("⚙️ Анализ категории...", expanded=True)
+
+        # 1. Определение родительского названия из URL
+        try:
+            path = urlparse(parent_cat_url).path.strip('/')
+            slug = path.split('/')[-1] # берем последний сегмент (nikel)
+            # Декодируем (%D0...) и чистим
+            decoded_slug = unquote(slug)
+            parent_name = decoded_slug.replace('-', ' ').replace('_', ' ').capitalize()
+            # Если вдруг URL корневой или пустой slug
+            if not parent_name: parent_name = "Товар"
+        except:
+            parent_name = "Товар"
         
-        status_box = st.status("⚙️ Парсинг тегов...", expanded=True)
+        status_box.write(f"🧠 Определена категория товара: **{parent_name}**")
         
-        # 1. Парсинг тегов
+        # 2. Парсинг тегов
         tags_found = []
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
             r = requests.get(parent_cat_url, headers=headers, timeout=15)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
-                # Ищем теги в стандартном контейнере
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
                     links = tags_container.find_all('a')
@@ -1018,23 +1025,32 @@ with tab_tables:
                             full_url = urljoin(parent_cat_url, href)
                             tags_found.append({'name': name, 'url': full_url})
             else:
-                status_box.error(f"Ошибка доступа к сайту: {r.status_code}")
+                status_box.error(f"Ошибка доступа: {r.status_code}")
                 st.stop()
         except Exception as e:
             status_box.error(f"Ошибка парсинга: {e}")
             st.stop()
 
         if not tags_found:
-            status_box.error("Теги не найдены (проверьте наличие .popular-tags-inner)")
+            status_box.error("Теги не найдены (проверьте .popular-tags-inner)")
             st.stop()
             
         status_box.write(f"✅ Найдено тегов: {len(tags_found)}")
-        status_box.write("🤖 Старт AI генерации (Perplexity Sonar-Pro)...")
+        status_box.write("🤖 Генерация таблиц (Perplexity)...")
 
-        # 2. Генерация
+        # 3. Генерация с жестким стилем
         results_rows = []
         progress_bar = st.progress(0)
         total_steps = len(tags_found)
+        
+        # Шаблон стилей, который мы требуем от нейросети
+        style_instruction = """
+        STRICT HTML FORMATTING RULES:
+        1. Create a <table> with style="border-collapse: collapse; width: 100%; border: 2px solid black;"
+        2. Every <th> and <td> must have style="border: 2px solid black; padding: 5px;"
+        3. Do NOT use <style> tags or classes. ONLY inline styles.
+        4. Output ONLY the HTML code. No text before or after.
+        """
         
         for idx, tag in enumerate(tags_found):
             row_data = {
@@ -1042,15 +1058,18 @@ with tab_tables:
                 'Tag URL': tag['url']
             }
             
-            # Генерируем N таблиц для текущего тега
+            # Полное название товара для нейронки: "Никель 12 мм"
+            full_product_name = f"{parent_name} {tag['name']}"
+            
             for t_i, t_topic in enumerate(table_prompts):
-                system_prompt = "You are an expert web developer. Output ONLY valid HTML code for a responsive table. No markdown, no css classes (inline styles only), no introductory text."
+                system_prompt = f"You are a strict HTML generator. {style_instruction}"
+                
+                # Умный запрос: соединяем категорию, тег и тему таблицы
                 user_prompt = f"""
-                Create a detailed HTML table for a product page.
-                Product/Category: "{tag['name']}".
-                Table Context/Topic: "{t_topic}".
-                Style: Add border='1' and cellpadding='5'. Header background #f2f2f2.
-                Content: Use realistic technical data suitable for this product.
+                Task: Create a technical HTML table.
+                Product: "{full_product_name}".
+                Table Topic: "{t_topic}".
+                Content: Generate realistic technical data (dimensions, grades, properties) relevant to '{full_product_name}' and the topic '{t_topic}'.
                 """
                 
                 try:
@@ -1060,7 +1079,7 @@ with tab_tables:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
-                        temperature=0.7
+                        temperature=0.5 # Чуть ниже, чтобы лучше соблюдал формат
                     )
                     content = response.choices[0].message.content
                     clean_html = content.replace("```html", "").replace("```", "").strip()
@@ -1071,39 +1090,33 @@ with tab_tables:
             results_rows.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
         
-        status_box.update(label="✅ Генерация завершена!", state="complete", expanded=False)
+        status_box.update(label="✅ Готово!", state="complete", expanded=False)
         
-        # 3. Сохранение
+        # 4. Сохранение
         df_final = pd.DataFrame(results_rows)
         st.session_state.tables_generated_df = df_final
-        
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_final.to_excel(writer, index=False)
         st.session_state.tables_excel_data = buffer.getvalue()
-        
         st.rerun()
 
-    # -- Вывод результатов (Persistence) --
+    # -- Результаты --
     if st.session_state.tables_generated_df is not None:
-        st.success(f"Готово! Сгенерировано строк: {len(st.session_state.tables_generated_df)}")
-        
-        col_res_1, col_res_2 = st.columns([1, 4])
-        with col_res_1:
-            st.download_button(
-                label="📥 Скачать Excel",
-                data=st.session_state.tables_excel_data,
-                file_name="ai_tables_gen.xlsx",
-                mime="application/vnd.ms-excel",
-                key="btn_down_tbl_res"
-            )
-        
+        st.success(f"Сгенерировано таблиц для {len(st.session_state.tables_generated_df)} товаров.")
+        st.download_button(
+            label="📥 Скачать Excel",
+            data=st.session_state.tables_excel_data,
+            file_name="smart_tables.xlsx",
+            mime="application/vnd.ms-excel",
+            key="btn_down_tbl_smart"
+        )
         st.dataframe(st.session_state.tables_generated_df.head(), use_container_width=True)
         
-        with st.expander("👁️ Предпросмотр первой таблицы (HTML)", expanded=False):
+        with st.expander("👁️ Предпросмотр первой таблицы (с черными рамками)", expanded=False):
             first_html = st.session_state.tables_generated_df.iloc[0].get('Table_1_HTML', '')
             st.markdown(first_html, unsafe_allow_html=True)
-            st.code(first_html, language='html')
+            st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
 # Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2)
@@ -1276,6 +1289,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (для примера)"):
             components.html(full_block_html, height=450, scrolling=True)
+
 
 
 
