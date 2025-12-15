@@ -46,49 +46,72 @@ except ImportError:
     openai = Non
 
 # ==========================================
-# 0.1 ФУНКЦИЯ УМНОГО НЕЙМИНГА (CYRILLIC)
+# 0.1 ФУНКЦИЯ УМНОГО НЕЙМИНГА (CYRILLIC) - UPDATED
 # ==========================================
 def force_cyrillic_name_global(slug_text):
     """
-    Превращает slug (latun-list) в красивое русское название (Латунный лист)
+    Превращает slug (latun-list) в красивое русское название.
+    Исправляет проблему с мягким знаком (сталь, медь, профиль, дюраль).
     """
     raw = unquote(slug_text).lower()
     raw = raw.replace('.html', '').replace('.php', '')
+    
+    # Если уже кириллица — просто форматируем
     if re.search(r'[а-я]', raw):
         return raw.replace('-', ' ').replace('_', ' ').capitalize()
 
     words = re.split(r'[-_]', raw)
     rus_words = []
     
+    # 1. СЛОВАРЬ ТОЧНЫХ СОВПАДЕНИЙ (Base Dictionary)
+    # Здесь слова, которые всегда пишутся с мягким знаком или имеют сложные корни
     exact_map = {
+        # Металлы и материалы
         'nikel': 'никель', 'stal': 'сталь', 'med': 'медь', 'latun': 'латунь',
-        'bronza': 'бронза', 'svinec': 'свинец', 'titan': 'титан',
+        'bronza': 'бронза', 'svinec': 'свинец', 'titan': 'титан', 'tsink': 'цинк',
+        'dural': 'дюраль', 'dyural': 'дюраль', 'chugun': 'чугун',
         'alyuminiy': 'алюминий', 'al': 'алюминиевая', 'alyuminievaya': 'алюминиевая',
         'nerzhaveyushchiy': 'нержавеющий', 'nerzhaveyka': 'нержавейка',
+        
+        # Изделия (существительные)
         'profil': 'профиль', 'shveller': 'швеллер', 'ugolok': 'уголок',
         'polosa': 'полоса', 'krug': 'круг', 'kvadrat': 'квадрат',
         'list': 'лист', 'truba': 'труба', 'setka': 'сетка',
         'provoloka': 'проволока', 'armatura': 'арматура', 'balka': 'балка',
         'katanka': 'катанка', 'otvod': 'отвод', 'perehod': 'переход',
         'flanec': 'фланец', 'zaglushka': 'заглушка', 'metiz': 'метизы',
-        'profnastil': 'профнастил', 'shtrips': 'штрипс',
-        'polipropilenovye': 'полипропиленовые', 'truby': 'трубы'
+        'profnastil': 'профнастил', 'shtrips': 'штрипс', 'lenta': 'лента',
+        'shina': 'шина', 'prutok': 'пруток', 'shestigrannik': 'шестигранник',
+        'vtulka': 'втулка', 'kabel': 'кабель', 'panel': 'панель',
+        'detal': 'деталь', 'set': 'сеть', 'cep': 'цепь', 'svyaz': 'связь',
+        'rezba': 'резьба', 'gost': 'ГОСТ',
+        
+        # Прилагательные (сложные случаи)
+        'polipropilenovye': 'полипропиленовые', 'truby': 'трубы',
+        'ocinkovannaya': 'оцинкованная', 'riflenyy': 'рифленый'
     }
 
     for w in words:
         if not w: continue
+        
+        # Проверка по словарю
         if w in exact_map:
             rus_words.append(exact_map[w])
             continue
         
+        # Обработка окончаний (Suffixes)
         processed_w = w
+        
+        # Прилагательные
         if processed_w.endswith('yy'): processed_w = processed_w[:-2] + 'ый'
         elif processed_w.endswith('iy'): processed_w = processed_w[:-2] + 'ий'
         elif processed_w.endswith('ij'): processed_w = processed_w[:-2] + 'ий'
         elif processed_w.endswith('yi'): processed_w = processed_w[:-2] + 'ий'
         elif processed_w.endswith('aya'): processed_w = processed_w[:-3] + 'ая'
         elif processed_w.endswith('oye'): processed_w = processed_w[:-3] + 'ое'
+        elif processed_w.endswith('ye'): processed_w = processed_w[:-2] + 'ые'
 
+        # Транслитерация корня
         replacements = [
             ('shch', 'щ'), ('sch', 'щ'), ('yo', 'ё'), ('zh', 'ж'), ('ch', 'ч'), ('sh', 'ш'), 
             ('yu', 'ю'), ('ya', 'я'), ('kh', 'х'), ('ts', 'ц'), ('ph', 'ф'),
@@ -104,7 +127,31 @@ def force_cyrillic_name_global(slug_text):
         
         rus_words.append(temp_res)
 
+    # Собираем фразу
     draft_phrase = " ".join(rus_words)
+    
+    # 2. ПОСТ-ОБРАБОТКА (Context Fixes)
+    # Исправляем ситуации, когда словарь не сработал, а мягкий знак нужен в корне или суффиксе
+    
+    # Правило 1: "профил..." -> "профиль..." (профилная -> профильная)
+    if 'профил' in draft_phrase and 'профиль' not in draft_phrase:
+         draft_phrase = draft_phrase.replace('профил', 'профиль')
+         # Коррекция для прилагательных: профильнАЯ, а не профильАЯ
+         draft_phrase = draft_phrase.replace('профильн', 'профильн') # тут ок, но если было profilnaya -> профильная
+         
+    # Правило 2: окончания -тельный, -альный (universalniy -> универсалный -> универсальный)
+    # лн -> льн (строителный -> строительный)
+    draft_phrase = draft_phrase.replace('елный', 'ельный').replace('алный', 'альный')
+    draft_phrase = draft_phrase.replace('елная', 'ельная').replace('алная', 'альная')
+    draft_phrase = draft_phrase.replace('елное', 'ельное').replace('алное', 'альное')
+    
+    # Правило 3: специфические корни, если транслит не попал в словарь
+    draft_phrase = draft_phrase.replace('сталн', 'стальн') # stalnaya -> стальная
+    draft_phrase = draft_phrase.replace('медьн', 'медн')   # mednaya -> медьная (ошибка) -> медная (норм)
+    
+    # Финальные штрихи для чистоты
+    draft_phrase = draft_phrase.replace('йа', 'я').replace('йо', 'ё')
+
     return draft_phrase.capitalize()
 # ==========================================
 # 0.5 ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
@@ -1648,6 +1695,7 @@ with tab_sidebar:
 
             st.success("Меню сгенерировано!")
             st.text_area("Результат HTML", value=full_html, height=400)
+
 
 
 
