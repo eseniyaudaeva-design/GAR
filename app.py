@@ -1478,15 +1478,28 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
 
 # ------------------------------------------
-# Вкладка 6: БОКОВОЕ МЕНЮ (NEW)
+# Вкладка 6: БОКОВОЕ МЕНЮ (EXCEL + SCANNER)
 # ------------------------------------------
 with tab_sidebar:
-    st.header("📑 Генератор HTML бокового меню")
-    st.info("Загрузите список URL. Скрипт разберет их структуру, переведет названия и вставит в ваш HTML/CSS шаблон.")
+    st.header("📑 Генератор HTML бокового меню (Mass Excel)")
+    st.info("""
+    **Логика работы:**
+    1. Скрипт сканирует **URL Категории**, чтобы найти ссылки на теги (страницы, куда нужно вставить меню).
+    2. Из **.txt файла** берет список ссылок для самого меню, строит дерево и генерирует HTML код.
+    3. Создает **Excel файл**, где для каждого найденного тега прописан один и тот же код меню.
+    """)
 
-    sidebar_file = st.file_uploader("Загрузить список ссылок (.txt)", type=["txt"], key="sidebar_uploader")
+    col_sb1, col_sb2 = st.columns([1, 1])
     
-    # Шаблон стилей и скриптов (Тот самый код)
+    with col_sb1:
+        st.markdown("##### 1. Где искать страницы (Теги)?")
+        sidebar_cat_url = st.text_input("URL Категории-донора", placeholder="https://stalmetural.ru/catalog/alyuminiy/", key="sidebar_cat_url_input")
+
+    with col_sb2:
+        st.markdown("##### 2. Структура меню")
+        sidebar_file = st.file_uploader("Список ссылок для меню (.txt)", type=["txt"], key="sidebar_uploader_mass")
+
+    # Шаблон стилей и скриптов (неизменный)
     SIDEBAR_ASSETS = """
 <style>
     :root { font-size: 14px; }
@@ -1599,46 +1612,34 @@ with tab_sidebar:
 </script>
 """
 
-    if st.button("🏗️ Сгенерировать меню", disabled=not sidebar_file, key="btn_gen_sidebar"):
-        with st.spinner("Анализ ссылок и построение дерева..."):
+    if st.button("🚀 Создать Excel", disabled=(not sidebar_file or not sidebar_cat_url), key="btn_gen_sidebar_mass"):
+        status_box = st.status("⚙️ Обработка...", expanded=True)
+        
+        # 1. ГЕНЕРАЦИЯ HTML МЕНЮ (Один раз для всех)
+        try:
+            status_box.write("🔨 Сборка меню из .txt файла...")
             stringio = io.StringIO(sidebar_file.getvalue().decode("utf-8"))
             urls = [line.strip() for line in stringio.readlines() if line.strip()]
             
-            # --- 1. Строим дерево из URL ---
             tree = {}
-            # Найдем общую часть ссылок, чтобы понять, где корень
-            # Упрощение: разбиваем по слэшам, строим иерархию
-            
             for url in urls:
                 path = urlparse(url).path.strip('/')
                 parts = [p for p in path.split('/') if p]
-                
-                # Попытка найти "catalog" и начать оттуда, или брать всё
                 start_idx = 0
-                if 'catalog' in parts:
-                    start_idx = parts.index('catalog') + 1
-                
-                relevant_parts = parts[start_idx:]
-                if not relevant_parts: relevant_parts = parts # Если не нашли catalog
+                if 'catalog' in parts: start_idx = parts.index('catalog') + 1
+                relevant_parts = parts[start_idx:] if parts[start_idx:] else parts
                 
                 current_level = tree
                 for i, part in enumerate(relevant_parts):
-                    if part not in current_level:
-                        current_level[part] = {}
-                    
-                    # Если это последняя часть пути - сохраняем полный URL
+                    if part not in current_level: current_level[part] = {}
                     if i == len(relevant_parts) - 1:
                         current_level[part]['__url__'] = url
                         current_level[part]['__name__'] = force_cyrillic_name_global(part)
-                    
                     current_level = current_level[part]
 
-            # --- 2. Рекурсивная функция генерации HTML ---
             def render_tree(node, level=1):
                 html = ""
-                # Сортируем ключи, чтобы порядок был красивый, игнорируем служебные
                 keys = sorted([k for k in node.keys() if not k.startswith('__')])
-                
                 for key in keys:
                     child = node[key]
                     name = child.get('__name__', force_cyrillic_name_global(key))
@@ -1653,13 +1654,10 @@ with tab_sidebar:
                             html += render_tree(child, level=2)
                             html += '    </ul>\n'
                         else:
-                            # Level 1 без детей - это просто ссылка (как "Листовой прокат")
                             target = url if url else "#"
                             html += f'    <a href="{target}">{name}</a>\n'
                         html += '</li>\n'
-                        
                     elif level == 2:
-                        # Level 2 может быть заголовком (если есть дети) или специальной ссылкой
                         if has_children:
                             html += '<li class="level-2-header">\n'
                             html += f'    <span class="dropdown-toggle">{name}</span>\n'
@@ -1668,20 +1666,15 @@ with tab_sidebar:
                             html += '    </ul>\n'
                             html += '</li>\n'
                         else:
-                             # Level 2 как конечная ссылка (иногда бывает)
                             target = url if url else "#"
                             html += f'<li class="level-2-link-special"><a href="{target}">{name}</a></li>\n'
-                            
                     elif level >= 3:
-                        # Level 3 - всегда конечные ссылки
                         target = url if url else "#"
                         html += f'<li class="level-3-link"><a href="{target}">{name}</a></li>\n'
-                        
                 return html
 
             inner_html = render_tree(tree, level=1)
-            
-            full_html = f"""<div class="page-content-with-sidebar">
+            full_sidebar_code = f"""<div class="page-content-with-sidebar">
     <button id="mobile-menu-toggle" class="menu-toggle-button">☰</button>
     <div class="sidebar-wrapper">
         <nav id="sidebar-menu">
@@ -1692,21 +1685,80 @@ with tab_sidebar:
     </div>
 </div>
 {SIDEBAR_ASSETS}"""
+            status_box.write("✅ Меню успешно собрано.")
 
-            st.success("Меню сгенерировано!")
-            st.text_area("Результат HTML", value=full_html, height=400)
+        except Exception as e:
+            status_box.error(f"Ошибка при сборке меню: {e}")
+            st.stop()
 
+        # 2. СКАН ПАГИНАЦИИ/ТЕГОВ
+        found_tags_urls = []
+        try:
+            status_box.write(f"🕵️ Сканируем URL: {sidebar_cat_url}")
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            r = requests.get(sidebar_cat_url, headers=headers, timeout=15)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                tags_container = soup.find(class_='popular-tags-inner')
+                if tags_container:
+                    for link in tags_container.find_all('a'):
+                        href = link.get('href')
+                        if href:
+                            found_tags_urls.append(urljoin(sidebar_cat_url, href))
+                else:
+                    # Если тегов нет, может пользователь хочет просто 1 строку для самой категории?
+                    status_box.warning("Теги .popular-tags-inner не найдены. Добавлю только сам URL категории.")
+                    found_tags_urls.append(sidebar_cat_url)
+            else:
+                status_box.error(f"Ошибка доступа к сайту: {r.status_code}")
+                st.stop()
+        except Exception as e:
+            status_box.error(f"Ошибка парсинга: {e}")
+            st.stop()
 
+        # 3. ФОРМИРОВАНИЕ EXCEL
+        status_box.write(f"📊 Формируем таблицу для {len(found_tags_urls)} страниц...")
+        
+        excel_data = []
+        for tag_url in found_tags_urls:
+            excel_data.append({
+                'Page URL': tag_url,
+                'Sidebar HTML': full_sidebar_code
+            })
+            
+        df_sidebar = pd.DataFrame(excel_data)
+        
+        # Сохранение в буфер
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_sidebar.to_excel(writer, index=False)
+            
+        # Запись в Session State
+        st.session_state.sidebar_gen_df = df_sidebar
+        st.session_state.sidebar_excel_bytes = buffer.getvalue()
+        
+        status_box.update(label="✅ Готово! Файл создан.", state="complete", expanded=False)
 
-
-
-
-
-
-
-
-
-
+    # ВЫВОД РЕЗУЛЬТАТОВ (из Session State)
+    if st.session_state.sidebar_gen_df is not None:
+        st.success(f"Файл готов: {len(st.session_state.sidebar_gen_df)} строк.")
+        
+        st.download_button(
+            label="📥 Скачать Excel (Menu)",
+            data=st.session_state.sidebar_excel_bytes,
+            file_name="sidebar_menu_mass.xlsx",
+            mime="application/vnd.ms-excel",
+            key="btn_down_sidebar_mass"
+        )
+        
+        with st.expander("👁️ Просмотр данных"):
+            st.dataframe(st.session_state.sidebar_gen_df.head())
+        
+        with st.expander("🖼️ Предпросмотр меню (HTML)"):
+            # Берем HTML из первой строки
+            html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
+            # В iframe это может выглядеть странно из-за position:fixed, но попробуем
+            components.html(html_preview, height=600, scrolling=True)
 
 
 
