@@ -1122,7 +1122,7 @@ with tab_tables:
 # Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V3.0 - Positional Mapping)
 # ------------------------------------------
 with tab_promo:
-    st.header("Генератор блока \"Акции\" (Mass Production)")
+    st.header("Генератор блока \"Акции\")
     
     st.info("""
     **Инструкция (Позиционная привязка):**
@@ -1366,6 +1366,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 
 
 
