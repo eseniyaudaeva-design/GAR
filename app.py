@@ -850,7 +850,7 @@ with tab_seo:
 # ------------------------------------------
 with tab_ai:
     st.title("AI Генератор (Perplexity)")
-    pplx_key = st.text_input("Perplexity API Key", valye="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" type="password", key="pplx_key_input")
+    pplx_key = st.text_input("Perplexity API Key", value="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", type="password", key="pplx_key_input")
     target_url_gen = st.text_input("URL Страницы (донор тегов)", key="pplx_url_input")
     if st.button("🚀 Начать генерацию", key="btn_start_gen", disabled=not pplx_key):
         st.session_state.ai_generated_df = None
@@ -1368,6 +1368,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 
 
 
