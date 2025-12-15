@@ -1128,7 +1128,7 @@ with tab_promo:
     **Инструкция (Позиционная привязка):**
     1. **Сканнер:** Укажите категорию, чтобы найти теги для Excel.
     2. **Товары:** Вставьте список ссылок на категории.
-    3. **Картинки:** Загрузите .txt файл, где лежат **только ссылки на картинки** в том же порядке? что и в поле **Ссылки на категории**.
+    3. **Картинки:** Загрузите .txt файл, где лежат **только ссылки на картинки** в том же порядке, что и в поле **Ссылки на категории**.
     
     *Скрипт соединит их по номерам строк: 1-я ссылка + 1-я картинка и т.д.*
     """)
@@ -1144,7 +1144,7 @@ with tab_promo:
     col_p1, col_p2 = st.columns([1, 1])
     
     with col_p1:
-        st.markdown("Ссылка на родительскую категорию с тегами")
+        st.markdown("**Ссылка на родительскую категорию с тегами**")
         parent_cat_url = st.text_input("URL Родительской категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
         
         st.markdown("Заголовок генерируемого блока")
@@ -1366,6 +1366,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 
 
 
