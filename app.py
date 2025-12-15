@@ -1144,5 +1144,5 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
             mime="application/vnd.ms-excel"
         )
         
-        st.markdown("### Пример сгенерированного блока:")
-        components.html(full_block_html, height=450, scrolling=True)
+        with st.expander("Предпросмотр блока (для примера)"):
+            components.html(full_block_html, height=450, scrolling=True)
