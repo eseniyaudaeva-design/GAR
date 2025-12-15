@@ -39,68 +39,6 @@ def transliterate_text(text):
             result.append(char)
     return "".join(result)
 
-def spell_check_yandex(text):
-    """
-    Исправление ошибок через Яндекс.Спеллер
-    """
-    if not text: return ""
-    url = "https://speller.yandex.net/services/spellservice.json/checkText"
-    params = {"text": text, "lang": "ru", "options": 518}
-    try:
-        r = requests.get(url, params=params, timeout=1.5)
-        if r.status_code == 200:
-            data = r.json()
-            fixed_text = text
-            # Исправляем ошибки, идя с конца, чтобы не сбить индексы (хотя тут замена по слову)
-            # Для надежности просто заменяем слова
-            for error in data:
-                if error.get('s'):
-                    fixed_text = fixed_text.replace(error['word'], error['s'][0])
-            return fixed_text
-    except:
-        pass
-    return text
-
-def reverse_transliterate_smart(text):
-    """
-    Латиница (из URL) -> Кириллица + Спеллер
-    Превращает 'alyuminievaya-truba' в 'Алюминиевая труба'
-    """
-    # 1. Базовая чистка
-    text = text.lower().strip()
-    text = re.sub(r'\.html|\.php|\.htm', '', text)
-    text = text.replace('_', ' ').replace('/', '')
-    # Дефисы меняем на пробелы
-    text = text.replace('-', ' ')
-
-    # 2. Обратный маппинг (Сложные сочетания сначала)
-    replacements = [
-        ('shch', 'щ'), ('sch', 'щ'), ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
-        ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), ('ts', 'ц'), ('kh', 'х'),
-        ('iy', 'ий'), ('yy', 'ый'), ('ij', 'ий') # окончания
-    ]
-    for eng, rus in replacements:
-        text = text.replace(eng, rus)
-
-    # 3. Простые буквы
-    mapping = {
-        'a': 'а', 'b': 'б', 'c': 'к', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
-        'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
-        'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
-        'v': 'в', 'w': 'в', 'x': 'кс', 'z': 'з', 'y': 'и' 
-    }
-    
-    chars = []
-    for c in text:
-        chars.append(mapping.get(c, c)) # Если нет в маппинге (цифры), оставляем как есть
-    raw_rus = "".join(chars)
-
-    # 4. Прогоняем через спеллер для фикса окончаний и орфографии
-    final_text = spell_check_yandex(raw_rus)
-    
-    return final_text.capitalize()
-
-
 # Попытка импорта openai
 try:
     import openai
@@ -146,7 +84,7 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 # 1. КОНФИГУРАЦИЯ СТРАНИЦЫ И СПИСКИ
 # ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO v2.5 (Smart Promo)", page_icon="📊")
+st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
 
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
@@ -1038,75 +976,73 @@ with tab_tables:
         with t2: st.code(st.session_state.table_html_result, language='html')
 
 # ------------------------------------------
-# Вкладка 5: ГЕНЕРАТОР АКЦИИ (SMART TRANSIT)
+# Вкладка 5: ГЕНЕРАТОР АКЦИИ (MASS PROMO EXCEL)
 # ------------------------------------------
 with tab_promo:
-    st.header("Генератор блока \"Акции\"")
-    st.caption("Генератор автоматически распознает названия товаров из URL (обратный транслит + исправление ошибок Яндексом).")
+    st.header("Генератор блока \"Акции\" (Mass Production)")
+    st.caption("Скрипт сканирует **Родительскую категорию**, находит все теги (товары) и генерирует единый блок Галереи для вставки в Excel.")
     
     col_p1, col_p2 = st.columns([1, 1])
     
     with col_p1:
         st.markdown("### 1. Настройки")
+        parent_cat_url = st.text_input("URL Родительской категории (для сканирования тегов)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
         promo_title = st.text_input("Заголовок блока (h3)", value="Акция", key="promo_title_input")
-        
-        st.markdown("### 3. Картинки")
-        promo_file = st.file_uploader("Файл с путями изображений (.txt)", type=["txt"], key="promo_img_loader")
-        if promo_file:
-             st.success("Файл картинок загружен")
 
     with col_p2:
-        st.markdown("### 2. Ссылки")
-        st.caption("Формат: `https://.../tovar/` (название определится само) или `Ссылка | Свое Название`")
-        promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=230, key="promo_links_area", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/\nhttps://stalmetural.ru/catalog/ugolok-alyuminievyy/")
+        st.markdown("### 2. Картинки")
+        promo_file = st.file_uploader("Файл с путями изображений (.txt)", type=["txt"], key="promo_img_loader")
+        if promo_file: st.success("Файл картинок загружен")
 
-    if st.button("🛠️ Сгенерировать Блок", use_container_width=True, type="primary"):
-        # 1. Читаем картинки
+    if st.button("🛠️ Сгенерировать Excel", use_container_width=True, type="primary"):
+        if not parent_cat_url:
+            st.error("Введите ссылку на категорию!")
+            st.stop()
+            
+        status = st.status("Запуск...", expanded=True)
+        
+        # 1. Парсинг тегов с сайта
+        status.write(f"🕵️ Сканируем теги: {parent_cat_url}")
+        found_tags = []
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            r = requests.get(parent_cat_url, headers=headers, timeout=10)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                tags_container = soup.find(class_='popular-tags-inner')
+                if tags_container:
+                    for link in tags_container.find_all('a'):
+                        href = link.get('href')
+                        text = link.get_text(strip=True)
+                        if href and text:
+                            full_url = urljoin(parent_cat_url, href)
+                            found_tags.append({'name': text, 'url': full_url})
+        except Exception as e:
+            status.error(f"Ошибка парсинга: {e}"); st.stop()
+            
+        if not found_tags: status.error("Теги не найдены (проверьте наличие .popular-tags-inner)"); st.stop()
+        
+        status.write(f"✅ Найдено тегов: {len(found_tags)}")
+        
+        # 2. Читаем картинки
         img_paths = []
         if promo_file:
             stringio = io.StringIO(promo_file.getvalue().decode("utf-8"))
             img_paths = [line.strip() for line in stringio.readlines() if line.strip()]
+
+        # 3. Генерируем HTML блок (Один общий на всех)
+        status.write("🔨 Сборка HTML блока...")
+        items_html = ""
         
-        # 2. Читаем ссылки
-        link_lines = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
-        
-        if not link_lines:
-            st.error("Введите ссылки!")
-        else:
-            items_html = ""
-            progress_bar = st.progress(0)
+        # Перебираем найденные теги, чтобы создать галерею
+        for index, tag in enumerate(found_tags):
+            url = tag['url']
+            name = tag['name'] # Тут берем имя прямо с сайта (как в теге)
             
-            for index, line in enumerate(link_lines):
-                url = ""
-                name = ""
-                
-                # Парсинг имени
-                if '|' in line:
-                    parts = line.split('|')
-                    url = parts[0].strip()
-                    name = parts[1].strip()
-                else:
-                    url = line
-                    # --- SMART LOGIC ---
-                    clean_url = url.rstrip('/')
-                    slug = clean_url.split('/')[-1]
-                    try:
-                        # 1. Декодируем URL (%D0%...)
-                        decoded_slug = unquote(slug)
-                        # 2. Если все еще латиница - делаем умный обратный транслит
-                        # Проверка на кириллицу
-                        if re.search(r'[а-яА-Я]', decoded_slug):
-                            name = decoded_slug.replace('-', ' ').replace('_', ' ').capitalize()
-                        else:
-                            name = reverse_transliterate_smart(decoded_slug)
-                    except Exception as e:
-                        name = slug
-                
-                # Картинка
-                img_src = img_paths[index] if index < len(img_paths) else ""
-                
-                # HTML Item
-                items_html += f"""            <div class="gallery-item">
+            # Картинка (по индексу)
+            img_src = img_paths[index] if index < len(img_paths) else ""
+            
+            items_html += f"""            <div class="gallery-item">
                 <h3><a href="{url}" target="_blank">{name}</a></h3>
                 <figure>
                     <a href="{url}" target="_blank">
@@ -1119,10 +1055,9 @@ with tab_promo:
                     </a>
                 </figure>
             </div>\n"""
-                progress_bar.progress((index + 1) / len(link_lines))
 
-            # CSS Styles (Minified/Compact for embedding)
-            css_styles = """<style>
+        # CSS Styles
+        css_styles = """<style>
 .outer-full-width-section { padding: 25px 0; width: 100%; }
 .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }
 h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }
@@ -1137,7 +1072,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
 .gallery-item figure a:hover img { transform: scale(1.05); }
 </style>"""
 
-            final_html = f"""{css_styles}
+        full_block_html = f"""{css_styles}
 <div class="outer-full-width-section">
     <div class="gallery-content-wrapper"> 
         <h3 class="gallery-title">{promo_title}</h3>
@@ -1146,8 +1081,32 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
     </div>
 </div>"""
 
-            st.markdown("### Результат:")
-            st.code(final_html, language='html')
+        # 4. Формируем Excel
+        # Строки = Найденные теги (куда вставлять)
+        # Значение = Сгенерированный HTML блок (одинаковый)
+        
+        excel_rows = []
+        for tag in found_tags:
+            excel_rows.append({
+                'Page URL': tag['url'],
+                'HTML Block': full_block_html
+            })
             
-            st.markdown("### Предпросмотр:")
-            components.html(final_html, height=450, scrolling=True)
+        df_promo = pd.DataFrame(excel_rows)
+        
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_promo.to_excel(writer, index=False)
+        
+        status.update(label="Готово!", state="complete", expanded=False)
+        
+        st.success("🎉 Генерация завершена!")
+        st.download_button(
+            label="📥 Скачать Excel (Mass Promo)",
+            data=buffer.getvalue(),
+            file_name="promo_blocks_mass.xlsx",
+            mime="application/vnd.ms-excel"
+        )
+        
+        with st.expander("Предпросмотр блока (для примера)"):
+            components.html(full_block_html, height=450, scrolling=True)
