@@ -1146,3 +1146,4 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (для примера)"):
             components.html(full_block_html, height=450, scrolling=True)
+
