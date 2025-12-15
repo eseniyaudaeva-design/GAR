@@ -1119,7 +1119,7 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2.2 - Persistence Fix)
+# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2.3 - Clean Images)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока \"Акции\" (Mass Production)")
@@ -1128,10 +1128,10 @@ with tab_promo:
     **Как это работает:**
     1. Скрипт сканирует **Родительскую категорию** и находит там все теги.
     2. Вы вставляете **Список ссылок** на акционные товары.
-    3. Скрипт **автоматически переводит ссылки с латиницы на русский** (например: `truba-al` -> `Труба ал`) и формирует Excel.
+    3. Скрипт **автоматически переводит ссылки с латиницы на русский** и чистит ссылки на изображения.
     """)
 
-    # -- Инициализация состояния (чтобы данные не пропадали) --
+    # -- Инициализация состояния --
     if 'promo_generated_df' not in st.session_state:
         st.session_state.promo_generated_df = None
     if 'promo_excel_data' not in st.session_state:
@@ -1190,7 +1190,7 @@ with tab_promo:
             return processed.capitalize()
 
         # --- ЭТАП 1: СБОРКА HTML БЛОКА ---
-        status.write("🔨 Обработка ссылок и перевод названий...")
+        status.write("🔨 Обработка ссылок и картинок...")
         
         img_paths = []
         if promo_file:
@@ -1213,7 +1213,13 @@ with tab_promo:
                 slug = clean_url.split('/')[-1]
                 name = force_cyrillic_name(slug)
             
-            img_src = img_paths[index] if index < len(img_paths) else ""
+            # --- ИСПРАВЛЕНИЕ ДЛЯ КАРТИНОК ---
+            raw_img_line = img_paths[index] if index < len(img_paths) else ""
+            img_src = ""
+            if raw_img_line:
+                # Разбиваем строку по пробелам и берем ПОСЛЕДНИЙ элемент.
+                # Это спасет, если строка вида: "https://tovar_url   https://img_url.jpg"
+                img_src = raw_img_line.split()[-1]
             
             items_html += f"""            <div class="gallery-item">
                 <h3><a href="{url}" target="_blank">{name}</a></h3>
@@ -1275,7 +1281,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         status.write(f"✅ Найдено страниц для вставки: {len(found_tags)}")
         
-        # --- ЭТАП 3: СОХРАНЕНИЕ В SESSION STATE ---
+        # --- ЭТАП 3: СОХРАНЕНИЕ ---
         excel_rows = []
         for tag_url in found_tags:
             excel_rows.append({
@@ -1293,17 +1299,17 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         st.session_state.promo_html_preview = full_block_html
         
         status.update(label="Готово!", state="complete", expanded=False)
-        st.rerun() # Перезапуск, чтобы отобразить результат ниже
+        st.rerun()
 
-    # --- ОТОБРАЖЕНИЕ РЕЗУЛЬТАТА (ВНЕ БЛОКА IF) ---
+    # --- ВЫВОД РЕЗУЛЬТАТА ---
     if st.session_state.promo_generated_df is not None:
         st.success("🎉 Файл готов и сохранен!")
         st.download_button(
             label="📥 Скачать Excel (Promo Blocks)",
             data=st.session_state.promo_excel_data,
-            file_name="promo_blocks_rus.xlsx",
+            file_name="promo_blocks_clean.xlsx",
             mime="application/vnd.ms-excel",
-            key="btn_down_promo_persistent"
+            key="btn_down_promo_clean"
         )
         
         with st.expander("Предпросмотр блока", expanded=True):
