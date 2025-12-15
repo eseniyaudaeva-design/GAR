@@ -1119,16 +1119,18 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2.4 - Smart Translit Fix)
+# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V3.0 - Positional Mapping)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока \"Акции\" (Mass Production)")
     
     st.info("""
-    **Как это работает:**
-    1. Скрипт сканирует **Родительскую категорию** (для Excel).
-    2. Вы вставляете **Список ссылок** на товары.
-    3. Скрипт **умно переводит** URL в русские названия (Никель, Труба, Нержавеющий), исправляя окончания и мягкие знаки.
+    **Инструкция (Позиционная привязка):**
+    1. **Сканнер:** Укажите категорию, чтобы найти теги для Excel.
+    2. **Товары:** Вставьте список ссылок на товары (например, 5 шт).
+    3. **Картинки:** Загрузите .txt файл, где лежат **только ссылки на картинки** (те же 5 шт, в том же порядке).
+    
+    *Скрипт соединит их по номерам строк: 1-я ссылка + 1-я картинка и т.д.*
     """)
 
     # -- Инициализация состояния --
@@ -1148,14 +1150,28 @@ with tab_promo:
         st.markdown("### 3. Оформление")
         promo_title = st.text_input("Заголовок блока (h3)", value="Вас может заинтересовать", key="promo_title_input")
         
-        st.markdown("### 4. Картинки")
-        promo_file = st.file_uploader("Файл с путями изображений (.txt)", type=["txt"], key="promo_img_loader")
-        if promo_file: st.success("Файл картинок загружен")
+        st.markdown("### 4. Картинки (Строго по порядку!)")
+        st.caption("Файл .txt, где каждая строка — это только ссылка на картинку.")
+        promo_file = st.file_uploader("Загрузить список картинок (.txt)", type=["txt"], key="promo_img_loader")
+        
+        img_lines = []
+        if promo_file:
+            stringio = io.StringIO(promo_file.getvalue().decode("utf-8"))
+            # Читаем линии, убираем пробелы, игнорируем пустые строки
+            img_lines = [line.strip() for line in stringio.readlines() if line.strip()]
+            st.success(f"✅ Загружено картинок: {len(img_lines)} шт.")
 
     with col_p2:
-        st.markdown("### 2. Что вставлять (Содержимое акции)")
-        st.caption("Вставьте ссылки на товары. Названия сгенерируются автоматически.")
+        st.markdown("### 2. Что вставлять (Ссылки на товары)")
+        st.caption("Вставьте ссылки. Порядок должен совпадать с картинками.")
         promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, key="promo_links_area", placeholder="https://stalmetural.ru/catalog/truba-al-profilnaya/\nhttps://stalmetural.ru/catalog/list-riflenyy/")
+        
+        # Подсчет ссылок в реальном времени для удобства
+        link_lines = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
+        if link_lines:
+            st.caption(f"📝 Введено ссылок: {len(link_lines)} шт.")
+            if promo_file and len(link_lines) != len(img_lines):
+                st.warning(f"⚠️ Внимание! Ссылок: {len(link_lines)}, Картинок: {len(img_lines)}. Проверьте соответствие.")
 
     # --- КНОПКА ГЕНЕРАЦИИ ---
     if st.button("🛠️ Сгенерировать Excel", use_container_width=True, type="primary"):
@@ -1163,28 +1179,23 @@ with tab_promo:
         if not parent_cat_url:
             st.error("Введите URL родительской категории (Сканнер)!")
             st.stop()
-        if not promo_links_text:
+        if not link_lines:
             st.error("Введите список ссылок для блока Акции!")
             st.stop()
             
         status = st.status("Запуск умной обработки...", expanded=True)
         
-        # --- SMART TRANSLITERATION FUNCTION ---
+        # --- ФУНКЦИЯ ТРАНСЛИТА (Словари + Яндекс) ---
         def force_cyrillic_name(slug_text):
-            # 1. Предварительная чистка
             raw = unquote(slug_text).lower()
             raw = raw.replace('.html', '').replace('.php', '')
-            
-            # Если уже кириллица
             if re.search(r'[а-я]', raw):
                 return raw.replace('-', ' ').replace('_', ' ').capitalize()
 
-            # Разбиваем на слова по дефисам или подчеркиваниям
             words = re.split(r'[-_]', raw)
             rus_words = []
-
-            # СЛОВАРЬ ИСКЛЮЧЕНИЙ (Industrial Dictionary)
-            # Добавляйте сюда слова, где постоянно теряется мягкий знак или сложные буквы
+            
+            # Словарь промышленных терминов
             exact_map = {
                 'nikel': 'никель', 'stal': 'сталь', 'med': 'медь', 'latun': 'латунь',
                 'bronza': 'бронза', 'svinec': 'свинец', 'titan': 'титан',
@@ -1202,14 +1213,11 @@ with tab_promo:
 
             for w in words:
                 if not w: continue
-                
-                # 1. Проверка по словарю (быстро и точно)
                 if w in exact_map:
                     rus_words.append(exact_map[w])
                     continue
                 
-                # 2. Обработка окончаний (Suffix Rules)
-                # Исправляет "nerzhaveyushchIY" -> "ий", "belYY" -> "ый"
+                # Обработка окончаний
                 processed_w = w
                 if processed_w.endswith('yy'): processed_w = processed_w[:-2] + 'ый'
                 elif processed_w.endswith('iy'): processed_w = processed_w[:-2] + 'ий'
@@ -1218,8 +1226,7 @@ with tab_promo:
                 elif processed_w.endswith('aya'): processed_w = processed_w[:-3] + 'ая'
                 elif processed_w.endswith('oye'): processed_w = processed_w[:-3] + 'ое'
 
-                # 3. Посимвольный транслит (для корня слова)
-                # Сначала сложные сочетания
+                # Транслит корня
                 replacements = [
                     ('shch', 'щ'), ('sch', 'щ'), ('yo', 'ё'), ('zh', 'ж'), ('ch', 'ч'), ('sh', 'ш'), 
                     ('yu', 'ю'), ('ya', 'я'), ('kh', 'х'), ('ts', 'ц'), ('ph', 'ф'),
@@ -1229,37 +1236,22 @@ with tab_promo:
                     ('u', 'у'), ('f', 'ф'), ('h', 'х'), ('c', 'к'), ('w', 'в'), ('y', 'ы'), ('x', 'кс')
                 ]
                 
-                # Если мы не меняли окончание вручную, транслитим всё слово
-                # Если меняли (w != processed_w), транслитим только оставшуюся латиницу
                 temp_res = processed_w
                 for eng, rus in replacements:
                     temp_res = temp_res.replace(eng, rus)
                 
                 rus_words.append(temp_res)
 
-            # Собираем фразу
             draft_phrase = " ".join(rus_words)
-
-            # 4. Яндекс.Спеллер (Финишная полировка)
-            # Исправляет грамматику, если корень транслитерировался криво (напр. "Никел" -> "Никель")
-            try:
-                final_phrase = spell_check_yandex(draft_phrase)
-            except:
-                final_phrase = draft_phrase
-
+            try: final_phrase = spell_check_yandex(draft_phrase)
+            except: final_phrase = draft_phrase
             return final_phrase.capitalize()
 
-        # --- ЭТАП 1: СБОРКА HTML БЛОКА ---
-        status.write("🔨 Перевод названий (Никель, Трубы)...")
-        
-        img_paths = []
-        if promo_file:
-            stringio = io.StringIO(promo_file.getvalue().decode("utf-8"))
-            img_paths = [line.strip() for line in stringio.readlines() if line.strip()]
-
-        link_lines = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
+        # --- ЭТАП 1: СБОРКА HTML БЛОКА (ПОЗИЦИОННАЯ ЛОГИКА) ---
+        status.write("🔨 Сопоставление ссылок и картинок...")
         items_html = ""
         
+        # Цикл по ссылкам на товары
         for index, line in enumerate(link_lines):
             url = ""
             name = ""
@@ -1273,11 +1265,13 @@ with tab_promo:
                 slug = clean_url.split('/')[-1]
                 name = force_cyrillic_name(slug)
             
-            # Чистка картинки
-            raw_img_line = img_paths[index] if index < len(img_paths) else ""
+            # --- ГЛАВНОЕ ИЗМЕНЕНИЕ: БЕРЕМ КАРТИНКУ ПО ИНДЕКСУ ---
+            # Если индекс текущего товара меньше, чем длина списка картинок, берем картинку.
+            # Иначе - оставляем пустой src.
             img_src = ""
-            if raw_img_line:
-                img_src = raw_img_line.split()[-1]
+            if index < len(img_lines):
+                # Берем всю строку целиком, так как договорились, что в файле только URL
+                img_src = img_lines[index]
             
             items_html += f"""            <div class="gallery-item">
                 <h3><a href="{url}" target="_blank">{name}</a></h3>
@@ -1337,7 +1331,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
             
         if not found_tags: status.error("Теги не найдены (проверьте .popular-tags-inner)"); st.stop()
         
-        status.write(f"✅ Найдено тегов: {len(found_tags)}")
+        status.write(f"✅ Найдено тегов для Excel: {len(found_tags)}")
         
         # --- ЭТАП 3: СОХРАНЕНИЕ ---
         excel_rows = []
@@ -1365,10 +1359,10 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         st.download_button(
             label="📥 Скачать Excel (Promo Blocks)",
             data=st.session_state.promo_excel_data,
-            file_name="promo_blocks_smart.xlsx",
+            file_name="promo_blocks_final.xlsx",
             mime="application/vnd.ms-excel",
-            key="btn_down_promo_smart"
+            key="btn_down_promo_final"
         )
         
-        with st.expander("Предпросмотр блока (Проверьте названия)", expanded=True):
+        with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
