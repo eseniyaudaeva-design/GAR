@@ -1147,10 +1147,10 @@ with tab_promo:
         st.markdown("**Ссылка на родительскую категорию с тегами**")
         parent_cat_url = st.text_input("URL Родительской категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
         
-        st.markdown("Заголовок генерируемого блока")
+        st.markdown("**Заголовок генерируемого блока**")
         promo_title = st.text_input("Заголовок блока (h3)", value="Вас может заинтересовать", key="promo_title_input")
         
-        st.markdown("Ссылки на картинки (Строго в том же порядке что и ссылки)")
+        st.markdown("**Ссылки на картинки**")
         st.caption("Файл .txt, где каждая строка — это только ссылка на картинку.")
         promo_file = st.file_uploader("Загрузить список картинок (.txt)", type=["txt"], key="promo_img_loader")
         
@@ -1162,7 +1162,7 @@ with tab_promo:
             st.success(f"✅ Загружено картинок: {len(img_lines)} шт.")
 
     with col_p2:
-        st.markdown("Ссылки на категории")
+        st.markdown("**Ссылки на категории**")
         st.caption("Вставьте ссылки. Порядок должен совпадать с картинками.")
         promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, key="promo_links_area", placeholder="https://stalmetural.ru/catalog/truba-al-profilnaya/\nhttps://stalmetural.ru/catalog/list-riflenyy/")
         
@@ -1366,6 +1366,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 
 
 
