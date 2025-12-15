@@ -1232,18 +1232,16 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# Вкладка 5: ГЕНЕРАТОР АКЦИИ (DB LOOKUP)
+# Вкладка 5: ГЕНЕРАТОР АКЦИИ (DB LOOKUP - FIXED)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока Акции (База Excel)")
     
     st.info("""
-    **Инструкция:**
-    1. Загрузите **Excel-файл (База)**. В нем должно быть 2 колонки:
-       - **Колонка A:** Ссылка на категорию
-       - **Колонка B:** Ссылка на картинку
-    2. В поле справа вставьте список ссылок, которые вы хотите видеть в блоке "Акции".
-    3. Скрипт сам найдет картинку для каждой ссылки, используя загруженный Excel.
+    **Как это работает:**
+    1. **База (Excel):** Загружаете файл, где в 1-й колонке ссылка на товар, во 2-й — ссылка на картинку.
+    2. **Список (Вручную):** Вставляете в большое поле список ссылок, которые нужно показать.
+    3. Скрипт берет вашу ссылку -> ищет её в Excel -> забирает оттуда картинку.
     """)
 
     # -- Инициализация состояния --
@@ -1254,77 +1252,76 @@ with tab_promo:
     if 'promo_html_preview' not in st.session_state:
         st.session_state.promo_html_preview = None
     
-    col_p1, col_p2 = st.columns([1, 1])
-    
-    with col_p1:
-        st.markdown("##### 1. Настройки и База")
-        parent_cat_url = st.text_input("URL Род. категории (для кого генерируем)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db")
-        promo_title = st.text_input("Заголовок блока (h3)", placeholder="Рекомендуем посмотреть", key="promo_title_input_db")
+    # 1. Настройки генерации (в две колонки, чтобы было компактно сверху)
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        parent_cat_url = st.text_input("URL Родительской категории (откуда берем теги для файла)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db")
+    with c2:
+        promo_title = st.text_input("Заголовок блока (h3)", value="Рекомендуем посмотреть", key="promo_title_input_db")
         
-        st.markdown("**📂 База картинок (.xlsx)**")
-        uploaded_db = st.file_uploader("Загрузить Excel (Col A=URL, Col B=Img)", type=["xlsx", "xls"], key="promo_db_uploader")
+    st.markdown("---")
+    
+    # 2. Загрузчик базы (Excel)
+    st.markdown("#### 1. Загрузите Базу картинок (Excel)")
+    st.caption("Формат: Колонка A = Ссылка товара, Колонка B = Ссылка на картинку")
+    uploaded_db = st.file_uploader("Выберите файл .xlsx", type=["xlsx", "xls"], key="promo_db_uploader")
 
-    with col_p2:
-        st.markdown("##### 2. Ссылки для блока")
-        st.caption("Какие категории вывести в блоке? (Скрипт найдет для них фото в Базе)")
-        promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=250, key="promo_links_area_db")
+    # 3. Поле ввода ссылок (ТО САМОЕ ПОЛЕ)
+    st.markdown("#### 2. Вставьте список ссылок для блока Акции")
+    st.caption("Именно для этих ссылок скрипт будет искать картинки в загруженном Excel файле.")
+    promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, placeholder="https://stalmetural.ru/catalog/tovar-1/\nhttps://stalmetural.ru/catalog/tovar-2/", key="promo_links_area_db")
 
     # --- ЛОГИКА ---
-    if st.button("🛠️ Сопоставить и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_db"):
+    if st.button("🛠️ Найти картинки и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_db"):
         # ПРОВЕРКИ
-        if not parent_cat_url: st.error("Введите URL родительской категории!"); st.stop()
-        if not uploaded_db: st.error("Загрузите Excel с базой картинок!"); st.stop()
-        if not promo_links_text: st.error("Список ссылок пуст!"); st.stop()
+        if not parent_cat_url: st.error("Не заполнен URL Родительской категории!"); st.stop()
+        if not uploaded_db: st.error("Не загружен Excel файл с базой!"); st.stop()
+        if not promo_links_text: st.error("Не вставлен список ссылок!"); st.stop()
             
         status = st.status("⚙️ Обработка базы данных...", expanded=True)
         
         # 1. ЧТЕНИЕ БАЗЫ КАРТИНОК
         try:
             df_db = pd.read_excel(uploaded_db)
-            # Берем первые две колонки, независимо от названий
             if df_db.shape[1] < 2:
                 status.error("В Excel файле должно быть минимум 2 колонки!")
                 st.stop()
             
             # Создаем словарь {URL: IMG_URL}
-            # Нормализуем ключи: убираем пробелы и конечный слэш для точности поиска
             img_db = {}
             for index, row in df_db.iterrows():
-                # row.iloc[0] - первая колонка (URL), row.iloc[1] - вторая (Img)
                 raw_url = str(row.iloc[0]).strip()
                 img_val = str(row.iloc[1]).strip()
                 
                 if raw_url and raw_url.lower() != 'nan':
-                    key_url = raw_url.rstrip('/') # Ключ без слэша на конце
+                    key_url = raw_url.rstrip('/') 
                     img_db[key_url] = img_val
             
-            status.write(f"✅ База загружена: {len(img_db)} записей.")
+            status.write(f"✅ База проиндексирована: {len(img_db)} товаров с картинками.")
             
         except Exception as e:
             status.error(f"Ошибка чтения Excel: {e}"); st.stop()
 
         # 2. ГЕНЕРАЦИЯ HTML
-        status.write("🔨 Сборка HTML блока...")
+        status.write("🔨 Подбор картинок и сборка HTML...")
         
         target_links = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
         items_html = ""
+        found_count = 0
         
         for link in target_links:
-            # 2.1 Подготовка ключа для поиска
+            # Поиск
             search_key = link.rstrip('/') 
+            img_src = img_db.get(search_key, "") 
             
-            # 2.2 Поиск картинки (VLOOKUP)
-            img_src = img_db.get(search_key, "") # Если нет, вернет пустоту
+            if img_src: found_count += 1
+            else: print(f"Картинка не найдена для: {link}")
             
-            if not img_src:
-                print(f"Warn: Не найдена картинка для {link}") # В лог
-            
-            # 2.3 Генерация названия
+            # Нейминг
             slug = search_key.split('/')[-1]
-            # Используем глобальную функцию (которую мы обновили ранее)
             name = force_cyrillic_name_global(slug)
             
-            # 2.4 Сборка элемента
+            # HTML Item
             items_html += f"""            <div class="gallery-item">
                 <h3><a href="{link}" target="_blank">{name}</a></h3>
                 <figure>
@@ -1338,8 +1335,10 @@ with tab_promo:
                     </a>
                 </figure>
             </div>\n"""
+            
+        status.write(f"✅ Картинки найдены для {found_count} из {len(target_links)} ссылок.")
 
-        # CSS (тот же, что и был)
+        # CSS
         css_styles = """<style>
 .outer-full-width-section { padding: 25px 0; width: 100%; }
 .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }
@@ -1386,8 +1385,6 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
             status.warning("Теги не найдены. В файл попадет только сама родительская категория.")
             found_tags.append(parent_cat_url)
         
-        status.write(f"✅ Готово к сохранению ({len(found_tags)} страниц)")
-        
         # 4. СОХРАНЕНИЕ
         excel_rows = []
         for tag_url in found_tags:
@@ -1405,11 +1402,11 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         st.session_state.promo_excel_data = buffer.getvalue()
         st.session_state.promo_html_preview = full_block_html
         
-        status.update(label="Успешно выполнено!", state="complete", expanded=False)
+        status.update(label="Готово!", state="complete", expanded=False)
 
     # ВЫВОД РЕЗУЛЬТАТА
     if st.session_state.promo_generated_df is not None:
-        st.success("🎉 Файл сформирован")
+        st.success("🎉 Excel сформирован!")
         st.download_button(
             label="📥 Скачать Excel (Promo Block)",
             data=st.session_state.promo_excel_data,
@@ -1418,9 +1415,9 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
             key="btn_down_promo_db"
         )
         
-        with st.expander("👁️ Предпросмотр блока", expanded=True):
+        with st.expander("👁️ Предпросмотр блока (HTML)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
-            st.code(st.session_state.promo_html_preview, language='html')
+            st.text_area("HTML Код", value=st.session_state.promo_html_preview, height=200)
 
 # ------------------------------------------
 # Вкладка 6: БОКОВОЕ МЕНЮ (EXCEL + SCANNER)
@@ -1704,6 +1701,7 @@ with tab_sidebar:
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             # В iframe это может выглядеть странно из-за position:fixed, но попробуем
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
