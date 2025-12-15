@@ -1150,7 +1150,7 @@ with tab_promo:
         parent_cat_url = st.text_input("URL Родительской категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
         
         st.markdown("**3. Заголовок генерируемого блока**")
-        promo_title = st.text_input("Заголовок блока (h3)", value="Вас может заинтересовать", key="promo_title_input")
+        promo_title = st.text_input("Заголовок блока (h3)", placeholder="Рекомендуем посмотреть", key="promo_title_input")
         
         st.markdown("**4. Изображения**")
         st.caption("Файл .txt, где каждая строка — это только ссылка на картинку.")
@@ -1368,6 +1368,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 
 
 
