@@ -949,31 +949,154 @@ with tab_tags:
         st.download_button(label="📥 Скачать Excel", data=buffer.getvalue(), file_name="tags_tiles_smart.xlsx")
 
 # ------------------------------------------
-# Вкладка 4: ТАБЛИЦЫ
+# Вкладка 4: ТАБЛИЦЫ (Спец. версия v2)
 # ------------------------------------------
 with tab_tables:
-    st.title("🧩 Генератор таблиц")
-    pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl")
-    prompt_tbl = st.text_area("Описание таблицы")
-    top_missing = []
-    if st.session_state.analysis_results:
-        df = st.session_state.analysis_results['depth']
-        mask = df['Рекомендация'].astype(str).str.startswith('+')
-        df_miss = df[mask].copy()
-        df_miss['val'] = df_miss['Рекомендация'].apply(lambda x: int(str(x).replace('+','')))
-        top_missing = [{'word': r['Слово'], 'count': r['val']} for _, r in df_miss.sort_values('val', ascending=False).head(4).iterrows()]
-    if top_missing: st.info(f"Слова для внедрения: {', '.join([x['word'] for x in top_missing])}")
-    if st.button("Сгенерировать", key="btn_gen_tbl"):
-        if not openai: st.error("Нет openai"); st.stop()
+    st.header("🧩 Генератор HTML таблиц (Mass Gen)")
+    st.caption("Генерирует уникальные таблицы для каждого тега из категории. Каждая таблица — отдельный столбец в Excel.")
+
+    # -- Инициализация состояния для таблиц --
+    if 'tables_generated_df' not in st.session_state:
+        st.session_state.tables_generated_df = None
+    if 'tables_excel_data' not in st.session_state:
+        st.session_state.tables_excel_data = None
+
+    # -- Настройки API и Парсинга --
+    col_tbl_1, col_tbl_2 = st.columns([1, 1])
+    with col_tbl_1:
+        pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl_v2")
+        parent_cat_url = st.text_input("URL Категории (источник тегов)", placeholder="https://site.ru/catalog/truba/")
+    
+    with col_tbl_2:
+        num_tables = st.slider("Количество таблиц на 1 страницу", min_value=1, max_value=5, value=2)
+        
+    # -- Настройка заголовков таблиц --
+    st.markdown("### 📝 Названия / Темы таблиц")
+    table_prompts = []
+    for i in range(num_tables):
+        def_val = "Характеристики" if i == 0 else "Размеры и вес"
+        t_title = st.text_input(f"Тема таблицы №{i+1}", value=def_val, key=f"tbl_title_{i}")
+        table_prompts.append(t_title)
+
+    st.markdown("---")
+
+    # -- Логика генерации --
+    if st.button("🚀 Запустить генерацию таблиц", key="btn_gen_tbl_mass", disabled=(not pplx_key_tbl or not parent_cat_url)):
+        if not openai:
+            st.error("Библиотека OpenAI не найдена.")
+            st.stop()
+        
         client = openai.OpenAI(api_key=pplx_key_tbl, base_url="https://api.perplexity.ai")
-        with st.spinner("Генерация..."):
-            res = generate_html_table(client, prompt_tbl, top_missing)
-            st.session_state.table_html_result = res
-            st.rerun()
-    if st.session_state.table_html_result:
-        t1, t2 = st.tabs(["👁️ View", "💻 Code"])
-        with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
-        with t2: st.code(st.session_state.table_html_result, language='html')
+        
+        status_box = st.status("⚙️ Парсинг тегов...", expanded=True)
+        
+        # 1. Парсинг тегов
+        tags_found = []
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            r = requests.get(parent_cat_url, headers=headers, timeout=15)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                # Ищем теги в стандартном контейнере (как во вкладке Теги)
+                tags_container = soup.find(class_='popular-tags-inner')
+                if tags_container:
+                    links = tags_container.find_all('a')
+                    for link in links:
+                        href = link.get('href')
+                        name = link.get_text(strip=True)
+                        if href and name:
+                            full_url = urljoin(parent_cat_url, href)
+                            tags_found.append({'name': name, 'url': full_url})
+            else:
+                status_box.error(f"Ошибка доступа к сайту: {r.status_code}")
+                st.stop()
+        except Exception as e:
+            status_box.error(f"Ошибка парсинга: {e}")
+            st.stop()
+
+        if not tags_found:
+            status_box.error("Теги не найдены (проверьте наличие .popular-tags-inner)")
+            st.stop()
+            
+        status_box.write(f"✅ Найдено тегов: {len(tags_found)}")
+        status_box.write("🤖 Старт AI генерации (Perplexity Sonar-Pro)...")
+
+        # 2. Генерация
+        results_rows = []
+        progress_bar = st.progress(0)
+        
+        total_steps = len(tags_found)
+        
+        for idx, tag in enumerate(tags_found):
+            row_data = {
+                'Tag Name': tag['name'],
+                'Tag URL': tag['url']
+            }
+            
+            # Генерируем N таблиц для текущего тега
+            for t_i, t_topic in enumerate(table_prompts):
+                system_prompt = "You are an expert web developer. Output ONLY valid HTML code for a responsive table. No markdown, no css classes (inline styles only), no introductory text."
+                user_prompt = f"""
+                Create a detailed HTML table for a product page.
+                Product/Category: "{tag['name']}".
+                Table Context/Topic: "{t_topic}".
+                Style: Add border='1' and cellpadding='5'. Header background #f2f2f2.
+                Content: Use realistic technical data suitable for this product.
+                """
+                
+                try:
+                    response = client.chat.completions.create(
+                        model="sonar-pro",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=0.7
+                    )
+                    content = response.choices[0].message.content
+                    # Чистка от маркдауна
+                    clean_html = content.replace("```html", "").replace("```", "").strip()
+                    row_data[f'Table_{t_i+1}_HTML'] = clean_html
+                except Exception as e:
+                    row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
+            
+            results_rows.append(row_data)
+            progress_bar.progress((idx + 1) / total_steps)
+        
+        status_box.update(label="✅ Генерация завершена!", state="complete", expanded=False)
+        
+        # 3. Сохранение
+        df_final = pd.DataFrame(results_rows)
+        st.session_state.tables_generated_df = df_final
+        
+        # Готовим байты для Excel
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_final.to_excel(writer, index=False)
+        st.session_state.tables_excel_data = buffer.getvalue()
+        
+        st.rerun()
+
+    # -- Вывод результатов (Persistence) --
+    if st.session_state.tables_generated_df is not None:
+        st.success(f"Готово! Сгенерировано строк: {len(st.session_state.tables_generated_df)}")
+        
+        col_res_1, col_res_2 = st.columns([1, 4])
+        with col_res_1:
+            st.download_button(
+                label="📥 Скачать Excel",
+                data=st.session_state.tables_excel_data,
+                file_name="ai_tables_gen.xlsx",
+                mime="application/vnd.ms-excel",
+                key="btn_down_tbl_res"
+            )
+        
+        st.dataframe(st.session_state.tables_generated_df.head(), use_container_width=True)
+        
+        with st.expander("👁️ Предпросмотр первой таблицы (HTML)", expanded=False):
+            first_html = st.session_state.tables_generated_df.iloc[0].get('Table_1_HTML', '')
+            st.markdown(first_html, unsafe_allow_html=True)
+            st.code(first_html, language='html')
 
 # ------------------------------------------
 # Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2)
@@ -1146,4 +1269,5 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (для примера)"):
             components.html(full_block_html, height=450, scrolling=True)
+
 
