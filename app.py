@@ -1119,16 +1119,16 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2.3 - Clean Images)
+# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2.4 - Smart Translit Fix)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока \"Акции\" (Mass Production)")
     
     st.info("""
     **Как это работает:**
-    1. Скрипт сканирует **Родительскую категорию** и находит там все теги.
-    2. Вы вставляете **Список ссылок** на акционные товары.
-    3. Скрипт **автоматически переводит ссылки с латиницы на русский** и чистит ссылки на изображения.
+    1. Скрипт сканирует **Родительскую категорию** (для Excel).
+    2. Вы вставляете **Список ссылок** на товары.
+    3. Скрипт **умно переводит** URL в русские названия (Никель, Труба, Нержавеющий), исправляя окончания и мягкие знаки.
     """)
 
     # -- Инициализация состояния --
@@ -1146,7 +1146,7 @@ with tab_promo:
         parent_cat_url = st.text_input("URL Родительской категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
         
         st.markdown("### 3. Оформление")
-        promo_title = st.text_input("Заголовок блока (h3)", value="Акция", key="promo_title_input")
+        promo_title = st.text_input("Заголовок блока (h3)", value="Вас может заинтересовать", key="promo_title_input")
         
         st.markdown("### 4. Картинки")
         promo_file = st.file_uploader("Файл с путями изображений (.txt)", type=["txt"], key="promo_img_loader")
@@ -1154,7 +1154,7 @@ with tab_promo:
 
     with col_p2:
         st.markdown("### 2. Что вставлять (Содержимое акции)")
-        st.caption("Вставьте ссылки на товары. Названия переведутся на русский автоматически.")
+        st.caption("Вставьте ссылки на товары. Названия сгенерируются автоматически.")
         promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, key="promo_links_area", placeholder="https://stalmetural.ru/catalog/truba-al-profilnaya/\nhttps://stalmetural.ru/catalog/list-riflenyy/")
 
     # --- КНОПКА ГЕНЕРАЦИИ ---
@@ -1167,30 +1167,90 @@ with tab_promo:
             st.error("Введите список ссылок для блока Акции!")
             st.stop()
             
-        status = st.status("Запуск...", expanded=True)
+        status = st.status("Запуск умной обработки...", expanded=True)
         
-        # --- ВСТРОЕННАЯ ФУНКЦИЯ ТРАНСЛИТЕРАЦИИ ---
+        # --- SMART TRANSLITERATION FUNCTION ---
         def force_cyrillic_name(slug_text):
-            s = unquote(slug_text).lower()
-            s = s.replace('-', ' ').replace('_', ' ').replace('.html', '').replace('.php', '')
-            if re.search(r'[а-я]', s): return s.capitalize()
+            # 1. Предварительная чистка
+            raw = unquote(slug_text).lower()
+            raw = raw.replace('.html', '').replace('.php', '')
             
-            replacements = [
-                ('shch', 'щ'), ('sch', 'щ'), ('yo', 'ё'), ('zh', 'ж'), ('ch', 'ч'), ('sh', 'ш'), 
-                ('yu', 'ю'), ('ya', 'я'), ('kh', 'х'), ('ts', 'ц'), ('ph', 'ф'),
-                ('a', 'а'), ('b', 'б'), ('v', 'в'), ('g', 'г'), ('d', 'д'), ('e', 'е'), 
-                ('z', 'з'), ('i', 'и'), ('j', 'й'), ('k', 'к'), ('l', 'л'), ('m', 'м'), 
-                ('n', 'н'), ('o', 'о'), ('p', 'п'), ('r', 'р'), ('s', 'с'), ('t', 'т'), 
-                ('u', 'у'), ('f', 'ф'), ('h', 'х'), ('c', 'к'), ('w', 'в'), ('y', 'ы'), ('x', 'кс')
-            ]
-            processed = s
-            for eng, rus in replacements: processed = processed.replace(eng, rus)
-            try: processed = spell_check_yandex(processed)
-            except: pass
-            return processed.capitalize()
+            # Если уже кириллица
+            if re.search(r'[а-я]', raw):
+                return raw.replace('-', ' ').replace('_', ' ').capitalize()
+
+            # Разбиваем на слова по дефисам или подчеркиваниям
+            words = re.split(r'[-_]', raw)
+            rus_words = []
+
+            # СЛОВАРЬ ИСКЛЮЧЕНИЙ (Industrial Dictionary)
+            # Добавляйте сюда слова, где постоянно теряется мягкий знак или сложные буквы
+            exact_map = {
+                'nikel': 'никель', 'stal': 'сталь', 'med': 'медь', 'latun': 'латунь',
+                'bronza': 'бронза', 'svinec': 'свинец', 'titan': 'титан',
+                'alyuminiy': 'алюминий', 'al': 'алюминиевая', 'alyuminievaya': 'алюминиевая',
+                'nerzhaveyushchiy': 'нержавеющий', 'nerzhaveyka': 'нержавейка',
+                'profil': 'профиль', 'shveller': 'швеллер', 'ugolok': 'уголок',
+                'polosa': 'полоса', 'krug': 'круг', 'kvadrat': 'квадрат',
+                'list': 'лист', 'truba': 'труба', 'setka': 'сетка',
+                'provoloka': 'проволока', 'armatura': 'арматура', 'balka': 'балка',
+                'katanka': 'катанка', 'otvod': 'отвод', 'perehod': 'переход',
+                'flanec': 'фланец', 'zaglushka': 'заглушка', 'metiz': 'метизы',
+                'profnastil': 'профнастил', 'shtrips': 'штрипс',
+                'polipropilenovye': 'полипропиленовые', 'truby': 'трубы'
+            }
+
+            for w in words:
+                if not w: continue
+                
+                # 1. Проверка по словарю (быстро и точно)
+                if w in exact_map:
+                    rus_words.append(exact_map[w])
+                    continue
+                
+                # 2. Обработка окончаний (Suffix Rules)
+                # Исправляет "nerzhaveyushchIY" -> "ий", "belYY" -> "ый"
+                processed_w = w
+                if processed_w.endswith('yy'): processed_w = processed_w[:-2] + 'ый'
+                elif processed_w.endswith('iy'): processed_w = processed_w[:-2] + 'ий'
+                elif processed_w.endswith('ij'): processed_w = processed_w[:-2] + 'ий'
+                elif processed_w.endswith('yi'): processed_w = processed_w[:-2] + 'ий'
+                elif processed_w.endswith('aya'): processed_w = processed_w[:-3] + 'ая'
+                elif processed_w.endswith('oye'): processed_w = processed_w[:-3] + 'ое'
+
+                # 3. Посимвольный транслит (для корня слова)
+                # Сначала сложные сочетания
+                replacements = [
+                    ('shch', 'щ'), ('sch', 'щ'), ('yo', 'ё'), ('zh', 'ж'), ('ch', 'ч'), ('sh', 'ш'), 
+                    ('yu', 'ю'), ('ya', 'я'), ('kh', 'х'), ('ts', 'ц'), ('ph', 'ф'),
+                    ('a', 'а'), ('b', 'б'), ('v', 'в'), ('g', 'г'), ('d', 'д'), ('e', 'е'), 
+                    ('z', 'з'), ('i', 'и'), ('j', 'й'), ('k', 'к'), ('l', 'л'), ('m', 'м'), 
+                    ('n', 'н'), ('o', 'о'), ('p', 'п'), ('r', 'р'), ('s', 'с'), ('t', 'т'), 
+                    ('u', 'у'), ('f', 'ф'), ('h', 'х'), ('c', 'к'), ('w', 'в'), ('y', 'ы'), ('x', 'кс')
+                ]
+                
+                # Если мы не меняли окончание вручную, транслитим всё слово
+                # Если меняли (w != processed_w), транслитим только оставшуюся латиницу
+                temp_res = processed_w
+                for eng, rus in replacements:
+                    temp_res = temp_res.replace(eng, rus)
+                
+                rus_words.append(temp_res)
+
+            # Собираем фразу
+            draft_phrase = " ".join(rus_words)
+
+            # 4. Яндекс.Спеллер (Финишная полировка)
+            # Исправляет грамматику, если корень транслитерировался криво (напр. "Никел" -> "Никель")
+            try:
+                final_phrase = spell_check_yandex(draft_phrase)
+            except:
+                final_phrase = draft_phrase
+
+            return final_phrase.capitalize()
 
         # --- ЭТАП 1: СБОРКА HTML БЛОКА ---
-        status.write("🔨 Обработка ссылок и картинок...")
+        status.write("🔨 Перевод названий (Никель, Трубы)...")
         
         img_paths = []
         if promo_file:
@@ -1213,12 +1273,10 @@ with tab_promo:
                 slug = clean_url.split('/')[-1]
                 name = force_cyrillic_name(slug)
             
-            # --- ИСПРАВЛЕНИЕ ДЛЯ КАРТИНОК ---
+            # Чистка картинки
             raw_img_line = img_paths[index] if index < len(img_paths) else ""
             img_src = ""
             if raw_img_line:
-                # Разбиваем строку по пробелам и берем ПОСЛЕДНИЙ элемент.
-                # Это спасет, если строка вида: "https://tovar_url   https://img_url.jpg"
                 img_src = raw_img_line.split()[-1]
             
             items_html += f"""            <div class="gallery-item">
@@ -1260,7 +1318,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
 </div>"""
 
         # --- ЭТАП 2: СКАНИРОВАНИЕ ТЕГОВ ---
-        status.write(f"🕵️ Сканируем теги на странице: {parent_cat_url}")
+        status.write(f"🕵️ Сканируем теги: {parent_cat_url}")
         found_tags = []
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
@@ -1277,9 +1335,9 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         except Exception as e:
             status.error(f"Ошибка парсинга: {e}"); st.stop()
             
-        if not found_tags: status.error("Теги не найдены на целевой странице (проверьте .popular-tags-inner)"); st.stop()
+        if not found_tags: status.error("Теги не найдены (проверьте .popular-tags-inner)"); st.stop()
         
-        status.write(f"✅ Найдено страниц для вставки: {len(found_tags)}")
+        status.write(f"✅ Найдено тегов: {len(found_tags)}")
         
         # --- ЭТАП 3: СОХРАНЕНИЕ ---
         excel_rows = []
@@ -1307,10 +1365,10 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         st.download_button(
             label="📥 Скачать Excel (Promo Blocks)",
             data=st.session_state.promo_excel_data,
-            file_name="promo_blocks_clean.xlsx",
+            file_name="promo_blocks_smart.xlsx",
             mime="application/vnd.ms-excel",
-            key="btn_down_promo_clean"
+            key="btn_down_promo_smart"
         )
         
-        with st.expander("Предпросмотр блока", expanded=True):
+        with st.expander("Предпросмотр блока (Проверьте названия)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
