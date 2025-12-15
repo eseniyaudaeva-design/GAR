@@ -880,7 +880,7 @@ with tab_ai:
 # Вкладка 3: ТЕГИ (V12)
 # ------------------------------------------
 with tab_tags:
-    st.title("🏷️ Генератор плитки тегов (Mass Production + AI Fix)")
+    st.title("🏷️ Генератор плитки тегов")
 
     col_t1, col_t2 = st.columns([1, 1])
     with col_t1:
@@ -1368,6 +1368,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 
 
 
