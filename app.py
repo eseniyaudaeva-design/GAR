@@ -1126,9 +1126,10 @@ with tab_promo:
     
     st.info("""
     **Инструкция (Позиционная привязка):**
-    1. **Сканнер:** Укажите категорию, чтобы найти теги для Excel.
-    2. **Товары:** Вставьте список ссылок на категории.
-    3. **Картинки:** Загрузите .txt файл, где лежат **только ссылки на картинки** в том же порядке, что и в поле **Ссылки на категории**.
+    1. Укажите категорию, чтобы найти теги для Excel.
+    2. Вставьте список ссылок на категории.
+    3. Загрузите .txt файл, где лежат **только ссылки на картинки** в том же порядке, что и в поле **Ссылки на категории**.
+    4. Дайте название блоку (Акции, Рекомендуем посмотреть, Вас может заинтересовать)
     
     *Скрипт соединит их по номерам строк: 1-я ссылка + 1-я картинка и т.д.*
     """)
@@ -1144,13 +1145,13 @@ with tab_promo:
     col_p1, col_p2 = st.columns([1, 1])
     
     with col_p1:
-        st.markdown("**Родительская категория**")
+        st.markdown("**1. Родительская категория**")
         parent_cat_url = st.text_input("URL Родительской категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
         
-        st.markdown("**Заголовок генерируемого блока**")
+        st.markdown("**4. Заголовок генерируемого блока**")
         promo_title = st.text_input("Заголовок блока (h3)", value="Вас может заинтересовать", key="promo_title_input")
         
-        st.markdown("**Изображения**")
+        st.markdown("**3. Изображения**")
         st.caption("Файл .txt, где каждая строка — это только ссылка на картинку.")
         promo_file = st.file_uploader("Загрузить список картинок (.txt)", type=["txt"], key="promo_img_loader")
         
@@ -1162,7 +1163,7 @@ with tab_promo:
             st.success(f"✅ Загружено картинок: {len(img_lines)} шт.")
 
     with col_p2:
-        st.markdown("**Категории**")
+        st.markdown("**2. Категории**")
         st.caption("Вставьте ссылки. Порядок должен совпадать с картинками.")
         promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, key="promo_links_area", placeholder="https://stalmetural.ru/catalog/truba-al-profilnaya/\nhttps://stalmetural.ru/catalog/list-riflenyy/")
         
@@ -1366,6 +1367,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 
 
 
