@@ -1119,7 +1119,7 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2.1 - Fix Translit)
+# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2.2 - Persistence Fix)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока \"Акции\" (Mass Production)")
@@ -1130,6 +1130,14 @@ with tab_promo:
     2. Вы вставляете **Список ссылок** на акционные товары.
     3. Скрипт **автоматически переводит ссылки с латиницы на русский** (например: `truba-al` -> `Труба ал`) и формирует Excel.
     """)
+
+    # -- Инициализация состояния (чтобы данные не пропадали) --
+    if 'promo_generated_df' not in st.session_state:
+        st.session_state.promo_generated_df = None
+    if 'promo_excel_data' not in st.session_state:
+        st.session_state.promo_excel_data = None
+    if 'promo_html_preview' not in st.session_state:
+        st.session_state.promo_html_preview = None
     
     col_p1, col_p2 = st.columns([1, 1])
     
@@ -1149,6 +1157,7 @@ with tab_promo:
         st.caption("Вставьте ссылки на товары. Названия переведутся на русский автоматически.")
         promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, key="promo_links_area", placeholder="https://stalmetural.ru/catalog/truba-al-profilnaya/\nhttps://stalmetural.ru/catalog/list-riflenyy/")
 
+    # --- КНОПКА ГЕНЕРАЦИИ ---
     if st.button("🛠️ Сгенерировать Excel", use_container_width=True, type="primary"):
         # ПРОВЕРКИ
         if not parent_cat_url:
@@ -1160,17 +1169,12 @@ with tab_promo:
             
         status = st.status("Запуск...", expanded=True)
         
-        # --- ВСТРОЕННАЯ ФУНКЦИЯ ТРАНСЛИТЕРАЦИИ (Гарантия работы) ---
+        # --- ВСТРОЕННАЯ ФУНКЦИЯ ТРАНСЛИТЕРАЦИИ ---
         def force_cyrillic_name(slug_text):
-            # 1. Базовая чистка
             s = unquote(slug_text).lower()
             s = s.replace('-', ' ').replace('_', ' ').replace('.html', '').replace('.php', '')
+            if re.search(r'[а-я]', s): return s.capitalize()
             
-            # Если уже кириллица - возвращаем
-            if re.search(r'[а-я]', s):
-                return s.capitalize()
-
-            # 2. Словарь замен (сначала сложные, потом простые)
             replacements = [
                 ('shch', 'щ'), ('sch', 'щ'), ('yo', 'ё'), ('zh', 'ж'), ('ch', 'ч'), ('sh', 'ш'), 
                 ('yu', 'ю'), ('ya', 'я'), ('kh', 'х'), ('ts', 'ц'), ('ph', 'ф'),
@@ -1179,18 +1183,10 @@ with tab_promo:
                 ('n', 'н'), ('o', 'о'), ('p', 'п'), ('r', 'р'), ('s', 'с'), ('t', 'т'), 
                 ('u', 'у'), ('f', 'ф'), ('h', 'х'), ('c', 'к'), ('w', 'в'), ('y', 'ы'), ('x', 'кс')
             ]
-            
-            # 3. Применяем замены
             processed = s
-            for eng, rus in replacements:
-                processed = processed.replace(eng, rus)
-            
-            # 4. Пробуем исправить окончания и орфографию через Яндекс (если доступен)
-            try:
-                processed = spell_check_yandex(processed)
-            except:
-                pass # Если Яндекс недоступен, оставляем транслит как есть
-
+            for eng, rus in replacements: processed = processed.replace(eng, rus)
+            try: processed = spell_check_yandex(processed)
+            except: pass
             return processed.capitalize()
 
         # --- ЭТАП 1: СБОРКА HTML БЛОКА ---
@@ -1207,18 +1203,14 @@ with tab_promo:
         for index, line in enumerate(link_lines):
             url = ""
             name = ""
-            
-            # Если пользователь задал имя вручную через "|"
             if '|' in line:
                 parts = line.split('|')
                 url = parts[0].strip()
                 name = parts[1].strip()
             else:
                 url = line
-                # АВТОМАТИЧЕСКИЙ ТРАНСЛИТ
                 clean_url = url.rstrip('/')
                 slug = clean_url.split('/')[-1]
-                # Вызываем нашу локальную надежную функцию
                 name = force_cyrillic_name(slug)
             
             img_src = img_paths[index] if index < len(img_paths) else ""
@@ -1237,7 +1229,6 @@ with tab_promo:
                 </figure>
             </div>\n"""
 
-        # CSS Styles (Compact)
         css_styles = """<style>
 .outer-full-width-section { padding: 25px 0; width: 100%; }
 .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }
@@ -1284,7 +1275,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         status.write(f"✅ Найдено страниц для вставки: {len(found_tags)}")
         
-        # --- ЭТАП 3: ФОРМИРОВАНИЕ EXCEL ---
+        # --- ЭТАП 3: СОХРАНЕНИЕ В SESSION STATE ---
         excel_rows = []
         for tag_url in found_tags:
             excel_rows.append({
@@ -1296,23 +1287,24 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_promo.to_excel(writer, index=False)
+            
+        st.session_state.promo_generated_df = df_promo
+        st.session_state.promo_excel_data = buffer.getvalue()
+        st.session_state.promo_html_preview = full_block_html
         
         status.update(label="Готово!", state="complete", expanded=False)
-        
-        st.success("🎉 Файл готов!")
+        st.rerun() # Перезапуск, чтобы отобразить результат ниже
+
+    # --- ОТОБРАЖЕНИЕ РЕЗУЛЬТАТА (ВНЕ БЛОКА IF) ---
+    if st.session_state.promo_generated_df is not None:
+        st.success("🎉 Файл готов и сохранен!")
         st.download_button(
             label="📥 Скачать Excel (Promo Blocks)",
-            data=buffer.getvalue(),
+            data=st.session_state.promo_excel_data,
             file_name="promo_blocks_rus.xlsx",
-            mime="application/vnd.ms-excel"
+            mime="application/vnd.ms-excel",
+            key="btn_down_promo_persistent"
         )
         
-        with st.expander("Предпросмотр блока"):
-            components.html(full_block_html, height=450, scrolling=True)
-
-
-
-
-
-
-
+        with st.expander("Предпросмотр блока", expanded=True):
+            components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
