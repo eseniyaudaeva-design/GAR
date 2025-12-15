@@ -1119,23 +1119,23 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2)
+# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2.1 - Fix Translit)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока \"Акции\" (Mass Production)")
     
     st.info("""
     **Как это работает:**
-    1. Скрипт сканирует **Родительскую категорию** и находит там все теги. Для каждого тега будет создана строка в Excel.
-    2. Вы вставляете **Список ссылок** (товары/категории, которые сейчас по акции) и **Картинки**.
-    3. Скрипт генерирует красивую галерею из ваших ссылок и вставляет её код напротив каждого тега в Excel.
+    1. Скрипт сканирует **Родительскую категорию** и находит там все теги.
+    2. Вы вставляете **Список ссылок** на акционные товары.
+    3. Скрипт **автоматически переводит ссылки с латиницы на русский** (например: `truba-al` -> `Труба ал`) и формирует Excel.
     """)
     
     col_p1, col_p2 = st.columns([1, 1])
     
     with col_p1:
         st.markdown("### 1. Куда вставлять (Сканнер)")
-        parent_cat_url = st.text_input("URL Родительской категории (отсюда берем теги)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
+        parent_cat_url = st.text_input("URL Родительской категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
         
         st.markdown("### 3. Оформление")
         promo_title = st.text_input("Заголовок блока (h3)", value="Акция", key="promo_title_input")
@@ -1146,7 +1146,7 @@ with tab_promo:
 
     with col_p2:
         st.markdown("### 2. Что вставлять (Содержимое акции)")
-        st.caption("Ссылки на товары/категории, которые будут внутри блока «Акции». Названия определяются автоматически.")
+        st.caption("Вставьте ссылки на товары. Названия переведутся на русский автоматически.")
         promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, key="promo_links_area", placeholder="https://stalmetural.ru/catalog/truba-al-profilnaya/\nhttps://stalmetural.ru/catalog/list-riflenyy/")
 
     if st.button("🛠️ Сгенерировать Excel", use_container_width=True, type="primary"):
@@ -1160,44 +1160,67 @@ with tab_promo:
             
         status = st.status("Запуск...", expanded=True)
         
-        # --- ЭТАП 1: СБОРКА HTML БЛОКА ИЗ ССЫЛОК И КАРТИНОК ---
-        status.write("🔨 Собираем блок акции из ваших ссылок...")
+        # --- ВСТРОЕННАЯ ФУНКЦИЯ ТРАНСЛИТЕРАЦИИ (Гарантия работы) ---
+        def force_cyrillic_name(slug_text):
+            # 1. Базовая чистка
+            s = unquote(slug_text).lower()
+            s = s.replace('-', ' ').replace('_', ' ').replace('.html', '').replace('.php', '')
+            
+            # Если уже кириллица - возвращаем
+            if re.search(r'[а-я]', s):
+                return s.capitalize()
+
+            # 2. Словарь замен (сначала сложные, потом простые)
+            replacements = [
+                ('shch', 'щ'), ('sch', 'щ'), ('yo', 'ё'), ('zh', 'ж'), ('ch', 'ч'), ('sh', 'ш'), 
+                ('yu', 'ю'), ('ya', 'я'), ('kh', 'х'), ('ts', 'ц'), ('ph', 'ф'),
+                ('a', 'а'), ('b', 'б'), ('v', 'в'), ('g', 'г'), ('d', 'д'), ('e', 'е'), 
+                ('z', 'з'), ('i', 'и'), ('j', 'й'), ('k', 'к'), ('l', 'л'), ('m', 'м'), 
+                ('n', 'н'), ('o', 'о'), ('p', 'п'), ('r', 'р'), ('s', 'с'), ('t', 'т'), 
+                ('u', 'у'), ('f', 'ф'), ('h', 'х'), ('c', 'к'), ('w', 'в'), ('y', 'ы'), ('x', 'кс')
+            ]
+            
+            # 3. Применяем замены
+            processed = s
+            for eng, rus in replacements:
+                processed = processed.replace(eng, rus)
+            
+            # 4. Пробуем исправить окончания и орфографию через Яндекс (если доступен)
+            try:
+                processed = spell_check_yandex(processed)
+            except:
+                pass # Если Яндекс недоступен, оставляем транслит как есть
+
+            return processed.capitalize()
+
+        # --- ЭТАП 1: СБОРКА HTML БЛОКА ---
+        status.write("🔨 Обработка ссылок и перевод названий...")
         
-        # 1. Читаем картинки
         img_paths = []
         if promo_file:
             stringio = io.StringIO(promo_file.getvalue().decode("utf-8"))
             img_paths = [line.strip() for line in stringio.readlines() if line.strip()]
 
-        # 2. Читаем ссылки
         link_lines = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
-        
         items_html = ""
-        # Проходимся по ссылкам, которые юзер вставил вручную (это контент акции)
+        
         for index, line in enumerate(link_lines):
             url = ""
             name = ""
             
-            # Логика извлечения имени и URL
+            # Если пользователь задал имя вручную через "|"
             if '|' in line:
                 parts = line.split('|')
                 url = parts[0].strip()
                 name = parts[1].strip()
             else:
                 url = line
-                # SMART NAME GENERATION
+                # АВТОМАТИЧЕСКИЙ ТРАНСЛИТ
                 clean_url = url.rstrip('/')
                 slug = clean_url.split('/')[-1]
-                try:
-                    decoded_slug = unquote(slug)
-                    if re.search(r'[а-яА-Я]', decoded_slug):
-                        name = decoded_slug.replace('-', ' ').replace('_', ' ').capitalize()
-                    else:
-                        name = reverse_transliterate_smart(decoded_slug)
-                except:
-                    name = slug
+                # Вызываем нашу локальную надежную функцию
+                name = force_cyrillic_name(slug)
             
-            # Подбираем картинку
             img_src = img_paths[index] if index < len(img_paths) else ""
             
             items_html += f"""            <div class="gallery-item">
@@ -1214,7 +1237,7 @@ with tab_promo:
                 </figure>
             </div>\n"""
 
-        # Стили (сжатые)
+        # CSS Styles (Compact)
         css_styles = """<style>
 .outer-full-width-section { padding: 25px 0; width: 100%; }
 .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }
@@ -1230,7 +1253,6 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
 .gallery-item figure a:hover img { transform: scale(1.05); }
 </style>"""
 
-        # Итоговый HTML блок (он будет одинаковый во всех строках Excel)
         full_block_html = f"""{css_styles}
 <div class="outer-full-width-section">
     <div class="gallery-content-wrapper"> 
@@ -1240,7 +1262,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
     </div>
 </div>"""
 
-        # --- ЭТАП 2: СКАНИРОВАНИЕ ТЕГОВ (ДЛЯ EXCEL) ---
+        # --- ЭТАП 2: СКАНИРОВАНИЕ ТЕГОВ ---
         status.write(f"🕵️ Сканируем теги на странице: {parent_cat_url}")
         found_tags = []
         try:
@@ -1252,7 +1274,6 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                 if tags_container:
                     for link in tags_container.find_all('a'):
                         href = link.get('href')
-                        # text = link.get_text(strip=True) # Имя тега нам в целом не нужно для HTML, но нужно для понимания
                         if href:
                             full_url = urljoin(parent_cat_url, href)
                             found_tags.append(full_url)
@@ -1272,7 +1293,6 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
             })
             
         df_promo = pd.DataFrame(excel_rows)
-        
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_promo.to_excel(writer, index=False)
@@ -1283,12 +1303,13 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         st.download_button(
             label="📥 Скачать Excel (Promo Blocks)",
             data=buffer.getvalue(),
-            file_name="promo_blocks_generated.xlsx",
+            file_name="promo_blocks_rus.xlsx",
             mime="application/vnd.ms-excel"
         )
         
-        with st.expander("Предпросмотр блока (для примера)"):
+        with st.expander("Предпросмотр блока"):
             components.html(full_block_html, height=450, scrolling=True)
+
 
 
 
