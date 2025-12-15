@@ -156,6 +156,11 @@ def force_cyrillic_name_global(slug_text):
 # ==========================================
 # 0.5 ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
 # ==========================================
+if 'sidebar_gen_df' not in st.session_state:
+    st.session_state.sidebar_gen_df = None
+if 'sidebar_excel_bytes' not in st.session_state:
+    st.session_state.sidebar_excel_bytes = None
+    
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state:
@@ -1759,6 +1764,7 @@ with tab_sidebar:
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             # В iframe это может выглядеть странно из-за position:fixed, но попробуем
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
