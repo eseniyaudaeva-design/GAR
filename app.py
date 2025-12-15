@@ -963,7 +963,7 @@ with tab_tables:
     # -- Настройки --
     col_tbl_1, col_tbl_2 = st.columns([2, 1])
     with col_tbl_1:
-        pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl_v3")
+        pplx_key_tbl = st.text_input("Perplexity API Key", value="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", type="password", key="pplx_key_tbl_v3")
         parent_cat_url = st.text_input("URL Категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/nikel/")
     
     with col_tbl_2:
@@ -1368,6 +1368,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (Проверьте картинки)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+
 
 
 
