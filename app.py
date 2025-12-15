@@ -949,7 +949,7 @@ with tab_tags:
         st.download_button(label="📥 Скачать Excel", data=buffer.getvalue(), file_name="tags_tiles_smart.xlsx")
 
 # ------------------------------------------
-# Вкладка 4: ТАБЛИЦЫ (Спец. версия v2)
+# Вкладка 4: ТАБЛИЦЫ (Спец. версия v2.1 - Dropdown)
 # ------------------------------------------
 with tab_tables:
     st.header("🧩 Генератор HTML таблиц (Mass Gen)")
@@ -962,21 +962,32 @@ with tab_tables:
         st.session_state.tables_excel_data = None
 
     # -- Настройки API и Парсинга --
-    col_tbl_1, col_tbl_2 = st.columns([1, 1])
+    col_tbl_1, col_tbl_2 = st.columns([2, 1])
     with col_tbl_1:
         pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl_v2")
         parent_cat_url = st.text_input("URL Категории (источник тегов)", placeholder="https://site.ru/catalog/truba/")
     
     with col_tbl_2:
-        num_tables = st.slider("Количество таблиц на 1 страницу", min_value=1, max_value=5, value=2)
+        # ЗАМЕНА: Ползунок -> Выпадающий список
+        num_tables = st.selectbox("Количество таблиц на страницу", options=[1, 2, 3, 4, 5], index=1, key="num_tables_select")
         
     # -- Настройка заголовков таблиц --
-    st.markdown("### 📝 Названия / Темы таблиц")
-    table_prompts = []
-    for i in range(num_tables):
-        def_val = "Характеристики" if i == 0 else "Размеры и вес"
-        t_title = st.text_input(f"Тема таблицы №{i+1}", value=def_val, key=f"tbl_title_{i}")
-        table_prompts.append(t_title)
+    if num_tables > 0:
+        st.markdown(f"### 📝 Темы таблиц ({num_tables} шт.)")
+        # Создаем контейнер для полей ввода, чтобы они шли сеткой
+        cols_prompts = st.columns(num_tables) if num_tables <= 3 else st.columns(3) # Чтобы не было слишком узко
+        
+        table_prompts = []
+        for i in range(num_tables):
+            # Распределяем по колонкам (если больше 3, будет перенос строк автоматом в Streamlit это сложно, поэтому просто список)
+            def_val = "Характеристики"
+            if i == 1: def_val = "Размеры и вес"
+            elif i == 2: def_val = "Химический состав"
+            elif i == 3: def_val = "Применение"
+            elif i == 4: def_val = "Условия доставки"
+            
+            t_title = st.text_input(f"Заголовок таблицы №{i+1}", value=def_val, key=f"tbl_title_{i}")
+            table_prompts.append(t_title)
 
     st.markdown("---")
 
@@ -997,7 +1008,7 @@ with tab_tables:
             r = requests.get(parent_cat_url, headers=headers, timeout=15)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
-                # Ищем теги в стандартном контейнере (как во вкладке Теги)
+                # Ищем теги в стандартном контейнере
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
                     links = tags_container.find_all('a')
@@ -1024,7 +1035,6 @@ with tab_tables:
         # 2. Генерация
         results_rows = []
         progress_bar = st.progress(0)
-        
         total_steps = len(tags_found)
         
         for idx, tag in enumerate(tags_found):
@@ -1054,7 +1064,6 @@ with tab_tables:
                         temperature=0.7
                     )
                     content = response.choices[0].message.content
-                    # Чистка от маркдауна
                     clean_html = content.replace("```html", "").replace("```", "").strip()
                     row_data[f'Table_{t_i+1}_HTML'] = clean_html
                 except Exception as e:
@@ -1069,7 +1078,6 @@ with tab_tables:
         df_final = pd.DataFrame(results_rows)
         st.session_state.tables_generated_df = df_final
         
-        # Готовим байты для Excel
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_final.to_excel(writer, index=False)
@@ -1269,5 +1277,6 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (для примера)"):
             components.html(full_block_html, height=450, scrolling=True)
+
 
 
