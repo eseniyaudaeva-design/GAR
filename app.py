@@ -7,13 +7,14 @@ import re
 from collections import Counter, defaultdict
 import math
 import concurrent.futures
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, unquote
 import inspect
 import time
 import json
 import io
 import os
 import random
+import streamlit.components.v1 as components
 
 def transliterate_text(text):
     """
@@ -84,7 +85,7 @@ if not hasattr(inspect, 'getargspec'):
 # ==========================================
 # 1. КОНФИГУРАЦИЯ СТРАНИЦЫ И СПИСКИ
 # ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO v2.3 (Secure)", page_icon="📊")
+st.set_page_config(layout="wide", page_title="GAR PRO v2.4 (Secure)", page_icon="📊")
 
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
@@ -132,10 +133,13 @@ if not check_password():
 # ==========================================
 # 3. ПОЛУЧЕНИЕ API КЛЮЧЕЙ (БЕЗОПАСНО)
 # ==========================================
+# Мы НЕ пишем ключи здесь. Мы читаем их из st.secrets
+
 # Попытка получить Arsenkin Token
 if "arsenkin_token" in st.session_state:
     ARSENKIN_TOKEN = st.session_state.arsenkin_token
 else:
+    # Пробуем достать из secrets.toml
     try:
         ARSENKIN_TOKEN = st.secrets["api"]["arsenkin_token"]
     except (FileNotFoundError, KeyError):
@@ -145,6 +149,7 @@ else:
 if "yandex_dict_key" in st.session_state:
     YANDEX_DICT_KEY = st.session_state.yandex_dict_key
 else:
+    # Пробуем достать из secrets.toml
     try:
         YANDEX_DICT_KEY = st.secrets["api"]["yandex_dict_key"]
     except (FileNotFoundError, KeyError):
@@ -241,6 +246,7 @@ def get_yandex_dict_info(text, api_key):
     Возвращает нормальную форму (лемму) и часть речи (pos) через API Яндекса.
     """
     if not api_key:
+        # Если ключа нет, просто возвращаем слово как есть
         return {'lemma': text, 'pos': 'unknown'}
         
     url = "https://dictionary.yandex.net/api/v1/dicservice.json/lookup"
@@ -255,6 +261,7 @@ def get_yandex_dict_info(text, api_key):
         if r.status_code == 200:
             data = r.json()
             if data.get('def'):
+                # Берем первое определение
                 first_def = data['def'][0]
                 lemma = first_def.get('text', text)
                 pos = first_def.get('pos', 'unknown')
@@ -265,47 +272,57 @@ def get_yandex_dict_info(text, api_key):
 
 # --- ФУНКЦИЯ КЛАССИФИКАЦИИ С API ЯНДЕКСА ---
 def classify_semantics_with_api(words_list, yandex_key):
-    # --- 1. БАЗОВЫЕ СПИСКИ (ТОЛЬКО МУСОР И КОММЕРЦИЯ) ---
-    # Мы убираем "Белые списки" товаров. Оставляем только то, что точно НЕ товар.
+    # 1. СПИСКИ-ИСКЛЮЧЕНИЯ И ПАТТЕРНЫ
     
-    # Регулярки для размеров/марок
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     gost_pattern = re.compile(r'(гост|din|ту|iso|ст|сп)\s?\d+', re.IGNORECASE)
 
-    # UI мусор (меню, корзина и т.д.)
+    # UI и Навигация
     SITE_UI_GARBAGE = {
-        'меню', 'поиск', 'главная', 'карта', 'сайт', 'кабинет', 'вход', 'регистрация', 
-        'корзина', 'избранное', 'профиль', 'телефон', 'адрес', 'контакты', 'email', 
-        'звонок', 'callback', 'отзыв', 'отзывы', 'вопрос', 'ответ', 'менеджер', 
-        'политика', 'конфиденциальность', 'соглашение', 'оферта', 'cookie', 
-        'отправить', 'ошибка', 'кнопка', 'форма', 'поле', 'обзор', 'новости', 'статьи',
+        'меню', 'поиск', 'главная', 'карта', 'сайт', 'личный', 'кабинет', 
+        'вход', 'регистрация', 'корзина', 'избранное', 'сравнение', 'профиль',
+        'телефон', 'адрес', 'контакты', 'email', 'звонок', 'callback', 
+        'отзыв', 'отзывы', 'вопрос', 'ответ', 'менеджер', 'консультация',
+        'политика', 'конфиденциальность', 'соглашение', 'оферта', 'cookie',
+        'соглашаться', 'согласие', 'принимать', 'отправить',
+        'ошибка', 'успешно', 'кнопка', 'форма', 'поле', 'обзор', 'новости', 'статьи',
         'характеристика', 'описание', 'параметр', 'свойство', 'артикул', 'код',
-        'калькулятор', 'фильтр', 'сортировка', 'показать', 'сбросить', 'категория', 
-        'раздел', 'список', 'вид', 'тип', 'класс', 'серия', 'рейтинг', 'наличие', 
-        'склад', 'производитель', 'бренд', 'марка', 'вес', 'длина', 'ширина', 
-        'высота', 'толщина', 'диаметр', 'размер', 'объем', 'масса', 'тонна', 'метр', 
-        'шт', 'кг', 'упаковка', 'интернет', 'магазин', 'каталог', 'год', 'день', 'час'
+        'калькулятор', 'фильтр', 'сортировка', 'показать', 'сбросить',
+        'имя', 'фамилия', 'сообщение', 'файл', 'документ', 'сертификат',
+        'категория', 'раздел', 'список', 'вид', 'тип', 'класс', 'серия',
+        'рейтинг', 'наличие', 'склад', 'производитель', 'бренд', 'марка',
+        'вес', 'длина', 'ширина', 'высота', 'толщина', 'диаметр', 'размер',
+        'объем', 'масса', 'тонна', 'метр', 'шт', 'кг', 'упаковка', 'цена',
+        'интернет', 'магазин', 'каталог', 'год'
     }
 
-    # Явные коммерческие слова (которые морфология считает существительными)
-    COMMERCIAL_STOP_WORDS = {
-        'купить', 'цена', 'цены', 'прайс', 'стоимость', 'продажа', 'недорого', 
-        'дешево', 'дорого', 'скидка', 'акция', 'распродажа', 'оптом', 'розница', 
-        'руб', 'рублей', 'заказ', 'оплата', 'платеж', 'рассрочка', 'кредит', 
-        'лизинг', 'доставка', 'самовывоз', 'отгрузка', 'поставка', 'транспорт', 
-        'логистика', 'гарантия', 'возврат', 'обмен', 'снабжение', 'выгодный', 
-        'качественный', 'надежный', 'большой', 'малый', 'удобный', 'быстрый', 
-        'бесплатный', 'хороший', 'доступный', 'индивидуальный', 'профессиональный', 
-        'собственный', 'официальный', 'уникальный', 'широкий', 'партнер', 
-        'преимущество', 'связь', 'звонить'
+    # Коммерция + Маркетинговые прилагательные (Мусорные для товаров)
+    COMMERCIAL_WORDS = {
+        'купить', 'заказать', 'цена', 'цены', 'прайс', 'стоимость', 
+        'продажа', 'недорого', 'дешево', 'дорого', 'скидка', 'акция', 
+        'распродажа', 'оптом', 'розница', 'руб', 'рублей', 'уе',
+        'заказ', 'оплата', 'платеж', 'рассрочка', 'кредит', 'лизинг',
+        'доставка', 'самовывоз', 'отгрузка', 'поставка', 'транспорт', 'логистика',
+        'гарантия', 'возврат', 'обмен',
+        # Прилагательные, которые НЕ являются товаром
+        'выгодный', 'низкий', 'высокий', 'лучший', 'качественный', 'надежный',
+        'большой', 'малый', 'удобный', 'быстрый', 'бесплатный', 'хороший',
+        'доступный', 'индивидуальный', 'профессиональный', 'собственный',
+        'официальный', 'уникальный', 'широкий', 'огромный', 'различный'
     }
 
+    GEO_ROOTS = [
+        'москв', 'питер', 'спб', 'екб', 'екатерин', 'росси', 'рф', 'город', 'област',
+        'новгород', 'казан', 'киев', 'минск', 'алматы', 'самара', 'омск', 'челябин',
+        'ростов', 'уфа', 'волгоград', 'перм', 'краснояр', 'воронеж', 'саратов', 'краснодар',
+        'тюмен', 'ижевск', 'тольятти', 'барнаул', 'иркутск', 'ульяновск', 'хабаровск'
+    ]
+    
     SERVICE_KEYWORDS = {
         'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'укладка', 
-        'проектирование', 'изоляция', 'сверление', 'грунтовка', 'покраска', 
-        'металлообработка', 'обработка', 'строительство', 'ремонт', 'производство', 
-        'изготовление', 'размотка', 'протяжка', 'цинкование', 'покрытие'
+        'проектирование', 'изоляция', 'сверление', 'грунтовка', 'покраска', 'услуга',
+        'металлообработка', 'обработка', 'строительство', 'ремонт', 'производство', 'изготовление'
     }
 
     categories = {
@@ -315,103 +332,87 @@ def classify_semantics_with_api(words_list, yandex_key):
         'dimensions': set()
     }
 
-    # Список слов, которые нужно проверить через API (если Pymorphy не справился)
-    # Но в 95% случаев Pymorphy справится сам.
-    
+    # 2. ПРЕДВАРИТЕЛЬНАЯ ФИЛЬТРАЦИЯ
+    api_candidates = []
+
     for word in words_list:
         word_lower = word.lower()
 
-        # 1. Размеры и цифры
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or gost_pattern.search(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower)
             continue
-
-        # 2. Морфологический анализ (PyMorphy2)
-        # Это ключевой момент. Мы смотрим на теги.
+        
         if morph:
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
-            tags = p.tag
         else:
-            # Если NLP не загрузился - фоллбэк на простую логику
             lemma = word_lower
-            tags = set()
 
-        # --- ФИЛЬТРЫ МУСОРА ---
-        
-        # Если слово в стоп-листах
-        if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_STOP_WORDS:
+        if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS:
             categories['commercial'].add(lemma)
             continue
         
-        # Если это География (Geox), Имя (Name), Фамилия (Surn)
-        if 'Geox' in tags or 'Name' in tags or 'Surn' in tags or 'Patr' in tags:
-            categories['commercial'].add(lemma) # Города и имена - в коммерцию/общее
-            continue
-
-        # Если это Глагол (INFN - инфинитив, VERB - глагол, GRND - деепричастие)
-        # "Использоваться", "Звонить", "Находиться"
-        if 'INFN' in tags or 'VERB' in tags or 'GRND' in tags or 'PRTF' in tags:
-            categories['commercial'].add(lemma)
-            continue
-            
-        # Если это местоимение, предлог, союз (на всякий случай)
-        if 'PREP' in tags or 'CONJ' in tags or 'PRCL' in tags or 'NPRO' in tags:
+        if any(root in lemma for root in GEO_ROOTS):
             categories['commercial'].add(lemma)
             continue
 
-        # --- ОПРЕДЕЛЕНИЕ УСЛУГ ---
-        
-        # 1. По словарю
         if lemma in SERVICE_KEYWORDS or lemma.endswith('обработка'):
             categories['services'].add(lemma)
             continue
-            
-        # 2. По суффиксам (Эвристика)
-        # Слова на -ние (кроме оборудования/крепления) и -ка (гибка, резка) часто услуги
-        if lemma.endswith('ние') and lemma not in ['оборудование', 'крепление', 'соединение', 'приспособление']:
-             # Часто это отглагольные существительные -> Услуги
-             categories['services'].add(lemma)
-             continue
-             
-        if lemma.endswith('ка') and ('NOUN' in tags) and lemma not in ['балка', 'проволока', 'сетка', 'трубка', 'гайка', 'шайба', 'поковка', 'упаковка', 'рейка']:
-            # Рискованная эвристика, но для резки/гибки работает. 
-            # Если сомневаемся - лучше пусть упадет в услуги, чем в товары.
-            # Но список исключений для металла важен (балка, сетка).
-            if lemma in ['резка', 'гибка', 'рубка', 'ковка', 'сварка', 'доставка', 'нарезка', 'укладка', 'покраска']:
-                 categories['services'].add(lemma)
-                 continue
 
-        # --- ОПРЕДЕЛЕНИЕ ТОВАРОВ (ОСНОВНАЯ ЛОГИКА) ---
+        api_candidates.append(word_lower)
+
+    # 3. ЗАПРОС К API YANDEX
+    yandex_results = {} 
+    
+    if api_candidates and yandex_key:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_word = {executor.submit(get_yandex_dict_info, w, yandex_key): w for w in api_candidates}
+            for future in concurrent.futures.as_completed(future_to_word):
+                orig_word = future_to_word[future]
+                try:
+                    res = future.result()
+                    yandex_results[orig_word] = res
+                except:
+                    yandex_results[orig_word] = {'lemma': orig_word, 'pos': 'unknown'}
+    else:
+        for w in api_candidates:
+             yandex_results[w] = {'lemma': w, 'pos': 'unknown'}
+
+    # 4. РАСПРЕДЕЛЕНИЕ
+    for word in api_candidates:
+        info = yandex_results.get(word, {'lemma': word, 'pos': 'unknown'})
+        lemma = info['lemma']
+        pos = info['pos']
         
-        # Если мы дошли до сюда:
-        # 1. Это не мусор
-        # 2. Это не город
-        # 3. Это не глагол
-        # 4. Это не явная услуга
+        # Проверка на стоп-слова
+        if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS:
+            categories['commercial'].add(lemma)
+            continue
+
+        # Услуги
+        is_service = False
+        if lemma.endswith('ние') or lemma.endswith('ение'):
+            is_service = True
+        elif lemma.endswith('обработка'):
+            is_service = True
+        elif lemma in SERVICE_KEYWORDS:
+            is_service = True
         
-        # Если это Существительное (NOUN) -> Скорее всего ТОВАР
-        if 'NOUN' in tags:
+        if is_service:
+            categories['services'].add(lemma)
+            continue
+
+        # Логика ТОВАРОВ
+        if pos == 'noun':
             if len(lemma) > 2:
                 categories['products'].add(lemma)
-            continue
-            
-        # Если это Прилагательное (ADJF) -> Материал (Медный, Стальной) -> ТОВАР
-        # Обычные прилагательные (хороший, быстрый) отсеялись в COMMERCIAL_STOP_WORDS
-        if 'ADJF' in tags:
-             if len(lemma) > 2:
+        elif pos == 'adjective' or pos == 'participle': 
+            if len(lemma) > 2:
                 categories['products'].add(lemma)
-             continue
-             
-        # Если это Латиница (которая не попала в размеры), считаем товаром (бренды, марки)
-        if re.search(r'[a-zA-Z]', lemma):
-            categories['products'].add(lemma)
-            continue
-
-        # Если ничего не подошло (Unknown), по умолчанию кидаем в товары, если слово длинное.
-        # Лучше получить "странный товар", чем потерять "редкий металл".
-        if len(lemma) > 3:
-            categories['products'].add(lemma)
+        elif pos == 'unknown':
+            if len(lemma) > 2:
+                categories['products'].add(lemma)
         else:
             categories['commercial'].add(lemma)
 
@@ -507,7 +508,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
         else:
             unique_urls = set()
             if 'result' in res_data and isinstance(res_data['result'], list):
-                return res_data['result']
+                return res_data['result']  # Fallback
             return []
 
         final_url_list = []
@@ -947,15 +948,18 @@ def get_page_data_for_gen(url):
             if tag_url: tags_data.append({'name': link.get_text(strip=True), 'url': tag_url})
     return base_text, tags_data, None
 
-def generate_five_blocks(client, base_text, tag_name):
+def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
     system_instruction = "Ты — профессиональный технический копирайтер. Напиши 5 HTML блоков. Не используй markdown."
-    
-    user_prompt = f"""ВВОДНЫЕ: Тег "{tag_name}". База: \"\"\"{base_text[:3000]}\"\"\"
+    keywords_instruction = ""
+    if seo_words and len(seo_words) > 0:
+        keywords_str = ", ".join(seo_words)
+        keywords_instruction = f"Включи эти слова (склоняя их) и выдели <b>: {keywords_str}"
+
+    user_prompt = f"""ВВОДНЫЕ: Тег "{tag_name}". База: \"\"\"{base_text[:3000]}\"\"\" {keywords_instruction}
     ЗАДАЧА: 5 блоков. Структура: h2/h3, абзац, вводная фраза:, список, заключение. Без [1] ссылок. Разделитель: |||BLOCK_SEP|||"""
 
     try:
-        # Убрали seo_words из аргументов
         response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
         content = response.choices[0].message.content
         content = re.sub(r'\[\d+\]', '', content).replace("```html", "").replace("```", "")
@@ -964,10 +968,13 @@ def generate_five_blocks(client, base_text, tag_name):
         return blocks[:5]
     except Exception as e: return [f"API Error: {str(e)}"] * 5
 
-def generate_html_table(client, user_prompt):
-    # Убрали seo_instruction про MANDATORY SEO и жирный шрифт
-    
-    system_instruction = f"Generate HTML tables. Inline CSS: table border 2px solid black, th bg #f0f0f0. No markdown."
+def generate_html_table(client, user_prompt, seo_keywords_data=None):
+    seo_instruction = ""
+    if seo_keywords_data:
+        words_desc = [f"- '{item['word']}': {item['count']} times" for item in seo_keywords_data]
+        seo_instruction = f"MANDATORY SEO: Use these words ({', '.join(words_desc)}). Wrap in <b>."
+
+    system_instruction = f"Generate HTML tables. Inline CSS: table border 2px solid black, th bg #f0f0f0. {seo_instruction} No markdown."
     try:
         response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
         return re.sub(r'\[\d+\]', '', response.choices[0].message.content).replace("```html", "").replace("```", "").strip()
@@ -976,7 +983,7 @@ def generate_html_table(client, user_prompt):
 # ==========================================
 # 7. ИНТЕРФЕЙС (TABS)
 # ==========================================
-tab_seo, tab_ai, tab_tags, tab_tables = st.tabs(["📊 SEO Анализ", "🤖 AI Генерация", "🏷️ Генератор тегов", "🧩 Таблицы"])
+tab_seo, tab_ai, tab_tags, tab_tables, tab_promo = st.tabs(["📊 SEO Анализ", "🤖 AI Генерация", "🏷️ Генератор тегов", "🧩 Таблицы", "🔥 Генератор Акции"])
 
 # ------------------------------------------
 # Вкладка 1: SEO
@@ -1015,6 +1022,7 @@ with tab_seo:
     with col_sidebar:
         st.markdown("#####⚙️ Настройки API")
         
+        # ЛОГИКА ВВОДА КЛЮЧЕЙ ЕСЛИ ИХ НЕТ В СЕКРЕТАХ
         if not ARSENKIN_TOKEN:
              new_arsenkin = st.text_input("Arsenkin Token", type="password", key="input_arsenkin")
              if new_arsenkin:
@@ -1038,7 +1046,7 @@ with tab_seo:
         st.checkbox("Нормировать по длине", True, key="settings_norm")
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
-    # --- ЛОГИКА АНАЛИЗА (ВНУТРИ ВКЛАДКИ) ---
+    # --- ЛОГИКА АНАЛИЗА ---
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         settings = {'noindex': st.session_state.settings_noindex, 'alt_title': st.session_state.settings_alt, 'numbers': st.session_state.settings_numbers, 'norm': st.session_state.settings_norm, 'ua': st.session_state.settings_ua, 'custom_stops': st.session_state.settings_stops.split()}
@@ -1106,6 +1114,7 @@ with tab_seo:
             # КЛАССИФИКАЦИЯ
             # ==========================================
             res = st.session_state.analysis_results
+
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
 
             if not words_to_check:
@@ -1114,21 +1123,13 @@ with tab_seo:
                 st.session_state.categorized_commercial = []
                 st.session_state.categorized_dimensions = []
             else:
-                # Здесь вызывается ваша новая функция классификации
-                with st.spinner("Уточнение семантики (Pymorphy)..."):
+                with st.spinner("Уточнение семантики через Яндекс Словарь..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
 
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
                 st.session_state.categorized_dimensions = categorized['dimensions']
-                
-                # ==========================================================
-                # ВСТАВИТЬ ЭТИ СТРОКИ СЮДА:
-                # Принудительно обновляем виджет во вкладке "Генератор тегов"
-                # ==========================================================
-                products_str = "\n".join(st.session_state.categorized_products)
-                st.session_state['tags_products_edit_smart'] = products_str  # <--- ДОБАВИТЬ ВОТ ЭТО
 
             st.rerun()
 
@@ -1140,19 +1141,15 @@ with tab_seo:
         with st.expander("🛒 Результат группировки слов (С учетом Яндекс API)", expanded=True):
             c1, c2 = st.columns(2)
             c3, c4 = st.columns(2)
-
             with c1:
                 st.info(f"🧱 Товары ({len(st.session_state.categorized_products)})")
                 st.caption(", ".join(st.session_state.categorized_products))
-
             with c2:
                 st.error(f"🛠️ Услуги ({len(st.session_state.categorized_services)})")
                 st.caption(", ".join(st.session_state.categorized_services))
-            
             with c3:
                 st.warning(f"💰 Коммерция / Гео / Общее ({len(st.session_state.categorized_commercial)})")
                 st.caption(", ".join(st.session_state.categorized_commercial))
-
             with c4:
                 dims = st.session_state.get('categorized_dimensions', [])
                 st.success(f"📏 Размеры и марки ({len(dims)})")
@@ -1180,43 +1177,26 @@ with tab_ai:
     if st.button("🚀 Начать генерацию", key="btn_start_gen", disabled=not pplx_key):
         st.session_state.ai_generated_df = None
         if not openai: st.error("Нет openai"); st.stop()
-        
-        # Инициализация клиента
         client = openai.OpenAI(api_key=pplx_key, base_url="https://api.perplexity.ai")
 
         with st.status("Генерация...", expanded=True) as status:
             base_text, tags, err = get_page_data_for_gen(target_url_gen)
             if err or not tags: st.error(err or "Нет тегов"); st.stop()
 
-            # Переменная seo_list удалена, так как больше не используется в функции генерации
+            seo_list = [x['word'] for x in st.session_state.analysis_results.get('missing_semantics_high', []) if x['word'] not in GARBAGE_LATIN_STOPLIST][:15] if st.session_state.analysis_results else []
 
             all_rows = []
             bar = st.progress(0)
-            
             for i, tag in enumerate(tags):
-                # ИСПРАВЛЕНИЕ: теперь передается только 3 аргумента
-                blocks = generate_five_blocks(client, base_text, tag['name'])
-                
-                all_rows.append({
-                    'TagName': tag['name'], 
-                    'URL': tag['url'], 
-                    'IP_PROP4839': blocks[0], 
-                    'IP_PROP4816': blocks[1], 
-                    'IP_PROP4838': blocks[2], 
-                    'IP_PROP4829': blocks[3], 
-                    'IP_PROP4831': blocks[4], 
-                    **STATIC_DATA_GEN
-                })
+                blocks = generate_five_blocks(client, base_text, tag['name'], seo_list)
+                all_rows.append({'TagName': tag['name'], 'URL': tag['url'], 'IP_PROP4839': blocks[0], 'IP_PROP4816': blocks[1], 'IP_PROP4838': blocks[2], 'IP_PROP4829': blocks[3], 'IP_PROP4831': blocks[4], **STATIC_DATA_GEN})
                 bar.progress((i+1)/len(tags))
 
             df = pd.DataFrame(all_rows)
             st.session_state.ai_generated_df = df
-            
             buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: 
-                df.to_excel(writer, index=False)
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df.to_excel(writer, index=False)
             st.session_state.ai_excel_bytes = buffer.getvalue()
-            
             st.rerun()
 
     if st.session_state.ai_generated_df is not None:
@@ -1224,23 +1204,21 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (SMART MASS PRODUCTION v15)
+# Вкладка 3: ТЕГИ (V12)
 # ------------------------------------------
 with tab_tags:
-    st.title("🏷️ Генератор плитки тегов (Smart SEO)")
-
-    # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+    st.title("🏷️ Генератор плитки тегов (Mass Production + AI Fix)")
     
-    # Кэш для спеллера
-    if 'speller_cache' not in st.session_state:
-        st.session_state.speller_cache = {}
+    st.markdown("""
+    **Логика работы v12:**
+    1. Скрипт парсит **URL категории** (собирает цели).
+    2. Берет список **Товаров** (Ключей).
+    3. Ищет в вашем **.txt файле** наиболее подходящую ссылку для каждого товара.
+    4. **✨ MAGIС:** Берет "хвост" найденной ссылки (slug), делает обратный транслит и **исправляет ошибки через Яндекс.Спеллер**.
+    """)
 
-    def spell_check_yandex_cached(text):
-        """Проверка орфографии с кэшированием"""
+    def spell_check_yandex(text):
         if not text: return ""
-        if text in st.session_state.speller_cache:
-            return st.session_state.speller_cache[text]
-            
         url = "https://speller.yandex.net/services/spellservice.json/checkText"
         params = {"text": text, "lang": "ru", "options": 518}
         try:
@@ -1251,179 +1229,32 @@ with tab_tags:
                 for error in data:
                     if error.get('s'):
                         fixed_text = fixed_text.replace(error['word'], error['s'][0])
-                
-                # Сохраняем в кэш
-                st.session_state.speller_cache[text] = fixed_text
                 return fixed_text
         except:
             pass
         return text
 
-    def smart_reverse_translit(slug):
-        """
-        Умный парсинг Slug -> Человеческое название (v15: Hybrid GOST/Latin)
-        """
-        # --- 1. ТОЧНЫЙ СЛОВАРЬ (Переопределяет любую логику) ---
-        TECHNICAL_DICT = {
-            # Самые ходовые ГОСТы (транслит -> кириллица)
-            'gost': 'ГОСТ', 'tu': 'ТУ',
-            'st3': 'Ст3', 'st3sp': 'Ст3сп', 'st3ps': 'Ст3пс',
-            '09g2s': '09Г2С', '17g1s': '17Г1С',
-            'a500c': 'А500С', 'a500s': 'А500С', 'v500s': 'В500С', # Важно! с -> С (кириллица)
-            'a240': 'А240', 'a400': 'А400', 'a500': 'А500',
-            '12x18n10t': '12Х18Н10Т', '08x18n10': '08Х18Н10',
-            '40x': '40Х', '20x': '20Х', '65g': '65Г',
-            'd16t': 'Д16Т', 'amg': 'АМг', 'ad31': 'АД31',
-            # Полимеры
-            'pvc': 'ПВХ', 'pnd': 'ПНД', 'pvd': 'ПВД',
-            # Сокращения
-            'hk': 'Х/К', 'gk': 'Г/К', 'bp': 'ВР'
-        }
-
-        # --- 2. ЕДИНИЦЫ ИЗМЕРЕНИЯ ---
-        UNITS_MAP = {
-            'mm': 'мм', 'cm': 'см', 'm': 'м', 'kg': 'кг', 't': 'т', 
-            'sht': 'шт', 'rub': 'руб'
-        }
-
-        # --- 3. МАРКЕРЫ ЗАПАДНЫХ МАРОК (Оставляем латиницей) ---
-        # Если слово начинается с этого -> Uppercase (без транслита)
-        LATIN_STARTS = ('aisi', 'astm', 'din', 'en', 'hardox', 'weldox', 'magnelis', 'ruukki', 'ssab')
-        
-        # Если слово содержит эти буквы (маркеры евро-стандартов), то скорее всего это латиница
-        # J (S355J2), W (Weldox), Q (S460Q), R (S235JR) - в транслите ГОСТа J и Q почти не юзают.
-        LATIN_CHARS_MARKERS = ['j', 'q', 'w'] 
-        
-        # Специфичные европейские марки стали (S + цифры, P + цифры и т.д.)
-        # Регулярка ловит: s355, p265, l450 и т.д.
-        EURO_GRADE_PATTERN = re.compile(r'^[sple]\d{3}[a-z0-9]*$', re.IGNORECASE)
-
-        # --- НАЧАЛО ОБРАБОТКИ ---
-        slug = slug.lower().strip()
-        slug = re.sub(r'\.html|\.php|\.htm', '', slug)
-        slug = slug.replace('_', '-').replace('/', '-')
-        
-        parts = [p for p in slug.split('-') if p]
-        final_words = []
-
-        for part in parts:
-            # A. ПРОВЕРКА ПО СЛОВАРЮ (Приоритет №1)
-            if part in TECHNICAL_DICT:
-                final_words.append(TECHNICAL_DICT[part])
-                continue
-
-            # B. ПРОВЕРКА НА РАЗМЕР (100mm -> 100мм)
-            is_unit = False
-            for eng_unit, rus_unit in UNITS_MAP.items():
-                if part.endswith(eng_unit) and part[:-len(eng_unit)].replace('.', '').isdigit():
-                    num = part[:-len(eng_unit)]
-                    final_words.append(f"{num}{rus_unit}")
-                    is_unit = True
-                    break
-            if is_unit: continue
-
-            # C. ПРОВЕРКА НА ЛАТИНСКУЮ МАРКУ (Приоритет №2)
-            # 1. Известные бренды/стандарты (hardox, aisi...)
-            if part.startswith(LATIN_STARTS):
-                final_words.append(part.upper())
-                continue
-            
-            # 2. Наличие специфичных латинских букв (S355J2, AISI)
-            if any(marker in part for marker in LATIN_CHARS_MARKERS):
-                final_words.append(part.upper())
-                continue
-            
-            # 3. Евро-паттерны (S355, P265...)
-            if EURO_GRADE_PATTERN.match(part):
-                final_words.append(part.upper())
-                continue
-
-            # D. ТРАНСЛИТЕРАЦИЯ (ГОСТ и Обычные слова)
-            
-            # Подготовка текста (Cyrillic mapping)
-            text = part
-            replacements = [
-                ('shch', 'щ'), ('sch', 'щ'), ('sh', 'ш'), ('ch', 'ч'), ('zh', 'ж'),
-                ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), ('ts', 'ц'), ('tc', 'ц'), ('kh', 'х')
-            ]
-            for eng, rus in replacements:
-                text = text.replace(eng, rus)
-
-            text = re.sub(r'iy(?=\s|$)', 'ий', text)
-            text = re.sub(r'yy(?=\s|$)', 'ый', text)
-            text = text.replace('ij', 'ий')
-            text = re.sub(r'y(?=\s|$)', 'ы', text)
-
-            mapping = {
-                'a': 'а', 'b': 'б', 'c': 'к', 'd': 'д', 'e': 'е', 'f': 'ф', 'g': 'г',
-                'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н',
-                'o': 'о', 'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у',
-                'v': 'в', 'w': 'в', 'x': 'х', 'z': 'з', 'y': 'ы', 'q': 'к'
-            }
-            chars = []
-            for c in text:
-                chars.append(mapping.get(c, c))
-            rus_text = "".join(chars)
-
-            # E. ЭВРИСТИКА ГОСТА (Приоритет №3)
-            # Если после транслита в слове остались цифры -> это ГОСТ марка -> CAPS
-            # Пример: 09g2s -> 09г2с -> 09Г2С
-            if any(char.isdigit() for char in rus_text) and len(rus_text) < 10:
-                 final_words.append(rus_text.upper())
-            else:
-                # Обычное слово -> Прогоняем через Спеллер (если длинное)
-                if len(rus_text) > 3:
-                     rus_text = spell_check_yandex_cached(rus_text)
-                final_words.append(rus_text)
-
-        # Сборка фразы (Первая буква заглавная)
-        result = " ".join(final_words)
-        return result[0].upper() + result[1:] if result else ""
-
-    # --- ИНТЕРФЕЙС ---
     col_t1, col_t2 = st.columns([1, 1])
-    
     with col_t1:
-        st.markdown("##### 🔗 Источник (Откуда парсим)")
-        category_url = st.text_input("URL Категории (где собрать список подкатегорий)", placeholder="https://site.ru/catalog/truba/")
-        
+        st.markdown("##### 🔗 Источник")
+        category_url = st.text_input("URL Категории", placeholder="https://site.ru/catalog/truba/")
         st.markdown("##### 📂 База ссылок")
-        uploaded_file = st.file_uploader("Файл со ссылками (.txt)", type=["txt"], key="urls_uploader_smart")
-
+        uploaded_file = st.file_uploader("Загрузите файл ссылок (.txt)", type=["txt"], key="urls_uploader_mass_v4")
     with col_t2:
-        st.markdown("##### 📝 Список товаров (Ключи поиска)")
-        
-        # 1. Проверяем, существует ли ключ в session_state. 
-        # Если нет (первый запуск) — заполняем его данными из categorized_products.
-        # Если да (после анализа или ввода вручную) — используем существующее значение.
-        if "tags_products_edit_smart" not in st.session_state:
-            raw_products = st.session_state.get('categorized_products', [])
-            st.session_state.tags_products_edit_smart = "\n".join(raw_products) if raw_products else ""
-
-        # 2. Создаем виджет БЕЗ аргумента 'value'. 
-        # Streamlit сам возьмет значение из st.session_state['tags_products_edit_smart'].
-        products_input = st.text_area(
-            "Список товаров (будут искаться в базе):", 
-            height=200, 
-            key="tags_products_edit_smart",
-            help="Скрипт будет искать ссылки, содержащие эти слова (в транслите)."
-        )
-        
-        # Превращаем текст обратно в список для скрипта
+        st.markdown("##### 📝 Ключевые слова (Товары)")
+        raw_products = st.session_state.get('categorized_products', [])
+        default_text = "\n".join(raw_products) if raw_products else ""
+        products_input = st.text_area("Список товаров:", value=default_text, height=200, key="tags_products_edit_v12")
         products = [line.strip() for line in products_input.split('\n') if line.strip()]
 
-    # --- ЗАПУСК ---
     st.markdown("---")
-    if st.button("🚀 Запустить Smart-генерацию", key="btn_tags_smart_gen", disabled=(not products or not uploaded_file or not category_url)):
-        
+    if st.button("🚀 Спарсить и собрать Excel (Smart)", key="btn_tags_smart_gen", disabled=(not products or not uploaded_file or not category_url)):
         status_box = st.status("🚀 Запуск процесса...", expanded=True)
-        
-        # 1. Парсинг
         status_box.write(f"🕵️ Парсим категорию: {category_url}")
         target_urls_list = []
         try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-            r = requests.get(category_url, headers=headers, timeout=15)
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            r = requests.get(category_url, headers=headers, timeout=10)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
                 tags_container = soup.find(class_='popular-tags-inner')
@@ -1431,27 +1262,11 @@ with tab_tags:
                     for link in tags_container.find_all('a'):
                         href = link.get('href')
                         if href: target_urls_list.append(urljoin(category_url, href))
-                else:
-                    status_box.warning("Не найден блок .popular-tags-inner. Ищем ссылки в контенте...")
-                    main_area = soup.find('main') or soup.body
-                    if main_area:
-                        for link in main_area.find_all('a'):
-                            href = link.get('href')
-                            if href and '/catalog/' in href:
-                                target_urls_list.append(urljoin(category_url, href))
         except Exception as e:
-            status_box.error(f"Ошибка парсинга: {e}")
-            st.stop()
+            status_box.error(f"Ошибка парсинга: {e}"); st.stop()
             
-        target_urls_list = list(set(target_urls_list))
-        
-        if not target_urls_list:
-            status_box.error("Целевые страницы не найдены.")
-            st.stop()
-            
-        status_box.write(f"✅ Найдено страниц: {len(target_urls_list)}")
-
-        # 2. Индексация базы
+        if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)"); st.stop()
+        status_box.write(f"✅ Найдено целей: {len(target_urls_list)}")
         status_box.write("📂 Индексация базы ссылок...")
         stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
         all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
@@ -1460,331 +1275,138 @@ with tab_tags:
         for p in products:
             tr = transliterate_text(p)
             if len(tr) >= 3:
-                matches = [u for u in all_txt_links if tr in u.lower()]
+                matches = [u for u in all_txt_links if tr in u]
                 if matches: product_candidates_map[p] = matches
+        status_box.write(f"✅ Товары сопоставлены ({len(product_candidates_map)} шт.)")
+        status_box.write("🧠 Генерация 'умных' анкоров через Яндекс.Спеллер...")
         
-        status_box.write(f"✅ Товары сопоставлены: {len(product_candidates_map)} шт.")
-
-        # 3. Генерация
-        status_box.write("🧠 Генерация анкоров (Smart Translit v15)...")
         final_rows = []
         prog_bar = st.progress(0)
+        for i, target_url in enumerate(target_urls_list):
+            current_page_tags = []
+            for prod_name, candidates in product_candidates_map.items():
+                valid = [u for u in candidates if u.rstrip('/') != target_url.rstrip('/')]
+                if valid:
+                    chosen_url = random.choice(valid)
+                    current_page_tags.append({'name': prod_name.capitalize(), 'url': chosen_url})
+            
+            if current_page_tags:
+                random.shuffle(current_page_tags)
+                html_block = '<div class="popular-tags">\n' + "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in current_page_tags]) + '\n</div>'
+            else: html_block = ""
+            final_rows.append({'Page URL': target_url, 'Tags HTML': html_block})
+            prog_bar.progress((i + 1) / len(target_urls_list))
         
-        with requests.Session() as session:
-            for i, target_url in enumerate(target_urls_list):
-                current_page_tags = []
-                
-                available_products = list(product_candidates_map.keys())
-                random.shuffle(available_products)
-                limit = random.randint(12, 20)
-                selected_products = available_products[:limit]
-                
-                for prod_name in selected_products:
-                    candidates = product_candidates_map[prod_name]
-                    norm_target = target_url.rstrip('/')
-                    valid_candidates = [u for u in candidates if u.rstrip('/') != norm_target]
-                    
-                    if valid_candidates:
-                        chosen_url = random.choice(valid_candidates)
-                        
-                        # SMART NAME GENERATION
-                        try:
-                            parsed = urlparse(chosen_url)
-                            path_parts = parsed.path.strip('/').split('/')
-                            slug = path_parts[-1] if path_parts[-1] else (path_parts[-2] if len(path_parts)>1 else "")
-                            
-                            if not slug or len(slug) < 3:
-                                anchor_text = prod_name.capitalize()
-                            else:
-                                anchor_text = smart_reverse_translit(slug)
-                        except:
-                            anchor_text = prod_name.capitalize()
-                        
-                        current_page_tags.append({
-                            'name': anchor_text,
-                            'url': chosen_url
-                        })
-                
-                if current_page_tags:
-                    random.shuffle(current_page_tags)
-                    html_block = '<div class="popular-tags">\n' + \
-                                 "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in current_page_tags]) + \
-                                 '\n</div>'
-                else:
-                    html_block = "<!-- Нет тегов -->"
-                
-                final_rows.append({
-                    'Page URL': target_url,
-                    'Tags HTML': html_block
-                })
-                
-                prog_bar.progress((i + 1) / len(target_urls_list))
-
-        prog_bar.empty()
-        status_box.update(label="Готово!", state="complete", expanded=False)
-
-        # 4. Скачивание
         df_tags_result = pd.DataFrame(final_rows)
         buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df_tags_result.to_excel(writer, index=False)
-            worksheet = writer.sheets['Sheet1']
-            worksheet.set_column('A:A', 60)
-            worksheet.set_column('B:B', 100)
-            
-        excel_bytes = buffer.getvalue()
-        
-        st.success(f"🎉 Сгенерировано {len(final_rows)} блоков.")
-        st.download_button(
-            label="📥 Скачать Excel",
-            data=excel_bytes,
-            file_name="smart_tags_tiles.xlsx",
-            mime="application/vnd.ms-excel"
-        )
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_tags_result.to_excel(writer, index=False)
+        st.download_button(label="📥 Скачать Excel", data=buffer.getvalue(), file_name="tags_tiles_smart.xlsx")
 
 # ------------------------------------------
 # Вкладка 4: ТАБЛИЦЫ
 # ------------------------------------------
-# ------------------------------------------
-# Вкладка 4: ТАБЛИЦЫ (MASS GEN v2)
-# ------------------------------------------
 with tab_tables:
-    st.title("🧩 Генератор таблиц (Mass Production)")
-    
-    # 1. Настройки доступа и источника
-    c_set1, c_set2 = st.columns(2)
-    with c_set1:
-        pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl")
-    with c_set2:
-        target_url_tbl = st.text_input("URL Родительской категории (источник тегов)", placeholder="https://site.ru/catalog/armatura/", key="url_source_tbl")
+    st.title("🧩 Генератор таблиц")
+    pplx_key_tbl = st.text_input("Perplexity API Key", type="password", key="pplx_key_tbl")
+    prompt_tbl = st.text_area("Описание таблицы")
+    top_missing = []
+    if st.session_state.analysis_results:
+        df = st.session_state.analysis_results['depth']
+        mask = df['Рекомендация'].astype(str).str.startswith('+')
+        df_miss = df[mask].copy()
+        df_miss['val'] = df_miss['Рекомендация'].apply(lambda x: int(str(x).replace('+','')))
+        top_missing = [{'word': r['Слово'], 'count': r['val']} for _, r in df_miss.sort_values('val', ascending=False).head(4).iterrows()]
 
-    st.markdown("---")
-
-    # 2. Настройка количества и описания таблиц
-    st.subheader("⚙️ Конфигурация таблиц")
-    
-    num_tables = st.selectbox("Сколько таблиц генерировать для каждого урла?", [1, 2, 3, 4, 5], key="num_tables_select")
-    
-    table_prompts = []
-    
-    # Динамическое создание полей ввода
-    st.info("📝 Опишите, что должно быть в каждой таблице. ИИ наполнит их данными, специфичными для конкретного товара.")
-    
-    cols_prompts = st.columns(num_tables)
-    for i in range(num_tables):
-        with cols_prompts[i]:
-            def_val = f"Технические характеристики" if i == 0 else f"Размеры и вес"
-            prompt_text = st.text_area(f"Таблица №{i+1} (Описание)", value=def_val, height=150, key=f"tbl_prompt_{i}")
-            table_prompts.append(prompt_text)
-
-    # 3. Логика запуска
-    if st.button("🚀 Запустить генерацию таблиц", key="btn_gen_tbl_mass", disabled=(not pplx_key_tbl or not target_url_tbl)):
-        
-        # Инициализация клиента
-        if not openai: 
-            st.error("Библиотека openai не установлена/не найдена.")
-            st.stop()
-            
+    if top_missing: st.info(f"Слова для внедрения: {', '.join([x['word'] for x in top_missing])}")
+    if st.button("Сгенерировать", key="btn_gen_tbl"):
+        if not openai: st.error("Нет openai"); st.stop()
         client = openai.OpenAI(api_key=pplx_key_tbl, base_url="https://api.perplexity.ai")
-        
-        status_box = st.status("⏳ Анализ категории...", expanded=True)
-        
-        # А. Парсинг тегов (используем ту же функцию, что и в AI вкладке)
-        try:
-            _, tags_data, err_msg = get_page_data_for_gen(target_url_tbl)
-            if err_msg or not tags_data:
-                status_box.error(f"Ошибка сбора тегов: {err_msg if err_msg else 'Теги не найдены'}")
-                st.stop()
-            
-            # Ограничитель на случай сбоя парсинга (чтобы не сжечь бюджет, если тегов 1000)
-            status_box.write(f"✅ Найдено товаров (тегов): {len(tags_data)}")
-        except Exception as e:
-            status_box.error(f"Критическая ошибка: {e}")
-            st.stop()
+        with st.spinner("Генерация..."):
+            res = generate_html_table(client, prompt_tbl, top_missing)
+            st.session_state.table_html_result = res
+            st.rerun()
+    if st.session_state.table_html_result:
+        t1, t2 = st.tabs(["👁️ View", "💻 Code"])
+        with t1: st.markdown(st.session_state.table_html_result, unsafe_allow_html=True)
+        with t2: st.code(st.session_state.table_html_result, language='html')
 
-        # Б. Генерация
-        all_table_rows = []
-        progress_bar = st.progress(0)
-        
-        total_steps = len(tags_data)
-        
-        for idx, tag_item in enumerate(tags_data):
-            tag_name = tag_item['name']
-            tag_url = tag_item['url']
-            
-            status_box.write(f"⚙️ Обработка: {tag_name}...")
-            
-            # Формируем строку данных
-            row_data = {'URL': tag_url, 'Название': tag_name}
-            
-            # Генерируем каждую таблицу по очереди
-            for tbl_i, prompt_desc in enumerate(table_prompts):
-                
-                # Специальный промт для уникальности
-                system_instruction = "You are a senior technical data specialist. Output ONLY HTML code. No markdown formatting, no backticks, no introduction."
-                user_prompt = f"""
-                CONTEXT: The specific product/sub-category is "{tag_name}".
-                TASK: Generate a technical HTML table based on this description: "{prompt_desc}".
-                CRITICAL REQUIREMENTS:
-                1. The data inside the table MUST be specific to "{tag_name}", not generic.
-                2. Style: <table style="width:100%; border-collapse: collapse; border: 2px solid black;">, headers with background #f0f0f0.
-                3. Return ONLY the HTML <table>...</table> code.
-                """
-                
-                try:
-                    response = client.chat.completions.create(
-                        model="sonar-pro", 
-                        messages=[
-                            {"role": "system", "content": system_instruction}, 
-                            {"role": "user", "content": user_prompt}
-                        ], 
-                        temperature=0.5 # Чуть ниже температура для большей точности данных
-                    )
-                    html_content = response.choices[0].message.content
-                    
-                    # Очистка от маркдауна, если ИИ все же добавил его
-                    html_content = re.sub(r'```html', '', html_content)
-                    html_content = re.sub(r'```', '', html_content).strip()
-                    
-                    row_data[f'Table {tbl_i+1}'] = html_content
-                    
-                except Exception as e:
-                    row_data[f'Table {tbl_i+1}'] = f"Error: {e}"
-            
-            all_table_rows.append(row_data)
-            progress_bar.progress((idx + 1) / total_steps)
-
-        # В. Завершение и сохранение
-        status_box.update(label="✅ Генерация завершена!", state="complete", expanded=False)
-        
-        df_tables = pd.DataFrame(all_table_rows)
-        
-        # Сохранение в Session State для отображения кнопки скачивания
-        st.session_state.tables_gen_df = df_tables
-        
-        # Создание Excel в памяти
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df_tables.to_excel(writer, index=False)
-        st.session_state.tables_excel_bytes = buffer.getvalue()
-        
-        st.success(f"Готово! Сгенерировано таблиц для {len(df_tables)} страниц.")
-
-    # 4. Вывод результатов и скачивание
-    if 'tables_gen_df' in st.session_state and st.session_state.tables_gen_df is not None:
-        st.markdown("### 📥 Результаты")
-        
-        st.download_button(
-            label="Скачать Excel файл",
-            data=st.session_state.tables_excel_bytes,
-            file_name="generated_tables.xlsx",
-            mime="application/vnd.ms-excel",
-            type="primary"
-        )
-
-<div id="promo-generator-tab" style="padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 5px; font-family: Arial, sans-serif;">
-    <h2 style="margin-top: 0; color: #333;">Генератор блока "Акции"</h2>
+# ------------------------------------------
+# Вкладка 5: ГЕНЕРАТОР АКЦИИ (НОВЫЙ)
+# ------------------------------------------
+with tab_promo:
+    st.header("Генератор блока \"Акции\"")
     
-    <div style="margin-bottom: 15px;">
-        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #333;">1. Заголовок блока (h3):</label>
-        <input type="text" id="promoBlockTitle" value="Акция" style="width: 100%; padding: 8px; border: 1px solid #ccc; box-sizing: border-box;">
-    </div>
-
-    <div style="margin-bottom: 15px;">
-        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #333;">2. Список ссылок (товары/категории):</label>
-        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">
-            Формат: <code>Ссылка</code> или <code>Ссылка | Название</code> (каждая с новой строки)
-        </div>
-        <textarea id="promoLinks" rows="8" style="width: 100%; padding: 8px; border: 1px solid #ccc; box-sizing: border-box;" placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/ | Алюминиевая труба&#10;https://stalmetural.ru/catalog/ugolok-alyuminievyy/"></textarea>
-    </div>
-
-    <div style="margin-bottom: 15px;">
-        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #333;">3. Файл с путями к картинкам (.txt):</label>
-        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">
-            Текстовый файл, где каждая строка — это путь к картинке (например: <code>/upload/iblock/...jpg</code>)
-        </div>
-        <input type="file" id="promoImgFile" accept=".txt">
-    </div>
-
-    <button onclick="generatePromoBlock()" style="background: #28a745; color: white; padding: 12px 24px; border: none; cursor: pointer; font-size: 16px; border-radius: 4px; transition: background 0.3s;">Сгенерировать HTML</button>
-
-    <div style="margin-top: 25px; border-top: 2px solid #eee; padding-top: 20px;">
-        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #333;">Результат (Готовый код):</label>
-        <textarea id="promoOutput" rows="15" style="width: 100%; font-family: 'Courier New', monospace; background: #f4f4f4; padding: 10px; border: 1px solid #ccc; white-space: pre; overflow-x: auto; box-sizing: border-box; color: #000;"></textarea>
+    col_p1, col_p2 = st.columns([1, 1])
+    
+    with col_p1:
+        st.markdown("### 1. Настройки")
+        promo_title = st.text_input("Заголовок блока (h3)", value="Акция", key="promo_title_input")
         
-        <label style="font-weight: bold; margin-top: 20px; display: block; margin-bottom: 5px; color: #333;">Предпросмотр:</label>
-        <div id="promoPreview" style="border: 2px dashed #ccc; padding: 10px; background: #fff;"></div>
-    </div>
-</div>
+        st.markdown("### 3. Картинки")
+        promo_file = st.file_uploader("Файл с путями изображений (.txt)", type=["txt"], key="promo_img_loader")
+        if promo_file:
+             st.success("Файл картинок загружен")
 
-<script>
-    async function generatePromoBlock() {
-        const title = document.getElementById('promoBlockTitle').value;
-        const linksText = document.getElementById('promoLinks').value.trim();
-        const fileInput = document.getElementById('promoImgFile');
+    with col_p2:
+        st.markdown("### 2. Ссылки")
+        st.caption("Формат: `https://...` или `https://... | Название`")
+        promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=230, key="promo_links_area", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/ | Алюминиевая труба\nhttps://stalmetural.ru/catalog/ugolok-alyuminievyy/")
+
+    if st.button("🛠️ Сгенерировать Блок", use_container_width=True, type="primary"):
+        # 1. Читаем картинки
+        img_paths = []
+        if promo_file:
+            stringio = io.StringIO(promo_file.getvalue().decode("utf-8"))
+            img_paths = [line.strip() for line in stringio.readlines() if line.strip()]
         
-        let imgPaths = [];
-
-        // 1. Читаем файл с картинками
-        if (fileInput.files.length > 0) {
-            const file = fileInput.files[0];
-            const text = await file.text();
-            imgPaths = text.split(/\\r?\\n/).map(line => line.trim()).filter(line => line.length > 0);
-        } else {
-            console.warn('Файл картинок не загружен');
-        }
-
-        // 2. Парсим ссылки
-        const linkLines = linksText.split(/\\r?\\n/).map(line => line.trim()).filter(line => line.length > 0);
-
-        if (linkLines.length === 0) {
-            alert('Пожалуйста, вставьте ссылки!');
-            return;
-        }
-
-        // 3. Генерация HTML элементов
-        let itemsHtml = '';
+        # 2. Читаем ссылки
+        link_lines = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
         
-        linkLines.forEach((line, index) => {
-            let url = '';
-            let name = '';
-
-            if (line.includes('|')) {
-                const parts = line.split('|');
-                url = parts[0].trim();
-                name = parts[1].trim();
-            } else {
-                url = line;
-                const cleanUrl = url.replace(/\/$/, "");
-                const slug = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
-                try {
-                    name = decodeURIComponent(slug).replace(/-/g, ' ');
-                } catch (e) {
-                    name = slug.replace(/-/g, ' ');
-                }
-                name = name.charAt(0).toUpperCase() + name.slice(1);
-            }
-
-            const imgSrc = imgPaths[index] || ''; 
-            
-            itemsHtml += `
-            <div class="gallery-item">
-                <h3><a href="${url}" target="_blank">${name}</a></h3>
+        if not link_lines:
+            st.error("Введите ссылки!")
+        else:
+            items_html = ""
+            for index, line in enumerate(link_lines):
+                url = ""
+                name = ""
+                
+                # Парсинг имени
+                if '|' in line:
+                    parts = line.split('|')
+                    url = parts[0].trim()
+                    name = parts[1].trim()
+                else:
+                    url = line
+                    # Попытка достать имя из URL
+                    clean_url = url.rstrip('/')
+                    slug = clean_url.split('/')[-1]
+                    try:
+                        decoded = unquote(slug)
+                        name = decoded.replace('-', ' ').replace('_', ' ')
+                        name = name.capitalize()
+                    except:
+                        name = slug
+                
+                # Картинка
+                img_src = img_paths[index] if index < len(img_paths) else ""
+                
+                # HTML Item
+                items_html += f"""            <div class="gallery-item">
+                <h3><a href="{url}" target="_blank">{name}</a></h3>
                 <figure>
-                    <a href="${url}" target="_blank">
+                    <a href="{url}" target="_blank">
                         <picture>
-                            <img src="${imgSrc}" 
-                                 alt="${name}" 
-                                 title="${name}" 
+                            <img src="{img_src}" 
+                                 alt="{name}" 
+                                 title="{name}" 
                                  loading="lazy">
                         </picture>
                     </a>
                 </figure>
-            </div>`;
-        });
+            </div>\n"""
 
-        const cssCode = `
-<style>
+            # CSS Styles (Minified/Compact for embedding)
+            css_styles = """<style>
 .outer-full-width-section { padding: 25px 0; width: 100%; }
 .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }
 h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }
@@ -1797,22 +1419,19 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
 .gallery-item figure a { display: block; height: 100%; text-decoration: none; }
 .gallery-item img { width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }
 .gallery-item figure a:hover img { transform: scale(1.05); }
-</style>`;
+</style>"""
 
-        const finalHtml = \`\${cssCode}
+            final_html = f"""{css_styles}
 <div class="outer-full-width-section">
     <div class="gallery-content-wrapper"> 
-        <h3 class="gallery-title">\${title}</h3>
-        <div class="five-col-gallery">\${itemsHtml}
-        </div>
+        <h3 class="gallery-title">{promo_title}</h3>
+        <div class="five-col-gallery">
+{items_html}        </div>
     </div>
-</div>\`;
+</div>"""
 
-        document.getElementById('promoOutput').value = finalHtml.trim();
-        document.getElementById('promoPreview').innerHTML = finalHtml;
-    }
-</script>
-"""
-
-# Выводим HTML блок (увеличиваем высоту, чтобы все влезло)
-components.html(html_code, height=1000, scrolling=True)
+            st.markdown("### Результат:")
+            st.code(final_html, language='html')
+            
+            st.markdown("### Предпросмотр:")
+            components.html(final_html, height=450, scrolling=True)
