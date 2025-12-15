@@ -948,11 +948,11 @@ with tab_tags:
         st.download_button(label="📥 Скачать Excel", data=buffer.getvalue(), file_name="tags_tiles_smart.xlsx")
 
 # ------------------------------------------
-# Вкладка 4: ТАБЛИЦЫ (Smart V3 - Auto Context + Style)
+# Вкладка 4: ТАБЛИЦЫ (Smart V3.1 - No Citations)
 # ------------------------------------------
 with tab_tables:
     st.header("🧩 Генератор HTML таблиц (Smart Style)")
-    st.caption("Автоматически определяет товар по URL категории + Тегу. Генерирует таблицы с жестким стилем (черные рамки).")
+    st.caption("Автоматически определяет товар по URL категории + Тегу. Генерирует таблицы с жестким стилем (черные рамки). Удаляет сноски [1].")
 
     # -- Инициализация состояния --
     if 'tables_generated_df' not in st.session_state:
@@ -973,7 +973,6 @@ with tab_tables:
     if num_tables > 0:
         st.markdown(f"### 📝 Темы таблиц")
         st.caption("Нейросеть сама поймет, о каком товаре речь. Здесь укажите только название блока (например: 'Характеристики').")
-        cols_prompts = st.columns(num_tables) if num_tables <= 3 else st.columns(3)
         
         table_prompts = []
         defaults = ["Характеристики", "Размеры и вес", "Химический состав", "Условия поставки", "Применение"]
@@ -997,11 +996,9 @@ with tab_tables:
         # 1. Определение родительского названия из URL
         try:
             path = urlparse(parent_cat_url).path.strip('/')
-            slug = path.split('/')[-1] # берем последний сегмент (nikel)
-            # Декодируем (%D0...) и чистим
+            slug = path.split('/')[-1]
             decoded_slug = unquote(slug)
             parent_name = decoded_slug.replace('-', ' ').replace('_', ' ').capitalize()
-            # Если вдруг URL корневой или пустой slug
             if not parent_name: parent_name = "Товар"
         except:
             parent_name = "Товар"
@@ -1038,18 +1035,19 @@ with tab_tables:
         status_box.write(f"✅ Найдено тегов: {len(tags_found)}")
         status_box.write("🤖 Генерация таблиц (Perplexity)...")
 
-        # 3. Генерация с жестким стилем
+        # 3. Генерация
         results_rows = []
         progress_bar = st.progress(0)
         total_steps = len(tags_found)
         
-        # Шаблон стилей, который мы требуем от нейросети
+        # Инструкция: Стиль + Запрет сносок
         style_instruction = """
-        STRICT HTML FORMATTING RULES:
+        STRICT RULES:
         1. Create a <table> with style="border-collapse: collapse; width: 100%; border: 2px solid black;"
         2. Every <th> and <td> must have style="border: 2px solid black; padding: 5px;"
         3. Do NOT use <style> tags or classes. ONLY inline styles.
-        4. Output ONLY the HTML code. No text before or after.
+        4. Do NOT include citation markers like [1], [2] in the text.
+        5. Output ONLY the HTML code.
         """
         
         for idx, tag in enumerate(tags_found):
@@ -1058,13 +1056,10 @@ with tab_tables:
                 'Tag URL': tag['url']
             }
             
-            # Полное название товара для нейронки: "Никель 12 мм"
             full_product_name = f"{parent_name} {tag['name']}"
             
             for t_i, t_topic in enumerate(table_prompts):
                 system_prompt = f"You are a strict HTML generator. {style_instruction}"
-                
-                # Умный запрос: соединяем категорию, тег и тему таблицы
                 user_prompt = f"""
                 Task: Create a technical HTML table.
                 Product: "{full_product_name}".
@@ -1079,9 +1074,14 @@ with tab_tables:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
-                        temperature=0.5 # Чуть ниже, чтобы лучше соблюдал формат
+                        temperature=0.5
                     )
                     content = response.choices[0].message.content
+                    
+                    # === ЗАЩИТА ОТ СНОСОК ===
+                    # Удаляем конструкции вида [1], [10], [1][2]
+                    content = re.sub(r'\[\d+\]', '', content)
+                    
                     clean_html = content.replace("```html", "").replace("```", "").strip()
                     row_data[f'Table_{t_i+1}_HTML'] = clean_html
                 except Exception as e:
@@ -1113,7 +1113,7 @@ with tab_tables:
         )
         st.dataframe(st.session_state.tables_generated_df.head(), use_container_width=True)
         
-        with st.expander("👁️ Предпросмотр первой таблицы (с черными рамками)", expanded=False):
+        with st.expander("👁️ Предпросмотр первой таблицы (без сносок)", expanded=False):
             first_html = st.session_state.tables_generated_df.iloc[0].get('Table_1_HTML', '')
             st.markdown(first_html, unsafe_allow_html=True)
             st.text_area("HTML код:", value=first_html, height=200)
@@ -1289,6 +1289,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         with st.expander("Предпросмотр блока (для примера)"):
             components.html(full_block_html, height=450, scrolling=True)
+
 
 
 
