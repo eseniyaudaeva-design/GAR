@@ -43,8 +43,69 @@ def transliterate_text(text):
 try:
     import openai
 except ImportError:
-    openai = None
+    openai = Non
 
+# ==========================================
+# 0.1 ФУНКЦИЯ УМНОГО НЕЙМИНГА (CYRILLIC)
+# ==========================================
+def force_cyrillic_name_global(slug_text):
+    """
+    Превращает slug (latun-list) в красивое русское название (Латунный лист)
+    """
+    raw = unquote(slug_text).lower()
+    raw = raw.replace('.html', '').replace('.php', '')
+    if re.search(r'[а-я]', raw):
+        return raw.replace('-', ' ').replace('_', ' ').capitalize()
+
+    words = re.split(r'[-_]', raw)
+    rus_words = []
+    
+    exact_map = {
+        'nikel': 'никель', 'stal': 'сталь', 'med': 'медь', 'latun': 'латунь',
+        'bronza': 'бронза', 'svinec': 'свинец', 'titan': 'титан',
+        'alyuminiy': 'алюминий', 'al': 'алюминиевая', 'alyuminievaya': 'алюминиевая',
+        'nerzhaveyushchiy': 'нержавеющий', 'nerzhaveyka': 'нержавейка',
+        'profil': 'профиль', 'shveller': 'швеллер', 'ugolok': 'уголок',
+        'polosa': 'полоса', 'krug': 'круг', 'kvadrat': 'квадрат',
+        'list': 'лист', 'truba': 'труба', 'setka': 'сетка',
+        'provoloka': 'проволока', 'armatura': 'арматура', 'balka': 'балка',
+        'katanka': 'катанка', 'otvod': 'отвод', 'perehod': 'переход',
+        'flanec': 'фланец', 'zaglushka': 'заглушка', 'metiz': 'метизы',
+        'profnastil': 'профнастил', 'shtrips': 'штрипс',
+        'polipropilenovye': 'полипропиленовые', 'truby': 'трубы'
+    }
+
+    for w in words:
+        if not w: continue
+        if w in exact_map:
+            rus_words.append(exact_map[w])
+            continue
+        
+        processed_w = w
+        if processed_w.endswith('yy'): processed_w = processed_w[:-2] + 'ый'
+        elif processed_w.endswith('iy'): processed_w = processed_w[:-2] + 'ий'
+        elif processed_w.endswith('ij'): processed_w = processed_w[:-2] + 'ий'
+        elif processed_w.endswith('yi'): processed_w = processed_w[:-2] + 'ий'
+        elif processed_w.endswith('aya'): processed_w = processed_w[:-3] + 'ая'
+        elif processed_w.endswith('oye'): processed_w = processed_w[:-3] + 'ое'
+
+        replacements = [
+            ('shch', 'щ'), ('sch', 'щ'), ('yo', 'ё'), ('zh', 'ж'), ('ch', 'ч'), ('sh', 'ш'), 
+            ('yu', 'ю'), ('ya', 'я'), ('kh', 'х'), ('ts', 'ц'), ('ph', 'ф'),
+            ('a', 'а'), ('b', 'б'), ('v', 'в'), ('g', 'г'), ('d', 'д'), ('e', 'е'), 
+            ('z', 'з'), ('i', 'и'), ('j', 'й'), ('k', 'к'), ('l', 'л'), ('m', 'м'), 
+            ('n', 'н'), ('o', 'о'), ('p', 'п'), ('r', 'р'), ('s', 'с'), ('t', 'т'), 
+            ('u', 'у'), ('f', 'ф'), ('h', 'х'), ('c', 'к'), ('w', 'в'), ('y', 'ы'), ('x', 'кс')
+        ]
+        
+        temp_res = processed_w
+        for eng, rus in replacements:
+            temp_res = temp_res.replace(eng, rus)
+        
+        rus_words.append(temp_res)
+
+    draft_phrase = " ".join(rus_words)
+    return draft_phrase.capitalize()
 # ==========================================
 # 0.5 ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
 # ==========================================
@@ -1587,6 +1648,7 @@ with tab_sidebar:
 
             st.success("Меню сгенерировано!")
             st.text_area("Результат HTML", value=full_html, height=400)
+
 
 
 
