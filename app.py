@@ -1683,4 +1683,137 @@ with tab_tables:
         )
         
         st.dataframe(st.session_state.tables_gen_df.head(), use_container_width=True)
+<!-- НАЧАЛО: Интерфейс генератора блока "Акции" -->
+<div id="promo-generator-tab" style="padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 5px;">
+    <h2>Генератор блока "Акции"</h2>
+    
+    <div style="margin-bottom: 15px;">
+        <label style="font-weight: bold; display: block; margin-bottom: 5px;">1. Заголовок блока (h3):</label>
+        <input type="text" id="promoBlockTitle" value="Акция" style="width: 100%; padding: 8px; border: 1px solid #ccc;">
+    </div>
+
+    <div style="margin-bottom: 15px;">
+        <label style="font-weight: bold; display: block; margin-bottom: 5px;">2. Список ссылок на товары/категории:</label>
+        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">
+            Вставьте ссылки с новой строки. <br>
+            <i>Скрипт попытается взять название из URL. Если нужно точное название, пишите: Ссылка | Название</i>
+        </div>
+        <textarea id="promoLinks" rows="10" style="width: 100%; padding: 8px; border: 1px solid #ccc;" placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/ | Алюминиевая труба&#10;https://stalmetural.ru/catalog/ugolok-alyuminievyy/"></textarea>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+        <label style="font-weight: bold; display: block; margin-bottom: 5px;">3. Файл с путями к картинкам (.txt):</label>
+        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">
+            В файле должны быть ссылки на картинки (например, /upload/iblock/...), каждая с новой строки. Порядок должен совпадать со ссылками выше.
+        </div>
+        <input type="file" id="promoImgFile" accept=".txt">
+    </div>
+
+    <button onclick="generatePromoBlock()" style="background: #28a745; color: white; padding: 10px 20px; border: none; cursor: pointer; font-size: 16px; border-radius: 4px;">Сгенерировать HTML</button>
+
+    <div style="margin-top: 25px; border-top: 2px solid #eee; padding-top: 20px;">
+        <label style="font-weight: bold;">Результат (Код):</label>
+        <textarea id="promoOutput" rows="10" style="width: 100%; font-family: monospace; background: #f9f9f9; padding: 10px; border: 1px solid #ccc;"></textarea>
+        
+        <label style="font-weight: bold; margin-top: 15px; display: block;">Предпросмотр:</label>
+        <div id="promoPreview" style="border: 1px dashed #ccc; padding: 10px;"></div>
+    </div>
+</div>
+
+<script>
+    async function generatePromoBlock() {
+        const title = document.getElementById('promoBlockTitle').value;
+        const linksText = document.getElementById('promoLinks').value.trim();
+        const fileInput = document.getElementById('promoImgFile');
+        
+        let imgPaths = [];
+
+        // 1. Читаем файл с картинками
+        if (fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            const text = await file.text();
+            imgPaths = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+        } else {
+            alert('Пожалуйста, загрузите TXT файл с путями к картинкам!');
+            return;
+        }
+
+        // 2. Парсим ссылки
+        const linkLines = linksText.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+
+        if (linkLines.length === 0) {
+            alert('Пожалуйста, вставьте ссылки!');
+            return;
+        }
+
+        // 3. Формируем HTML Items
+        let itemsHtml = '';
+        
+        linkLines.forEach((line, index) => {
+            let url = '';
+            let name = '';
+
+            // Проверяем, есть ли разделитель "|" для ручного названия
+            if (line.includes('|')) {
+                const parts = line.split('|');
+                url = parts[0].trim();
+                name = parts[1].trim();
+            } else {
+                url = line;
+                // Пытаемся сделать красивое имя из URL, если не задано
+                // Удаляем слеш в конце и берем последний сегмент
+                const cleanUrl = url.replace(/\/$/, "");
+                const slug = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
+                // Заменяем дефисы на пробелы и делаем первую букву заглавной
+                name = slug.replace(/-/g, ' ');
+                name = name.charAt(0).toUpperCase() + name.slice(1);
+            }
+
+            // Берем картинку по индексу. Если картинок меньше чем ссылок, берем заглушку или пустую строку
+            const imgSrc = imgPaths[index] || ''; 
+            
+            // Если картинки нет, предупреждаем в консоли, но не ломаем
+            if(!imgSrc) console.warn(`Нет картинки для ссылки #${index+1}`);
+
+            itemsHtml += `
+            <div class="gallery-item">
+                <h3><a href="${url}" target="_blank">${name}</a></h3>
+                <figure>
+                    <a href="${url}" target="_blank">
+                        <picture>
+                            <img src="${imgSrc}" 
+                                 alt="${name}" 
+                                 title="${name}" 
+                                 loading="lazy">
+                        </picture>
+                    </a>
+                </figure>
+            </div>`;
+        });
+
+        // 4. Собираем полный блок (Стили + Обертка + Итемы)
+        // Стили минифицированы для удобства вставки
+        const styles = `
+<style>
+.outer-full-width-section{padding:25px 0;width:100%}.gallery-content-wrapper{max-width:1400px;margin:0 auto;padding:25px 15px;box-sizing:border-box;border-radius:10px;overflow:hidden;background-color:#F6F7FC}h3.gallery-title{color:#3D4858;font-size:1.8em;font-weight:normal;padding:0;margin-top:0;margin-bottom:15px;text-align:left}.five-col-gallery{display:flex;justify-content:flex-start;align-items:flex-start;gap:20px;margin-bottom:0;padding:0;list-style:none;flex-wrap:nowrap!important;overflow-x:auto!important;padding-bottom:15px}.gallery-item{flex:0 0 260px!important;box-sizing:border-box;text-align:center;scroll-snap-align:start}.gallery-item h3{font-size:1.1em;margin-bottom:8px;font-weight:normal;text-align:center;line-height:1.1em;display:block;min-height:40px}.gallery-item h3 a{text-decoration:none;color:#333;display:block;height:100%;display:flex;align-items:center;justify-content:center;transition:color .2s ease}.gallery-item h3 a:hover{color:#007bff}.gallery-item figure{width:100%;margin:0;float:none!important;height:260px;overflow:hidden;margin-bottom:5px;border-radius:8px}.gallery-item figure a{display:block;height:100%;text-decoration:none}.gallery-item img{width:100%;height:100%;display:block;margin:0 auto;object-fit:cover;transition:transform .3s ease;border-radius:8px}.gallery-item figure a:hover img{transform:scale(1.05)}
+</style>`;
+
+        const finalHtml = `
+${styles}
+<div class="outer-full-width-section">
+    <div class="gallery-content-wrapper"> 
+        <h3 class="gallery-title">${title}</h3>
+        <div class="five-col-gallery">
+${itemsHtml}
+        </div>
+    </div>
+</div>`;
+
+        // Вывод
+        document.getElementById('promoOutput').value = finalHtml;
+        document.getElementById('promoPreview').innerHTML = finalHtml;
+    }
+</script>
+<!-- КОНЕЦ: Генератор -->
+
 
