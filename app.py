@@ -976,70 +976,85 @@ with tab_tables:
         with t2: st.code(st.session_state.table_html_result, language='html')
 
 # ------------------------------------------
-# Вкладка 5: ГЕНЕРАТОР АКЦИИ (MASS PROMO EXCEL)
+# Вкладка 5: ГЕНЕРАТОР АКЦИИ (PRO V2)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока \"Акции\" (Mass Production)")
-    st.caption("Скрипт сканирует **Родительскую категорию**, находит все теги (товары) и генерирует единый блок Галереи для вставки в Excel.")
+    
+    st.info("""
+    **Как это работает:**
+    1. Скрипт сканирует **Родительскую категорию** и находит там все теги. Для каждого тега будет создана строка в Excel.
+    2. Вы вставляете **Список ссылок** (товары/категории, которые сейчас по акции) и **Картинки**.
+    3. Скрипт генерирует красивую галерею из ваших ссылок и вставляет её код напротив каждого тега в Excel.
+    """)
     
     col_p1, col_p2 = st.columns([1, 1])
     
     with col_p1:
-        st.markdown("### 1. Настройки")
-        parent_cat_url = st.text_input("URL Родительской категории (для сканирования тегов)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
+        st.markdown("### 1. Куда вставлять (Сканнер)")
+        parent_cat_url = st.text_input("URL Родительской категории (отсюда берем теги)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url")
+        
+        st.markdown("### 3. Оформление")
         promo_title = st.text_input("Заголовок блока (h3)", value="Акция", key="promo_title_input")
-
-    with col_p2:
-        st.markdown("### 2. Картинки")
+        
+        st.markdown("### 4. Картинки")
         promo_file = st.file_uploader("Файл с путями изображений (.txt)", type=["txt"], key="promo_img_loader")
         if promo_file: st.success("Файл картинок загружен")
 
+    with col_p2:
+        st.markdown("### 2. Что вставлять (Содержимое акции)")
+        st.caption("Ссылки на товары/категории, которые будут внутри блока «Акции». Названия определяются автоматически.")
+        promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, key="promo_links_area", placeholder="https://stalmetural.ru/catalog/truba-al-profilnaya/\nhttps://stalmetural.ru/catalog/list-riflenyy/")
+
     if st.button("🛠️ Сгенерировать Excel", use_container_width=True, type="primary"):
+        # ПРОВЕРКИ
         if not parent_cat_url:
-            st.error("Введите ссылку на категорию!")
+            st.error("Введите URL родительской категории (Сканнер)!")
+            st.stop()
+        if not promo_links_text:
+            st.error("Введите список ссылок для блока Акции!")
             st.stop()
             
         status = st.status("Запуск...", expanded=True)
         
-        # 1. Парсинг тегов с сайта
-        status.write(f"🕵️ Сканируем теги: {parent_cat_url}")
-        found_tags = []
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            r = requests.get(parent_cat_url, headers=headers, timeout=10)
-            if r.status_code == 200:
-                soup = BeautifulSoup(r.text, 'html.parser')
-                tags_container = soup.find(class_='popular-tags-inner')
-                if tags_container:
-                    for link in tags_container.find_all('a'):
-                        href = link.get('href')
-                        text = link.get_text(strip=True)
-                        if href and text:
-                            full_url = urljoin(parent_cat_url, href)
-                            found_tags.append({'name': text, 'url': full_url})
-        except Exception as e:
-            status.error(f"Ошибка парсинга: {e}"); st.stop()
-            
-        if not found_tags: status.error("Теги не найдены (проверьте наличие .popular-tags-inner)"); st.stop()
+        # --- ЭТАП 1: СБОРКА HTML БЛОКА ИЗ ССЫЛОК И КАРТИНОК ---
+        status.write("🔨 Собираем блок акции из ваших ссылок...")
         
-        status.write(f"✅ Найдено тегов: {len(found_tags)}")
-        
-        # 2. Читаем картинки
+        # 1. Читаем картинки
         img_paths = []
         if promo_file:
             stringio = io.StringIO(promo_file.getvalue().decode("utf-8"))
             img_paths = [line.strip() for line in stringio.readlines() if line.strip()]
 
-        # 3. Генерируем HTML блок (Один общий на всех)
-        status.write("🔨 Сборка HTML блока...")
-        items_html = ""
+        # 2. Читаем ссылки
+        link_lines = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
         
-        # Перебираем найденные теги, чтобы создать галерею
-        for index, tag in enumerate(found_tags):
-            url = tag['url']
-            name = tag['name'] # Тут берем имя прямо с сайта (как в теге)
+        items_html = ""
+        # Проходимся по ссылкам, которые юзер вставил вручную (это контент акции)
+        for index, line in enumerate(link_lines):
+            url = ""
+            name = ""
             
-            # Картинка (по индексу)
+            # Логика извлечения имени и URL
+            if '|' in line:
+                parts = line.split('|')
+                url = parts[0].strip()
+                name = parts[1].strip()
+            else:
+                url = line
+                # SMART NAME GENERATION
+                clean_url = url.rstrip('/')
+                slug = clean_url.split('/')[-1]
+                try:
+                    decoded_slug = unquote(slug)
+                    if re.search(r'[а-яА-Я]', decoded_slug):
+                        name = decoded_slug.replace('-', ' ').replace('_', ' ').capitalize()
+                    else:
+                        name = reverse_transliterate_smart(decoded_slug)
+                except:
+                    name = slug
+            
+            # Подбираем картинку
             img_src = img_paths[index] if index < len(img_paths) else ""
             
             items_html += f"""            <div class="gallery-item">
@@ -1056,7 +1071,7 @@ with tab_promo:
                 </figure>
             </div>\n"""
 
-        # CSS Styles
+        # Стили (сжатые)
         css_styles = """<style>
 .outer-full-width-section { padding: 25px 0; width: 100%; }
 .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }
@@ -1072,6 +1087,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
 .gallery-item figure a:hover img { transform: scale(1.05); }
 </style>"""
 
+        # Итоговый HTML блок (он будет одинаковый во всех строках Excel)
         full_block_html = f"""{css_styles}
 <div class="outer-full-width-section">
     <div class="gallery-content-wrapper"> 
@@ -1081,14 +1097,34 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
     </div>
 </div>"""
 
-        # 4. Формируем Excel
-        # Строки = Найденные теги (куда вставлять)
-        # Значение = Сгенерированный HTML блок (одинаковый)
+        # --- ЭТАП 2: СКАНИРОВАНИЕ ТЕГОВ (ДЛЯ EXCEL) ---
+        status.write(f"🕵️ Сканируем теги на странице: {parent_cat_url}")
+        found_tags = []
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            r = requests.get(parent_cat_url, headers=headers, timeout=10)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                tags_container = soup.find(class_='popular-tags-inner')
+                if tags_container:
+                    for link in tags_container.find_all('a'):
+                        href = link.get('href')
+                        # text = link.get_text(strip=True) # Имя тега нам в целом не нужно для HTML, но нужно для понимания
+                        if href:
+                            full_url = urljoin(parent_cat_url, href)
+                            found_tags.append(full_url)
+        except Exception as e:
+            status.error(f"Ошибка парсинга: {e}"); st.stop()
+            
+        if not found_tags: status.error("Теги не найдены на целевой странице (проверьте .popular-tags-inner)"); st.stop()
         
+        status.write(f"✅ Найдено страниц для вставки: {len(found_tags)}")
+        
+        # --- ЭТАП 3: ФОРМИРОВАНИЕ EXCEL ---
         excel_rows = []
-        for tag in found_tags:
+        for tag_url in found_tags:
             excel_rows.append({
-                'Page URL': tag['url'],
+                'Page URL': tag_url,
                 'HTML Block': full_block_html
             })
             
@@ -1100,13 +1136,13 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
         
         status.update(label="Готово!", state="complete", expanded=False)
         
-        st.success("🎉 Генерация завершена!")
+        st.success("🎉 Файл готов!")
         st.download_button(
-            label="📥 Скачать Excel (Mass Promo)",
+            label="📥 Скачать Excel (Promo Blocks)",
             data=buffer.getvalue(),
-            file_name="promo_blocks_mass.xlsx",
+            file_name="promo_blocks_generated.xlsx",
             mime="application/vnd.ms-excel"
         )
         
-        with st.expander("Предпросмотр блока (для примера)"):
-            components.html(full_block_html, height=450, scrolling=True)
+        st.markdown("### Пример сгенерированного блока:")
+        components.html(full_block_html, height=450, scrolling=True)
