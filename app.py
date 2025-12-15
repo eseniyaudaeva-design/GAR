@@ -1682,17 +1682,16 @@ with tab_tables:
             type="primary"
         )
 
-        <!-- НАЧАЛО: Интерфейс генератора блока "Акции" -->
 <div id="promo-generator-tab" style="padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 5px; font-family: Arial, sans-serif;">
-    <h2 style="margin-top: 0;">Генератор блока "Акции"</h2>
+    <h2 style="margin-top: 0; color: #333;">Генератор блока "Акции"</h2>
     
     <div style="margin-bottom: 15px;">
-        <label style="font-weight: bold; display: block; margin-bottom: 5px;">1. Заголовок блока (h3):</label>
+        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #333;">1. Заголовок блока (h3):</label>
         <input type="text" id="promoBlockTitle" value="Акция" style="width: 100%; padding: 8px; border: 1px solid #ccc; box-sizing: border-box;">
     </div>
 
     <div style="margin-bottom: 15px;">
-        <label style="font-weight: bold; display: block; margin-bottom: 5px;">2. Список ссылок (товары/категории):</label>
+        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #333;">2. Список ссылок (товары/категории):</label>
         <div style="font-size: 12px; color: #666; margin-bottom: 5px;">
             Формат: <code>Ссылка</code> или <code>Ссылка | Название</code> (каждая с новой строки)
         </div>
@@ -1700,7 +1699,7 @@ with tab_tables:
     </div>
 
     <div style="margin-bottom: 15px;">
-        <label style="font-weight: bold; display: block; margin-bottom: 5px;">3. Файл с путями к картинкам (.txt):</label>
+        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #333;">3. Файл с путями к картинкам (.txt):</label>
         <div style="font-size: 12px; color: #666; margin-bottom: 5px;">
             Текстовый файл, где каждая строка — это путь к картинке (например: <code>/upload/iblock/...jpg</code>)
         </div>
@@ -1710,10 +1709,10 @@ with tab_tables:
     <button onclick="generatePromoBlock()" style="background: #28a745; color: white; padding: 12px 24px; border: none; cursor: pointer; font-size: 16px; border-radius: 4px; transition: background 0.3s;">Сгенерировать HTML</button>
 
     <div style="margin-top: 25px; border-top: 2px solid #eee; padding-top: 20px;">
-        <label style="font-weight: bold; display: block; margin-bottom: 5px;">Результат (Готовый код):</label>
-        <textarea id="promoOutput" rows="15" style="width: 100%; font-family: 'Courier New', monospace; background: #f4f4f4; padding: 10px; border: 1px solid #ccc; white-space: pre; overflow-x: auto; box-sizing: border-box;"></textarea>
+        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #333;">Результат (Готовый код):</label>
+        <textarea id="promoOutput" rows="15" style="width: 100%; font-family: 'Courier New', monospace; background: #f4f4f4; padding: 10px; border: 1px solid #ccc; white-space: pre; overflow-x: auto; box-sizing: border-box; color: #000;"></textarea>
         
-        <label style="font-weight: bold; margin-top: 20px; display: block; margin-bottom: 5px;">Предпросмотр:</label>
+        <label style="font-weight: bold; margin-top: 20px; display: block; margin-bottom: 5px; color: #333;">Предпросмотр:</label>
         <div id="promoPreview" style="border: 2px dashed #ccc; padding: 10px; background: #fff;"></div>
     </div>
 </div>
@@ -1730,29 +1729,26 @@ with tab_tables:
         if (fileInput.files.length > 0) {
             const file = fileInput.files[0];
             const text = await file.text();
-            imgPaths = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+            imgPaths = text.split(/\\r?\\n/).map(line => line.trim()).filter(line => line.length > 0);
         } else {
-            // Если файл не загружен, работаем без него (картинки будут пустыми)
             console.warn('Файл картинок не загружен');
         }
 
         // 2. Парсим ссылки
-        const linkLines = linksText.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+        const linkLines = linksText.split(/\\r?\\n/).map(line => line.trim()).filter(line => line.length > 0);
 
         if (linkLines.length === 0) {
             alert('Пожалуйста, вставьте ссылки!');
             return;
         }
 
-        // 3. Генерация HTML элементов галереи
-        // Мы используем \n и пробелы, чтобы в итоговом коде были красивые отступы
+        // 3. Генерация HTML элементов
         let itemsHtml = '';
         
         linkLines.forEach((line, index) => {
             let url = '';
             let name = '';
 
-            // Логика получения имени
             if (line.includes('|')) {
                 const parts = line.split('|');
                 url = parts[0].trim();
@@ -1761,7 +1757,6 @@ with tab_tables:
                 url = line;
                 const cleanUrl = url.replace(/\/$/, "");
                 const slug = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
-                // Декодируем URL (чтобы убрать %20 и кириллицу в кодировке)
                 try {
                     name = decodeURIComponent(slug).replace(/-/g, ' ');
                 } catch (e) {
@@ -1772,7 +1767,6 @@ with tab_tables:
 
             const imgSrc = imgPaths[index] || ''; 
             
-            // Формируем блок item с отступом в 12 пробелов (внутри .five-col-gallery)
             itemsHtml += `
             <div class="gallery-item">
                 <h3><a href="${url}" target="_blank">${name}</a></h3>
@@ -1789,114 +1783,36 @@ with tab_tables:
             </div>`;
         });
 
-        // 4. Формируем CSS (красиво, с отступами)
         const cssCode = `
 <style>
-.outer-full-width-section {
-    padding: 25px 0; 
-    width: 100%;
-}
-.gallery-content-wrapper {
-    max-width: 1400px;
-    margin: 0 auto; 
-    padding: 25px 15px; 
-    box-sizing: border-box; 
-    border-radius: 10px;
-    overflow: hidden; 
-    background-color: #F6F7FC; 
-}
-h3.gallery-title {
-    color: #3D4858;
-    font-size: 1.8em;
-    font-weight: normal;
-    padding: 0;
-    margin-top: 0;
-    margin-bottom: 15px;
-    text-align: left;
-}
-.five-col-gallery {
-    display: flex;
-    justify-content: flex-start;
-    align-items: flex-start;
-    gap: 20px;
-    margin-bottom: 0;
-    padding: 0;
-    list-style: none;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    padding-bottom: 15px;
-}
-.gallery-item {
-    flex: 0 0 260px !important;
-    box-sizing: border-box;
-    text-align: center;
-    scroll-snap-align: start;
-}
-.gallery-item h3 {
-    font-size: 1.1em;
-    margin-bottom: 8px;
-    font-weight: normal;
-    text-align: center;
-    line-height: 1.1em;
-    display: block;
-    min-height: 40px;
-}
-.gallery-item h3 a {
-    text-decoration: none;
-    color: #333;
-    display: block;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.2s ease;
-}
-.gallery-item h3 a:hover {
-    color: #007bff;
-}
-.gallery-item figure {
-    width: 100%;
-    margin: 0;
-    float: none !important;
-    height: 260px;
-    overflow: hidden;
-    margin-bottom: 5px;
-    border-radius: 8px;
-}
-.gallery-item figure a {
-    display: block;
-    height: 100%;
-    text-decoration: none;
-}
-.gallery-item img {
-    width: 100%;
-    height: 100%;
-    display: block;
-    margin: 0 auto;
-    object-fit: cover;
-    transition: transform 0.3s ease;
-    border-radius: 8px;
-}
-.gallery-item figure a:hover img {
-    transform: scale(1.05);
-}
+.outer-full-width-section { padding: 25px 0; width: 100%; }
+.gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }
+h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }
+.five-col-gallery { display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }
+.gallery-item { flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }
+.gallery-item h3 { font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }
+.gallery-item h3 a { text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }
+.gallery-item h3 a:hover { color: #007bff; }
+.gallery-item figure { width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }
+.gallery-item figure a { display: block; height: 100%; text-decoration: none; }
+.gallery-item img { width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }
+.gallery-item figure a:hover img { transform: scale(1.05); }
 </style>`;
 
-        // 5. Собираем итоговый HTML с правильной вложенностью
-        const finalHtml = `${cssCode}
-
+        const finalHtml = \`\${cssCode}
 <div class="outer-full-width-section">
     <div class="gallery-content-wrapper"> 
-        <h3 class="gallery-title">${title}</h3>
-        
-        <div class="five-col-gallery">${itemsHtml}
+        <h3 class="gallery-title">\${title}</h3>
+        <div class="five-col-gallery">\${itemsHtml}
         </div>
     </div>
-</div>`;
+</div>\`;
 
-        // Вывод
         document.getElementById('promoOutput').value = finalHtml.trim();
         document.getElementById('promoPreview').innerHTML = finalHtml;
     }
 </script>
-<!-- КОНЕЦ: Генератор -->
+"""
+
+# Выводим HTML блок (увеличиваем высоту, чтобы все влезло)
+components.html(html_code, height=1000, scrolling=True)
