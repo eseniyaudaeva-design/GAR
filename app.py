@@ -356,12 +356,12 @@ def get_yandex_dict_info(text, api_key):
     return {'lemma': text, 'pos': 'unknown'}
 
 def classify_semantics_with_api(words_list, yandex_key):
-    # --- 1. СЛОВАРИ И ПАТТЕРНЫ ---
+    # --- 1. ПАТТЕРНЫ ---
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     gost_pattern = re.compile(r'(гост|din|ту|iso|ст|сп)\s?\d+', re.IGNORECASE)
     
-    # Расширенный список мусора
+    # --- 2. МУСОР И КОММЕРЦИЯ (STOP-WORDS) ---
     SITE_UI_GARBAGE = {
         'меню', 'поиск', 'главная', 'карта', 'сайт', 'личный', 'кабинет', 'вход', 'регистрация', 
         'корзина', 'избранное', 'сравнение', 'профиль', 'телефон', 'адрес', 'контакты', 'email', 
@@ -374,7 +374,7 @@ def classify_semantics_with_api(words_list, yandex_key):
         'вид', 'тип', 'класс', 'серия', 'рейтинг', 'наличие', 'склад', 'производитель', 'бренд', 
         'марка', 'вес', 'длина', 'ширина', 'высота', 'толщина', 'диаметр', 'размер', 'объем', 
         'масса', 'тонна', 'метр', 'шт', 'кг', 'упаковка', 'цена', 'интернет', 'магазин', 'каталог', 
-        'год', 'info', 'инфо', 'подробнее', 'показать', 'скрыть', 'назад', 'вперед'
+        'год', 'info', 'инфо', 'подробнее', 'показать', 'скрыть', 'назад', 'вперед', 'деталь'
     }
     
     COMMERCIAL_WORDS = {
@@ -385,25 +385,27 @@ def classify_semantics_with_api(words_list, yandex_key):
         'обмен', 'выгодный', 'низкий', 'высокий', 'лучший', 'качественный', 'надежный', 'большой', 
         'малый', 'удобный', 'быстрый', 'бесплатный', 'хороший', 'доступный', 'индивидуальный', 
         'профессиональный', 'собственный', 'официальный', 'уникальный', 'широкий', 'огромный', 
-        'различный', 'соответствовать', 'являться', 'предлагать', 'наш'
+        'различный', 'соответствовать', 'являться', 'предлагать', 'наш', 'обратный'
     }
     
-    # БЕЛЫЙ СПИСОК (Приоритетные товары для металлопроката и стройки)
-    # Если слово (или его основа) здесь — это 100% товар, даже если NLP думает иначе.
+    # --- 3. БЕЛЫЙ СПИСОК (Приоритет) ---
     INDUSTRIAL_WHITELIST = {
         # Металлы
         'сталь', 'стальной', 'алюминий', 'алюминиевый', 'медь', 'медный', 'латунь', 'латунный', 
         'бронза', 'бронзовый', 'титан', 'титановый', 'нержавейка', 'нержавеющий', 'цинк', 'цинковый', 
         'свинец', 'свинцовый', 'никель', 'никелевый', 'олово', 'вольфрам', 'молибден', 'дюраль', 
-        'ферросплав', 'чугун', 'чугунный',
-        # Формы проката
+        'ферросплав', 'чугун', 'чугунный', 'баббит', 'силумин',
+        # Формы и виды
         'труба', 'трубный', 'лист', 'листовой', 'круг', 'кругляк', 'квадрат', 'шестигранник', 
         'уголок', 'швеллер', 'балка', 'двутавр', 'арматура', 'катанка', 'проволока', 'сетка', 
-        'лента', 'полоса', 'штрипс', 'профнастил', 'настил', 'рельс', 'профиль',
+        'лента', 'полоса', 'штрипс', 'профнастил', 'настил', 'рельс', 'профиль', 'шпунт',
+        # Сыпучие и специфика (ДОБАВЛЕНО)
+        'порошок', 'пудра', 'гранула', 'смесь', 'припой', 'флюс', 'сварочный', 'наплавочный', 
+        'электродный', 'присадочный', 'шихта', 'чушка', 'слиток',
         # Детали и фитинги
         'отвод', 'переход', 'тройник', 'заглушка', 'фланец', 'метиз', 'болт', 'гайка', 'шайба', 
         'анкер', 'шпилька', 'электрод', 'анод', 'катод', 'втулка', 'фитинг', 'метизы',
-        # Характеристики (которые важны как часть товара)
+        # Характеристики (как часть товара)
         'рифленый', 'оцинкованный', 'горячекатаный', 'холоднокатаный', 'сварной', 'бесшовный',
         'пруток', 'сляб', 'блюм', 'поковка', 'рулон', 'фольга', 'плита', 'карточка'
     }
@@ -416,36 +418,31 @@ def classify_semantics_with_api(words_list, yandex_key):
     SERVICE_KEYWORDS = {'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'укладка', 
                         'проектирование', 'изоляция', 'сверление', 'грунтовка', 'покраска', 
                         'услуга', 'металлообработка', 'обработка', 'строительство', 'ремонт', 
-                        'производство', 'изготовление', 'покрытие', 'напыление'}
+                        'производство', 'изготовление', 'покрытие', 'напыление', 'цинкование'}
 
     categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set()}
     api_candidates = []
 
-    # --- 2. ПЕРВИЧНАЯ ФИЛЬТРАЦИЯ ---
+    # --- 4. ПЕРВИЧНЫЙ ОТСЕВ ---
     for word in words_list:
         word_lower = word.lower()
-        
-        # 2.1 Размеры и ГОСТы (сразу в dimensions)
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or gost_pattern.search(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower)
             continue
         
-        # Получаем лемму (начальную форму)
         lemma = morph.parse(word_lower)[0].normal_form if morph else word_lower
         
-        # 2.2 !!! ГЛАВНОЕ ИЗМЕНЕНИЕ: ПРИОРИТЕТ ТОВАРА !!!
-        # Сначала проверяем, не является ли слово товаром из нашего белого списка.
-        # Если да — забираем в товары и НЕ пускаем дальше в проверки на мусор.
+        # 1. Приоритет: Белый список
         if lemma in INDUSTRIAL_WHITELIST or word_lower in INDUSTRIAL_WHITELIST:
             categories['products'].add(lemma)
             continue
             
-        # 2.3 Проверка на Услуги
+        # 2. Приоритет: Услуги
         if lemma in SERVICE_KEYWORDS or lemma.endswith('обработка'):
             categories['services'].add(lemma)
             continue
 
-        # 2.4 Теперь проверяем на мусор и коммерцию
+        # 3. Приоритет: Мусор/Коммерция
         if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS:
             categories['commercial'].add(lemma)
             continue
@@ -454,10 +451,9 @@ def classify_semantics_with_api(words_list, yandex_key):
             categories['commercial'].add(lemma)
             continue
 
-        # Если слово не попало никуда выше, отправляем на проверку API/POS
         api_candidates.append(word_lower)
 
-    # --- 3. API ИЛИ POS-АНАЛИЗ ---
+    # --- 5. АНАЛИЗ ЧАСТЕЙ РЕЧИ (ФИНАЛЬНЫЙ ЭТАП) ---
     yandex_results = {} 
     if api_candidates and yandex_key:
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -474,35 +470,30 @@ def classify_semantics_with_api(words_list, yandex_key):
         lemma = info['lemma']
         pos = info['pos']
         
-        # Повторная проверка леммы (на случай если API вернуло нормализацию)
+        # Повторный чек
         if lemma in INDUSTRIAL_WHITELIST:
-             categories['products'].add(lemma)
-             continue
-
+             categories['products'].add(lemma); continue
         if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS: 
-            categories['commercial'].add(lemma)
-            continue
-            
+            categories['commercial'].add(lemma); continue
+        
         is_service = False
         if lemma.endswith('ние') or lemma.endswith('ение') or lemma.endswith('обработка') or lemma in SERVICE_KEYWORDS: 
             is_service = True
-        
         if is_service: 
-            categories['services'].add(lemma)
-            continue
+            categories['services'].add(lemma); continue
 
-        # Логика частей речи:
-        # Если Яндекс говорит, что это существительное — верим.
-        # Если Яндекс не знает (unknown) — скорее всего это спец. термин (Товар).
+        # --- ИЗМЕНЕННАЯ ЛОГИКА ---
         if pos == 'noun' or pos == 'unknown':
+            # Существительные и неизвестные слова -> Товары (если длина > 2)
             if len(lemma) > 2: categories['products'].add(lemma)
-        # Прилагательные часто бывают коммерческими ("быстрый"), но могут быть и товарами ("стальной").
-        # Так как "стальной" мы уже поймали в WHITELIST выше, сюда дойдут только неочевидные.
-        # Отправим их в коммерцию, если они не в белом списке, чтобы не засорять выдачу.
-        elif pos == 'adjective':
-             # Мягкая проверка: если длина большая, может быть товаром, но лучше перестраховаться
-             categories['commercial'].add(lemma) 
+        elif pos == 'adjective' or pos == 'participle':
+            # Прилагательные и причастия (сварочный, обратный, стальной)
+            # Раньше мы их кидали в коммерцию. Теперь - в ТОВАРЫ.
+            # Потому что "коммерческие" прилагательные (быстрый, дешевый) уже отсеялись словарем COMMERCIAL_WORDS выше.
+            # Если слово прошло фильтр коммерции, значит это "сварочный", "токарный" и т.д.
+            categories['products'].add(lemma) 
         else: 
+            # Глаголы, наречия и прочее -> Коммерция
             categories['commercial'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -1812,4 +1803,5 @@ with tab_sidebar:
             # Берем HTML из первой строки
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
