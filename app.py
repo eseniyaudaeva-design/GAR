@@ -582,28 +582,28 @@ with tab_seo:
         render_paginated_table(results['relevance_top'], "2. Релевантность", "tbl_rel")
 
 # ------------------------------------------
-# TAB 2: ОПТОВАЯ ГЕНЕРАЦИЯ (НОВАЯ ЛОГИКА)
+# TAB 2: ОПТОВАЯ ГЕНЕРАЦИЯ (НОВАЯ ЛОГИКА - SINGLE SHEET)
 # ------------------------------------------
 with tab_gen:
-    st.title("🏭 Центр Оптовой Генерации")
-    st.markdown("Выберите необходимые инструменты, настройте их в одном окне и запускайте задачи.")
+    st.title("🏭 Центр Оптовой Генерации (Single Sheet)")
+    st.markdown("Настройте модули. Результат будет собран в **одну общую таблицу** (новые блоки добавляются новыми столбцами).")
 
-    # --- 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ (действуют на все модули) ---
-    with st.expander("🌍 Глобальные настройки (API и Источники)", expanded=True):
+    # --- 1. ГЛОБАЛЬНЫЕ ВВОДНЫЕ ---
+    with st.container():
+        st.markdown('<div class="tool-card" style="border-left: 5px solid #277EFF;">', unsafe_allow_html=True)
+        st.markdown("### 🌍 Главные настройки источника")
         col_g1, col_g2 = st.columns([1, 1])
         with col_g1:
-            # Один ключ на все AI задачи
             if 'global_pplx_key' not in st.session_state: st.session_state.global_pplx_key = "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"
-            st.session_state.global_pplx_key = st.text_input("🔑 Perplexity/OpenAI API Key", value=st.session_state.global_pplx_key, type="password", help="Нужен для Текстов и Таблиц")
+            st.session_state.global_pplx_key = st.text_input("🔑 Perplexity/OpenAI API Key", value=st.session_state.global_pplx_key, type="password")
         with col_g2:
-            # Один URL, который часто является источником для всего
             if 'global_parent_url' not in st.session_state: st.session_state.global_parent_url = ""
-            st.session_state.global_parent_url = st.text_input("🔗 URL Родительской категории (Донор)", value=st.session_state.global_parent_url, placeholder="https://site.ru/catalog/category/")
+            st.session_state.global_parent_url = st.text_input("🔗 URL Категории (Донор тегов)", value=st.session_state.global_parent_url, placeholder="https://site.ru/catalog/category/")
+        st.caption("Скрипт соберет ссылки (теги) с этой страницы и сгенерирует для каждой из них контент в одной строке Excel.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.divider()
-
-    # --- 2. СЕЛЕКТОР ИНСТРУМЕНТОВ ---
-    st.subheader("🛠️ Выберите инструменты для работы:")
+    # --- 2. ВЫБОР МОДУЛЕЙ ---
+    st.subheader("🛠️ Какие данные добавить в таблицу?")
     c_sel1, c_sel2, c_sel3, c_sel4, c_sel5 = st.columns(5)
     
     use_texts = c_sel1.checkbox("🤖 AI Тексты", value=True)
@@ -614,325 +614,273 @@ with tab_gen:
 
     st.markdown("---")
 
-    # --- 3. ДИНАМИЧЕСКИЕ БЛОКИ ---
-
-    # === БЛОК 1: AI ТЕКСТЫ ===
+    # --- 3. НАСТРОЙКИ МОДУЛЕЙ ---
+    
+    # === НАСТРОЙКИ: AI ТЕКСТЫ ===
+    seo_words_str = ""
     if use_texts:
         with st.container():
-            st.markdown('<div class="block-title"><span class="block-icon">🤖</span> Генерация AI Текстов</div>', unsafe_allow_html=True)
-            
-            col_t1, col_t2 = st.columns([2, 1])
-            with col_t1:
-                target_url_text = st.text_input("URL для парсинга тегов (если отличается от глобального)", value=st.session_state.global_parent_url, key="txt_url_in")
-            with col_t2:
-                # Берем SEO слова из анализа, если есть
-                default_seo = ""
-                if st.session_state.analysis_results:
-                     high = st.session_state.analysis_results.get('missing_semantics_high', [])
-                     if high: default_seo = ", ".join([x['word'] for x in high[:10]])
-                seo_words_str = st.text_input("SEO слова (через запятую)", value=default_seo, placeholder="купить, цена, оптом", key="txt_seo_in")
-            
-            if st.button("🚀 Запустить генерацию текстов", key="btn_run_text"):
-                if not st.session_state.global_pplx_key: st.error("Нет API ключа!"); st.stop()
-                if not target_url_text: st.error("Нет URL!"); st.stop()
-                
-                status_box = st.status("Генерация текстов...", expanded=True)
-                client = openai.OpenAI(api_key=st.session_state.global_pplx_key, base_url="https://api.perplexity.ai")
-                base_text, tags, err = get_page_data_for_gen(target_url_text)
-                if err or not tags: status_box.error(err or "Нет тегов"); st.stop()
-                
-                seo_list = [w.strip() for w in seo_words_str.split(',')] if seo_words_str else []
-                all_rows = []
-                bar = st.progress(0)
-                for i, tag in enumerate(tags):
-                    blocks = generate_five_blocks(client, base_text, tag['name'], seo_list)
-                    all_rows.append({'TagName': tag['name'], 'URL': tag['url'], 'IP_PROP4839': blocks[0], 'IP_PROP4816': blocks[1], 'IP_PROP4838': blocks[2], 'IP_PROP4829': blocks[3], 'IP_PROP4831': blocks[4], **STATIC_DATA_GEN})
-                    bar.progress((i+1)/len(tags))
-                
-                df_text = pd.DataFrame(all_rows)
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_text.to_excel(writer, index=False)
-                
-                status_box.update(label="✅ Готово!", state="complete", expanded=False)
-                st.download_button("📥 Скачать Excel (Тексты)", buffer.getvalue(), "seo_texts.xlsx", "application/vnd.ms-excel", key="down_text_btn")
-
+            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">🤖</span> Настройки: AI Тексты</div>', unsafe_allow_html=True)
+            default_seo = ""
+            if st.session_state.analysis_results:
+                 high = st.session_state.analysis_results.get('missing_semantics_high', [])
+                 if high: default_seo = ", ".join([x['word'] for x in high[:10]])
+            seo_words_str = st.text_input("SEO слова (включить в тексты)", value=default_seo, placeholder="купить, цена, оптом, доставка", key="txt_seo_in")
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # === БЛОК 2: ПЛИТКА ТЕГОВ ===
+    # === НАСТРОЙКИ: ПЛИТКА ТЕГОВ ===
+    tags_file = None
+    tags_products_in = ""
     if use_tags:
         with st.container():
-            st.markdown('<div class="block-title"><span class="block-icon">🏷️</span> Генерация плитки тегов</div>', unsafe_allow_html=True)
-            
-            col_tg1, col_tg2 = st.columns([1, 1])
-            with col_tg1:
-                tags_cat_url = st.text_input("URL Категории", value=st.session_state.global_parent_url, key="tags_url_in")
-                tags_file = st.file_uploader("База ссылок (.txt)", type=["txt"], key="tags_file_in")
-            with col_tg2:
-                # Автозаполнение товарами из анализа
+            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">🏷️</span> Настройки: Плитка тегов</div>', unsafe_allow_html=True)
+            c_tg1, c_tg2 = st.columns(2)
+            with c_tg1:
+                tags_file = st.file_uploader("База ссылок для перелинковки (.txt)", type=["txt"], key="tags_file_in")
+            with c_tg2:
                 def_prods = "\n".join(st.session_state.categorized_products) if st.session_state.categorized_products else ""
-                tags_products_in = st.text_area("Список товаров (анкоры)", value=def_prods, height=100, key="tags_prod_in")
-
-            if st.button("🚀 Собрать плитку тегов", key="btn_run_tags"):
-                if not tags_file or not tags_cat_url or not tags_products_in: st.error("Заполните все поля"); st.stop()
-                status_box = st.status("Сборка плитки...", expanded=True)
-                
-                target_urls_list = []
-                try:
-                    r = requests.get(tags_cat_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-                    if r.status_code == 200:
-                        soup = BeautifulSoup(r.text, 'html.parser')
-                        tags_container = soup.find(class_='popular-tags-inner')
-                        if tags_container:
-                            for link in tags_container.find_all('a'):
-                                href = link.get('href')
-                                if href: target_urls_list.append(urljoin(tags_cat_url, href))
-                except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
-                
-                if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)"); st.stop()
-                
-                products = [line.strip() for line in tags_products_in.split('\n') if line.strip()]
-                stringio = io.StringIO(tags_file.getvalue().decode("utf-8"))
-                all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
-                
-                product_candidates_map = {}
-                for p in products:
-                    tr = transliterate_text(p)
-                    if len(tr) >= 3:
-                        matches = [u for u in all_txt_links if tr in u]
-                        if matches: product_candidates_map[p] = matches
-                
-                final_rows = []
-                for i, target_url in enumerate(target_urls_list):
-                    current_page_tags = []
-                    for prod_name, candidates in product_candidates_map.items():
-                        valid = [u for u in candidates if u.rstrip('/') != target_url.rstrip('/')]
-                        if valid:
-                            chosen_url = random.choice(valid)
-                            current_page_tags.append({'name': prod_name.capitalize(), 'url': chosen_url})
-                    if current_page_tags:
-                        random.shuffle(current_page_tags)
-                        html_block = '<div class="popular-tags">\n' + "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in current_page_tags]) + '\n</div>'
-                    else: html_block = ""
-                    final_rows.append({'Page URL': target_url, 'Tags HTML': html_block})
-                
-                df_tags_result = pd.DataFrame(final_rows)
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_tags_result.to_excel(writer, index=False)
-                
-                status_box.update(label="✅ Готово!", state="complete", expanded=False)
-                st.download_button(label="📥 Скачать Excel (Теги)", data=buffer.getvalue(), file_name="tags_tiles.xlsx", key="down_tags_btn")
-                
+                tags_products_in = st.text_area("Список анкоров (Товары)", value=def_prods, height=100, help="Каждый товар с новой строки", key="tags_prod_in")
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # === БЛОК 3: БОКОВОЕ МЕНЮ ===
+    # === НАСТРОЙКИ: БОКОВОЕ МЕНЮ ===
+    sb_file = None
     if use_sidebar:
         with st.container():
-            st.markdown('<div class="block-title"><span class="block-icon">📑</span> Генерация бокового меню</div>', unsafe_allow_html=True)
-            
-            col_sb1, col_sb2 = st.columns([1, 1])
-            with col_sb1:
-                sb_url = st.text_input("URL Донора", value=st.session_state.global_parent_url, key="sb_url_in")
-            with col_sb2:
-                sb_file = st.file_uploader("Список ссылок для меню (.txt)", type=["txt"], key="sb_file_in")
-            
-            SIDEBAR_ASSETS = """<style>:root { font-size: 14px; } #sidebar-menu ul { list-style: none !important; } </style>""" # Сокращено для читаемости, функционал не пострадает
-
-            if st.button("🚀 Создать меню", key="btn_run_sb"):
-                if not sb_file or not sb_url: st.error("Заполните поля"); st.stop()
-                status_box = st.status("Сборка меню...", expanded=True)
-                
-                stringio = io.StringIO(sb_file.getvalue().decode("utf-8"))
-                urls = [line.strip() for line in stringio.readlines() if line.strip()]
-                urls = list(dict.fromkeys(urls))
-                
-                # Логика дерева
-                tree = {}
-                for url in urls:
-                    path = urlparse(url).path.strip('/')
-                    parts = [p for p in path.split('/') if p]
-                    start_idx = 0
-                    if 'catalog' in parts: start_idx = parts.index('catalog') + 1
-                    relevant_parts = parts[start_idx:] if parts[start_idx:] else parts
-                    current_level = tree
-                    for i, part in enumerate(relevant_parts):
-                        if part not in current_level: current_level[part] = {}
-                        if i == len(relevant_parts) - 1:
-                            current_level[part]['__url__'] = url
-                            current_level[part]['__name__'] = force_cyrillic_name_global(part)
-                        current_level = current_level[part]
-
-                def render_tree(node, level=1):
-                    html = ""
-                    keys = sorted([k for k in node.keys() if not k.startswith('__')])
-                    for key in keys:
-                        child = node[key]
-                        name = child.get('__name__', force_cyrillic_name_global(key))
-                        url = child.get('__url__')
-                        has_children = any(k for k in child.keys() if not k.startswith('__'))
-                        if level == 1:
-                            html += '<li class="level-1-header">\n'
-                            if has_children:
-                                html += f'    <span class="dropdown-toggle">{name}</span>\n'
-                                html += '    <ul class="collapse-menu list-unstyled">\n' + render_tree(child, level=2) + '    </ul>\n'
-                            else:
-                                html += f'    <a href="{url if url else "#"}">{name}</a>\n'
-                            html += '</li>\n'
-                        # ... уровни 2 и 3 опущены для краткости, но логика понятна
-                    return html
-
-                inner_html = render_tree(tree, level=1)
-                full_sidebar_code = f"""<div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div>"""
-
-                # Парсинг донора
-                found_tags_urls = []
-                try:
-                    r = requests.get(sb_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
-                    if r.status_code == 200:
-                        soup = BeautifulSoup(r.text, 'html.parser')
-                        tags_container = soup.find(class_='popular-tags-inner')
-                        if tags_container:
-                            for link in tags_container.find_all('a'):
-                                href = link.get('href')
-                                if href: found_tags_urls.append(urljoin(sb_url, href))
-                        else: found_tags_urls.append(sb_url)
-                except: found_tags_urls.append(sb_url)
-                
-                excel_data = []
-                for tag_url in found_tags_urls: excel_data.append({'Page URL': tag_url, 'Sidebar HTML': full_sidebar_code})
-                df_sidebar = pd.DataFrame(excel_data)
-                
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_sidebar.to_excel(writer, index=False)
-                
-                status_box.update(label="✅ Меню готово!", state="complete", expanded=False)
-                st.download_button(label="📥 Скачать Excel (Меню)", data=buffer.getvalue(), file_name="sidebar_menu.xlsx", key="down_sb_btn")
-            
+            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">📑</span> Настройки: Боковое меню</div>', unsafe_allow_html=True)
+            sb_file = st.file_uploader("Файл структуры меню (.txt)", type=["txt"], key="sb_file_in")
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # === БЛОК 4: ТАБЛИЦЫ ===
+    # === НАСТРОЙКИ: ТАБЛИЦЫ ===
+    headers_vals = []
     if use_tables:
         with st.container():
-            st.markdown('<div class="block-title"><span class="block-icon">🧩</span> Генерация таблиц (Specs)</div>', unsafe_allow_html=True)
-            
-            col_tbl1, col_tbl2 = st.columns([3, 1])
-            with col_tbl1:
-                tbl_url = st.text_input("URL Категории (источник тегов)", value=st.session_state.global_parent_url, key="tbl_url_in")
-            with col_tbl2:
-                num_tables_val = st.selectbox("Кол-во таблиц", [1, 2, 3], key="tbl_num_in")
-            
+            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">🧩</span> Настройки: Таблицы</div>', unsafe_allow_html=True)
+            num_tables_val = st.selectbox("Кол-во таблиц на страницу", [1, 2, 3], key="tbl_num_in")
             cols_headers = st.columns(num_tables_val)
-            headers_vals = []
-            defaults = ["Характеристики", "Размеры", "Состав"]
+            defaults = ["Характеристики", "Размеры", "Хим. состав"]
             for i, c in enumerate(cols_headers):
-                h = c.text_input(f"Заголовок {i+1}", value=defaults[i] if i<3 else f"Табл {i+1}", key=f"tbl_h_{i}")
+                h = c.text_input(f"Тема таблицы {i+1}", value=defaults[i] if i<3 else f"Табл {i+1}", key=f"tbl_h_{i}")
                 headers_vals.append(h)
-
-            if st.button("🚀 Генерировать таблицы", key="btn_run_tbl"):
-                if not st.session_state.global_pplx_key or not tbl_url: st.error("Нет API ключа или URL"); st.stop()
-                status_box = st.status("Генерация таблиц...", expanded=True)
-                client = openai.OpenAI(api_key=st.session_state.global_pplx_key, base_url="https://api.perplexity.ai")
-                
-                # Парсинг тегов
-                tags_found = []
-                try:
-                    r = requests.get(tbl_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
-                    if r.status_code == 200:
-                        soup = BeautifulSoup(r.text, 'html.parser')
-                        tags_container = soup.find(class_='popular-tags-inner')
-                        if tags_container:
-                             for link in tags_container.find_all('a'):
-                                tags_found.append({'name': link.get_text(strip=True), 'url': urljoin(tbl_url, link.get('href'))})
-                except: pass
-                
-                if not tags_found: status_box.error("Теги не найдены"); st.stop()
-                
-                results_rows = []
-                bar = st.progress(0)
-                path = urlparse(tbl_url).path.strip('/')
-                parent_name = force_cyrillic_name_global(path.split('/')[-1])
-
-                for idx, tag in enumerate(tags_found):
-                    row_data = {'Tag Name': tag['name'], 'Tag URL': tag['url']}
-                    full_product_name = f"{parent_name} {tag['name']}"
-                    for t_i, t_topic in enumerate(headers_vals):
-                        user_prompt = f"""Task: Create a technical HTML table. Product: "{full_product_name}". Table Topic: "{t_topic}". Content: Generate realistic technical data."""
-                        html = generate_html_table(client, user_prompt)
-                        row_data[f'Table_{t_i+1}_HTML'] = html
-                    results_rows.append(row_data)
-                    bar.progress((idx+1)/len(tags_found))
-                
-                df_final = pd.DataFrame(results_rows)
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_final.to_excel(writer, index=False)
-                
-                status_box.update(label="✅ Готово!", state="complete", expanded=False)
-                st.download_button(label="📥 Скачать Excel (Таблицы)", data=buffer.getvalue(), file_name="smart_tables.xlsx", key="down_tbl_btn")
-
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # === БЛОК 5: ПРОМО ===
+    # === НАСТРОЙКИ: ПРОМО ===
+    promo_db = None
+    promo_links = ""
+    promo_title = ""
     if use_promo:
         with st.container():
-            st.markdown('<div class="block-title"><span class="block-icon">🔥</span> Генерация промо-блока</div>', unsafe_allow_html=True)
-            
-            col_pr1, col_pr2 = st.columns([1, 1])
-            with col_pr1:
+            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">🔥</span> Настройки: Промо-блок</div>', unsafe_allow_html=True)
+            c_pr1, c_pr2 = st.columns(2)
+            with c_pr1:
                 promo_db = st.file_uploader("База картинок (.xlsx)", type=['xlsx'], key="promo_db_in")
-                promo_title = st.text_input("Заголовок блока", value="Рекомендуем", key="promo_tit_in")
-            with col_pr2:
-                promo_links = st.text_area("Ссылки товаров для блока", height=100, key="promo_links_in")
-            
-            if st.button("🚀 Собрать Промо", key="btn_run_promo"):
-                if not promo_db or not promo_links: st.error("Данные не заполнены"); st.stop()
-                status_box = st.status("Сборка картинок...", expanded=True)
-                
-                df_db = pd.read_excel(promo_db)
-                img_db = {}
-                for index, row in df_db.iterrows():
-                    raw_url = str(row.iloc[0]).strip()
-                    img_val = str(row.iloc[1]).strip()
-                    if raw_url: img_db[raw_url.rstrip('/')] = img_val
-                
-                target_links = [line.strip() for line in promo_links.split('\n') if line.strip()]
-                items_html = ""
-                for link in target_links:
-                    search_key = link.rstrip('/') 
-                    img_src = img_db.get(search_key, "") 
-                    slug = search_key.split('/')[-1]
-                    name = force_cyrillic_name_global(slug)
-                    items_html += f"""<div class="gallery-item"><h3><a href="{link}">{name}</a></h3><figure><img src="{img_src}"></figure></div>"""
-                
-                full_block = f"""<div class="gallery-wrapper"><h3>{promo_title}</h3><div class="gallery">{items_html}</div></div>"""
-                
-                # Парсинг для Excel
-                found_tags = []
-                try:
-                    r = requests.get(st.session_state.global_parent_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-                    if r.status_code == 200:
-                        soup = BeautifulSoup(r.text, 'html.parser')
-                        tags_container = soup.find(class_='popular-tags-inner')
-                        if tags_container:
-                            for link in tags_container.find_all('a'):
-                                href = link.get('href')
-                                if href: found_tags.append(urljoin(st.session_state.global_parent_url, href))
-                except: pass
-                if not found_tags: found_tags.append(st.session_state.global_parent_url)
-                
-                excel_rows = []
-                for tag_url in found_tags: excel_rows.append({'Page URL': tag_url, 'HTML Block': full_block})
-                
-                df_promo = pd.DataFrame(excel_rows)
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_promo.to_excel(writer, index=False)
-                
-                status_box.update(label="✅ Готово!", state="complete", expanded=False)
-                st.download_button(label="📥 Скачать Excel (Promo)", data=buffer.getvalue(), file_name="promo_blocks.xlsx", key="down_promo_btn")
-
+                promo_title = st.text_input("Заголовок H3", value="Рекомендуем", key="promo_tit_in")
+            with c_pr2:
+                promo_links = st.text_area("Ссылки товаров (для вывода)", height=100, key="promo_links_in")
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # Если ничего не выбрано
-    if not any([use_texts, use_tags, use_sidebar, use_tables, use_promo]):
-        st.info("👈 Выберите хотя бы один инструмент сверху, чтобы начать работу.")
+    # --- 4. ЕДИНЫЙ ЗАПУСК ---
+    st.markdown("---")
+    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ (ВСЕ В ОДНУ ТАБЛИЦУ)", type="primary", use_container_width=True):
+        # Валидация
+        if not st.session_state.global_parent_url:
+            st.error("❌ Не указан URL Категории (Донора) в глобальных настройках!")
+            st.stop()
+        if (use_texts or use_tables) and not st.session_state.global_pplx_key:
+            st.error("❌ Не указан API ключ (нужен для Текстов и Таблиц)!")
+            st.stop()
+        if use_tags and (not tags_file or not tags_products_in):
+            st.error("❌ Для Тегов нужен файл .txt и список товаров!")
+            st.stop()
+        if use_sidebar and not sb_file:
+            st.error("❌ Для Меню нужен файл .txt!")
+            st.stop()
+        if use_promo and (not promo_db or not promo_links):
+            st.error("❌ Для Промо нужна база картинок и ссылки!")
+            st.stop()
+
+        status_box = st.status("⚙️ Инициализация...", expanded=True)
+        
+        # 1. Сбор базы URL (Parsed Tags)
+        status_box.write(f"🕵️ Парсинг донора: {st.session_state.global_parent_url}")
+        parsed_tags = []
+        base_text_for_ai = ""
+        try:
+            r = requests.get(st.session_state.global_parent_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                d_div = soup.find('div', class_='description-container')
+                base_text_for_ai = d_div.get_text(separator="\n", strip=True) if d_div else soup.body.get_text(separator="\n")[:4000]
+                tags_container = soup.find(class_='popular-tags-inner')
+                if tags_container:
+                    for link in tags_container.find_all('a'):
+                        href = link.get('href')
+                        name = link.get_text(strip=True)
+                        if href and name:
+                            parsed_tags.append({'name': name, 'url': urljoin(st.session_state.global_parent_url, href)})
+            else:
+                status_box.error(f"Ошибка доступа к URL: {r.status_code}"); st.stop()
+        except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
+        
+        if not parsed_tags:
+            parsed_tags.append({'name': 'Main Page', 'url': st.session_state.global_parent_url})
+            status_box.warning("⚠️ Теги не найдены. Работаем только с главной ссылкой.")
+        else:
+            status_box.write(f"✅ Найдено страниц: {len(parsed_tags)}")
+
+        # --- Инициализация Master List ---
+        # Каждый элемент списка - это словарь (строка Excel)
+        master_rows = []
+        for tag in parsed_tags:
+            master_rows.append({'TagName': tag['name'], 'Page URL': tag['url']})
+
+        # Клиент AI
+        client = None
+        if use_texts or use_tables:
+            client = openai.OpenAI(api_key=st.session_state.global_pplx_key, base_url="https://api.perplexity.ai")
+
+        # --- МОДУЛЬ: ТЕКСТЫ ---
+        if use_texts:
+            status_box.write("🤖 Генерация текстов (добавление столбцов)...")
+            seo_list = [w.strip() for w in seo_words_str.split(',')] if seo_words_str else []
+            bar = status_box.progress(0)
+            for i, row in enumerate(master_rows):
+                blocks = generate_five_blocks(client, base_text_for_ai, row['TagName'], seo_list)
+                # Добавляем данные прямо в строку
+                row['IP_PROP4839'] = blocks[0]
+                row['IP_PROP4816'] = blocks[1]
+                row['IP_PROP4838'] = blocks[2]
+                row['IP_PROP4829'] = blocks[3]
+                row['IP_PROP4831'] = blocks[4]
+                # Статика
+                for k, v in STATIC_DATA_GEN.items():
+                    row[k] = v
+                bar.progress((i+1)/len(master_rows))
+            bar.empty()
+
+        # --- МОДУЛЬ: ПЛИТКА ТЕГОВ ---
+        if use_tags:
+            status_box.write("🏷️ Генерация плитки тегов...")
+            products = [line.strip() for line in tags_products_in.split('\n') if line.strip()]
+            s_io = io.StringIO(tags_file.getvalue().decode("utf-8"))
+            all_txt_links = [line.strip() for line in s_io.readlines() if line.strip()]
+            
+            prod_cand_map = {}
+            for p in products:
+                tr = transliterate_text(p)
+                if len(tr) >= 3:
+                    matches = [u for u in all_txt_links if tr in u]
+                    if matches: prod_cand_map[p] = matches
+            
+            for row in master_rows:
+                target_url = row['Page URL']
+                c_tags = []
+                for p_name, cands in prod_cand_map.items():
+                    valid = [u for u in cands if u.rstrip('/') != target_url.rstrip('/')]
+                    if valid:
+                        chosen = random.choice(valid)
+                        c_tags.append({'name': p_name.capitalize(), 'url': chosen})
+                
+                if c_tags:
+                    random.shuffle(c_tags)
+                    html = '<div class="popular-tags">\n' + "\n".join([f'    <a href="{t["url"]}" class="tag-link">{t["name"]}</a>' for t in c_tags]) + '\n</div>'
+                else: html = ""
+                
+                row['Tags_HTML'] = html
+
+        # --- МОДУЛЬ: МЕНЮ ---
+        if use_sidebar:
+            status_box.write("📑 Сборка меню...")
+            # Генерируем HTML один раз, так как он общий (обычно)
+            sb_io = io.StringIO(sb_file.getvalue().decode("utf-8"))
+            s_urls = list(dict.fromkeys([l.strip() for l in sb_io.readlines() if l.strip()]))
+            
+            tree = {}
+            for url in s_urls:
+                path = urlparse(url).path.strip('/')
+                parts = [p for p in path.split('/') if p]
+                start_idx = parts.index('catalog') + 1 if 'catalog' in parts else 0
+                relevant = parts[start_idx:]
+                curr = tree
+                for i, part in enumerate(relevant):
+                    if part not in curr: curr[part] = {}
+                    if i == len(relevant) - 1:
+                        curr[part]['__url__'] = url
+                        curr[part]['__name__'] = force_cyrillic_name_global(part)
+                    curr = curr[part]
+
+            def r_tree(node, level=1):
+                h = ""
+                keys = sorted([k for k in node.keys() if not k.startswith('__')])
+                for key in keys:
+                    child = node[key]
+                    name = child.get('__name__', force_cyrillic_name_global(key))
+                    url = child.get('__url__', "#")
+                    has_child = any(k for k in child.keys() if not k.startswith('__'))
+                    if level == 1:
+                        if has_child: h += f'<li class="level-1-header"><span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{r_tree(child, 2)}</ul></li>'
+                        else: h += f'<li class="level-1-header"><a href="{url}">{name}</a></li>'
+                    elif level == 2:
+                         h += f'<li class="level-2-link-special"><a href="{url}">{name}</a></li>'
+                return h
+            
+            sidebar_html = f"""<div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{r_tree(tree)}</ul></nav></div>"""
+            
+            # Присваиваем всем
+            for row in master_rows:
+                row['Sidebar_HTML'] = sidebar_html
+
+        # --- МОДУЛЬ: ТАБЛИЦЫ ---
+        if use_tables:
+            status_box.write("🧩 Генерация таблиц...")
+            bar_t = status_box.progress(0)
+            path_cat = urlparse(st.session_state.global_parent_url).path.strip('/')
+            parent_name = force_cyrillic_name_global(path_cat.split('/')[-1])
+            
+            for i, row in enumerate(master_rows):
+                full_name = f"{parent_name} {row['TagName']}"
+                for ti, thead in enumerate(headers_vals):
+                    prompt = f"""Task: HTML table. Product: "{full_name}". Topic: "{thead}". Data: Realistic tech specs."""
+                    html = generate_html_table(client, prompt)
+                    row[f'Table_{ti+1}_HTML'] = html
+                bar_t.progress((i+1)/len(master_rows))
+            bar_t.empty()
+
+        # --- МОДУЛЬ: ПРОМО ---
+        if use_promo:
+            status_box.write("🔥 Генерация промо-блока...")
+            df_db = pd.read_excel(promo_db)
+            img_map = {str(r.iloc[0]).strip().rstrip('/'): str(r.iloc[1]).strip() for _, r in df_db.iterrows() if str(r.iloc[0]) != 'nan'}
+            
+            t_links = [l.strip() for l in promo_links.split('\n') if l.strip()]
+            items_html = ""
+            for l in t_links:
+                src = img_map.get(l.rstrip('/'), "")
+                name = force_cyrillic_name_global(l.rstrip('/').split('/')[-1])
+                items_html += f"""<div class="gallery-item"><h3><a href="{l}">{name}</a></h3><figure><img src="{src}"></figure></div>"""
+            promo_block = f"""<div class="gallery-wrapper"><h3>{promo_title}</h3><div class="gallery">{items_html}</div></div>"""
+            
+            for row in master_rows:
+                row['Promo_HTML'] = promo_block
+
+        # 5. Финал
+        status_box.write("💾 Сборка единого файла...")
+        df_master = pd.DataFrame(master_rows)
+        
+        final_buffer = io.BytesIO()
+        with pd.ExcelWriter(final_buffer, engine='xlsxwriter') as writer:
+            df_master.to_excel(writer, index=False)
+        
+        status_box.update(label="✅ Успешно выполнено!", state="complete", expanded=False)
+        
+        st.success(f"Обработано URL: {len(df_master)}")
+        st.download_button(
+            label="📥 СКАЧАТЬ ЕДИНЫЙ ОТЧЕТ (XLSX)",
+            data=final_buffer.getvalue(),
+            file_name="gar_pro_unified_output.xlsx",
+            mime="application/vnd.ms-excel",
+            type="primary"
+        )
+
 
 
 
