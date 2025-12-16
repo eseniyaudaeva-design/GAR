@@ -129,7 +129,7 @@ def load_lemmatized_dictionaries():
     commercial_lemmas = set()
     specs_lemmas = set()
     geo_lemmas = set()
-    services_lemmas = set()  # <--- НОВЫЙ СЕТ
+    services_lemmas = set()
 
     # 1. ТОВАРЫ
     path_prod = os.path.join(base_path, "metal_products.json")
@@ -180,7 +180,7 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в geo_locations.json: {e}")
 
-    # 4. УСЛУГИ (НОВЫЙ БЛОК)
+    # 4. УСЛУГИ
     path_serv = os.path.join(base_path, "services_triggers.json")
     if os.path.exists(path_serv):
         try:
@@ -188,13 +188,27 @@ def load_lemmatized_dictionaries():
                 raw_serv = json.load(f)
                 if isinstance(raw_serv, list):
                     for w in raw_serv:
-                        # Делим слова с тире и добавляем каждую часть
                         parts = str(w).replace('-', ' ').lower().split()
                         for part in parts:
                             if morph: services_lemmas.add(morph.parse(part)[0].normal_form)
                             else: services_lemmas.add(part)
         except Exception as e:
             st.error(f"Ошибка в services_triggers.json: {e}")
+
+    # 5. ХАРАКТЕРИСТИКИ (ГОСТ, МАРКИ) - ИСПРАВЛЕН ПУТЬ
+    path_specs = os.path.join(base_path, "tech_specs.json") # <--- ЗДЕСЬ ИЗМЕНИЛИ НАЗВАНИЕ
+    if os.path.exists(path_specs):
+        try:
+            with open(path_specs, 'r', encoding='utf-8') as f:
+                raw_specs = json.load(f)
+                if isinstance(raw_specs, list):
+                    for w in raw_specs:
+                        w_clean = str(w).lower().strip()
+                        specs_lemmas.add(w_clean) 
+                        if morph: 
+                            specs_lemmas.add(morph.parse(w_clean)[0].normal_form)
+        except Exception as e:
+            st.error(f"Ошибка в tech_specs.json: {e}")
 
     return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas
 
@@ -1381,6 +1395,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
