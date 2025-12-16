@@ -661,7 +661,7 @@ with tab_gen:
     # === БЛОК 2: ПЛИТКА ТЕГОВ ===
     if use_tags:
         with st.container():
-            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">🏷️</span> Генерация Плитки Тегов</div>', unsafe_allow_html=True)
+            st.markdown('<div class="block-title"><span class="block-icon">🏷️</span> Генерация плитки тегов</div>', unsafe_allow_html=True)
             
             col_tg1, col_tg2 = st.columns([1, 1])
             with col_tg1:
@@ -727,7 +727,7 @@ with tab_gen:
     # === БЛОК 3: БОКОВОЕ МЕНЮ ===
     if use_sidebar:
         with st.container():
-            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">📑</span> Генерация Меню (Mass Excel)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="block-title"><span class="block-icon">📑</span> Генерация бокового меню</div>', unsafe_allow_html=True)
             
             col_sb1, col_sb2 = st.columns([1, 1])
             with col_sb1:
@@ -812,7 +812,7 @@ with tab_gen:
     # === БЛОК 4: ТАБЛИЦЫ ===
     if use_tables:
         with st.container():
-            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">🧩</span> Генерация Таблиц (Specs)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="block-title"><span class="block-icon">🧩</span> Генерация таблиц (Specs)</div>', unsafe_allow_html=True)
             
             col_tbl1, col_tbl2 = st.columns([3, 1])
             with col_tbl1:
@@ -873,7 +873,7 @@ with tab_gen:
     # === БЛОК 5: ПРОМО ===
     if use_promo:
         with st.container():
-            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">🔥</span> Генерация Промо-блока</div>', unsafe_allow_html=True)
+            st.markdown('<div class="block-title"><span class="block-icon">🔥</span> Генерация промо-блока</div>', unsafe_allow_html=True)
             
             col_pr1, col_pr2 = st.columns([1, 1])
             with col_pr1:
@@ -933,5 +933,6 @@ with tab_gen:
     # Если ничего не выбрано
     if not any([use_texts, use_tags, use_sidebar, use_tables, use_promo]):
         st.info("👈 Выберите хотя бы один инструмент сверху, чтобы начать работу.")
+
 
 
