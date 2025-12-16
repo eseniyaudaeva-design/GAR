@@ -154,28 +154,25 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в metal_products.json: {e}")
 
-    # 2. КОММЕРЦИЯ
+# 2. КОММЕРЦИЯ (Загрузка из data/commercial_triggers.json)
     path_comm = os.path.join(base_path, "commercial_triggers.json")
     if os.path.exists(path_comm):
         try:
             with open(path_comm, 'r', encoding='utf-8') as f:
                 raw_comm = json.load(f)
-                for w in raw_comm:
-                    if morph: commercial_lemmas.add(morph.parse(w.lower())[0].normal_form)
-                    else: commercial_lemmas.add(w.lower())
-        except: pass
-
-    # 3. ГЕО
-    path_geo = os.path.join(base_path, "geo_locations.json")
-    if os.path.exists(path_geo):
-        try:
-            with open(path_geo, 'r', encoding='utf-8') as f:
-                raw_geo = json.load(f)
-                for w in raw_geo:
-                    if morph: geo_lemmas.add(morph.parse(w.lower())[0].normal_form)
-                    else: geo_lemmas.add(w.lower())
+                # Проверяем, что внутри список
+                if isinstance(raw_comm, list):
+                    for w in raw_comm:
+                        w_clean = str(w).strip().lower()
+                        if not w_clean: continue
+                        if morph: 
+                            commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
+                        else: 
+                            commercial_lemmas.add(w_clean)
+                else:
+                    st.warning("commercial_triggers.json должен содержать список слов (массив).")
         except Exception as e:
-            st.error(f"Ошибка в geo_locations.json: {e}")
+            st.error(f"Ошибка в commercial_triggers.json: {e}")
 
     return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas
 
@@ -1368,3 +1365,4 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
