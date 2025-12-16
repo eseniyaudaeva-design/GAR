@@ -130,82 +130,65 @@ def force_cyrillic_name_global(slug_text):
     # Собираем фразу
     draft_phrase = " ".join(rus_words)
 
-    # ==========================================
-# 0.2 ЗАГРУЗКА ЛОКАЛЬНЫХ СЛОВАРЕЙ (НОВОЕ)
 # ==========================================
-import os
+# 0.2 НОВЫЙ ЗАГРУЗЧИК СЛОВАРЕЙ (JSON)
+# ==========================================
 import json
+import os
 
 @st.cache_data
 def load_custom_dictionaries():
     """
-    Загружает JSON-словари из папки data/ и возвращает множества (set) лемм.
+    Загружает JSON-словари из папки data/ и возвращает множества (set).
+    Это гарантирует, что слова из файла metal_products.json ВСЕГДА будут товарами.
     """
+    # Путь к папке data (рядом с файлом скрипта)
     base_path = "data"
     
-    # 1. Товары (Metal Products)
+    # 1. ТОВАРЫ (Белый список)
     product_set = set()
-    try:
-        with open(os.path.join(base_path, "metal_products.json"), 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            # JSON может быть списком или словарем категорий. Обрабатываем оба варианта.
-            if isinstance(data, dict):
-                for cat_list in data.values():
-                    product_set.update(cat_list) # Слова там уже лемматизированы
-            elif isinstance(data, list):
-                product_set.update(data)
-    except FileNotFoundError:
-        pass # Файл не создан, работаем без него
-
-    # 2. Коммерция (Commercial)
+    product_path = os.path.join(base_path, "metal_products.json")
+    
+    if os.path.exists(product_path):
+        try:
+            with open(product_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Если JSON разбит по категориям (словарь)
+                if isinstance(data, dict):
+                    for cat_list in data.values():
+                        # Добавляем каждое слово (и приводим к нижнему регистру на всякий случай)
+                        for word in cat_list:
+                            product_set.add(word.lower())
+                # Если JSON это просто список
+                elif isinstance(data, list):
+                    product_set.update([w.lower() for w in data])
+        except Exception as e:
+            st.error(f"Ошибка чтения metal_products.json: {e}")
+    
+    # 2. КОММЕРЦИЯ (Черный список для товаров)
     commercial_set = set()
-    try:
-        with open(os.path.join(base_path, "commercial_triggers.json"), 'r', encoding='utf-8') as f:
-            commercial_set.update(json.load(f))
-    except FileNotFoundError: pass
+    comm_path = os.path.join(base_path, "commercial_triggers.json")
+    if os.path.exists(comm_path):
+        try:
+            with open(comm_path, 'r', encoding='utf-8') as f:
+                commercial_set.update(json.load(f))
+        except: pass
 
-    # 3. Гео (Geo) - Тоже считаем коммерцией/мусором для SEO ядра
-    try:
-        with open(os.path.join(base_path, "geo_locations.json"), 'r', encoding='utf-8') as f:
-            commercial_set.update(json.load(f))
-    except FileNotFoundError: pass
-
-    # 4. Спецификации (Specs) - Считаем "Размерами/Характеристиками"
+    # 3. ТЕХ. СПЕЦИФИКАЦИИ (Считаем характеристиками)
     specs_set = set()
-    try:
-        with open(os.path.join(base_path, "tech_specs.json"), 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                for cat_list in data.values():
-                    specs_set.update(cat_list)
-            elif isinstance(data, list):
-                specs_set.update(data)
-    except FileNotFoundError: pass
+    specs_path = os.path.join(base_path, "tech_specs.json")
+    if os.path.exists(specs_path):
+        try:
+            with open(specs_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    for cat_list in data.values():
+                        specs_set.update(cat_list)
+                elif isinstance(data, list):
+                    specs_set.update(data)
+        except: pass
 
     return product_set, commercial_set, specs_set
-    # 2. ПОСТ-ОБРАБОТКА (Context Fixes)
-    # Исправляем ситуации, когда словарь не сработал, а мягкий знак нужен в корне или суффиксе
-    
-    # Правило 1: "профил..." -> "профиль..." (профилная -> профильная)
-    if 'профил' in draft_phrase and 'профиль' not in draft_phrase:
-         draft_phrase = draft_phrase.replace('профил', 'профиль')
-         # Коррекция для прилагательных: профильнАЯ, а не профильАЯ
-         draft_phrase = draft_phrase.replace('профильн', 'профильн') # тут ок, но если было profilnaya -> профильная
-         
-    # Правило 2: окончания -тельный, -альный (universalniy -> универсалный -> универсальный)
-    # лн -> льн (строителный -> строительный)
-    draft_phrase = draft_phrase.replace('елный', 'ельный').replace('алный', 'альный')
-    draft_phrase = draft_phrase.replace('елная', 'ельная').replace('алная', 'альная')
-    draft_phrase = draft_phrase.replace('елное', 'ельное').replace('алное', 'альное')
-    
-    # Правило 3: специфические корни, если транслит не попал в словарь
-    draft_phrase = draft_phrase.replace('сталн', 'стальн') # stalnaya -> стальная
-    draft_phrase = draft_phrase.replace('медьн', 'медн')   # mednaya -> медьная (ошибка) -> медная (норм)
-    
-    # Финальные штрихи для чистоты
-    draft_phrase = draft_phrase.replace('йа', 'я').replace('йо', 'ё')
-
-    return draft_phrase.capitalize()
 # ==========================================
 # 0.5 ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
 # ==========================================
@@ -410,64 +393,71 @@ def get_yandex_dict_info(text, api_key):
 
 def classify_semantics_with_api(words_list, yandex_key):
     """
-    Классификация слов с приоритетом на локальные словари metal_products.
+    Классификация с ЖЕСТКИМ приоритетом JSON-словаря товаров.
     """
     # 1. Загружаем наши словари (кэшируются Streamlit)
     PRODUCTS_SET, COMM_SET, SPECS_SET = load_custom_dictionaries()
     
-    # Регулярки для размеров (оставляем, они полезны)
+    # Паттерны для размеров и ГОСТов
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     gost_pattern = re.compile(r'(гост|din|ту|iso|ст|сп)\s?\d+', re.IGNORECASE)
 
-    # Старые хардкод-списки оставляем как запасной вариант (fallback), 
-    # но можно их очистить, если полностью доверяешь JSON-ам.
+    # Резервный список услуг (если их нет в JSON)
     SERVICE_KEYWORDS = {'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'укладка', 
                         'проектирование', 'изоляция', 'сверление', 'грунтовка', 'покраска', 
                         'услуга', 'металлообработка', 'обработка', 'строительство', 'ремонт', 
                         'производство', 'изготовление', 'покрытие', 'напыление', 'доставка'}
 
+    # Резервный мусор (на случай, если файла commercial_triggers.json нет)
+    FALLBACK_GARBAGE = {
+        'цена', 'купить', 'прайс', 'заказ', 'корзина', 'менеджер', 'телефон', 'сайт', 'главная',
+        'руб', 'наличие', 'склад', 'каталог', 'магазин', 'оплата', 'доставка', 'акция', 'скидка'
+    }
+
     categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set()}
     api_candidates = []
 
-    # --- ПЕРВИЧНАЯ ФИЛЬТРАЦИЯ ---
+    # --- ПЕРВИЧНАЯ ОБРАБОТКА ---
     for word in words_list:
         word_lower = word.lower()
         
-        # 1. Сначала проверяем регулярки (числа, размеры, марки стали)
-        # Это не требует лемматизации
+        # 1. Сначала размеры и цифры (сразу выход)
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or gost_pattern.search(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower)
             continue
         
-        # 2. Лемматизация текущего слова для сверки со словарем
+        # 2. Получаем лемму (начальную форму)
         lemma = morph.parse(word_lower)[0].normal_form if morph else word_lower
         
-        # 3. ПРОВЕРКА ПО НАШИМ JSON ФАЙЛАМ (Самый высокий приоритет)
+        # =========================================================================
+        # ГЛАВНОЕ: ПРОВЕРКА ПО JSON (САМЫЙ ВЫСОКИЙ ПРИОРИТЕТ)
+        # =========================================================================
         
+        # Если слово в нашем списке металлопроката - это ТОВАР. Точка.
         if lemma in PRODUCTS_SET:
             categories['products'].add(lemma)
             continue
             
-        if lemma in COMM_SET:
+        # Если слово в списке марок/спецификаций - это РАЗМЕРЫ/ХАРАКТЕРИСТИКИ.
+        if lemma in SPECS_SET:
+            categories['dimensions'].add(lemma)
+            continue
+
+        # Если слово в списке коммерции (или резервном списке) - это КОММЕРЦИЯ.
+        if lemma in COMM_SET or lemma in FALLBACK_GARBAGE:
             categories['commercial'].add(lemma)
             continue
             
-        if lemma in SPECS_SET:
-            # Спецификации (ГОСТы, марки) кидаем в "dimensions" (характеристики)
-            categories['dimensions'].add(lemma)
-            continue
-            
-        # 4. Проверка на Услуги (по окончаниям и списку)
+        # Проверка на услуги
         if lemma in SERVICE_KEYWORDS or lemma.endswith('обработка') or lemma.endswith('изготовление'):
             categories['services'].add(lemma)
             continue
 
-        # 5. Если никуда не попало - добавляем в список для проверки через API/Эвристику
+        # Если никуда не попало - добавляем в список для проверки через API/Эвристику
         api_candidates.append(word_lower)
 
     # --- ПОСТ-ОБРАБОТКА НЕИЗВЕСТНЫХ СЛОВ ---
-    # (Здесь работает старая логика для слов, которых нет в твоих JSON)
     
     yandex_results = {} 
     if api_candidates and yandex_key:
@@ -485,19 +475,18 @@ def classify_semantics_with_api(words_list, yandex_key):
         lemma = info['lemma']
         pos = info['pos']
         
-        # Повторная проверка леммы (вдруг API вернуло нормализацию, которая совпала с JSON)
+        # Еще раз проверяем лемму по JSON (вдруг API вернуло нормализацию, которой не было раньше)
         if lemma in PRODUCTS_SET:
              categories['products'].add(lemma)
              continue
 
-        # Простейшая эвристика частей речи
+        # Эвристика: если слово не нашлось нигде:
         if pos == 'noun' or pos == 'unknown':
-            # Если слово длинное и существительное - скорее всего товар, который мы забыли
+            # Длинные существительные скорее всего товары, которые мы забыли добавить в JSON
             if len(lemma) > 2: 
                 categories['products'].add(lemma)
-        elif pos == 'adjective':
-             categories['commercial'].add(lemma) 
         else: 
+            # Прилагательные, глаголы и прочее кидаем в коммерцию/мусор, чтобы не засорять "Товары"
             categories['commercial'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -1807,6 +1796,7 @@ with tab_sidebar:
             # Берем HTML из первой строки
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
