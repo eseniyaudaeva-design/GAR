@@ -60,10 +60,10 @@ st.markdown(f"""
             background-color: {HEADER_BG} !important; color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
         }}
         
-        /* Новые стили для блоков генерации */
-        .block-container { padding: 20px; border: 1px solid #E2E8F0; border-radius: 10px; background-color: #F8FAFC; margin-bottom: 20px; }
-        .block-title { color: {PRIMARY_COLOR}; font-size: 1.2em; font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; }
-        .block-icon { margin-right: 10px; font-size: 1.2em; }
+        /* Новые стили для блоков генерации (исправлено экранирование скобок) */
+        .block-container {{ padding: 20px; border: 1px solid #E2E8F0; border-radius: 10px; background-color: #F8FAFC; margin-bottom: 20px; }}
+        .block-title {{ color: {PRIMARY_COLOR}; font-size: 1.2em; font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; }}
+        .block-icon {{ margin-right: 10px; font-size: 1.2em; }}
         .legend-box {{ padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px; }}
         .text-red {{ color: #D32F2F; font-weight: bold; }}
         .text-green {{ color: #2E7D32; font-weight: bold; }}
