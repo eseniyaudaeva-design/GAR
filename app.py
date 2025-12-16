@@ -461,8 +461,8 @@ def load_lemmatized_dictionaries():
                     else: commercial_lemmas.add(w.lower())
         except: pass
 
-    # --- 3. ГЕО (geo_cities.json) --- <--- НОВЫЙ БЛОК
-    path_geo = os.path.join(base_path, "geo_cities.json")
+    # --- 3. ГЕО (geo_locations.json) --- <--- НОВЫЙ БЛОК
+    path_geo = os.path.join(base_path, "geo_locations.json")
     if os.path.exists(path_geo):
         try:
             with open(path_geo, 'r', encoding='utf-8') as f:
@@ -471,7 +471,7 @@ def load_lemmatized_dictionaries():
                     if morph: geo_lemmas.add(morph.parse(w.lower())[0].normal_form)
                     else: geo_lemmas.add(w.lower())
         except Exception as e:
-            st.error(f"Ошибка в geo_cities.json: {e}")
+            st.error(f"Ошибка в geo_locations.json: {e}")
 
     return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas # <--- ВОЗВРАЩАЕМ 4-м ПАРАМЕТРОМ
 
@@ -1888,6 +1888,7 @@ with tab_sidebar:
             # Берем HTML из первой строки
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
