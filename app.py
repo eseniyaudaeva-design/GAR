@@ -129,7 +129,60 @@ def force_cyrillic_name_global(slug_text):
 
     # Собираем фразу
     draft_phrase = " ".join(rus_words)
+
+    # ==========================================
+# 0.2 ЗАГРУЗКА ЛОКАЛЬНЫХ СЛОВАРЕЙ (НОВОЕ)
+# ==========================================
+import os
+import json
+
+@st.cache_data
+def load_custom_dictionaries():
+    """
+    Загружает JSON-словари из папки data/ и возвращает множества (set) лемм.
+    """
+    base_path = "data"
     
+    # 1. Товары (Metal Products)
+    product_set = set()
+    try:
+        with open(os.path.join(base_path, "metal_products.json"), 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            # JSON может быть списком или словарем категорий. Обрабатываем оба варианта.
+            if isinstance(data, dict):
+                for cat_list in data.values():
+                    product_set.update(cat_list) # Слова там уже лемматизированы
+            elif isinstance(data, list):
+                product_set.update(data)
+    except FileNotFoundError:
+        pass # Файл не создан, работаем без него
+
+    # 2. Коммерция (Commercial)
+    commercial_set = set()
+    try:
+        with open(os.path.join(base_path, "commercial_triggers.json"), 'r', encoding='utf-8') as f:
+            commercial_set.update(json.load(f))
+    except FileNotFoundError: pass
+
+    # 3. Гео (Geo) - Тоже считаем коммерцией/мусором для SEO ядра
+    try:
+        with open(os.path.join(base_path, "geo_locations.json"), 'r', encoding='utf-8') as f:
+            commercial_set.update(json.load(f))
+    except FileNotFoundError: pass
+
+    # 4. Спецификации (Specs) - Считаем "Размерами/Характеристиками"
+    specs_set = set()
+    try:
+        with open(os.path.join(base_path, "tech_specs.json"), 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                for cat_list in data.values():
+                    specs_set.update(cat_list)
+            elif isinstance(data, list):
+                specs_set.update(data)
+    except FileNotFoundError: pass
+
+    return product_set, commercial_set, specs_set
     # 2. ПОСТ-ОБРАБОТКА (Context Fixes)
     # Исправляем ситуации, когда словарь не сработал, а мягкий знак нужен в корне или суффиксе
     
@@ -356,104 +409,66 @@ def get_yandex_dict_info(text, api_key):
     return {'lemma': text, 'pos': 'unknown'}
 
 def classify_semantics_with_api(words_list, yandex_key):
-    # --- 1. ПАТТЕРНЫ ---
+    """
+    Классификация слов с приоритетом на локальные словари metal_products.
+    """
+    # 1. Загружаем наши словари (кэшируются Streamlit)
+    PRODUCTS_SET, COMM_SET, SPECS_SET = load_custom_dictionaries()
+    
+    # Регулярки для размеров (оставляем, они полезны)
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     gost_pattern = re.compile(r'(гост|din|ту|iso|ст|сп)\s?\d+', re.IGNORECASE)
-    
-    # --- 2. МУСОР И КОММЕРЦИЯ (STOP-WORDS) ---
-    SITE_UI_GARBAGE = {
-        'меню', 'поиск', 'главная', 'карта', 'сайт', 'личный', 'кабинет', 'вход', 'регистрация', 
-        'корзина', 'избранное', 'сравнение', 'профиль', 'телефон', 'адрес', 'контакты', 'email', 
-        'звонок', 'callback', 'отзыв', 'отзывы', 'вопрос', 'ответ', 'менеджер', 'консультация', 
-        'политика', 'конфиденциальность', 'соглашение', 'оферта', 'cookie', 'соглашаться', 
-        'согласие', 'принимать', 'отправить', 'ошибка', 'успешно', 'кнопка', 'форма', 'поле', 
-        'обзор', 'новости', 'статьи', 'характеристика', 'описание', 'параметр', 'свойство', 
-        'артикул', 'код', 'калькулятор', 'фильтр', 'сортировка', 'показать', 'сбросить', 'имя', 
-        'фамилия', 'сообщение', 'файл', 'документ', 'сертификат', 'категория', 'раздел', 'список', 
-        'вид', 'тип', 'класс', 'серия', 'рейтинг', 'наличие', 'склад', 'производитель', 'бренд', 
-        'марка', 'вес', 'длина', 'ширина', 'высота', 'толщина', 'диаметр', 'размер', 'объем', 
-        'масса', 'тонна', 'метр', 'шт', 'кг', 'упаковка', 'цена', 'интернет', 'магазин', 'каталог', 
-        'год', 'info', 'инфо', 'подробнее', 'показать', 'скрыть', 'назад', 'вперед', 'деталь'
-    }
-    
-    COMMERCIAL_WORDS = {
-        'купить', 'заказать', 'цена', 'цены', 'прайс', 'стоимость', 'продажа', 'недорого', 
-        'дешево', 'дорого', 'скидка', 'акция', 'распродажа', 'оптом', 'розница', 'руб', 
-        'рублей', 'уе', 'заказ', 'оплата', 'платеж', 'рассрочка', 'кредит', 'лизинг', 'доставка', 
-        'самовывоз', 'отгрузка', 'поставка', 'транспорт', 'логистика', 'гарантия', 'возврат', 
-        'обмен', 'выгодный', 'низкий', 'высокий', 'лучший', 'качественный', 'надежный', 'большой', 
-        'малый', 'удобный', 'быстрый', 'бесплатный', 'хороший', 'доступный', 'индивидуальный', 
-        'профессиональный', 'собственный', 'официальный', 'уникальный', 'широкий', 'огромный', 
-        'различный', 'соответствовать', 'являться', 'предлагать', 'наш', 'обратный'
-    }
-    
-    # --- 3. БЕЛЫЙ СПИСОК (Приоритет) ---
-    INDUSTRIAL_WHITELIST = {
-        # Металлы
-        'сталь', 'стальной', 'алюминий', 'алюминиевый', 'медь', 'медный', 'латунь', 'латунный', 
-        'бронза', 'бронзовый', 'титан', 'титановый', 'нержавейка', 'нержавеющий', 'цинк', 'цинковый', 
-        'свинец', 'свинцовый', 'никель', 'никелевый', 'олово', 'вольфрам', 'молибден', 'дюраль', 
-        'ферросплав', 'чугун', 'чугунный', 'баббит', 'силумин',
-        # Формы и виды
-        'труба', 'трубный', 'лист', 'листовой', 'круг', 'кругляк', 'квадрат', 'шестигранник', 
-        'уголок', 'швеллер', 'балка', 'двутавр', 'арматура', 'катанка', 'проволока', 'сетка', 
-        'лента', 'полоса', 'штрипс', 'профнастил', 'настил', 'рельс', 'профиль', 'шпунт',
-        # Сыпучие и специфика (ДОБАВЛЕНО)
-        'порошок', 'пудра', 'гранула', 'смесь', 'припой', 'флюс', 'сварочный', 'наплавочный', 
-        'электродный', 'присадочный', 'шихта', 'чушка', 'слиток',
-        # Детали и фитинги
-        'отвод', 'переход', 'тройник', 'заглушка', 'фланец', 'метиз', 'болт', 'гайка', 'шайба', 
-        'анкер', 'шпилька', 'электрод', 'анод', 'катод', 'втулка', 'фитинг', 'метизы',
-        # Характеристики (как часть товара)
-        'рифленый', 'оцинкованный', 'горячекатаный', 'холоднокатаный', 'сварной', 'бесшовный',
-        'пруток', 'сляб', 'блюм', 'поковка', 'рулон', 'фольга', 'плита', 'карточка'
-    }
-    
-    GEO_ROOTS = ['москв', 'питер', 'спб', 'екб', 'екатерин', 'росси', 'рф', 'город', 'област', 
-                 'новгород', 'казан', 'киев', 'минск', 'алматы', 'самара', 'омск', 'челябин', 
-                 'ростов', 'уфа', 'волгоград', 'перм', 'краснояр', 'воронеж', 'саратов', 
-                 'краснодар', 'тюмен', 'ижевск', 'тольятти', 'барнаул', 'иркутск', 'ульяновск', 'хабаровск']
-                 
+
+    # Старые хардкод-списки оставляем как запасной вариант (fallback), 
+    # но можно их очистить, если полностью доверяешь JSON-ам.
     SERVICE_KEYWORDS = {'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'укладка', 
                         'проектирование', 'изоляция', 'сверление', 'грунтовка', 'покраска', 
                         'услуга', 'металлообработка', 'обработка', 'строительство', 'ремонт', 
-                        'производство', 'изготовление', 'покрытие', 'напыление', 'цинкование'}
+                        'производство', 'изготовление', 'покрытие', 'напыление', 'доставка'}
 
     categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set()}
     api_candidates = []
 
-    # --- 4. ПЕРВИЧНЫЙ ОТСЕВ ---
+    # --- ПЕРВИЧНАЯ ФИЛЬТРАЦИЯ ---
     for word in words_list:
         word_lower = word.lower()
+        
+        # 1. Сначала проверяем регулярки (числа, размеры, марки стали)
+        # Это не требует лемматизации
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or gost_pattern.search(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower)
             continue
         
+        # 2. Лемматизация текущего слова для сверки со словарем
         lemma = morph.parse(word_lower)[0].normal_form if morph else word_lower
         
-        # 1. Приоритет: Белый список
-        if lemma in INDUSTRIAL_WHITELIST or word_lower in INDUSTRIAL_WHITELIST:
+        # 3. ПРОВЕРКА ПО НАШИМ JSON ФАЙЛАМ (Самый высокий приоритет)
+        
+        if lemma in PRODUCTS_SET:
             categories['products'].add(lemma)
             continue
             
-        # 2. Приоритет: Услуги
-        if lemma in SERVICE_KEYWORDS or lemma.endswith('обработка'):
-            categories['services'].add(lemma)
-            continue
-
-        # 3. Приоритет: Мусор/Коммерция
-        if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS:
+        if lemma in COMM_SET:
             categories['commercial'].add(lemma)
             continue
             
-        if any(root in lemma for root in GEO_ROOTS): 
-            categories['commercial'].add(lemma)
+        if lemma in SPECS_SET:
+            # Спецификации (ГОСТы, марки) кидаем в "dimensions" (характеристики)
+            categories['dimensions'].add(lemma)
+            continue
+            
+        # 4. Проверка на Услуги (по окончаниям и списку)
+        if lemma in SERVICE_KEYWORDS or lemma.endswith('обработка') or lemma.endswith('изготовление'):
+            categories['services'].add(lemma)
             continue
 
+        # 5. Если никуда не попало - добавляем в список для проверки через API/Эвристику
         api_candidates.append(word_lower)
 
-    # --- 5. АНАЛИЗ ЧАСТЕЙ РЕЧИ (ФИНАЛЬНЫЙ ЭТАП) ---
+    # --- ПОСТ-ОБРАБОТКА НЕИЗВЕСТНЫХ СЛОВ ---
+    # (Здесь работает старая логика для слов, которых нет в твоих JSON)
+    
     yandex_results = {} 
     if api_candidates and yandex_key:
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -470,30 +485,19 @@ def classify_semantics_with_api(words_list, yandex_key):
         lemma = info['lemma']
         pos = info['pos']
         
-        # Повторный чек
-        if lemma in INDUSTRIAL_WHITELIST:
-             categories['products'].add(lemma); continue
-        if lemma in SITE_UI_GARBAGE or lemma in COMMERCIAL_WORDS: 
-            categories['commercial'].add(lemma); continue
-        
-        is_service = False
-        if lemma.endswith('ние') or lemma.endswith('ение') or lemma.endswith('обработка') or lemma in SERVICE_KEYWORDS: 
-            is_service = True
-        if is_service: 
-            categories['services'].add(lemma); continue
+        # Повторная проверка леммы (вдруг API вернуло нормализацию, которая совпала с JSON)
+        if lemma in PRODUCTS_SET:
+             categories['products'].add(lemma)
+             continue
 
-        # --- ИЗМЕНЕННАЯ ЛОГИКА ---
+        # Простейшая эвристика частей речи
         if pos == 'noun' or pos == 'unknown':
-            # Существительные и неизвестные слова -> Товары (если длина > 2)
-            if len(lemma) > 2: categories['products'].add(lemma)
-        elif pos == 'adjective' or pos == 'participle':
-            # Прилагательные и причастия (сварочный, обратный, стальной)
-            # Раньше мы их кидали в коммерцию. Теперь - в ТОВАРЫ.
-            # Потому что "коммерческие" прилагательные (быстрый, дешевый) уже отсеялись словарем COMMERCIAL_WORDS выше.
-            # Если слово прошло фильтр коммерции, значит это "сварочный", "токарный" и т.д.
-            categories['products'].add(lemma) 
+            # Если слово длинное и существительное - скорее всего товар, который мы забыли
+            if len(lemma) > 2: 
+                categories['products'].add(lemma)
+        elif pos == 'adjective':
+             categories['commercial'].add(lemma) 
         else: 
-            # Глаголы, наречия и прочее -> Коммерция
             categories['commercial'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -1803,5 +1807,6 @@ with tab_sidebar:
             # Берем HTML из первой строки
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
