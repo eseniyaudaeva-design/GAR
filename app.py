@@ -479,17 +479,15 @@ def load_lemmatized_dictionaries():
 # НОВАЯ ФУНКЦИЯ КЛАССИФИКАЦИИ
 # ==========================================
 def classify_semantics_with_api(words_list, yandex_key):
-    """
-    Классификация с ЛЕММАТИЗАЦИЕЙ, ГЕО и ПРИОРИТЕТОМ ФАЙЛОВ.
-    """
-    # Загружаем 4 словаря
+    # 1. Загрузка баз
     PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET = load_lemmatized_dictionaries()
     
-    if 'debug_check' not in st.session_state:
-        st.sidebar.success(f"📚 Товаров: {len(PRODUCTS_SET)} | 🌍 Городов: {len(GEO_SET)}")
-        st.session_state.debug_check = True
+    # Отладка в сайдбар (чтобы вы видели, загрузились ли города)
+    if 'debug_geo_count' not in st.session_state:
+        st.session_state.debug_geo_count = len(GEO_SET)
+    st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🌍 Города: {len(GEO_SET)}")
 
-    # Регулярки
+    # 2. Паттерны
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     
@@ -500,14 +498,13 @@ def classify_semantics_with_api(words_list, yandex_key):
                           'магазин', 'акция', 'скидка', 'опт', 'розница', 'каталог', 'телефон', 
                           'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия'}
 
-    # Добавляем 'geo' в структуру результата
     categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set()}
     api_candidates = []
 
     for word in words_list:
         word_lower = word.lower()
         
-        # 1. Размеры
+        # 1. Цифры/Размеры
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower)
             continue
@@ -516,53 +513,57 @@ def classify_semantics_with_api(words_list, yandex_key):
         if morph:
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
-            pos = p.tag.POS 
+            pos = p.tag.POS
         else:
             lemma = word_lower
             pos = 'NOUN'
 
-        # --- ПРИОРИТЕТЫ ---
-
-        # 1. Товары (Самый главный приоритет)
+        # --- ПРИОРИТЕТ 1: ТОВАРЫ ---
         if lemma in PRODUCTS_SET:
             categories['products'].add(lemma)
             continue 
 
-        # 2. ГЕО (Новый приоритет)
+        # --- ПРИОРИТЕТ 2: ГЕО ---
+        # а) Точное совпадение (Москва == Москва)
         if lemma in GEO_SET:
             categories['geo'].add(lemma)
             continue
+        
+        # б) Умный поиск прилагательных (Челябинский -> Челябинск)
+        # Если слово длинное и начинается с названия города (без последних букв)
+        is_geo_derivative = False
+        if len(lemma) > 5: # Не проверяем короткие слова типа "Уфа" так
+            root_search = lemma[:5] # Берем первые 5 букв слова (напр. "челяб")
+            # Это простая эвристика, но быстрая. 
+            # Для точности лучше перебрать GEO_SET
+            for city in GEO_SET:
+                # Если город длинный (Новосибирск) и лемма начинается с его основы
+                if len(city) > 4 and lemma.startswith(city[:-1]): 
+                    categories['geo'].add(lemma)
+                    is_geo_derivative = True
+                    break
+        if is_geo_derivative: continue
 
-        # 3. Коммерция явная
+        # --- ПРИОРИТЕТ 3: КОММЕРЦИЯ ---
         if lemma in COMM_SET or lemma in DEFAULT_COMMERCIAL:
             categories['commercial'].add(lemma)
             continue
             
-        # 4. Услуги
+        # --- ПРИОРИТЕТ 4: УСЛУГИ ---
         if lemma in DEFAULT_SERVICES or lemma.endswith('обработка') or lemma.endswith('изготовление'):
             categories['services'].add(lemma)
             continue
 
-        # --- ЭВРИСТИКА ---
+        # --- ЭВРИСТИКА ДЛЯ ОСТАЛЬНОГО ---
         if pos == 'NOUN': 
             if len(lemma) > 2:
                 categories['products'].add(lemma)
-                continue
-        
         elif pos in ['ADJF', 'ADJS']: 
-            is_found_by_root = False
-            root = lemma[:4]
-            for prod in PRODUCTS_SET:
-                if prod.startswith(root):
-                    categories['products'].add(lemma)
-                    is_found_by_root = True
-                    break
-            if is_found_by_root: continue
-
+            # Прилагательные, которые не нашлись в Geo и Товарах,
+            # но прошли фильтр Коммерции. Скорее всего характеристики.
             categories['dimensions'].add(lemma)
-            continue
-
-        categories['commercial'].add(lemma)
+        else:
+            categories['commercial'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
 
@@ -1888,6 +1889,7 @@ with tab_sidebar:
             # Берем HTML из первой строки
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
