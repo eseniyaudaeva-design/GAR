@@ -619,7 +619,7 @@ with tab_gen:
     # === БЛОК 1: AI ТЕКСТЫ ===
     if use_texts:
         with st.container():
-            st.markdown('<div class="tool-card"><div class="block-title"><span class="block-icon">🤖</span> Генерация AI Текстов</div>', unsafe_allow_html=True)
+            st.markdown('<div class="block-title"><span class="block-icon">🤖</span> Генерация AI Текстов</div>', unsafe_allow_html=True)
             
             col_t1, col_t2 = st.columns([2, 1])
             with col_t1:
@@ -933,4 +933,5 @@ with tab_gen:
     # Если ничего не выбрано
     if not any([use_texts, use_tags, use_sidebar, use_tables, use_promo]):
         st.info("👈 Выберите хотя бы один инструмент сверху, чтобы начать работу.")
+
 
