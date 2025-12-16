@@ -1119,7 +1119,6 @@ with tab_seo:
                 st.warning(f"💰 Коммерц ({len(st.session_state.categorized_commercial)})")
                 st.caption(", ".join(st.session_state.categorized_commercial))
             with c4: 
-                # Новый цветной блок для ГЕО (например, фиолетовый/синий)
                 st.markdown(f":earth_asia: **Гео** ({len(st.session_state.categorized_geo)})")
                 st.caption(", ".join(st.session_state.categorized_geo))
             with c5: 
@@ -1889,6 +1888,7 @@ with tab_sidebar:
             # Берем HTML из первой строки
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
