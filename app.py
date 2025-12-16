@@ -814,7 +814,6 @@ with tab_seo:
             with c4: st.markdown(f"**🌍 Гео ({len(st.session_state.categorized_geo)})**"); st.caption(", ".join(st.session_state.categorized_geo))
             with c5: dims = st.session_state.get('categorized_dimensions', []); st.success(f"📏 Размеры ({len(dims)})"); st.caption(", ".join(dims))
             with c6: gen_words = st.session_state.get('categorized_general', []); st.markdown(f"**📂 Общие ({len(gen_words)})**"); st.caption(", ".join(gen_words))
-        
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         if high or low:
@@ -1125,4 +1124,5 @@ with tab_gen:
             mime="application/vnd.ms-excel",
             type="primary"
         )
+
 
