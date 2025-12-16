@@ -119,7 +119,7 @@ def force_cyrillic_name_global(slug_text):
     return draft_phrase.capitalize()
 
 # ==========================================
-# 0.2 ЗАГРУЗЧИК СЛОВАРЕЙ (JSON + LEMMA)
+# ОБНОВЛЕННАЯ ФУНКЦИЯ ЗАГРУЗКИ (читает и слово, и лемму)
 # ==========================================
 @st.cache_data
 def load_lemmatized_dictionaries():
@@ -127,7 +127,7 @@ def load_lemmatized_dictionaries():
     
     product_lemmas = set()
     commercial_lemmas = set()
-    specs_lemmas = set()    # <--- Сет для марок и ГОСТов
+    specs_lemmas = set()
     geo_lemmas = set()
     services_lemmas = set()
 
@@ -149,9 +149,8 @@ def load_lemmatized_dictionaries():
                     for w in words:
                         clean_w = re.sub(r'[^a-zа-яё0-9-]', '', w)
                         if not clean_w: continue
-                        if morph: lemma = morph.parse(clean_w)[0].normal_form
-                        else: lemma = clean_w
-                        product_lemmas.add(lemma)
+                        product_lemmas.add(clean_w) # Оригинал
+                        if morph: product_lemmas.add(morph.parse(clean_w)[0].normal_form) # Лемма
         except Exception as e:
             st.error(f"Ошибка в metal_products.json: {e}")
 
@@ -164,8 +163,10 @@ def load_lemmatized_dictionaries():
                 if isinstance(raw_comm, list):
                     for w in raw_comm:
                         w_clean = str(w).lower().strip()
-                        if morph: commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
-                        else: commercial_lemmas.add(w_clean)
+                        commercial_lemmas.add(w_clean) # Добавляем как есть ("оптом")
+                        if morph: 
+                            # Добавляем лемму (может стать "опт")
+                            commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
         except: pass
 
     # 3. ГЕО
@@ -175,8 +176,9 @@ def load_lemmatized_dictionaries():
             with open(path_geo, 'r', encoding='utf-8') as f:
                 raw_geo = json.load(f)
                 for w in raw_geo:
-                    if morph: geo_lemmas.add(morph.parse(w.lower())[0].normal_form)
-                    else: geo_lemmas.add(w.lower())
+                    w_clean = str(w).lower().strip()
+                    geo_lemmas.add(w_clean)
+                    if morph: geo_lemmas.add(morph.parse(w_clean)[0].normal_form)
         except Exception as e:
             st.error(f"Ошибка в geo_locations.json: {e}")
 
@@ -190,12 +192,12 @@ def load_lemmatized_dictionaries():
                     for w in raw_serv:
                         parts = str(w).replace('-', ' ').lower().split()
                         for part in parts:
+                            services_lemmas.add(part)
                             if morph: services_lemmas.add(morph.parse(part)[0].normal_form)
-                            else: services_lemmas.add(part)
         except Exception as e:
             st.error(f"Ошибка в services_triggers.json: {e}")
 
-    # 5. ХАРАКТЕРИСТИКИ (МАРКИ, ГОСТ) - ВАЖНОЕ ИСПРАВЛЕНИЕ
+    # 5. ХАРАКТЕРИСТИКИ
     path_specs = os.path.join(base_path, "tech_specs.json")
     if os.path.exists(path_specs):
         try:
@@ -204,15 +206,89 @@ def load_lemmatized_dictionaries():
                 if isinstance(raw_specs, list):
                     for w in raw_specs:
                         w_clean = str(w).lower().strip()
-                        # Добавляем оригинал (например, "бражмц10")
-                        specs_lemmas.add(w_clean) 
-                        # Добавляем лемму, если она отличается
-                        if morph: 
-                            specs_lemmas.add(morph.parse(w_clean)[0].normal_form)
+                        specs_lemmas.add(w_clean)
+                        if morph: specs_lemmas.add(morph.parse(w_clean)[0].normal_form)
         except Exception as e:
             st.error(f"Ошибка в tech_specs.json: {e}")
 
     return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas
+
+# ==========================================
+# ОБНОВЛЕННАЯ ФУНКЦИЯ КЛАССИФИКАЦИИ
+# ==========================================
+def classify_semantics_with_api(words_list, yandex_key):
+    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET = load_lemmatized_dictionaries()
+    
+    if 'debug_geo_count' not in st.session_state:
+        st.session_state.debug_geo_count = len(GEO_SET)
+    
+    # Отладка в сайдбар, чтобы видеть количество слов
+    st.sidebar.info(f"Базы:\n📦 Товары: {len(PRODUCTS_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n⚙️ Марки: {len(SPECS_SET)}\n💰 Коммерц: {len(COMM_SET)}")
+
+    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
+    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
+    
+    # Расширенный хардкод на всякий случай
+    DEFAULT_COMMERCIAL = {'цена', 'купить', 'прайс', 'корзина', 'заказ', 'руб', 'наличие', 'склад', 
+                          'магазин', 'акция', 'скидка', 'опт', 'розница', 'каталог', 'телефон', 
+                          'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия', 
+                          'оптом', 'недорого', 'стоимость'}
+
+    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set(), 'general': set()}
+    
+    for word in words_list:
+        word_lower = word.lower()
+        
+        # 1. ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ
+        if word_lower in SPECS_SET:
+            categories['dimensions'].add(word_lower); continue
+            
+        if morph:
+            p = morph.parse(word_lower)[0]
+            lemma = p.normal_form
+            pos = p.tag.POS
+        else:
+            lemma = word_lower
+            pos = 'NOUN'
+
+        if lemma in SPECS_SET:
+            categories['dimensions'].add(lemma); continue
+
+        # 2. РАЗМЕРЫ (регулярки)
+        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
+            categories['dimensions'].add(word_lower); continue
+
+        # 3. ТОВАРЫ
+        if lemma in PRODUCTS_SET or word_lower in PRODUCTS_SET:
+            categories['products'].add(lemma); continue
+
+        # 4. ГЕО
+        if lemma in GEO_SET or word_lower in GEO_SET:
+            categories['geo'].add(lemma); continue
+        
+        is_geo_derivative = False
+        if len(lemma) > 5: 
+            for city in GEO_SET:
+                if len(city) > 4 and lemma.startswith(city[:-1]): 
+                    categories['geo'].add(lemma)
+                    is_geo_derivative = True
+                    break
+        if is_geo_derivative: continue
+
+        # 5. УСЛУГИ
+        if lemma in SERVICES_SET or word_lower in SERVICES_SET or lemma.endswith('обработка') or lemma.endswith('изготовление'):
+            categories['services'].add(lemma); continue
+
+        # 6. КОММЕРЦИЯ (Самое важное изменение здесь)
+        # Проверяем и лемму, и точное слово, и словарь из файла, и дефолтный список
+        if (lemma in COMM_SET or word_lower in COMM_SET or 
+            lemma in DEFAULT_COMMERCIAL or word_lower in DEFAULT_COMMERCIAL):
+            categories['commercial'].add(lemma); continue
+            
+        # 7. ОБЩИЕ
+        categories['general'].add(lemma)
+
+    return {k: sorted(list(v)) for k, v in categories.items()}
 # ==========================================
 # 0.3 КЛАССИФИКАТОР С ГЕО
 # ==========================================
@@ -1407,6 +1483,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
