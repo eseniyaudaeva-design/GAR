@@ -1008,9 +1008,15 @@ with tab_seo:
         st.markdown("### Поиск конкурентов")
         source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
         source_type = "API" if "API" in source_type_new else "Ручной список"
-        if source_type == "Ручной список":
-            def update_manual_urls(): st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
-            st.text_area("Список ссылок (каждая с новой строки)", height=200, key="manual_urls_widget", value=st.session_state['persistent_urls'], on_change=update_manual_urls)
+if source_type == "Ручной список":
+            # Просто берем значение из виджета и сразу сохраняем в постоянную переменную
+            manual_val = st.text_area(
+                "Список ссылок (каждая с новой строки)", 
+                height=200, 
+                key="manual_urls_widget", 
+                value=st.session_state.get('persistent_urls', "")
+            )
+            st.session_state['persistent_urls'] = manual_val
         st.markdown("### Списки (Stop / Exclude)")
         st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=100, key="settings_excludes")
         st.text_area("Стоп-слова", DEFAULT_STOPS, height=100, key="settings_stops")
@@ -1889,6 +1895,7 @@ with tab_sidebar:
             # Берем HTML из первой строки
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
