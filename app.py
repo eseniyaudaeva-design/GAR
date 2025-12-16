@@ -154,16 +154,22 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в metal_products.json: {e}")
 
-    # 2. КОММЕРЦИЯ
+# 2. КОММЕРЦИЯ
     path_comm = os.path.join(base_path, "commercial_triggers.json")
     if os.path.exists(path_comm):
         try:
             with open(path_comm, 'r', encoding='utf-8') as f:
                 raw_comm = json.load(f)
-                for w in raw_comm:
-                    if morph: commercial_lemmas.add(morph.parse(w.lower())[0].normal_form)
-                    else: commercial_lemmas.add(w.lower())
-        except: pass
+                # Проверяем, что в файле список слов
+                if isinstance(raw_comm, list):
+                    for w in raw_comm:
+                        w_clean = str(w).lower().strip()
+                        if morph: 
+                            commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
+                        else: 
+                            commercial_lemmas.add(w_clean)
+        except: 
+            pass
 
     # 3. ГЕО
     path_geo = os.path.join(base_path, "geo_locations.json")
@@ -1368,4 +1374,5 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
