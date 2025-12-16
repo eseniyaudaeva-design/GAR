@@ -128,7 +128,8 @@ def load_lemmatized_dictionaries():
     product_lemmas = set()
     commercial_lemmas = set()
     specs_lemmas = set()
-    geo_lemmas = set() 
+    geo_lemmas = set()
+    services_lemmas = set()  # <--- НОВЫЙ СЕТ
 
     # 1. ТОВАРЫ
     path_prod = os.path.join(base_path, "metal_products.json")
@@ -154,22 +155,18 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в metal_products.json: {e}")
 
-# 2. КОММЕРЦИЯ
+    # 2. КОММЕРЦИЯ
     path_comm = os.path.join(base_path, "commercial_triggers.json")
     if os.path.exists(path_comm):
         try:
             with open(path_comm, 'r', encoding='utf-8') as f:
                 raw_comm = json.load(f)
-                # Проверяем, что в файле список слов
                 if isinstance(raw_comm, list):
                     for w in raw_comm:
                         w_clean = str(w).lower().strip()
-                        if morph: 
-                            commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
-                        else: 
-                            commercial_lemmas.add(w_clean)
-        except: 
-            pass
+                        if morph: commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
+                        else: commercial_lemmas.add(w_clean)
+        except: pass
 
     # 3. ГЕО
     path_geo = os.path.join(base_path, "geo_locations.json")
@@ -183,21 +180,39 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в geo_locations.json: {e}")
 
-    return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas
+    # 4. УСЛУГИ (НОВЫЙ БЛОК)
+    path_serv = os.path.join(base_path, "services_triggers.json")
+    if os.path.exists(path_serv):
+        try:
+            with open(path_serv, 'r', encoding='utf-8') as f:
+                raw_serv = json.load(f)
+                if isinstance(raw_serv, list):
+                    for w in raw_serv:
+                        # Делим слова с тире и добавляем каждую часть
+                        parts = str(w).replace('-', ' ').lower().split()
+                        for part in parts:
+                            if morph: services_lemmas.add(morph.parse(part)[0].normal_form)
+                            else: services_lemmas.add(part)
+        except Exception as e:
+            st.error(f"Ошибка в services_triggers.json: {e}")
+
+    return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas
 
 # ==========================================
 # 0.3 КЛАССИФИКАТОР С ГЕО
 # ==========================================
 def classify_semantics_with_api(words_list, yandex_key):
-    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET = load_lemmatized_dictionaries()
+    # Теперь распаковываем 5 значений
+    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET = load_lemmatized_dictionaries()
     
     if 'debug_geo_count' not in st.session_state:
         st.session_state.debug_geo_count = len(GEO_SET)
-    st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🌍 Города: {len(GEO_SET)}")
+    st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n🌍 Города: {len(GEO_SET)}")
 
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     
+    # Старый хардкод оставляем как запасной вариант
     DEFAULT_SERVICES = {'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'доставка', 
                         'услуга', 'обработка', 'изготовление', 'покраска', 'сверление', 'изоляция'}
     
@@ -206,8 +221,7 @@ def classify_semantics_with_api(words_list, yandex_key):
                           'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия'}
 
     categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set()}
-    api_candidates = []
-
+    
     for word in words_list:
         word_lower = word.lower()
         
@@ -243,16 +257,16 @@ def classify_semantics_with_api(words_list, yandex_key):
                     break
         if is_geo_derivative: continue
 
-        # 3. КОММЕРЦИЯ
+        # 3. УСЛУГИ (Сначала проверяем загруженный словарь, потом дефолтный)
+        if lemma in SERVICES_SET or lemma in DEFAULT_SERVICES or lemma.endswith('обработка') or lemma.endswith('изготовление'):
+            categories['services'].add(lemma)
+            continue
+
+        # 4. КОММЕРЦИЯ
         if lemma in COMM_SET or lemma in DEFAULT_COMMERCIAL:
             categories['commercial'].add(lemma)
             continue
             
-        # 4. УСЛУГИ
-        if lemma in DEFAULT_SERVICES or lemma.endswith('обработка') or lemma.endswith('изготовление'):
-            categories['services'].add(lemma)
-            continue
-
         # 5. ОСТАЛЬНОЕ
         if pos == 'NOUN': 
             if len(lemma) > 2:
@@ -1374,5 +1388,6 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
