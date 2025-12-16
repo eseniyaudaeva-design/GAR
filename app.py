@@ -221,6 +221,11 @@ if 'categorized_commercial' not in st.session_state:
 if 'categorized_dimensions' not in st.session_state:
     st.session_state.categorized_dimensions = []
 
+if 'categorized_geo' not in st.session_state:    # <--- НОВОЕ
+    st.session_state.categorized_geo = []        # <--- НОВОЕ
+if 'categorized_dimensions' not in st.session_state:
+    st.session_state.categorized_dimensions = []
+
 if 'persistent_urls' not in st.session_state:
     st.session_state['persistent_urls'] = ""
 
@@ -409,15 +414,15 @@ def load_lemmatized_dictionaries():
     """
     1. Загружает JSON.
     2. Разбивает фразы на слова.
-    3. ЛЕММАТИЗИРУЕТ каждое слово (арматуры -> арматура).
-    4. Сохраняет в память для быстрого поиска.
+    3. ЛЕММАТИЗИРУЕТ каждое слово.
+    4. Сохраняет в память.
     """
     base_path = "data"
     
-    # Результирующие множества лемм
     product_lemmas = set()
     commercial_lemmas = set()
     specs_lemmas = set()
+    geo_lemmas = set() # <--- НОВОЕ МНОЖЕСТВО
 
     # --- 1. ТОВАРЫ (metal_products.json) ---
     path_prod = os.path.join(base_path, "metal_products.json")
@@ -425,8 +430,6 @@ def load_lemmatized_dictionaries():
         try:
             with open(path_prod, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                
-                # Собираем все слова в один список
                 all_raw_words = []
                 if isinstance(data, dict):
                     for cat_list in data.values():
@@ -434,63 +437,62 @@ def load_lemmatized_dictionaries():
                 elif isinstance(data, list):
                     all_raw_words = data
                 
-                # ЛЕММАТИЗАЦИЯ СЛОВАРЯ
                 for phrase in all_raw_words:
-                    # Разбиваем фразу "труба стальная" -> "труба", "стальная"
                     words = str(phrase).lower().split() 
                     for w in words:
-                        # Чистим от мусора
                         clean_w = re.sub(r'[^a-zа-яё0-9-]', '', w)
                         if not clean_w: continue
-                        
-                        # Получаем лемму (начальную форму)
-                        if morph:
-                            lemma = morph.parse(clean_w)[0].normal_form
-                        else:
-                            lemma = clean_w
+                        if morph: lemma = morph.parse(clean_w)[0].normal_form
+                        else: lemma = clean_w
                         product_lemmas.add(lemma)
-                        
         except Exception as e:
             st.error(f"Ошибка в metal_products.json: {e}")
     else:
-        # Если файла нет, выводим предупреждение в сайдбар
         st.sidebar.error("⚠️ Файл data/metal_products.json не найден!")
 
-    # --- 2. КОММЕРЦИЯ (commercial_triggers.json) ---
+    # --- 2. КОММЕРЦИЯ ---
     path_comm = os.path.join(base_path, "commercial_triggers.json")
     if os.path.exists(path_comm):
         try:
             with open(path_comm, 'r', encoding='utf-8') as f:
                 raw_comm = json.load(f)
                 for w in raw_comm:
-                    if morph:
-                        commercial_lemmas.add(morph.parse(w.lower())[0].normal_form)
-                    else:
-                        commercial_lemmas.add(w.lower())
+                    if morph: commercial_lemmas.add(morph.parse(w.lower())[0].normal_form)
+                    else: commercial_lemmas.add(w.lower())
         except: pass
 
-    return product_lemmas, commercial_lemmas, specs_lemmas
+    # --- 3. ГЕО (geo_cities.json) --- <--- НОВЫЙ БЛОК
+    path_geo = os.path.join(base_path, "geo_cities.json")
+    if os.path.exists(path_geo):
+        try:
+            with open(path_geo, 'r', encoding='utf-8') as f:
+                raw_geo = json.load(f)
+                for w in raw_geo:
+                    if morph: geo_lemmas.add(morph.parse(w.lower())[0].normal_form)
+                    else: geo_lemmas.add(w.lower())
+        except Exception as e:
+            st.error(f"Ошибка в geo_cities.json: {e}")
+
+    return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas # <--- ВОЗВРАЩАЕМ 4-м ПАРАМЕТРОМ
 
 # ==========================================
 # НОВАЯ ФУНКЦИЯ КЛАССИФИКАЦИИ
 # ==========================================
 def classify_semantics_with_api(words_list, yandex_key):
     """
-    Классификация с ЛЕММАТИЗАЦИЕЙ и ПРИОРИТЕТОМ ФАЙЛОВ.
+    Классификация с ЛЕММАТИЗАЦИЕЙ, ГЕО и ПРИОРИТЕТОМ ФАЙЛОВ.
     """
-    # 1. Загружаем лемматизированную базу
-    PRODUCTS_SET, COMM_SET, SPECS_SET = load_lemmatized_dictionaries()
+    # Загружаем 4 словаря
+    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET = load_lemmatized_dictionaries()
     
-    # Для отладки покажем в сайдбаре, сколько слов загрузилось
     if 'debug_check' not in st.session_state:
-        st.sidebar.success(f"📚 В базе товаров: {len(PRODUCTS_SET)} лемм")
+        st.sidebar.success(f"📚 Товаров: {len(PRODUCTS_SET)} | 🌍 Городов: {len(GEO_SET)}")
         st.session_state.debug_check = True
 
     # Регулярки
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     
-    # Списки "по умолчанию" (если чего-то нет в файлах)
     DEFAULT_SERVICES = {'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'доставка', 
                         'услуга', 'обработка', 'изготовление', 'покраска', 'сверление', 'изоляция'}
     
@@ -498,65 +500,56 @@ def classify_semantics_with_api(words_list, yandex_key):
                           'магазин', 'акция', 'скидка', 'опт', 'розница', 'каталог', 'телефон', 
                           'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия'}
 
-    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set()}
+    # Добавляем 'geo' в структуру результата
+    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set()}
     api_candidates = []
 
     for word in words_list:
         word_lower = word.lower()
         
-        # 1. Размеры и цифры (сразу отсекаем)
+        # 1. Размеры
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower)
             continue
         
-        # 2. Лемматизация ВХОДЯЩЕГО слова
-        # "профили" -> "профиль", "стальные" -> "стальной"
+        # 2. Лемматизация
         if morph:
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
-            pos = p.tag.POS # Часть речи
+            pos = p.tag.POS 
         else:
             lemma = word_lower
             pos = 'NOUN'
 
-        # =========================================================
-        # ГЛАВНАЯ ПРОВЕРКА (ПРИОРИТЕТ ФАЙЛА)
-        # =========================================================
-        
-        # 1. Если лемма есть в нашем файле metal_products.json
+        # --- ПРИОРИТЕТЫ ---
+
+        # 1. Товары (Самый главный приоритет)
         if lemma in PRODUCTS_SET:
             categories['products'].add(lemma)
-            continue # Сразу выходим, не проверяем на коммерцию!
+            continue 
 
-        # 2. Если лемма есть в файле коммерции или стандартном списке
+        # 2. ГЕО (Новый приоритет)
+        if lemma in GEO_SET:
+            categories['geo'].add(lemma)
+            continue
+
+        # 3. Коммерция явная
         if lemma in COMM_SET or lemma in DEFAULT_COMMERCIAL:
             categories['commercial'].add(lemma)
             continue
             
-        # 3. Услуги
+        # 4. Услуги
         if lemma in DEFAULT_SERVICES or lemma.endswith('обработка') or lemma.endswith('изготовление'):
             categories['services'].add(lemma)
             continue
 
-        # =========================================================
-        # ЭВРИСТИКА ДЛЯ НЕИЗВЕСТНЫХ СЛОВ
-        # =========================================================
-        # Если слова нет ни в одном списке, пробуем угадать
-        
+        # --- ЭВРИСТИКА ---
         if pos == 'NOUN': 
-            # Существительное длиннее 2 букв, которого нет в списке коммерции -> скорее всего ТОВАР
             if len(lemma) > 2:
                 categories['products'].add(lemma)
                 continue
         
         elif pos in ['ADJF', 'ADJS']: 
-            # Прилагательное (авиационный, гофрированный). 
-            # Если оно не нашлось в PRODUCTS_SET, значит оно просто описательное.
-            # Кидаем в РАЗМЕРЫ (чтобы не пугать клиента "Коммерцией") или оставляем в коммерции.
-            # Ты просил, чтобы товарные слова не летели в коммерцию.
-            
-            # Проверка: может это прилагательное от товара? (алюмин-иевый)
-            # Если корень (4 буквы) совпадает с каким-то товаром
             is_found_by_root = False
             root = lemma[:4]
             for prod in PRODUCTS_SET:
@@ -566,11 +559,9 @@ def classify_semantics_with_api(words_list, yandex_key):
                     break
             if is_found_by_root: continue
 
-            # Если не угадали - пусть будет Характеристика (Dimensions), это безопаснее
             categories['dimensions'].add(lemma)
             continue
 
-        # Всё остальное - в коммерцию/мусор
         categories['commercial'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -1098,12 +1089,14 @@ with tab_seo:
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             if not words_to_check:
                 st.session_state.categorized_products = []; st.session_state.categorized_services = []; st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
+# ... (внутри if st.session_state.get('start_analysis_flag'): )
             else:
                 with st.spinner("Уточнение семантики через Яндекс Словарь..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
+                st.session_state.categorized_geo = categorized['geo']  # <--- НОВОЕ
                 st.session_state.categorized_dimensions = categorized['dimensions']
             st.rerun()
 
@@ -1111,12 +1104,28 @@ with tab_seo:
         results = st.session_state.analysis_results
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
+        
         with st.expander("🛒 Результат группировки слов", expanded=True):
-            c1, c2, c3, c4 = st.columns(4)
-            with c1: st.info(f"🧱 Товары ({len(st.session_state.categorized_products)})"); st.caption(", ".join(st.session_state.categorized_products))
-            with c2: st.error(f"🛠️ Услуги ({len(st.session_state.categorized_services)})"); st.caption(", ".join(st.session_state.categorized_services))
-            with c3: st.warning(f"💰 Коммерция ({len(st.session_state.categorized_commercial)})"); st.caption(", ".join(st.session_state.categorized_commercial))
-            with c4: dims = st.session_state.get('categorized_dimensions', []); st.success(f"📏 Размеры ({len(dims)})"); st.caption(", ".join(dims))
+            # МЕНЯЕМ КОЛИЧЕСТВО КОЛОНОК НА 5
+            c1, c2, c3, c4, c5 = st.columns(5)
+            
+            with c1: 
+                st.info(f"🧱 Товары ({len(st.session_state.categorized_products)})")
+                st.caption(", ".join(st.session_state.categorized_products))
+            with c2: 
+                st.error(f"🛠️ Услуги ({len(st.session_state.categorized_services)})")
+                st.caption(", ".join(st.session_state.categorized_services))
+            with c3: 
+                st.warning(f"💰 Коммерц ({len(st.session_state.categorized_commercial)})")
+                st.caption(", ".join(st.session_state.categorized_commercial))
+            with c4: 
+                # Новый цветной блок для ГЕО (например, фиолетовый/синий)
+                st.markdown(f":earth_asia: **Гео** ({len(st.session_state.categorized_geo)})")
+                st.caption(", ".join(st.session_state.categorized_geo))
+            with c5: 
+                dims = st.session_state.get('categorized_dimensions', [])
+                st.success(f"📏 Размеры ({len(dims)})")
+                st.caption(", ".join(dims))
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         if high or low:
@@ -1880,6 +1889,7 @@ with tab_sidebar:
             # Берем HTML из первой строки
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
