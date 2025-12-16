@@ -127,7 +127,7 @@ def load_lemmatized_dictionaries():
     
     product_lemmas = set()
     commercial_lemmas = set()
-    specs_lemmas = set()
+    specs_lemmas = set()    # <--- Сет для марок и ГОСТов
     geo_lemmas = set()
     services_lemmas = set()
 
@@ -195,8 +195,8 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в services_triggers.json: {e}")
 
-    # 5. ХАРАКТЕРИСТИКИ (ГОСТ, МАРКИ) - ИСПРАВЛЕН ПУТЬ
-    path_specs = os.path.join(base_path, "tech_specs.json") # <--- ЗДЕСЬ ИЗМЕНИЛИ НАЗВАНИЕ
+    # 5. ХАРАКТЕРИСТИКИ (МАРКИ, ГОСТ) - ВАЖНОЕ ИСПРАВЛЕНИЕ
+    path_specs = os.path.join(base_path, "tech_specs.json")
     if os.path.exists(path_specs):
         try:
             with open(path_specs, 'r', encoding='utf-8') as f:
@@ -204,14 +204,15 @@ def load_lemmatized_dictionaries():
                 if isinstance(raw_specs, list):
                     for w in raw_specs:
                         w_clean = str(w).lower().strip()
+                        # Добавляем оригинал (например, "бражмц10")
                         specs_lemmas.add(w_clean) 
+                        # Добавляем лемму, если она отличается
                         if morph: 
                             specs_lemmas.add(morph.parse(w_clean)[0].normal_form)
         except Exception as e:
             st.error(f"Ошибка в tech_specs.json: {e}")
 
     return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas
-
 # ==========================================
 # 0.3 КЛАССИФИКАТОР С ГЕО
 # ==========================================
@@ -221,7 +222,8 @@ def classify_semantics_with_api(words_list, yandex_key):
     
     if 'debug_geo_count' not in st.session_state:
         st.session_state.debug_geo_count = len(GEO_SET)
-    st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n🌍 Города: {len(GEO_SET)}")
+    # Выводим отладку в сайдбар, чтобы видеть, загрузились ли марки
+    st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n⚙️ Марки/ГОСТ: {len(SPECS_SET)}\n🌍 Города: {len(GEO_SET)}")
 
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
@@ -230,34 +232,44 @@ def classify_semantics_with_api(words_list, yandex_key):
                           'магазин', 'акция', 'скидка', 'опт', 'розница', 'каталог', 'телефон', 
                           'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия'}
 
-    # Добавляем категорию 'general'
     categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set(), 'general': set()}
     
     for word in words_list:
         word_lower = word.lower()
         
-        # Размеры и марки стали
-        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
+        # 1. Сначала проверяем на технические параметры (Марки, ГОСТы из файла)
+        # Проверяем и точное совпадение, и лемму
+        if word_lower in SPECS_SET:
             categories['dimensions'].add(word_lower)
             continue
-        
+            
         if morph:
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
+            pos = p.tag.POS
         else:
             lemma = word_lower
+            pos = 'NOUN'
 
-        # 1. ТОВАРЫ
+        if lemma in SPECS_SET:
+            categories['dimensions'].add(lemma)
+            continue
+
+        # 2. Регулярки для размеров (10х20)
+        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
+            categories['dimensions'].add(word_lower)
+            continue
+
+        # 3. ТОВАРЫ
         if lemma in PRODUCTS_SET:
             categories['products'].add(lemma)
             continue 
 
-        # 2. ГЕО
+        # 4. ГЕО
         if lemma in GEO_SET:
             categories['geo'].add(lemma)
             continue
         
-        # Эвристика для гео
         is_geo_derivative = False
         if len(lemma) > 5: 
             for city in GEO_SET:
@@ -267,17 +279,17 @@ def classify_semantics_with_api(words_list, yandex_key):
                     break
         if is_geo_derivative: continue
 
-        # 3. УСЛУГИ
+        # 5. УСЛУГИ
         if lemma in SERVICES_SET or lemma.endswith('обработка') or lemma.endswith('изготовление'):
             categories['services'].add(lemma)
             continue
 
-        # 4. КОММЕРЦИЯ
+        # 6. КОММЕРЦИЯ
         if lemma in COMM_SET or lemma in DEFAULT_COMMERCIAL:
             categories['commercial'].add(lemma)
             continue
             
-        # 5. ОБЩИЕ (Все, что не попало в словари)
+        # 7. ОБЩИЕ (Всё остальное)
         categories['general'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -1395,6 +1407,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
