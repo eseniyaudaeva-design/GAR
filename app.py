@@ -202,7 +202,7 @@ def load_lemmatized_dictionaries():
 # 0.3 КЛАССИФИКАТОР С ГЕО
 # ==========================================
 def classify_semantics_with_api(words_list, yandex_key):
-    # Теперь распаковываем 5 значений
+    # Распаковываем 5 словарей
     PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET = load_lemmatized_dictionaries()
     
     if 'debug_geo_count' not in st.session_state:
@@ -212,19 +212,17 @@ def classify_semantics_with_api(words_list, yandex_key):
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     
-    # Старый хардкод оставляем как запасной вариант
-    DEFAULT_SERVICES = {'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'доставка', 
-                        'услуга', 'обработка', 'изготовление', 'покраска', 'сверление', 'изоляция'}
-    
     DEFAULT_COMMERCIAL = {'цена', 'купить', 'прайс', 'корзина', 'заказ', 'руб', 'наличие', 'склад', 
                           'магазин', 'акция', 'скидка', 'опт', 'розница', 'каталог', 'телефон', 
                           'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия'}
 
-    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set()}
+    # Добавляем категорию 'general'
+    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set(), 'general': set()}
     
     for word in words_list:
         word_lower = word.lower()
         
+        # Размеры и марки стали
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower)
             continue
@@ -232,10 +230,8 @@ def classify_semantics_with_api(words_list, yandex_key):
         if morph:
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
-            pos = p.tag.POS
         else:
             lemma = word_lower
-            pos = 'NOUN'
 
         # 1. ТОВАРЫ
         if lemma in PRODUCTS_SET:
@@ -247,7 +243,7 @@ def classify_semantics_with_api(words_list, yandex_key):
             categories['geo'].add(lemma)
             continue
         
-        # Эвристика для гео (челябинский -> челябинск)
+        # Эвристика для гео
         is_geo_derivative = False
         if len(lemma) > 5: 
             for city in GEO_SET:
@@ -257,8 +253,8 @@ def classify_semantics_with_api(words_list, yandex_key):
                     break
         if is_geo_derivative: continue
 
-        # 3. УСЛУГИ (Сначала проверяем загруженный словарь, потом дефолтный)
-        if lemma in SERVICES_SET or lemma in DEFAULT_SERVICES or lemma.endswith('обработка') or lemma.endswith('изготовление'):
+        # 3. УСЛУГИ
+        if lemma in SERVICES_SET or lemma.endswith('обработка') or lemma.endswith('изготовление'):
             categories['services'].add(lemma)
             continue
 
@@ -267,14 +263,8 @@ def classify_semantics_with_api(words_list, yandex_key):
             categories['commercial'].add(lemma)
             continue
             
-        # 5. ОСТАЛЬНОЕ
-        if pos == 'NOUN': 
-            if len(lemma) > 2:
-                categories['products'].add(lemma)
-        elif pos in ['ADJF', 'ADJS']: 
-            categories['dimensions'].add(lemma)
-        else:
-            categories['commercial'].add(lemma)
+        # 5. ОБЩИЕ (Все, что не попало в словари)
+        categories['general'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
 
@@ -294,6 +284,7 @@ if 'categorized_services' not in st.session_state: st.session_state.categorized_
 if 'categorized_commercial' not in st.session_state: st.session_state.categorized_commercial = []
 if 'categorized_dimensions' not in st.session_state: st.session_state.categorized_dimensions = []
 if 'categorized_geo' not in st.session_state: st.session_state.categorized_geo = []
+if 'categorized_general' not in st.session_state: st.session_state.categorized_general = []
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
 
 if not hasattr(inspect, 'getargspec'):
@@ -970,6 +961,7 @@ with tab_seo:
                 st.session_state.categorized_commercial = categorized['commercial']
                 st.session_state.categorized_geo = categorized['geo']
                 st.session_state.categorized_dimensions = categorized['dimensions']
+                st.session_state.categorized_general = categorized['general']
             st.rerun()
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
@@ -983,6 +975,10 @@ with tab_seo:
             with c3: st.warning(f"💰 Коммерц ({len(st.session_state.categorized_commercial)})"); st.caption(", ".join(st.session_state.categorized_commercial))
             with c4: st.markdown(f"**🌍 Гео ({len(st.session_state.categorized_geo)})**"); st.caption(", ".join(st.session_state.categorized_geo))
             with c5: dims = st.session_state.get('categorized_dimensions', []); st.success(f"📏 Размеры ({len(dims)})"); st.caption(", ".join(dims))
+            with c6: 
+                gen_words = st.session_state.get('categorized_general', [])
+                st.markdown(f"**📂 Общие ({len(gen_words)})**")
+                st.caption(", ".join(gen_words))
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         if high or low:
@@ -1388,6 +1384,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
