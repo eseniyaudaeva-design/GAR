@@ -655,8 +655,23 @@ if 'sidebar_gen_df' not in st.session_state: st.session_state.sidebar_gen_df = N
 if 'sidebar_excel_bytes' not in st.session_state: st.session_state.sidebar_excel_bytes = None
 if 'analysis_results' not in st.session_state: st.session_state.analysis_results = None
 if 'analysis_done' not in st.session_state: st.session_state.analysis_done = False
+if 'ai_generated_df' not in st.session_state: st.session_state.ai_generated_df = None
+if 'ai_excel_bytes' not in st.session_state: st.session_state.ai_excel_bytes = None
+if 'tags_html_result' not in st.session_state: st.session_state.tags_html_result = None
+if 'table_html_result' not in st.session_state: st.session_state.table_html_result = None
 if 'categorized_products' not in st.session_state: st.session_state.categorized_products = []
+if 'categorized_services' not in st.session_state: st.session_state.categorized_services = []
+if 'categorized_commercial' not in st.session_state: st.session_state.categorized_commercial = []
+if 'categorized_dimensions' not in st.session_state: st.session_state.categorized_dimensions = []
+if 'categorized_geo' not in st.session_state: st.session_state.categorized_geo = []
+if 'categorized_general' not in st.session_state: st.session_state.categorized_general = []
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
+
+if not hasattr(inspect, 'getargspec'):
+    def getargspec(func):
+        spec = inspect.getfullargspec(func)
+        return (spec.args, spec.varargs, spec.varkw, spec.defaults)
+    inspect.getargspec = getargspec
 
 # ==========================================
 # ИНТЕРФЕЙС
@@ -1110,3 +1125,4 @@ with tab_gen:
             mime="application/vnd.ms-excel",
             type="primary"
         )
+
