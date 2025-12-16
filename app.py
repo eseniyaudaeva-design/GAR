@@ -16,14 +16,24 @@ import os
 import random
 import streamlit.components.v1 as components
 
+try:
+    import pymorphy2
+    morph = pymorphy2.MorphAnalyzer()
+    USE_NLP = True
+except ImportError:
+    morph = None
+    USE_NLP = False
+
+try:
+    import openai
+except ImportError:
+    openai = None
+
 # ==========================================
-# 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ (Транслит и Спеллер)
+# 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ
 # ==========================================
 
 def transliterate_text(text):
-    """
-    Кириллица -> Латиница (для поиска)
-    """
     mapping = {
         'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
         'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
@@ -39,41 +49,21 @@ def transliterate_text(text):
             result.append(char)
     return "".join(result)
 
-# Попытка импорта openai
-try:
-    import openai
-except ImportError:
-    openai = Non
-
-# ==========================================
-# 0.1 ФУНКЦИЯ УМНОГО НЕЙМИНГА (CYRILLIC) - UPDATED
-# ==========================================
 def force_cyrillic_name_global(slug_text):
-    """
-    Превращает slug (latun-list) в красивое русское название.
-    Исправляет проблему с мягким знаком (сталь, медь, профиль, дюраль).
-    """
     raw = unquote(slug_text).lower()
     raw = raw.replace('.html', '').replace('.php', '')
-    
-    # Если уже кириллица — просто форматируем
     if re.search(r'[а-я]', raw):
         return raw.replace('-', ' ').replace('_', ' ').capitalize()
 
     words = re.split(r'[-_]', raw)
     rus_words = []
     
-    # 1. СЛОВАРЬ ТОЧНЫХ СОВПАДЕНИЙ (Base Dictionary)
-    # Здесь слова, которые всегда пишутся с мягким знаком или имеют сложные корни
     exact_map = {
-        # Металлы и материалы
         'nikel': 'никель', 'stal': 'сталь', 'med': 'медь', 'latun': 'латунь',
         'bronza': 'бронза', 'svinec': 'свинец', 'titan': 'титан', 'tsink': 'цинк',
         'dural': 'дюраль', 'dyural': 'дюраль', 'chugun': 'чугун',
         'alyuminiy': 'алюминий', 'al': 'алюминиевая', 'alyuminievaya': 'алюминиевая',
         'nerzhaveyushchiy': 'нержавеющий', 'nerzhaveyka': 'нержавейка',
-        
-        # Изделия (существительные)
         'profil': 'профиль', 'shveller': 'швеллер', 'ugolok': 'уголок',
         'polosa': 'полоса', 'krug': 'круг', 'kvadrat': 'квадрат',
         'list': 'лист', 'truba': 'труба', 'setka': 'сетка',
@@ -85,24 +75,17 @@ def force_cyrillic_name_global(slug_text):
         'vtulka': 'втулка', 'kabel': 'кабель', 'panel': 'панель',
         'detal': 'деталь', 'set': 'сеть', 'cep': 'цепь', 'svyaz': 'связь',
         'rezba': 'резьба', 'gost': 'ГОСТ',
-        
-        # Прилагательные (сложные случаи)
         'polipropilenovye': 'полипропиленовые', 'truby': 'трубы',
         'ocinkovannaya': 'оцинкованная', 'riflenyy': 'рифленый'
     }
 
     for w in words:
         if not w: continue
-        
-        # Проверка по словарю
         if w in exact_map:
             rus_words.append(exact_map[w])
             continue
         
-        # Обработка окончаний (Suffixes)
         processed_w = w
-        
-        # Прилагательные
         if processed_w.endswith('yy'): processed_w = processed_w[:-2] + 'ый'
         elif processed_w.endswith('iy'): processed_w = processed_w[:-2] + 'ий'
         elif processed_w.endswith('ij'): processed_w = processed_w[:-2] + 'ий'
@@ -111,7 +94,6 @@ def force_cyrillic_name_global(slug_text):
         elif processed_w.endswith('oye'): processed_w = processed_w[:-3] + 'ое'
         elif processed_w.endswith('ye'): processed_w = processed_w[:-2] + 'ые'
 
-        # Транслитерация корня
         replacements = [
             ('shch', 'щ'), ('sch', 'щ'), ('yo', 'ё'), ('zh', 'ж'), ('ch', 'ч'), ('sh', 'ш'), 
             ('yu', 'ю'), ('ya', 'я'), ('kh', 'х'), ('ts', 'ц'), ('ph', 'ф'),
@@ -127,107 +109,172 @@ def force_cyrillic_name_global(slug_text):
         
         rus_words.append(temp_res)
 
-    # Собираем фразу
     draft_phrase = " ".join(rus_words)
+    draft_phrase = draft_phrase.replace('профил', 'профиль').replace('профильн', 'профильн')
+    draft_phrase = draft_phrase.replace('елный', 'ельный').replace('алный', 'альный')
+    draft_phrase = draft_phrase.replace('елная', 'ельная').replace('алная', 'альная')
+    draft_phrase = draft_phrase.replace('сталн', 'стальн').replace('медьн', 'медн')
+    draft_phrase = draft_phrase.replace('йа', 'я').replace('йо', 'ё')
+
+    return draft_phrase.capitalize()
 
 # ==========================================
-# 0.2 НОВЫЙ ЗАГРУЗЧИК СЛОВАРЕЙ (JSON)
+# 0.2 ЗАГРУЗЧИК СЛОВАРЕЙ (JSON + LEMMA)
 # ==========================================
-import json
-import os
-
 @st.cache_data
-def load_custom_dictionaries():
-    """
-    Загружает JSON-словари из папки data/ и возвращает множества (set).
-    Это гарантирует, что слова из файла metal_products.json ВСЕГДА будут товарами.
-    """
-    # Путь к папке data (рядом с файлом скрипта)
+def load_lemmatized_dictionaries():
     base_path = "data"
     
-    # 1. ТОВАРЫ (Белый список)
-    product_set = set()
-    product_path = os.path.join(base_path, "metal_products.json")
-    
-    if os.path.exists(product_path):
+    product_lemmas = set()
+    commercial_lemmas = set()
+    specs_lemmas = set()
+    geo_lemmas = set() 
+
+    # 1. ТОВАРЫ
+    path_prod = os.path.join(base_path, "metal_products.json")
+    if os.path.exists(path_prod):
         try:
-            with open(product_path, 'r', encoding='utf-8') as f:
+            with open(path_prod, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # Если JSON разбит по категориям (словарь)
+                all_raw_words = []
                 if isinstance(data, dict):
                     for cat_list in data.values():
-                        # Добавляем каждое слово (и приводим к нижнему регистру на всякий случай)
-                        for word in cat_list:
-                            product_set.add(word.lower())
-                # Если JSON это просто список
+                        all_raw_words.extend(cat_list)
                 elif isinstance(data, list):
-                    product_set.update([w.lower() for w in data])
+                    all_raw_words = data
+                
+                for phrase in all_raw_words:
+                    words = str(phrase).lower().split() 
+                    for w in words:
+                        clean_w = re.sub(r'[^a-zа-яё0-9-]', '', w)
+                        if not clean_w: continue
+                        if morph: lemma = morph.parse(clean_w)[0].normal_form
+                        else: lemma = clean_w
+                        product_lemmas.add(lemma)
         except Exception as e:
-            st.error(f"Ошибка чтения metal_products.json: {e}")
-    
-    # 2. КОММЕРЦИЯ (Черный список для товаров)
-    commercial_set = set()
-    comm_path = os.path.join(base_path, "commercial_triggers.json")
-    if os.path.exists(comm_path):
+            st.error(f"Ошибка в metal_products.json: {e}")
+
+    # 2. КОММЕРЦИЯ
+    path_comm = os.path.join(base_path, "commercial_triggers.json")
+    if os.path.exists(path_comm):
         try:
-            with open(comm_path, 'r', encoding='utf-8') as f:
-                commercial_set.update(json.load(f))
+            with open(path_comm, 'r', encoding='utf-8') as f:
+                raw_comm = json.load(f)
+                for w in raw_comm:
+                    if morph: commercial_lemmas.add(morph.parse(w.lower())[0].normal_form)
+                    else: commercial_lemmas.add(w.lower())
         except: pass
 
-    # 3. ТЕХ. СПЕЦИФИКАЦИИ (Считаем характеристиками)
-    specs_set = set()
-    specs_path = os.path.join(base_path, "tech_specs.json")
-    if os.path.exists(specs_path):
+    # 3. ГЕО
+    path_geo = os.path.join(base_path, "geo_locations.json")
+    if os.path.exists(path_geo):
         try:
-            with open(specs_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    for cat_list in data.values():
-                        specs_set.update(cat_list)
-                elif isinstance(data, list):
-                    specs_set.update(data)
-        except: pass
+            with open(path_geo, 'r', encoding='utf-8') as f:
+                raw_geo = json.load(f)
+                for w in raw_geo:
+                    if morph: geo_lemmas.add(morph.parse(w.lower())[0].normal_form)
+                    else: geo_lemmas.add(w.lower())
+        except Exception as e:
+            st.error(f"Ошибка в geo_locations.json: {e}")
 
-    return product_set, commercial_set, specs_set
+    return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas
+
 # ==========================================
-# 0.5 ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (SESSION STATE)
+# 0.3 КЛАССИФИКАТОР С ГЕО
 # ==========================================
-if 'sidebar_gen_df' not in st.session_state:
-    st.session_state.sidebar_gen_df = None
-if 'sidebar_excel_bytes' not in st.session_state:
-    st.session_state.sidebar_excel_bytes = None
+def classify_semantics_with_api(words_list, yandex_key):
+    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET = load_lemmatized_dictionaries()
     
-if 'analysis_results' not in st.session_state:
-    st.session_state.analysis_results = None
-if 'analysis_done' not in st.session_state:
-    st.session_state.analysis_done = False
+    if 'debug_geo_count' not in st.session_state:
+        st.session_state.debug_geo_count = len(GEO_SET)
+    st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🌍 Города: {len(GEO_SET)}")
 
-if 'ai_generated_df' not in st.session_state:
-    st.session_state.ai_generated_df = None
-if 'ai_excel_bytes' not in st.session_state:
-    st.session_state.ai_excel_bytes = None
+    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
+    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
+    
+    DEFAULT_SERVICES = {'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'доставка', 
+                        'услуга', 'обработка', 'изготовление', 'покраска', 'сверление', 'изоляция'}
+    
+    DEFAULT_COMMERCIAL = {'цена', 'купить', 'прайс', 'корзина', 'заказ', 'руб', 'наличие', 'склад', 
+                          'магазин', 'акция', 'скидка', 'опт', 'розница', 'каталог', 'телефон', 
+                          'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия'}
 
-if 'tags_html_result' not in st.session_state:
-    st.session_state.tags_html_result = None
-if 'table_html_result' not in st.session_state:
-    st.session_state.table_html_result = None
+    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set()}
+    api_candidates = []
 
-if 'categorized_products' not in st.session_state:
-    st.session_state.categorized_products = []
-if 'categorized_services' not in st.session_state:
-    st.session_state.categorized_services = []
-if 'categorized_commercial' not in st.session_state:
-    st.session_state.categorized_commercial = []
-if 'categorized_dimensions' not in st.session_state:
-    st.session_state.categorized_dimensions = []
+    for word in words_list:
+        word_lower = word.lower()
+        
+        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
+            categories['dimensions'].add(word_lower)
+            continue
+        
+        if morph:
+            p = morph.parse(word_lower)[0]
+            lemma = p.normal_form
+            pos = p.tag.POS
+        else:
+            lemma = word_lower
+            pos = 'NOUN'
 
-if 'categorized_geo' not in st.session_state:    # <--- НОВОЕ
-    st.session_state.categorized_geo = []        # <--- НОВОЕ
-if 'categorized_dimensions' not in st.session_state:
-    st.session_state.categorized_dimensions = []
+        # 1. ТОВАРЫ
+        if lemma in PRODUCTS_SET:
+            categories['products'].add(lemma)
+            continue 
 
-if 'persistent_urls' not in st.session_state:
-    st.session_state['persistent_urls'] = ""
+        # 2. ГЕО
+        if lemma in GEO_SET:
+            categories['geo'].add(lemma)
+            continue
+        
+        # Эвристика для гео (челябинский -> челябинск)
+        is_geo_derivative = False
+        if len(lemma) > 5: 
+            for city in GEO_SET:
+                if len(city) > 4 and lemma.startswith(city[:-1]): 
+                    categories['geo'].add(lemma)
+                    is_geo_derivative = True
+                    break
+        if is_geo_derivative: continue
+
+        # 3. КОММЕРЦИЯ
+        if lemma in COMM_SET or lemma in DEFAULT_COMMERCIAL:
+            categories['commercial'].add(lemma)
+            continue
+            
+        # 4. УСЛУГИ
+        if lemma in DEFAULT_SERVICES or lemma.endswith('обработка') or lemma.endswith('изготовление'):
+            categories['services'].add(lemma)
+            continue
+
+        # 5. ОСТАЛЬНОЕ
+        if pos == 'NOUN': 
+            if len(lemma) > 2:
+                categories['products'].add(lemma)
+        elif pos in ['ADJF', 'ADJS']: 
+            categories['dimensions'].add(lemma)
+        else:
+            categories['commercial'].add(lemma)
+
+    return {k: sorted(list(v)) for k, v in categories.items()}
+
+# ==========================================
+# 0.5 STATE INIT
+# ==========================================
+if 'sidebar_gen_df' not in st.session_state: st.session_state.sidebar_gen_df = None
+if 'sidebar_excel_bytes' not in st.session_state: st.session_state.sidebar_excel_bytes = None
+if 'analysis_results' not in st.session_state: st.session_state.analysis_results = None
+if 'analysis_done' not in st.session_state: st.session_state.analysis_done = False
+if 'ai_generated_df' not in st.session_state: st.session_state.ai_generated_df = None
+if 'ai_excel_bytes' not in st.session_state: st.session_state.ai_excel_bytes = None
+if 'tags_html_result' not in st.session_state: st.session_state.tags_html_result = None
+if 'table_html_result' not in st.session_state: st.session_state.table_html_result = None
+if 'categorized_products' not in st.session_state: st.session_state.categorized_products = []
+if 'categorized_services' not in st.session_state: st.session_state.categorized_services = []
+if 'categorized_commercial' not in st.session_state: st.session_state.categorized_commercial = []
+if 'categorized_dimensions' not in st.session_state: st.session_state.categorized_dimensions = []
+if 'categorized_geo' not in st.session_state: st.session_state.categorized_geo = []
+if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
 
 if not hasattr(inspect, 'getargspec'):
     def getargspec(func):
@@ -236,7 +283,7 @@ if not hasattr(inspect, 'getargspec'):
     inspect.getargspec = getargspec
 
 # ==========================================
-# 1. КОНФИГУРАЦИЯ СТРАНИЦЫ И СПИСКИ
+# CONFIG
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
 
@@ -253,20 +300,10 @@ GARBAGE_LATIN_STOPLIST = {
     'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
 }
 
-# ==========================================
-# 2. АВТОРИЗАЦИЯ
-# ==========================================
 def check_password():
     if st.session_state.get("authenticated"):
         return True
-
-    st.markdown("""
-        <style>
-        .main { display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .auth-logo-box { text-align: center; margin-bottom: 1rem; padding-top: 0; }
-        </style>
-    """, unsafe_allow_html=True)
-
+    st.markdown("""<style>.main { display: flex; flex-direction: column; justify-content: center; align-items: center; } .auth-logo-box { text-align: center; margin-bottom: 1rem; padding-top: 0; }</style>""", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown('<div class="auth-logo-box"><h3>Вход в систему</h3></div>', unsafe_allow_html=True)
@@ -282,9 +319,6 @@ def check_password():
 if not check_password():
     st.stop()
 
-# ==========================================
-# 3. ПОЛУЧЕНИЕ API КЛЮЧЕЙ
-# ==========================================
 if "arsenkin_token" in st.session_state:
     ARSENKIN_TOKEN = st.session_state.arsenkin_token
 else:
@@ -296,7 +330,6 @@ if "yandex_dict_key" in st.session_state:
 else:
     try: YANDEX_DICT_KEY = st.secrets["api"]["yandex_dict_key"]
     except (FileNotFoundError, KeyError): YANDEX_DICT_KEY = None
-
 
 REGION_MAP = {
     "Москва": {"ya": 213, "go": 1011969},
@@ -314,21 +347,10 @@ REGION_MAP = {
     "Алматы (KZ)": {"ya": 162, "go": 1014601}
 }
 
-DEFAULT_EXCLUDE_DOMAINS = [
-    "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com",
-    "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru",
-    "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru",
-    "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru",
-    "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru",
-    "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru",
-    "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by",
-    "market.yandex.ru", "youtube.com", "gosuslugi.ru", "dzen.ru",
-    "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com"
-]
+DEFAULT_EXCLUDE_DOMAINS = ["yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com"]
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
 
-# Цвета и стили
 PRIMARY_COLOR = "#277EFF"
 PRIMARY_DARK = "#1E63C4"
 TEXT_COLOR = "#3D4858"
@@ -370,17 +392,8 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 4. ЛОГИКА (БЭКЕНД)
+# PARSING & METRICS
 # ==========================================
-
-try:
-    import pymorphy2
-    morph = pymorphy2.MorphAnalyzer()
-    USE_NLP = True
-except Exception as e:
-    morph = None
-    USE_NLP = False
-    st.sidebar.error(f"Ошибка загрузки NLP: {e}")
 
 def get_yandex_dict_info(text, api_key):
     if not api_key: return {'lemma': text, 'pos': 'unknown'}
@@ -395,177 +408,6 @@ def get_yandex_dict_info(text, api_key):
                 return {'lemma': first_def.get('text', text), 'pos': first_def.get('pos', 'unknown')}
     except: pass
     return {'lemma': text, 'pos': 'unknown'}
-
-# ==========================================
-# НОВЫЙ БЛОК: ЗАГРУЗКА И ЛЕММАТИЗАЦИЯ JSON
-# ==========================================
-import os
-import json
-import pymorphy2
-
-# Инициализируем лемматизатор глобально
-try:
-    morph = pymorphy2.MorphAnalyzer()
-except:
-    morph = None
-
-@st.cache_data
-def load_lemmatized_dictionaries():
-    """
-    1. Загружает JSON.
-    2. Разбивает фразы на слова.
-    3. ЛЕММАТИЗИРУЕТ каждое слово.
-    4. Сохраняет в память.
-    """
-    base_path = "data"
-    
-    product_lemmas = set()
-    commercial_lemmas = set()
-    specs_lemmas = set()
-    geo_lemmas = set() # <--- НОВОЕ МНОЖЕСТВО
-
-    # --- 1. ТОВАРЫ (metal_products.json) ---
-    path_prod = os.path.join(base_path, "metal_products.json")
-    if os.path.exists(path_prod):
-        try:
-            with open(path_prod, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                all_raw_words = []
-                if isinstance(data, dict):
-                    for cat_list in data.values():
-                        all_raw_words.extend(cat_list)
-                elif isinstance(data, list):
-                    all_raw_words = data
-                
-                for phrase in all_raw_words:
-                    words = str(phrase).lower().split() 
-                    for w in words:
-                        clean_w = re.sub(r'[^a-zа-яё0-9-]', '', w)
-                        if not clean_w: continue
-                        if morph: lemma = morph.parse(clean_w)[0].normal_form
-                        else: lemma = clean_w
-                        product_lemmas.add(lemma)
-        except Exception as e:
-            st.error(f"Ошибка в metal_products.json: {e}")
-    else:
-        st.sidebar.error("⚠️ Файл data/metal_products.json не найден!")
-
-    # --- 2. КОММЕРЦИЯ ---
-    path_comm = os.path.join(base_path, "commercial_triggers.json")
-    if os.path.exists(path_comm):
-        try:
-            with open(path_comm, 'r', encoding='utf-8') as f:
-                raw_comm = json.load(f)
-                for w in raw_comm:
-                    if morph: commercial_lemmas.add(morph.parse(w.lower())[0].normal_form)
-                    else: commercial_lemmas.add(w.lower())
-        except: pass
-
-    # --- 3. ГЕО (geo_locations.json) --- <--- НОВЫЙ БЛОК
-    path_geo = os.path.join(base_path, "geo_locations.json")
-    if os.path.exists(path_geo):
-        try:
-            with open(path_geo, 'r', encoding='utf-8') as f:
-                raw_geo = json.load(f)
-                for w in raw_geo:
-                    if morph: geo_lemmas.add(morph.parse(w.lower())[0].normal_form)
-                    else: geo_lemmas.add(w.lower())
-        except Exception as e:
-            st.error(f"Ошибка в geo_locations.json: {e}")
-
-    return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas # <--- ВОЗВРАЩАЕМ 4-м ПАРАМЕТРОМ
-
-# ==========================================
-# НОВАЯ ФУНКЦИЯ КЛАССИФИКАЦИИ
-# ==========================================
-def classify_semantics_with_api(words_list, yandex_key):
-    # 1. Загрузка баз
-    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET = load_lemmatized_dictionaries()
-    
-    # Отладка в сайдбар (чтобы вы видели, загрузились ли города)
-    if 'debug_geo_count' not in st.session_state:
-        st.session_state.debug_geo_count = len(GEO_SET)
-    st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🌍 Города: {len(GEO_SET)}")
-
-    # 2. Паттерны
-    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
-    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
-    
-    DEFAULT_SERVICES = {'резка', 'гибка', 'сварка', 'оцинковка', 'рубка', 'монтаж', 'доставка', 
-                        'услуга', 'обработка', 'изготовление', 'покраска', 'сверление', 'изоляция'}
-    
-    DEFAULT_COMMERCIAL = {'цена', 'купить', 'прайс', 'корзина', 'заказ', 'руб', 'наличие', 'склад', 
-                          'магазин', 'акция', 'скидка', 'опт', 'розница', 'каталог', 'телефон', 
-                          'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия'}
-
-    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set()}
-    api_candidates = []
-
-    for word in words_list:
-        word_lower = word.lower()
-        
-        # 1. Цифры/Размеры
-        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
-            categories['dimensions'].add(word_lower)
-            continue
-        
-        # 2. Лемматизация
-        if morph:
-            p = morph.parse(word_lower)[0]
-            lemma = p.normal_form
-            pos = p.tag.POS
-        else:
-            lemma = word_lower
-            pos = 'NOUN'
-
-        # --- ПРИОРИТЕТ 1: ТОВАРЫ ---
-        if lemma in PRODUCTS_SET:
-            categories['products'].add(lemma)
-            continue 
-
-        # --- ПРИОРИТЕТ 2: ГЕО ---
-        # а) Точное совпадение (Москва == Москва)
-        if lemma in GEO_SET:
-            categories['geo'].add(lemma)
-            continue
-        
-        # б) Умный поиск прилагательных (Челябинский -> Челябинск)
-        # Если слово длинное и начинается с названия города (без последних букв)
-        is_geo_derivative = False
-        if len(lemma) > 5: # Не проверяем короткие слова типа "Уфа" так
-            root_search = lemma[:5] # Берем первые 5 букв слова (напр. "челяб")
-            # Это простая эвристика, но быстрая. 
-            # Для точности лучше перебрать GEO_SET
-            for city in GEO_SET:
-                # Если город длинный (Новосибирск) и лемма начинается с его основы
-                if len(city) > 4 and lemma.startswith(city[:-1]): 
-                    categories['geo'].add(lemma)
-                    is_geo_derivative = True
-                    break
-        if is_geo_derivative: continue
-
-        # --- ПРИОРИТЕТ 3: КОММЕРЦИЯ ---
-        if lemma in COMM_SET or lemma in DEFAULT_COMMERCIAL:
-            categories['commercial'].add(lemma)
-            continue
-            
-        # --- ПРИОРИТЕТ 4: УСЛУГИ ---
-        if lemma in DEFAULT_SERVICES or lemma.endswith('обработка') or lemma.endswith('изготовление'):
-            categories['services'].add(lemma)
-            continue
-
-        # --- ЭВРИСТИКА ДЛЯ ОСТАЛЬНОГО ---
-        if pos == 'NOUN': 
-            if len(lemma) > 2:
-                categories['products'].add(lemma)
-        elif pos in ['ADJF', 'ADJS']: 
-            # Прилагательные, которые не нашлись в Geo и Товарах,
-            # но прошли фильтр Коммерции. Скорее всего характеристики.
-            categories['dimensions'].add(lemma)
-        else:
-            categories['commercial'].add(lemma)
-
-    return {k: sorted(list(v)) for k, v in categories.items()}
 
 def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
@@ -823,9 +665,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     return { "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid), "relevance_top": pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True), "my_score": {"width": my_width_score_final, "depth": my_depth_score_final}, "missing_semantics_high": missing_semantics_high, "missing_semantics_low": missing_semantics_low }
 
-# ==========================================
-# 5. ФУНКЦИЯ ОТОБРАЖЕНИЯ (PAGINATION)
-# ==========================================
 def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
     if df.empty: st.info(f"{title_text}: Нет данных."); return
     col_t1, col_t2 = st.columns([7, 3])
@@ -916,7 +755,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     st.markdown("---")
 
 # ==========================================
-# 6. ЛОГИКА ДЛЯ PERPLEXITY (AI GEN)
+# PERPLEXITY GEN
 # ==========================================
 STATIC_DATA_GEN = {
     'IP_PROP4817': "Условия поставки",
@@ -986,17 +825,23 @@ def generate_html_table(client, user_prompt, seo_keywords_data=None):
     except Exception as e: return f"Error: {e}"
 
 # ==========================================
-# 7. ИНТЕРФЕЙС (TABS)
+# 7. UI TABS
 # ==========================================
 tab_seo, tab_ai, tab_tags, tab_tables, tab_promo, tab_sidebar = st.tabs(["📊 SEO Анализ", "🤖 AI Генерация", "🏷️ Генератор тегов", "🧩 Таблицы", "🔥 Генератор акций", "📑 Боковое меню"])
 
 # ------------------------------------------
-# Вкладка 1: SEO
+# TAB 1: SEO
 # ------------------------------------------
 with tab_seo:
     col_main, col_sidebar = st.columns([65, 35])
     with col_main:
         st.title("SEO Анализатор")
+        
+        # Сброс кэша для словарей
+        if st.button("🧹 Обновить словари (Кэш)", key="clear_cache_btn"):
+            st.cache_data.clear()
+            st.rerun()
+
         my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
         if my_input_type == "Релевантная страница на вашем сайте":
             st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input")
@@ -1008,8 +853,8 @@ with tab_seo:
         st.markdown("### Поиск конкурентов")
         source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
         source_type = "API" if "API" in source_type_new else "Ручной список"
-if source_type == "Ручной список":
-            # Просто берем значение из виджета и сразу сохраняем в постоянную переменную
+        
+        if source_type == "Ручной список":
             manual_val = st.text_area(
                 "Список ссылок (каждая с новой строки)", 
                 height=200, 
@@ -1017,6 +862,7 @@ if source_type == "Ручной список":
                 value=st.session_state.get('persistent_urls', "")
             )
             st.session_state['persistent_urls'] = manual_val
+
         st.markdown("### Списки (Stop / Exclude)")
         st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=100, key="settings_excludes")
         st.text_area("Стоп-слова", DEFAULT_STOPS, height=100, key="settings_stops")
@@ -1096,14 +942,13 @@ if source_type == "Ручной список":
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             if not words_to_check:
                 st.session_state.categorized_products = []; st.session_state.categorized_services = []; st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
-# ... (внутри if st.session_state.get('start_analysis_flag'): )
             else:
-                with st.spinner("Уточнение семантики через Яндекс Словарь..."):
+                with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
-                st.session_state.categorized_geo = categorized['geo']  # <--- НОВОЕ
+                st.session_state.categorized_geo = categorized['geo']
                 st.session_state.categorized_dimensions = categorized['dimensions']
             st.rerun()
 
@@ -1111,27 +956,13 @@ if source_type == "Ручной список":
         results = st.session_state.analysis_results
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
-        
         with st.expander("🛒 Результат группировки слов", expanded=True):
-            # МЕНЯЕМ КОЛИЧЕСТВО КОЛОНОК НА 5
             c1, c2, c3, c4, c5 = st.columns(5)
-            
-            with c1: 
-                st.info(f"🧱 Товары ({len(st.session_state.categorized_products)})")
-                st.caption(", ".join(st.session_state.categorized_products))
-            with c2: 
-                st.error(f"🛠️ Услуги ({len(st.session_state.categorized_services)})")
-                st.caption(", ".join(st.session_state.categorized_services))
-            with c3: 
-                st.warning(f"💰 Коммерц ({len(st.session_state.categorized_commercial)})")
-                st.caption(", ".join(st.session_state.categorized_commercial))
-            with c4: 
-                st.markdown(f":earth_asia: **Гео** ({len(st.session_state.categorized_geo)})")
-                st.caption(", ".join(st.session_state.categorized_geo))
-            with c5: 
-                dims = st.session_state.get('categorized_dimensions', [])
-                st.success(f"📏 Размеры ({len(dims)})")
-                st.caption(", ".join(dims))
+            with c1: st.info(f"🧱 Товары ({len(st.session_state.categorized_products)})"); st.caption(", ".join(st.session_state.categorized_products))
+            with c2: st.error(f"🛠️ Услуги ({len(st.session_state.categorized_services)})"); st.caption(", ".join(st.session_state.categorized_services))
+            with c3: st.warning(f"💰 Коммерц ({len(st.session_state.categorized_commercial)})"); st.caption(", ".join(st.session_state.categorized_commercial))
+            with c4: st.markdown(f"**🌍 Гео ({len(st.session_state.categorized_geo)})**"); st.caption(", ".join(st.session_state.categorized_geo))
+            with c5: dims = st.session_state.get('categorized_dimensions', []); st.success(f"📏 Размеры ({len(dims)})"); st.caption(", ".join(dims))
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         if high or low:
@@ -1143,7 +974,7 @@ if source_type == "Ручной список":
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
-# Вкладка 2: AI
+# TAB 2: AI
 # ------------------------------------------
 with tab_ai:
     st.title("AI Генератор (Perplexity)")
@@ -1174,11 +1005,10 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# Вкладка 3: ТЕГИ (V12)
+# TAB 3: TAGS
 # ------------------------------------------
 with tab_tags:
     st.title("🏷️ Генератор плитки тегов")
-
     col_t1, col_t2 = st.columns([1, 1])
     with col_t1:
         st.markdown("##### 🔗 Источник")
@@ -1245,64 +1075,42 @@ with tab_tags:
         st.download_button(label="📥 Скачать Excel", data=buffer.getvalue(), file_name="tags_tiles_smart.xlsx")
 
 # ------------------------------------------
-# Вкладка 4: ТАБЛИЦЫ (Smart V3.1 - No Citations)
+# TAB 4: TABLES
 # ------------------------------------------
 with tab_tables:
     st.header("🧩 Генератор HTML таблиц (Smart Style)")
     st.caption("Автоматически определяет товар по URL категории + Тегу. Генерирует таблицы с жестким стилем (черные рамки). Удаляет сноски [1].")
-
-    # -- Инициализация состояния --
-    if 'tables_generated_df' not in st.session_state:
-        st.session_state.tables_generated_df = None
-    if 'tables_excel_data' not in st.session_state:
-        st.session_state.tables_excel_data = None
-
-    # -- Настройки --
+    if 'tables_generated_df' not in st.session_state: st.session_state.tables_generated_df = None
+    if 'tables_excel_data' not in st.session_state: st.session_state.tables_excel_data = None
     col_tbl_1, col_tbl_2 = st.columns([2, 1])
     with col_tbl_1:
         pplx_key_tbl = st.text_input("Perplexity API Key", value="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", type="password", key="pplx_key_tbl_v3")
         parent_cat_url = st.text_input("URL Категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/nikel/")
-    
     with col_tbl_2:
         num_tables = st.selectbox("Количество таблиц на страницу", options=[1, 2, 3, 4, 5], index=1, key="num_tables_select_v3")
-        
-    # -- Темы таблиц --
     if num_tables > 0:
         st.markdown(f"### 📝 Темы таблиц")
         st.caption("Нейросеть сама поймет, о каком товаре речь. Здесь укажите только название блока (например: 'Характеристики').")
-        
         table_prompts = []
         defaults = ["Характеристики", "Размеры и вес", "Химический состав", "Условия поставки", "Применение"]
-        
         for i in range(num_tables):
             def_val = defaults[i] if i < len(defaults) else f"Таблица {i+1}"
             t_title = st.text_input(f"Заголовок {i+1}", value=def_val, key=f"tbl_title_v3_{i}")
             table_prompts.append(t_title)
 
     st.markdown("---")
-
-    # -- Логика генерации --
     if st.button("🚀 Запустить генерацию", key="btn_gen_tbl_smart", disabled=(not pplx_key_tbl or not parent_cat_url)):
-        if not openai:
-            st.error("Библиотека OpenAI не найдена.")
-            st.stop()
-        
+        if not openai: st.error("Библиотека OpenAI не найдена."); st.stop()
         client = openai.OpenAI(api_key=pplx_key_tbl, base_url="https://api.perplexity.ai")
         status_box = st.status("⚙️ Анализ категории...", expanded=True)
-
-        # 1. Определение родительского названия из URL
         try:
             path = urlparse(parent_cat_url).path.strip('/')
             slug = path.split('/')[-1]
             decoded_slug = unquote(slug)
             parent_name = decoded_slug.replace('-', ' ').replace('_', ' ').capitalize()
             if not parent_name: parent_name = "Товар"
-        except:
-            parent_name = "Товар"
-        
+        except: parent_name = "Товар"
         status_box.write(f"🧠 Определена категория товара: **{parent_name}**")
-        
-        # 2. Парсинг тегов
         tags_found = []
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
@@ -1318,194 +1126,90 @@ with tab_tables:
                         if href and name:
                             full_url = urljoin(parent_cat_url, href)
                             tags_found.append({'name': name, 'url': full_url})
-            else:
-                status_box.error(f"Ошибка доступа: {r.status_code}")
-                st.stop()
-        except Exception as e:
-            status_box.error(f"Ошибка парсинга: {e}")
-            st.stop()
+            else: status_box.error(f"Ошибка доступа: {r.status_code}"); st.stop()
+        except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
 
-        if not tags_found:
-            status_box.error("Теги не найдены (проверьте .popular-tags-inner)")
-            st.stop()
-            
+        if not tags_found: status_box.error("Теги не найдены (проверьте .popular-tags-inner)"); st.stop()
         status_box.write(f"✅ Найдено тегов: {len(tags_found)}")
         status_box.write("🤖 Генерация таблиц (Perplexity)...")
-
-        # 3. Генерация
         results_rows = []
         progress_bar = st.progress(0)
         total_steps = len(tags_found)
-        
-        # Инструкция: Стиль + Запрет сносок
-        style_instruction = """
-        STRICT RULES:
-        1. Create a <table> with style="border-collapse: collapse; width: 100%; border: 2px solid black;"
-        2. Every <th> and <td> must have style="border: 2px solid black; padding: 5px;"
-        3. Do NOT use <style> tags or classes. ONLY inline styles.
-        4. Do NOT include citation markers like [1], [2] in the text.
-        5. Output ONLY the HTML code.
-        """
-        
+        style_instruction = """STRICT RULES: 1. Create a <table> with style="border-collapse: collapse; width: 100%; border: 2px solid black;" 2. Every <th> and <td> must have style="border: 2px solid black; padding: 5px;" 3. Do NOT use <style> tags or classes. ONLY inline styles. 4. Do NOT include citation markers like [1], [2] in the text. 5. Output ONLY the HTML code."""
         for idx, tag in enumerate(tags_found):
-            row_data = {
-                'Tag Name': tag['name'],
-                'Tag URL': tag['url']
-            }
-            
+            row_data = {'Tag Name': tag['name'], 'Tag URL': tag['url']}
             full_product_name = f"{parent_name} {tag['name']}"
-            
             for t_i, t_topic in enumerate(table_prompts):
                 system_prompt = f"You are a strict HTML generator. {style_instruction}"
-                user_prompt = f"""
-                Task: Create a technical HTML table.
-                Product: "{full_product_name}".
-                Table Topic: "{t_topic}".
-                Content: Generate realistic technical data (dimensions, grades, properties) relevant to '{full_product_name}' and the topic '{t_topic}'.
-                """
-                
+                user_prompt = f"""Task: Create a technical HTML table. Product: "{full_product_name}". Table Topic: "{t_topic}". Content: Generate realistic technical data (dimensions, grades, properties) relevant to '{full_product_name}' and the topic '{t_topic}'."""
                 try:
-                    response = client.chat.completions.create(
-                        model="sonar-pro",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        temperature=0.5
-                    )
+                    response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}], temperature=0.5)
                     content = response.choices[0].message.content
-                    
-                    # === ЗАЩИТА ОТ СНОСОК ===
-                    # Удаляем конструкции вида [1], [10], [1][2]
                     content = re.sub(r'\[\d+\]', '', content)
-                    
                     clean_html = content.replace("```html", "").replace("```", "").strip()
                     row_data[f'Table_{t_i+1}_HTML'] = clean_html
-                except Exception as e:
-                    row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
-            
+                except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
             results_rows.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
-        
         status_box.update(label="✅ Готово!", state="complete", expanded=False)
-        
-        # 4. Сохранение
         df_final = pd.DataFrame(results_rows)
         st.session_state.tables_generated_df = df_final
         buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df_final.to_excel(writer, index=False)
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_final.to_excel(writer, index=False)
         st.session_state.tables_excel_data = buffer.getvalue()
         st.rerun()
 
-    # -- Результаты --
     if st.session_state.tables_generated_df is not None:
         st.success(f"Сгенерировано таблиц для {len(st.session_state.tables_generated_df)} товаров.")
-        st.download_button(
-            label="📥 Скачать Excel",
-            data=st.session_state.tables_excel_data,
-            file_name="smart_tables.xlsx",
-            mime="application/vnd.ms-excel",
-            key="btn_down_tbl_smart"
-        )
+        st.download_button(label="📥 Скачать Excel", data=st.session_state.tables_excel_data, file_name="smart_tables.xlsx", mime="application/vnd.ms-excel", key="btn_down_tbl_smart")
         st.dataframe(st.session_state.tables_generated_df.head(), use_container_width=True)
-        
         with st.expander("👁️ Предпросмотр первой таблицы (без сносок)", expanded=False):
             first_html = st.session_state.tables_generated_df.iloc[0].get('Table_1_HTML', '')
             st.markdown(first_html, unsafe_allow_html=True)
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# Вкладка 5: ГЕНЕРАТОР АКЦИИ (DB LOOKUP - FIXED)
+# TAB 5: PROMO
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока Акции (База Excel)")
-    
-    st.info("""
-    **Как это работает:**
-    1. **База (Excel):** Загружаете файл, где в 1-й колонке ссылка на товар, во 2-й — ссылка на картинку.
-    2. **Список (Вручную):** Вставляете в большое поле список ссылок, которые нужно показать.
-    3. Скрипт берет вашу ссылку -> ищет её в Excel -> забирает оттуда картинку.
-    """)
-
-    # -- Инициализация состояния --
-    if 'promo_generated_df' not in st.session_state:
-        st.session_state.promo_generated_df = None
-    if 'promo_excel_data' not in st.session_state:
-        st.session_state.promo_excel_data = None
-    if 'promo_html_preview' not in st.session_state:
-        st.session_state.promo_html_preview = None
-    
-    # 1. Настройки генерации (в две колонки, чтобы было компактно сверху)
+    if 'promo_generated_df' not in st.session_state: st.session_state.promo_generated_df = None
+    if 'promo_excel_data' not in st.session_state: st.session_state.promo_excel_data = None
+    if 'promo_html_preview' not in st.session_state: st.session_state.promo_html_preview = None
     c1, c2 = st.columns([1, 1])
-    with c1:
-        parent_cat_url = st.text_input("URL Родительской категории (откуда берем теги для файла)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db")
-    with c2:
-        promo_title = st.text_input("Заголовок блока (h3)", value="Рекомендуем посмотреть", key="promo_title_input_db")
-        
+    with c1: parent_cat_url = st.text_input("URL Родительской категории (откуда берем теги для файла)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db")
+    with c2: promo_title = st.text_input("Заголовок блока (h3)", value="Рекомендуем посмотреть", key="promo_title_input_db")
     st.markdown("---")
-    
-    # 2. Загрузчик базы (Excel)
     st.markdown("#### 1. Загрузите Базу картинок (Excel)")
-    st.caption("Формат: Колонка A = Ссылка товара, Колонка B = Ссылка на картинку")
     uploaded_db = st.file_uploader("Выберите файл .xlsx", type=["xlsx", "xls"], key="promo_db_uploader")
-
-    # 3. Поле ввода ссылок (ТО САМОЕ ПОЛЕ)
     st.markdown("#### 2. Вставьте список ссылок для блока Акции")
-    st.caption("Именно для этих ссылок скрипт будет искать картинки в загруженном Excel файле.")
     promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, placeholder="https://stalmetural.ru/catalog/tovar-1/\nhttps://stalmetural.ru/catalog/tovar-2/", key="promo_links_area_db")
 
-    # --- ЛОГИКА ---
     if st.button("🛠️ Найти картинки и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_db"):
-        # ПРОВЕРКИ
-        if not parent_cat_url: st.error("Не заполнен URL Родительской категории!"); st.stop()
-        if not uploaded_db: st.error("Не загружен Excel файл с базой!"); st.stop()
-        if not promo_links_text: st.error("Не вставлен список ссылок!"); st.stop()
-            
+        if not parent_cat_url or not uploaded_db or not promo_links_text: st.error("Заполните все поля!"); st.stop()
         status = st.status("⚙️ Обработка базы данных...", expanded=True)
-        
-        # 1. ЧТЕНИЕ БАЗЫ КАРТИНОК
         try:
             df_db = pd.read_excel(uploaded_db)
-            if df_db.shape[1] < 2:
-                status.error("В Excel файле должно быть минимум 2 колонки!")
-                st.stop()
-            
-            # Создаем словарь {URL: IMG_URL}
             img_db = {}
             for index, row in df_db.iterrows():
                 raw_url = str(row.iloc[0]).strip()
                 img_val = str(row.iloc[1]).strip()
-                
                 if raw_url and raw_url.lower() != 'nan':
                     key_url = raw_url.rstrip('/') 
                     img_db[key_url] = img_val
-            
             status.write(f"✅ База проиндексирована: {len(img_db)} товаров с картинками.")
-            
-        except Exception as e:
-            status.error(f"Ошибка чтения Excel: {e}"); st.stop()
+        except Exception as e: status.error(f"Ошибка чтения Excel: {e}"); st.stop()
 
-        # 2. ГЕНЕРАЦИЯ HTML
         status.write("🔨 Подбор картинок и сборка HTML...")
-        
         target_links = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
         items_html = ""
         found_count = 0
-        
         for link in target_links:
-            # Поиск
             search_key = link.rstrip('/') 
             img_src = img_db.get(search_key, "") 
-            
             if img_src: found_count += 1
-            else: print(f"Картинка не найдена для: {link}")
-            
-            # Нейминг
             slug = search_key.split('/')[-1]
             name = force_cyrillic_name_global(slug)
-            
-            # HTML Item
             items_html += f"""            <div class="gallery-item">
                 <h3><a href="{link}" target="_blank">{name}</a></h3>
                 <figure>
@@ -1519,35 +1223,10 @@ with tab_promo:
                     </a>
                 </figure>
             </div>\n"""
-            
         status.write(f"✅ Картинки найдены для {found_count} из {len(target_links)} ссылок.")
-
-        # CSS
-        css_styles = """<style>
-.outer-full-width-section { padding: 25px 0; width: 100%; }
-.gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }
-h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }
-.five-col-gallery { display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }
-.gallery-item { flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }
-.gallery-item h3 { font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }
-.gallery-item h3 a { text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }
-.gallery-item h3 a:hover { color: #007bff; }
-.gallery-item figure { width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }
-.gallery-item figure a { display: block; height: 100%; text-decoration: none; }
-.gallery-item img { width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }
-.gallery-item figure a:hover img { transform: scale(1.05); }
-</style>"""
-
-        full_block_html = f"""{css_styles}
-<div class="outer-full-width-section">
-    <div class="gallery-content-wrapper"> 
-        <h3 class="gallery-title">{promo_title}</h3>
-        <div class="five-col-gallery">
-{items_html}        </div>
-    </div>
-</div>"""
-
-        # 3. ПОЛУЧЕНИЕ ТЕГОВ (ДЛЯ EXCEL)
+        css_styles = """<style>.outer-full-width-section { padding: 25px 0; width: 100%; } .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; } h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; } .five-col-gallery { display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; } .gallery-item { flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; } .gallery-item h3 { font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; } .gallery-item h3 a { text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; } .gallery-item h3 a:hover { color: #007bff; } .gallery-item figure { width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; } .gallery-item figure a { display: block; height: 100%; text-decoration: none; } .gallery-item img { width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; } .gallery-item figure a:hover img { transform: scale(1.05); }</style>"""
+        full_block_html = f"""{css_styles}<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div></div>"""
+        
         status.write(f"🕵️ Сканируем теги на странице: {parent_cat_url}")
         found_tags = []
         try:
@@ -1559,205 +1238,46 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                 if tags_container:
                     for link in tags_container.find_all('a'):
                         href = link.get('href')
-                        if href:
-                            full_url = urljoin(parent_cat_url, href)
-                            found_tags.append(full_url)
-        except Exception as e:
-            status.error(f"Ошибка парсинга тегов: {e}"); st.stop()
-            
-        if not found_tags: 
-            status.warning("Теги не найдены. В файл попадет только сама родительская категория.")
-            found_tags.append(parent_cat_url)
+                        if href: found_tags.append(urljoin(parent_cat_url, href))
+        except Exception as e: status.error(f"Ошибка парсинга тегов: {e}"); st.stop()
+        if not found_tags: found_tags.append(parent_cat_url)
         
-        # 4. СОХРАНЕНИЕ
         excel_rows = []
-        for tag_url in found_tags:
-            excel_rows.append({
-                'Page URL': tag_url,
-                'HTML Block': full_block_html
-            })
-            
+        for tag_url in found_tags: excel_rows.append({'Page URL': tag_url, 'HTML Block': full_block_html})
         df_promo = pd.DataFrame(excel_rows)
         buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df_promo.to_excel(writer, index=False)
-            
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_promo.to_excel(writer, index=False)
         st.session_state.promo_generated_df = df_promo
         st.session_state.promo_excel_data = buffer.getvalue()
         st.session_state.promo_html_preview = full_block_html
-        
         status.update(label="Готово!", state="complete", expanded=False)
 
-    # ВЫВОД РЕЗУЛЬТАТА
     if st.session_state.promo_generated_df is not None:
         st.success("🎉 Excel сформирован!")
-        st.download_button(
-            label="📥 Скачать Excel (Promo Block)",
-            data=st.session_state.promo_excel_data,
-            file_name="promo_blocks_db.xlsx",
-            mime="application/vnd.ms-excel",
-            key="btn_down_promo_db"
-        )
-        
+        st.download_button(label="📥 Скачать Excel (Promo Block)", data=st.session_state.promo_excel_data, file_name="promo_blocks_db.xlsx", mime="application/vnd.ms-excel", key="btn_down_promo_db")
         with st.expander("👁️ Предпросмотр блока (HTML)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
             st.text_area("HTML Код", value=st.session_state.promo_html_preview, height=200)
 
 # ------------------------------------------
-# ------------------------------------------
-# Вкладка 6: БОКОВОЕ МЕНЮ (EXCEL + SCANNER)
+# TAB 6: SIDEBAR
 # ------------------------------------------
 with tab_sidebar:
     st.header("📑 Генератор HTML бокового меню (Mass Excel)")
-    st.info("""
-    **Логика работы:**
-    1. **Меню:** Берется из загруженного .txt файла.
-    2. **Цели:** Скрипт сканирует **URL Категории**, чтобы найти теги (страницы, куда вставить это меню).
-    3. **Результат:** Excel файл, где для каждого тега прописан HTML код меню.
-    """)
-
     col_sb1, col_sb2 = st.columns([1, 1])
+    with col_sb1: sidebar_cat_url = st.text_input("URL Категории-донора", placeholder="https://stalmetural.ru/catalog/alyuminiy/", key="sidebar_cat_url_input")
+    with col_sb2: sidebar_file = st.file_uploader("Загрузить список (.txt)", type=["txt"], key="sidebar_uploader_mass")
     
-    with col_sb1:
-        st.markdown("##### 1. Где искать страницы (Теги)?")
-        sidebar_cat_url = st.text_input("URL Категории-донора", placeholder="https://stalmetural.ru/catalog/alyuminiy/", key="sidebar_cat_url_input")
-
-    with col_sb2:
-        st.markdown("##### 2. Структура меню")
-        st.caption("Загрузите файл со списком ссылок для меню")
-        sidebar_file = st.file_uploader("Загрузить список (.txt)", type=["txt"], key="sidebar_uploader_mass")
-
-    # Шаблон стилей и скриптов (неизменный)
-    SIDEBAR_ASSETS = """
-<style>
-    :root { font-size: 14px; }
-    @media (min-width: 2201px) { font-size: 16px; }
-    #sidebar-menu ul, #sidebar-menu li { list-style: none !important; margin: 0 !important; padding: 0 !important; }
-    #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 0.85em; padding: 0.5rem 0.5rem; padding-right: 1.5rem; display: block; text-decoration: none; color: #3D4858; transition: all 0.2s ease-in-out; position: relative; font-weight: 600; cursor: pointer; }
-    #sidebar-menu .level-1-header > span.dropdown-toggle { border-bottom: 1px solid #e9ecef; }
-    #sidebar-menu .level-1-header > a { border-bottom: 1px solid #e9ecef; }
-    #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 1rem; }
-    #sidebar-menu .level-3-link > a { padding-left: 2rem; color: #555; font-weight: 400; }
-    #sidebar-menu .level-2-link-special { background: #F6F7FC; }
-    #sidebar-menu .level-2-link-special > a { padding-left: 1rem; font-weight: 600; color: #3D4858; position: relative; padding-right: 1rem; }
-    #sidebar-menu .level-2-link-special > a::after { content: none !important; }
-    #sidebar-menu .level-2-link-special > a:hover { color: #277EFF; background: #EBF5FF; }
-    #sidebar-menu .list-unstyled a:hover, #sidebar-menu .level-3-link a:hover, #sidebar-menu .list-unstyled span.dropdown-toggle:hover { color: #277EFF; background: #EBF5FF; }
-    #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #F6F7FC; color: #277EFF; }
-    #sidebar-menu .collapse-menu { list-style: none; padding: 0; background: #F6F7FC; display: none; }
-    #sidebar-menu .dropdown-toggle::after { content: '▶'; position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%); transition: transform 0.3s; font-size: 0.7em; color: #999; }
-    #sidebar-menu .dropdown-toggle.active::after { content: '▼'; transform: translateY(-50%) rotate(0deg); color: #277EFF; }
-    #sidebar-menu .level-1-header > a::after { content: none !important; }
-    .page-content-with-sidebar { margin-left: 0 !important; }
-    .sidebar-wrapper { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; z-index: 1001; }
-    #sidebar-menu, #sidebar-menu * { box-sizing: border-box; }
-    .menu-toggle-button { position: fixed; top: 20px; right: 10px; background: #277EFF; color: white; border: none; padding: 5px 10px; font-size: 24px; line-height: 1; cursor: pointer; z-index: 1002; border-radius: 5px; display: none; transition: all 0.3s ease; }
-    #sidebar-menu { z-index: 1000; background: #FFFFFF; color: #3D4858; transition: transform 0.3s ease; font-family: 'Open Sans', sans-serif; box-shadow: 0 0 30px rgba(0, 0, 0, 0.3); position: fixed; top: 0; left: 0; width: auto; max-width: 350px; height: 100vh; max-height: 100vh; transform: translateX(-100%); padding-top: 60px; border-radius: 0; display: block; overflow-y: auto; }
-    #sidebar-menu.active { transform: translateX(0); }
-    @media (max-width: 1800px) {
-        .menu-toggle-button { display: block; top: 20px; }
-        @media (min-width: 1180px) and (max-width: 1580px) { .menu-toggle-button { right: 183px; top: 30px; transition: right 0.3s ease, top 0.3s ease; } }
-        #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 16px !important; padding: 10px 15px !important; padding-right: 30px !important; }
-        #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 25px !important; }
-        #sidebar-menu .level-3-link > a { padding-left: 40px !important; }
-        #sidebar-menu .level-2-link-special > a { padding-left: 25px !important; padding-right: 25px !important; }
-    }
-    @media (max-width: 350px) { #sidebar-menu { width: 100%; max-width: 100%; } .menu-toggle-button { right: 5px; padding: 5px 8px; } }
-    @media (min-width: 1801px) {
-        #sidebar-menu { width: 14.28rem; }
-        .page-content-with-sidebar { margin-left: 15.7rem; }
-        .menu-toggle-button { display: none; }
-        .sidebar-wrapper { position: static; width: auto; height: auto; overflow: visible; }
-        #sidebar-menu { height: auto; position: fixed; top: calc(150px + 70px); left: 10px; max-height: calc(100vh - 250px - 70px); transform: translateX(0); padding-top: 0; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); border-radius: 10px; display: block; overflow-y: hidden; }
-        #sidebar-menu .list-unstyled.components { max-height: calc(100vh - 250px - 70px); overflow-y: auto; }
-        #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #FFFFFF !important; color: #3D4858; }
-        #sidebar-menu .level-1-header:hover > span.dropdown-toggle, #sidebar-menu .level-2-header:hover > span.dropdown-toggle { background: #EBF5FF; color: #277EFF; }
-        #sidebar-menu .level-2-link-special { background: #FFFFFF; }
-        #sidebar-menu .level-2-link-special > a:hover { background: #EBF5FF; }
-        #sidebar-menu .level-1-header > a:hover { background: #EBF5FF; color: #277EFF; }
-    }
-</style>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const menu = document.getElementById('sidebar-menu');
-        const listComponents = menu ? menu.querySelector('.list-unstyled.components') : null;
-        const mobileToggle = document.getElementById('mobile-menu-toggle'); 
-        if (!menu || !listComponents || !mobileToggle) return; 
-
-        const toggles = menu.querySelectorAll('.dropdown-toggle');
-        const desktopBreakpoint = 1801;
-
-        function resetMenuState() {
-            menu.querySelectorAll('.collapse-menu').forEach(sub => { sub.style.display = 'none'; });
-            menu.querySelectorAll('.level-1-header, .level-2-header').forEach(li => {
-                li.classList.remove('active');
-                const toggle = li.querySelector('.dropdown-toggle');
-                if(toggle) toggle.classList.remove('active');
-            });
-        }
-        function handleResize() { if (window.innerWidth >= desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; resetMenuState(); } }
-        handleResize();
-        window.addEventListener('resize', handleResize);
-        if (mobileToggle) {
-            mobileToggle.addEventListener('click', function() {
-                if (window.innerWidth < desktopBreakpoint) {
-                    menu.classList.toggle('active');
-                    this.textContent = menu.classList.contains('active') ? '✖' : '☰';
-                }
-            });
-        }
-        menu.querySelectorAll('a').forEach(link => {
-            if (link.closest('.level-3-link') || link.closest('.level-2-link-special') || link.parentElement.classList.contains('level-1-header')) {
-                link.addEventListener('click', function() {
-                    if (window.innerWidth < desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; }
-                });
-            }
-        });
-        toggles.forEach(toggle => {
-            toggle.addEventListener('click', function(event) {
-                event.preventDefault();
-                const parentLi = this.parentElement;
-                const parentUl = parentLi.parentElement;
-                const targetMenu = parentLi.querySelector('.collapse-menu');
-                if (!targetMenu) return;
-                const isActive = parentLi.classList.contains('active');
-                const activeSiblings = parentUl.querySelectorAll('.level-1-header.active, .level-2-header.active');
-                activeSiblings.forEach(sibling => {
-                    if (sibling !== parentLi) {
-                        sibling.classList.remove('active');
-                        const siblingToggle = sibling.querySelector('.dropdown-toggle');
-                        if (siblingToggle) siblingToggle.classList.remove('active');
-                        const siblingMenu = sibling.querySelector('.collapse-menu');
-                        if (siblingMenu) siblingMenu.style.display = 'none';
-                    }
-                });
-                parentLi.classList.toggle('active', !isActive);
-                this.classList.toggle('active', !isActive);
-                targetMenu.style.display = !isActive ? 'block' : 'none';
-            });
-        });
-    });
-</script>
-"""
+    SIDEBAR_ASSETS = """<style>:root { font-size: 14px; } @media (min-width: 2201px) { font-size: 16px; } #sidebar-menu ul, #sidebar-menu li { list-style: none !important; margin: 0 !important; padding: 0 !important; } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 0.85em; padding: 0.5rem 0.5rem; padding-right: 1.5rem; display: block; text-decoration: none; color: #3D4858; transition: all 0.2s ease-in-out; position: relative; font-weight: 600; cursor: pointer; } #sidebar-menu .level-1-header > span.dropdown-toggle { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-1-header > a { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 1rem; } #sidebar-menu .level-3-link > a { padding-left: 2rem; color: #555; font-weight: 400; } #sidebar-menu .level-2-link-special { background: #F6F7FC; } #sidebar-menu .level-2-link-special > a { padding-left: 1rem; font-weight: 600; color: #3D4858; position: relative; padding-right: 1rem; } #sidebar-menu .level-2-link-special > a::after { content: none !important; } #sidebar-menu .level-2-link-special > a:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .list-unstyled a:hover, #sidebar-menu .level-3-link a:hover, #sidebar-menu .list-unstyled span.dropdown-toggle:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #F6F7FC; color: #277EFF; } #sidebar-menu .collapse-menu { list-style: none; padding: 0; background: #F6F7FC; display: none; } #sidebar-menu .dropdown-toggle::after { content: '▶'; position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%); transition: transform 0.3s; font-size: 0.7em; color: #999; } #sidebar-menu .dropdown-toggle.active::after { content: '▼'; transform: translateY(-50%) rotate(0deg); color: #277EFF; } #sidebar-menu .level-1-header > a::after { content: none !important; } .page-content-with-sidebar { margin-left: 0 !important; } .sidebar-wrapper { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; z-index: 1001; } #sidebar-menu, #sidebar-menu * { box-sizing: border-box; } .menu-toggle-button { position: fixed; top: 20px; right: 10px; background: #277EFF; color: white; border: none; padding: 5px 10px; font-size: 24px; line-height: 1; cursor: pointer; z-index: 1002; border-radius: 5px; display: none; transition: all 0.3s ease; } #sidebar-menu { z-index: 1000; background: #FFFFFF; color: #3D4858; transition: transform 0.3s ease; font-family: 'Open Sans', sans-serif; box-shadow: 0 0 30px rgba(0, 0, 0, 0.3); position: fixed; top: 0; left: 0; width: auto; max-width: 350px; height: 100vh; max-height: 100vh; transform: translateX(-100%); padding-top: 60px; border-radius: 0; display: block; overflow-y: auto; } #sidebar-menu.active { transform: translateX(0); } @media (max-width: 1800px) { .menu-toggle-button { display: block; top: 20px; } @media (min-width: 1180px) and (max-width: 1580px) { .menu-toggle-button { right: 183px; top: 30px; transition: right 0.3s ease, top 0.3s ease; } } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 16px !important; padding: 10px 15px !important; padding-right: 30px !important; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 25px !important; } #sidebar-menu .level-3-link > a { padding-left: 40px !important; } #sidebar-menu .level-2-link-special > a { padding-left: 25px !important; padding-right: 25px !important; } } @media (max-width: 350px) { #sidebar-menu { width: 100%; max-width: 100%; } .menu-toggle-button { right: 5px; padding: 5px 8px; } } @media (min-width: 1801px) { #sidebar-menu { width: 14.28rem; } .page-content-with-sidebar { margin-left: 15.7rem; } .menu-toggle-button { display: none; } .sidebar-wrapper { position: static; width: auto; height: auto; overflow: visible; } #sidebar-menu { height: auto; position: fixed; top: calc(150px + 70px); left: 10px; max-height: calc(100vh - 250px - 70px); transform: translateX(0); padding-top: 0; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); border-radius: 10px; display: block; overflow-y: hidden; } #sidebar-menu .list-unstyled.components { max-height: calc(100vh - 250px - 70px); overflow-y: auto; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #FFFFFF !important; color: #3D4858; } #sidebar-menu .level-1-header:hover > span.dropdown-toggle, #sidebar-menu .level-2-header:hover > span.dropdown-toggle { background: #EBF5FF; color: #277EFF; } #sidebar-menu .level-2-link-special { background: #FFFFFF; } #sidebar-menu .level-2-link-special > a:hover { background: #EBF5FF; } #sidebar-menu .level-1-header > a:hover { background: #EBF5FF; color: #277EFF; } } </style><script>document.addEventListener('DOMContentLoaded', function() { const menu = document.getElementById('sidebar-menu'); const listComponents = menu ? menu.querySelector('.list-unstyled.components') : null; const mobileToggle = document.getElementById('mobile-menu-toggle'); if (!menu || !listComponents || !mobileToggle) return; const toggles = menu.querySelectorAll('.dropdown-toggle'); const desktopBreakpoint = 1801; function resetMenuState() { menu.querySelectorAll('.collapse-menu').forEach(sub => { sub.style.display = 'none'; }); menu.querySelectorAll('.level-1-header, .level-2-header').forEach(li => { li.classList.remove('active'); const toggle = li.querySelector('.dropdown-toggle'); if(toggle) toggle.classList.remove('active'); }); } function handleResize() { if (window.innerWidth >= desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; resetMenuState(); } } handleResize(); window.addEventListener('resize', handleResize); if (mobileToggle) { mobileToggle.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.toggle('active'); this.textContent = menu.classList.contains('active') ? '✖' : '☰'; } }); } menu.querySelectorAll('a').forEach(link => { if (link.closest('.level-3-link') || link.closest('.level-2-link-special') || link.parentElement.classList.contains('level-1-header')) { link.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; } }); } }); toggles.forEach(toggle => { toggle.addEventListener('click', function(event) { event.preventDefault(); const parentLi = this.parentElement; const parentUl = parentLi.parentElement; const targetMenu = parentLi.querySelector('.collapse-menu'); if (!targetMenu) return; const isActive = parentLi.classList.contains('active'); const activeSiblings = parentUl.querySelectorAll('.level-1-header.active, .level-2-header.active'); activeSiblings.forEach(sibling => { if (sibling !== parentLi) { sibling.classList.remove('active'); const siblingToggle = sibling.querySelector('.dropdown-toggle'); if (siblingToggle) siblingToggle.classList.remove('active'); const siblingMenu = sibling.querySelector('.collapse-menu'); if (siblingMenu) siblingMenu.style.display = 'none'; } }); parentLi.classList.toggle('active', !isActive); this.classList.toggle('active', !isActive); targetMenu.style.display = !isActive ? 'block' : 'none'; }); }); });</script>"""
 
     if st.button("🚀 Создать Excel", disabled=(not sidebar_cat_url or not sidebar_file), key="btn_gen_sidebar_mass"):
         status_box = st.status("⚙️ Обработка...", expanded=True)
-        
-        # 1. ГЕНЕРАЦИЯ HTML МЕНЮ (Один раз для всех)
         try:
             status_box.write("🔨 Сборка меню из файла...")
-            
-            # --- СБОР ССЫЛОК ИЗ ФАЙЛА ---
             stringio = io.StringIO(sidebar_file.getvalue().decode("utf-8"))
             urls = [line.strip() for line in stringio.readlines() if line.strip()]
-            
-            # Удаляем дубликаты
             urls = list(dict.fromkeys(urls))
-            
-            if not urls:
-                status_box.error("❌ Файл пуст!")
-                st.stop()
-            
+            if not urls: status_box.error("❌ Файл пуст!"); st.stop()
             tree = {}
             for url in urls:
                 path = urlparse(url).path.strip('/')
@@ -1765,7 +1285,6 @@ with tab_sidebar:
                 start_idx = 0
                 if 'catalog' in parts: start_idx = parts.index('catalog') + 1
                 relevant_parts = parts[start_idx:] if parts[start_idx:] else parts
-                
                 current_level = tree
                 for i, part in enumerate(relevant_parts):
                     if part not in current_level: current_level[part] = {}
@@ -1782,7 +1301,6 @@ with tab_sidebar:
                     name = child.get('__name__', force_cyrillic_name_global(key))
                     url = child.get('__url__')
                     has_children = any(k for k in child.keys() if not k.startswith('__'))
-                    
                     if level == 1:
                         html += '<li class="level-1-header">\n'
                         if has_children:
@@ -1811,24 +1329,10 @@ with tab_sidebar:
                 return html
 
             inner_html = render_tree(tree, level=1)
-            full_sidebar_code = f"""<div class="page-content-with-sidebar">
-    <button id="mobile-menu-toggle" class="menu-toggle-button">☰</button>
-    <div class="sidebar-wrapper">
-        <nav id="sidebar-menu">
-            <ul class="list-unstyled components">
-{inner_html}
-            </ul>
-        </nav>
-    </div>
-</div>
-{SIDEBAR_ASSETS}"""
+            full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>{SIDEBAR_ASSETS}"""
             status_box.write("✅ Меню успешно собрано.")
+        except Exception as e: status_box.error(f"Ошибка при сборке меню: {e}"); st.stop()
 
-        except Exception as e:
-            status_box.error(f"Ошибка при сборке меню: {e}")
-            st.stop()
-
-        # 2. СКАН ПАГИНАЦИИ/ТЕГОВ
         found_tags_urls = []
         try:
             status_box.write(f"🕵️ Сканируем URL: {sidebar_cat_url}")
@@ -1840,69 +1344,27 @@ with tab_sidebar:
                 if tags_container:
                     for link in tags_container.find_all('a'):
                         href = link.get('href')
-                        if href:
-                            found_tags_urls.append(urljoin(sidebar_cat_url, href))
+                        if href: found_tags_urls.append(urljoin(sidebar_cat_url, href))
                 else:
-                    # Если тегов нет, может пользователь хочет просто 1 строку для самой категории?
                     status_box.warning("Теги .popular-tags-inner не найдены. Добавлю только сам URL категории.")
                     found_tags_urls.append(sidebar_cat_url)
-            else:
-                status_box.error(f"Ошибка доступа к сайту: {r.status_code}")
-                st.stop()
-        except Exception as e:
-            status_box.error(f"Ошибка парсинга: {e}")
-            st.stop()
+            else: status_box.error(f"Ошибка доступа к сайту: {r.status_code}"); st.stop()
+        except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
 
-        # 3. ФОРМИРОВАНИЕ EXCEL
         status_box.write(f"📊 Формируем таблицу для {len(found_tags_urls)} страниц...")
-        
         excel_data = []
-        for tag_url in found_tags_urls:
-            excel_data.append({
-                'Page URL': tag_url,
-                'Sidebar HTML': full_sidebar_code
-            })
-            
+        for tag_url in found_tags_urls: excel_data.append({'Page URL': tag_url, 'Sidebar HTML': full_sidebar_code})
         df_sidebar = pd.DataFrame(excel_data)
-        
-        # Сохранение в буфер
         buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df_sidebar.to_excel(writer, index=False)
-            
-        # Запись в Session State
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_sidebar.to_excel(writer, index=False)
         st.session_state.sidebar_gen_df = df_sidebar
         st.session_state.sidebar_excel_bytes = buffer.getvalue()
-        
         status_box.update(label="✅ Готово! Файл создан.", state="complete", expanded=False)
 
-    # ВЫВОД РЕЗУЛЬТАТОВ (из Session State)
     if st.session_state.sidebar_gen_df is not None:
         st.success(f"Файл готов: {len(st.session_state.sidebar_gen_df)} строк.")
-        
-        st.download_button(
-            label="📥 Скачать Excel (Menu)",
-            data=st.session_state.sidebar_excel_bytes,
-            file_name="sidebar_menu_mass.xlsx",
-            mime="application/vnd.ms-excel",
-            key="btn_down_sidebar_mass"
-        )
-        
-        with st.expander("👁️ Просмотр данных"):
-            st.dataframe(st.session_state.sidebar_gen_df.head())
-        
+        st.download_button(label="📥 Скачать Excel (Menu)", data=st.session_state.sidebar_excel_bytes, file_name="sidebar_menu_mass.xlsx", mime="application/vnd.ms-excel", key="btn_down_sidebar_mass")
+        with st.expander("👁️ Просмотр данных"): st.dataframe(st.session_state.sidebar_gen_df.head())
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
-            # Берем HTML из первой строки
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
-
-
-
-
-
-
-
-
-
-
-
