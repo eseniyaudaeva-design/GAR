@@ -17,8 +17,8 @@ import random
 import streamlit.components.v1 as components
 
 try:
-    import pymorphy2
-    morph = pymorphy2.MorphAnalyzer()
+    import pymorphy3
+    morph = pymorphy3.MorphAnalyzer()
     USE_NLP = True
 except ImportError:
     morph = None
@@ -1174,4 +1174,5 @@ with tab_gen:
             mime="application/vnd.ms-excel",
             type="primary"
         )
+
 
