@@ -1,10 +1,10 @@
-streamlit==1.32.0
+streamlit>=1.28.0
 pandas>=1.5.0
 numpy>=1.21.0
 beautifulsoup4>=4.11.0
 requests>=2.28.0
-pymorphy3==1.2.0
-pymorphy3-dicts-ru==2.4.927303.4
+pymorphy2>=0.9.1
+pymorphy2-dicts-ru>=2.4.404381.4453942
 googlesearch-python>=1.2.0
 lxml>=4.9.0
 urllib3>=1.26.0
@@ -13,5 +13,3 @@ openpyxl
 setuptools
 openai
 XlsxWriter
-
-
