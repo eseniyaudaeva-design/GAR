@@ -13,3 +13,4 @@ openpyxl
 setuptools
 openai
 XlsxWriter
+python_version = "3.11"
