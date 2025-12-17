@@ -455,6 +455,7 @@ REGION_MAP = {
     "Челябинск": {"ya": 56, "go": 1011882},
     "Омск": {"ya": 66, "go": 1011931},
     "Краснодар": {"ya": 35, "go": 1011894},
+    "Киев (UA)": {"ya": 143, "go": 1012852},
     "Минск (BY)": {"ya": 157, "go": 1001493},
     "Алматы (KZ)": {"ya": 162, "go": 1014601}
 }
@@ -1482,4 +1483,3 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
-
