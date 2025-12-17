@@ -16,6 +16,15 @@ import os
 import random
 import streamlit.components.v1 as components
 
+# ==========================================
+# FIX FOR PYTHON 3.11+ (Must be before pymorphy2 init)
+# ==========================================
+if not hasattr(inspect, 'getargspec'):
+    def getargspec(func):
+        spec = inspect.getfullargspec(func)
+        return (spec.args, spec.varargs, spec.varkw, spec.defaults)
+    inspect.getargspec = getargspec
+
 try:
     import pymorphy2
     morph = pymorphy2.MorphAnalyzer()
@@ -388,12 +397,6 @@ if 'categorized_dimensions' not in st.session_state: st.session_state.categorize
 if 'categorized_geo' not in st.session_state: st.session_state.categorized_geo = []
 if 'categorized_general' not in st.session_state: st.session_state.categorized_general = []
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
-
-if not hasattr(inspect, 'getargspec'):
-    def getargspec(func):
-        spec = inspect.getfullargspec(func)
-        return (spec.args, spec.varargs, spec.varkw, spec.defaults)
-    inspect.getargspec = getargspec
 
 # ==========================================
 # CONFIG
