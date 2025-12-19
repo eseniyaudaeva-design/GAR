@@ -419,7 +419,7 @@ REGION_MAP = {
     "Алматы (KZ)": {"ya": 162, "go": 1014601}
 }
 
-DEFAULT_EXCLUDE_DOMAINS = ["yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com"]
+DEFAULT_EXCLUDE_DOMAINS = ["yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "aliexpress.ru", "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com"]
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
 
@@ -1022,11 +1022,23 @@ with tab_seo_main:
         st.checkbox("Нормировать по длине", True, key="settings_norm")
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
-    if st.session_state.get('start_analysis_flag'):
+if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
-        settings = {'noindex': st.session_state.settings_noindex, 'alt_title': st.session_state.settings_alt, 'numbers': st.session_state.settings_numbers, 'norm': st.session_state.settings_norm, 'ua': st.session_state.settings_ua, 'custom_stops': st.session_state.settings_stops.split()}
+        
+        # Настройки парсинга
+        settings = {
+            'noindex': st.session_state.settings_noindex, 
+            'alt_title': st.session_state.settings_alt, 
+            'numbers': st.session_state.settings_numbers, 
+            'norm': st.session_state.settings_norm, 
+            'ua': st.session_state.settings_ua, 
+            'custom_stops': st.session_state.settings_stops.split()
+        }
+        
         my_data, my_domain, my_serp_pos = None, "", 0
         current_input_type = st.session_state.get("my_page_source_radio")
+        
+        # 1. Обработка ВАШЕЙ страницы
         if current_input_type == "Релевантная страница на вашем сайте":
             with st.spinner("Скачивание вашей страницы..."):
                 my_data = parse_page(st.session_state.my_url_input, settings)
@@ -1034,57 +1046,105 @@ with tab_seo_main:
                 my_domain = urlparse(st.session_state.my_url_input).netloc
         elif current_input_type == "Исходный код страницы или текст":
             my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
-        target_urls_raw = []
-        current_source_val = st.session_state.get("competitor_source_radio")
-        current_source_type = "API" if "API" in current_source_val else "Ручной список"
-        if current_source_type == "API":
-            if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
-            with st.spinner("API Arsenkin..."):
-                found = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN)
-                if not found: st.stop()
-                excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-                if st.session_state.settings_agg: excl.extend(["avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex", "leroymerlin", "petrovich"])
-                filtered = []
-                for res in found:
-                    dom = urlparse(res['url']).netloc
-                    if my_domain and my_domain == dom:
-                        if my_serp_pos == 0 or res['pos'] < my_serp_pos: my_serp_pos = res['pos']
-                        continue
-                    if any(x in dom for x in excl): continue
-                    filtered.append(res)
-                target_urls_raw = filtered[:st.session_state.settings_top_n]
-                st.session_state['persistent_urls'] = "\n".join([i['url'] for i in target_urls_raw])
-        else:
-            raw_urls = st.session_state.get("persistent_urls", "")
-            target_urls_raw = [{'url': u.strip(), 'pos': i+1} for i, u in enumerate(raw_urls.split('\n')) if u.strip()]
-        if not target_urls_raw: st.error("Нет конкурентов."); st.stop()
-        comp_data_full = []
-        with st.status("🕵️ Сканирование конкурентов...", expanded=True) as status:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                futures = {executor.submit(parse_page, u['url'], settings): u['url'] for u in target_urls_raw}
-                done_count = 0
-                total = len(target_urls_raw)
-                
-                for f in concurrent.futures.as_completed(futures):
-                    res = f.result()
-                    if res: 
-                        comp_data_full.append(res)
-                    done_count += 1
-                    # Обновляем статус, чтобы было видно прогресс
-                    status.update(label=f"Сканирование: {done_count}/{total} (Успешно: {len(comp_data_full)})")
             
-            # ВАЖНО: Сортируем данные по URL, чтобы порядок всегда был одинаковым!
-            # Это устраняет "плавающие" баги при расчетах, зависящих от порядка.
-            comp_data_full.sort(key=lambda x: x['url'])
+        # 2. Сбор КАНДИДАТОВ (Берем с запасом!)
+        candidates_pool = [] # Сюда кладем всех потенциальных конкурентов
+        
+        current_source_val = st.session_state.get("competitor_source_radio")
+        needed_count = st.session_state.settings_top_n 
+        
+        # --- ЛОГИКА API ---
+        if "API" in current_source_val:
+            if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
+            with st.spinner("API Arsenkin (Запрос расширенного ТОПа)..."):
+                # Запрашиваем 50, чтобы был запас на случай ошибок парсинга
+                raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=50)
+                
+                if not raw_top: st.stop()
+                
+                # Список исключений
+                excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
+                if st.session_state.settings_agg: 
+                    excl.extend(["avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex", "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua", "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis"])
 
-            if len(comp_data_full) < len(target_urls_raw):
-                st.warning(f"⚠️ Не удалось скачать {len(target_urls_raw) - len(comp_data_full)} сайтов. Рекомендации могут быть неточными.")
+                for res in raw_top:
+                    dom = urlparse(res['url']).netloc.lower()
+                    
+                    # 1. Если это НАШ сайт
+                    if my_domain and (my_domain in dom or dom in my_domain):
+                        if my_serp_pos == 0 or res['pos'] < my_serp_pos: 
+                            my_serp_pos = res['pos']
+                        # Себя тоже добавляем в пул, чтобы участвовать в расчетах, 
+                        # но в таблице релевантности обработаем отдельно
+                    
+                    # 2. Проверка на агрегаторы
+                    is_garbage = False
+                    for x in excl:
+                        if x.lower() in dom:
+                            is_garbage = True
+                            break
+                    if is_garbage: 
+                        continue
+                        
+                    # Добавляем в пул кандидатов
+                    candidates_pool.append(res)
+                
+        # --- ЛОГИКА РУЧНОГО СПИСКА ---
+        else:
+            raw_input_urls = st.session_state.get("persistent_urls", "")
+            candidates_pool = [{'url': u.strip(), 'pos': i+1} for i, u in enumerate(raw_input_urls.split('\n')) if u.strip()]
+
+        if not candidates_pool: st.error("После фильтрации не осталось кандидатов."); st.stop()
+        
+        # 3. СКАЧИВАНИЕ (Пытаемся скачать ВСЕХ кандидатов, чтобы набрать нужное кол-во)
+        comp_data_valid = []
+        
+        with st.status(f"🕵️ Глубокое сканирование (Кандидатов: {len(candidates_pool)})...", expanded=True) as status:
+            # Запускаем парсинг для ВСЕХ кандидатов, а не только для первых 10
+            with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+                # Передаем весь объект item, чтобы сохранить позицию (pos)
+                futures = {executor.submit(parse_page, item['url'], settings): item for item in candidates_pool}
+                
+                done_count = 0
+                for f in concurrent.futures.as_completed(futures):
+                    original_item = futures[f]
+                    try:
+                        res = f.result()
+                        if res:
+                            # Сохраняем позицию из выдачи, чтобы потом отсортировать
+                            res['pos'] = original_item['pos']
+                            comp_data_valid.append(res)
+                    except:
+                        pass
+                    
+                    done_count += 1
+                    status.update(label=f"Обработано: {done_count}/{len(candidates_pool)} | Успешно скачано: {len(comp_data_valid)}")
+
+            # 4. ФИНАЛЬНЫЙ ОТБОР
+            # Сортируем успешные по позиции в выдаче (от 1 до ...)
+            comp_data_valid.sort(key=lambda x: x['pos'])
+            
+            # Берем ровно столько, сколько просил пользователь (10 или 20)
+            # Если скачалось меньше (например 8), берем всех 8.
+            final_competitors_data = comp_data_valid[:needed_count]
+            
+            # Формируем список URL-ов для отображения в text area (чтобы юзер видел, кто реально попал в анализ)
+            # И этот же список передаем в calculate_metrics как "original_results"
+            final_targets_list = [{'url': d['url'], 'pos': d['pos']} for d in final_competitors_data]
+            st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_competitors_data])
+
+            if len(final_competitors_data) < needed_count:
+                st.warning(f"⚠️ Удалось собрать только {len(final_competitors_data)} валидных страниц (из {needed_count} требуемых).")
             else:
-                st.success(f"✅ Успешно скачано {len(comp_data_full)} из {len(target_urls_raw)} конкурентов.")
+                st.success(f"✅ Анализ выполнен по {len(final_competitors_data)} конкурентам.")
 
+        # 5. РАСЧЕТ МЕТРИК
+        # Важно: передаем именно final_competitors_data (данные с текстами) и final_targets_list (список для таблицы)
         with st.spinner("Расчет метрик..."):
-            st.session_state.analysis_results = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
+            st.session_state.analysis_results = calculate_metrics(final_competitors_data, my_data, settings, my_serp_pos, final_targets_list)
             st.session_state.analysis_done = True
+            
+            # Классификация слов
             res = st.session_state.analysis_results
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             if not words_to_check:
@@ -1099,20 +1159,17 @@ with tab_seo_main:
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
 
-            # --- ЛОГИКА РАСПРЕДЕЛЕНИЯ (ВШИТА В АНАЛИЗ) ---
+            # Логика авто-заполнения генератора
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
-            
             if count_prods < 20:
                 st.session_state.auto_tags_words = all_found_products
                 st.session_state.auto_promo_words = []
             else:
-                half_count = int(math.ceil(count_prods / 2)) # Forced int
+                half_count = int(math.ceil(count_prods / 2))
                 st.session_state.auto_tags_words = all_found_products[:half_count]
                 st.session_state.auto_promo_words = all_found_products[half_count:]
             
-            # --- ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ WIDGET KEYS ---
-            # Это решает проблему пустых полей даже при rerun
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
@@ -1610,3 +1667,4 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
