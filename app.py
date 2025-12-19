@@ -132,17 +132,24 @@ def force_cyrillic_name_global(slug_text):
 def get_breadcrumb_only(url, ua_settings="Mozilla/5.0"):
     """
     Заходит по URL и достает название ТОЛЬКО из последнего элемента хлебных крошек.
-    H1 игнорируется.
+    Использует Retry и увеличенный Timeout.
     """
     try:
+        session = requests.Session()
+        # 3 попытки, если сайт сбросил соединение или выдал ошибку 5xx
+        retry = Retry(connect=3, read=3, redirect=3, backoff_factor=0.5)
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        
         headers = {'User-Agent': ua_settings}
-        r = requests.get(url, headers=headers, timeout=5)
+        # Увеличили тайм-аут до 25 секунд
+        r = session.get(url, headers=headers, timeout=25)
         if r.status_code != 200: 
             return None
         
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # 1. Ищем контейнер хлебных крошек по популярным классам/id
         breadcrumbs = soup.find(class_=re.compile(r'breadcrumb|breadcrumbs|nav-path|nav-chain|bx-breadcrumb', re.I))
         if not breadcrumbs:
             breadcrumbs = soup.find(id=re.compile(r'breadcrumb|breadcrumbs|nav-path', re.I))
@@ -951,14 +958,18 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     user_prompt = f"""ВВОДНЫЕ: Тег "{tag_name}". База: \"\"\"{base_text[:3000]}\"\"\" {keywords_instruction}
     ЗАДАЧА: 5 блоков. Структура: h2/h3, абзац, вводная фраза:, список, заключение. Без [1] ссылок. Разделитель: |||BLOCK_SEP|||"""
 
-    try:
-        response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
-        content = response.choices[0].message.content
-        content = re.sub(r'\[\d+\]', '', content).replace("```html", "").replace("```", "")
-        blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
-        while len(blocks) < 5: blocks.append("")
-        return blocks[:5]
-    except Exception as e: return [f"API Error: {str(e)}"] * 5
+    # Цикл повторных попыток (3 раза)
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
+            content = response.choices[0].message.content
+            content = re.sub(r'\[\d+\]', '', content).replace("```html", "").replace("```", "")
+            blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
+            while len(blocks) < 5: blocks.append("")
+            return blocks[:5]
+        except Exception as e:
+            if attempt == 2: return [f"API Error: {str(e)}"] * 5
+            time.sleep(2) # Пауза перед повтором
 
 def generate_html_table(client, user_prompt, seo_keywords_data=None):
     seo_instruction = ""
@@ -966,10 +977,15 @@ def generate_html_table(client, user_prompt, seo_keywords_data=None):
         words_desc = [f"- '{item['word']}': {item['count']} times" for item in seo_keywords_data]
         seo_instruction = f"MANDATORY SEO: Use these words ({', '.join(words_desc)}). Wrap in <b>."
     system_instruction = f"Generate HTML tables. Inline CSS: table border 2px solid black, th bg #f0f0f0. {seo_instruction} No markdown."
-    try:
-        response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
-        return re.sub(r'\[\d+\]', '', response.choices[0].message.content).replace("```html", "").replace("```", "").strip()
-    except Exception as e: return f"Error: {e}"
+    
+    # Цикл повторных попыток (3 раза)
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
+            return re.sub(r'\[\d+\]', '', response.choices[0].message.content).replace("```html", "").replace("```", "").strip()
+        except Exception as e:
+            if attempt == 2: return f"Error: {e}"
+            time.sleep(2)
 
 # ==========================================
 # 7. UI TABS RESTRUCTURED
@@ -1402,7 +1418,8 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
     
-    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ (ОДНА КНОПКА)", type="primary", disabled=not ready_to_go, use_container_width=True):
+    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ (ОДНА КНОПКА)", type="primary", disabled=not ready_to_go,
+    use_container_width=True):
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
         final_data = [] 
         
@@ -1410,8 +1427,18 @@ with tab_wholesale_main:
         target_pages = []
         try:
             status_box.write(f"🕵️ Сканируем категорию: {main_category_url}")
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            r = requests.get(main_category_url, headers=headers, timeout=15)
+            
+            # Настраиваем сессию с повторными попытками
+            session = requests.Session()
+            retry = Retry(connect=3, read=3, redirect=3, backoff_factor=0.5)
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+            
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            # Тайм-аут увеличен до 30 секунд
+            r = session.get(main_category_url, headers=headers, timeout=30)
+            
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
                 tags_container = soup.find(class_='popular-tags-inner')
@@ -1428,8 +1455,13 @@ with tab_wholesale_main:
                     h1 = soup.find('h1')
                     name = h1.get_text(strip=True) if h1 else "Товар"
                     target_pages.append({'url': main_category_url, 'name': name})
-            else: status_box.error(f"Ошибка доступа: {r.status_code}"); st.stop()
-        except Exception as e: status_box.error(f"Ошибка соединения: {e}"); st.stop()
+            else: 
+                status_box.error(f"Ошибка доступа: {r.status_code}")
+                st.stop()
+        except Exception as e: 
+            status_box.error(f"Ошибка соединения: {e}")
+            st.stop()
+            
         status_box.write(f"✅ Найдено страниц для обработки: {len(target_pages)}")
         
         # ==========================================
@@ -1677,6 +1709,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
