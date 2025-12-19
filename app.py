@@ -566,62 +566,86 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def parse_page(url, settings):
-    # --- НАЧАЛО НОВОГО КОДА ---
-    # Импортируем библиотеку прямо здесь, чтобы не менять начало файла
+    # Импортируем st внутри, чтобы точно вывести ошибку на экран
+    import streamlit as st
+    
+    # 1. Пытаемся использовать curl_cffi (для обхода защиты)
     try:
-        from curl_cffi import requests
-    except ImportError:
-        st.error("❌ Ошибка: Библиотека curl_cffi не установлена. Остановите скрипт и введите в терминале: pip install curl_cffi")
-        return None
-
-    # Настройки маскировки под браузер Chrome 110
-    # Это позволяет обойти Cloudflare и другие защиты (403 Forbidden)
-    try:
+        from curl_cffi import requests as cffi_requests
+        
+        # Настройки для маскировки
         headers = {
             'User-Agent': settings['ua'],
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
         }
-
-        # timeout=30: ждем ответ 30 секунд
-        # impersonate="chrome110": притворяемся браузером Chrome версии 110
-        r = requests.get(url, headers=headers, timeout=30, impersonate="chrome110")
         
-        # Проверка на ошибки (403, 404, 500 и т.д.)
+        # Пытаемся скачать через curl_cffi
+        r = cffi_requests.get(url, headers=headers, timeout=20, impersonate="chrome110")
+        
+        # Если снова 403, пробуем старый метод ниже
+        if r.status_code == 403:
+            raise Exception("CURL_CFFI получил 403 Forbidden")
+            
         if r.status_code != 200:
-            # Можно включить вывод ошибки, если хотите видеть, какие URL не открылись
-            # st.warning(f"Не удалось открыть {url}. Код ответа: {r.status_code}")
+            st.warning(f"⚠️ Статус ответа (curl_cffi): {r.status_code}")
+            return None
+            
+        # Если все ок, берем контент
+        content = r.content
+        encoding = r.encoding if r.encoding else 'utf-8'
+
+    # 2. Если curl_cffi не установлен ИЛИ выдал ошибку — используем обычный requests
+    except Exception as e_cffi:
+        # st.warning(f"Debug: curl_cffi не сработал ({e_cffi}), пробую обычный метод...") 
+        
+        try:
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            import urllib3
+            
+            # Отключаем предупреждения о небезопасном SSL
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            session = requests.Session()
+            retry = Retry(connect=3, read=3, redirect=5, backoff_factor=0.5)
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+            
+            headers = {'User-Agent': settings['ua']}
+            
+            # verify=False — Ключевой момент, отключает проверку сертификатов
+            r = session.get(url, headers=headers, timeout=20, verify=False)
+            
+            if r.status_code != 200:
+                st.error(f"❌ Ошибка (Standard): Сервер вернул код {r.status_code}")
+                return None
+                
+            content = r.content
+            encoding = r.apparent_encoding
+            
+        except Exception as e_final:
+            # ВОТ ЗДЕСЬ мы увидим реальную причину
+            st.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА СКАЧИВАНИЯ:\n{e_final}")
             return None
 
-        # Принудительная установка кодировки, если сервер не передал её
-        if 'charset' in r.headers.get('content-type', '').lower():
-            r.encoding = r.encoding
-        else:
-            r.encoding = 'utf-8'
-
-        # Используем r.content для корректной обработки кириллицы
-        soup = BeautifulSoup(r.content, 'html.parser')
-        
-        # --- ДАЛЕЕ СТАРАЯ ЛОГИКА ОЧИСТКИ ---
+    # 3. Парсинг (общий для обоих методов)
+    try:
+        soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
         
         tags_to_remove = []
         if settings['noindex']: tags_to_remove.append('noindex')
         
-        # Удаляем комментарии
         for c in soup.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
-        
         if tags_to_remove:
             for t in soup.find_all(tags_to_remove): t.decompose()
-            
-        # Удаляем скрипты и стили (ВАЖНО для чистоты текста)
         for script in soup(["script", "style", "svg", "path", "noscript"]):
             script.decompose()
 
-        # Сбор анкоров (ссылок)
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
         
-        # Сбор мета-тегов и Alt картинок
         extra_text = []
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'): extra_text.append(meta_desc['content'])
@@ -630,17 +654,17 @@ def parse_page(url, settings):
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
             
-        # Основной текст страницы
         body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
-        # Убираем лишние пробелы и переносы строк
         body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
         
-        if not body_text: return None
+        if not body_text: 
+            st.warning("⚠️ Страница скачалась, но текст не найден (пустой body).")
+            return None
+            
         return {'url': url, 'domain': urlparse(url).netloc, 'body_text': body_text, 'anchor_text': anchor_text}
-
-    except Exception as e:
-        # Если произошла сетевая ошибка, просто пропускаем этот URL
-        # st.error(f"Ошибка соединения с {url}: {e}")
+        
+    except Exception as e_parse:
+        st.error(f"❌ Ошибка при обработке HTML: {e_parse}")
         return None
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
@@ -1741,6 +1765,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
