@@ -895,14 +895,14 @@ def generate_html_table(client, user_prompt, seo_keywords_data=None):
     except Exception as e: return f"Error: {e}"
 
 # ==========================================
-# 7. UI TABS
+# 7. UI TABS RESTRUCTURED
 # ==========================================
-tab_seo, tab_ai, tab_tags, tab_tables, tab_promo, tab_sidebar = st.tabs(["📊 SEO Анализ", "🤖 AI Генерация", "🏷️ Генератор тегов", "🧩 Таблицы", "🔥 Генератор акций", "📑 Боковое меню"])
+tab_seo_main, tab_wholesale_main = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор"])
 
 # ------------------------------------------
-# TAB 1: SEO
+# TAB 1: SEO ANALYSIS (KEPT AS IS)
 # ------------------------------------------
-with tab_seo:
+with tab_seo_main:
     col_main, col_sidebar = st.columns([65, 35])
     with col_main:
         st.title("SEO Анализатор")
@@ -1064,686 +1064,691 @@ with tab_seo:
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
-# TAB 2: AI
+# TAB 2: WHOLESALE GENERATOR (COMBINED)
 # ------------------------------------------
-with tab_ai:
-    st.title("AI Генератор (Perplexity)")
-    pplx_key = st.text_input("Perplexity API Key", value="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", type="password", key="pplx_key_input")
-    target_url_gen = st.text_input("URL Страницы (донор тегов)", key="pplx_url_input")
-    if st.button("🚀 Начать генерацию", key="btn_start_gen", disabled=not pplx_key):
-        st.session_state.ai_generated_df = None
-        if not openai: st.error("Нет openai"); st.stop()
-        client = openai.OpenAI(api_key=pplx_key, base_url="https://api.perplexity.ai")
-        with st.status("Генерация...", expanded=True) as status:
-            base_text, tags, err = get_page_data_for_gen(target_url_gen)
-            if err or not tags: st.error(err or "Нет тегов"); st.stop()
-            seo_list = [x['word'] for x in st.session_state.analysis_results.get('missing_semantics_high', []) if x['word'] not in GARBAGE_LATIN_STOPLIST][:15] if st.session_state.analysis_results else []
-            all_rows = []
-            bar = st.progress(0)
-            for i, tag in enumerate(tags):
-                blocks = generate_five_blocks(client, base_text, tag['name'], seo_list)
-                all_rows.append({'TagName': tag['name'], 'URL': tag['url'], 'IP_PROP4839': blocks[0], 'IP_PROP4816': blocks[1], 'IP_PROP4838': blocks[2], 'IP_PROP4829': blocks[3], 'IP_PROP4831': blocks[4], **STATIC_DATA_GEN})
-                bar.progress((i+1)/len(tags))
-            df = pd.DataFrame(all_rows)
-            st.session_state.ai_generated_df = df
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df.to_excel(writer, index=False)
-            st.session_state.ai_excel_bytes = buffer.getvalue()
-            st.rerun()
-    if st.session_state.ai_generated_df is not None:
-        st.download_button("📥 Скачать Excel", st.session_state.ai_excel_bytes, "seo_texts.xlsx", "application/vnd.ms-excel")
-        st.dataframe(st.session_state.ai_generated_df.head())
-
-# ------------------------------------------
-# TAB 3: TAGS (UPDATED v2 - ONLY BREADCRUMBS)
-# ------------------------------------------
-with tab_tags:
-    st.title("🏷️ Генератор плитки тегов (Breadcrumbs Only)")
-
-    col_t1, col_t2 = st.columns([1, 1])
-    with col_t1:
-        st.markdown("##### 🔗 Источник")
-        category_url = st.text_input("URL Категории (где размещаем теги)", placeholder="https://site.ru/catalog/truba/", key="tags_cat_url")
-        
-        st.markdown("##### 📂 База ссылок")
-        default_tags_path = "data/links_base.txt"
-        tags_file_source = None
-        tags_file_content = ""
-        
-        manual_upload_tags = st.checkbox("Загрузить файл вручную", key="manual_tags_cb")
-        
-        if not manual_upload_tags and os.path.exists(default_tags_path):
-            st.success(f"✅ Используется файл: `data/links_base.txt`")
-            with open(default_tags_path, "r", encoding="utf-8") as f:
-                tags_file_content = f.read()
-            tags_file_source = "repo"
-        else:
-            uploaded_file = st.file_uploader("Загрузите файл ссылок (.txt)", type=["txt"], key="urls_uploader_mass_v4")
-            if uploaded_file:
-                tags_file_content = uploaded_file.getvalue().decode("utf-8")
-                tags_file_source = "upload"
-
-    with col_t2:
-        st.markdown("##### 📝 Ключевые слова (Товары)")
-        
-        # БЕРЕМ СЛОВА ИЗ ПЕРЕМЕННОЙ auto_tags_words
-        tags_source = st.session_state.get('auto_tags_words', [])
-        
-        # Если пусто (анализ не запускали), пробуем взять общий список (на всякий случай)
-        if not tags_source:
-            tags_source = st.session_state.get('categorized_products', [])
-            
-        default_prod_text = "\n".join(tags_source) if tags_source else ""
-        
-        products_input = st.text_area(
-            "Список товаров (Автозаполнение):", 
-            value=default_prod_text, 
-            height=200, 
-            key="tags_products_edit_final",
-            help="Здесь первая часть списка товаров (или все, если их < 20)."
-        )
-        products = [line.strip() for line in products_input.split('\n') if line.strip()]
-
-    st.markdown("---")
+with tab_wholesale_main:
+    st.header("🏭 Генератор контента (Опт)")
     
-    # Кнопка запуска
-    if st.button("🚀 Спарсить, Назвать и Собрать Excel", key="btn_tags_smart_gen", disabled=(not products or not tags_file_source or not category_url)):
-        
-        # Сброс прошлых результатов
-        st.session_state.tags_generated_df = None
-        st.session_state.tags_excel_data = None
-        
-        status_box = st.status("🚀 Запуск процесса...", expanded=True)
-        
-        # 1. Парсинг целевой категории
-        status_box.write(f"🕵️ Парсим категорию: {category_url}")
-        target_urls_list = []
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            r = requests.get(category_url, headers=headers, timeout=10)
-            if r.status_code == 200:
-                soup = BeautifulSoup(r.text, 'html.parser')
-                tags_container = soup.find(class_='popular-tags-inner')
-                if tags_container:
-                    for link in tags_container.find_all('a'):
-                        href = link.get('href')
-                        if href: target_urls_list.append(urljoin(category_url, href))
-        except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
-            
-        if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)"); st.stop()
-        status_box.write(f"✅ Найдено страниц для размещения: {len(target_urls_list)}")
-        
-        # 2. Подготовка базы
-        status_box.write("📂 Индексация базы ссылок...")
-        stringio = io.StringIO(tags_file_content)
-        all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
-        
-        # 3. Сопоставление
-        product_candidates_map = {}
-        for p in products:
-            tr = transliterate_text(p)
-            clean_tr = tr.replace(' ', '-').replace('_', '-')
-            if len(clean_tr) >= 3:
-                matches = [u for u in all_txt_links if clean_tr in u]
-                if matches: 
-                    product_candidates_map[p] = matches
+    # Create sub-tabs within the main Wholesale tab
+    sub_ai, sub_tags, sub_tables, sub_promo, sub_sidebar = st.tabs([
+        "🤖 AI Генерация", 
+        "🏷️ Генератор тегов", 
+        "🧩 Таблицы", 
+        "🔥 Генератор акций", 
+        "📑 Боковое меню"
+    ])
 
-        status_box.write(f"✅ Товары сопоставлены: {len(product_candidates_map)} шт.")
-        
-        # 4. Выбор ссылок
-        unique_urls_to_fetch = set()
-        temp_structure = [] 
-        
-        for target_url in target_urls_list:
-            current_page_tags_urls = []
-            for prod_name, candidates in product_candidates_map.items():
-                valid = [u for u in candidates if u.rstrip('/') != target_url.rstrip('/')]
-                if valid:
-                    chosen = random.choice(valid)
-                    current_page_tags_urls.append(chosen)
-            
-            current_page_tags_urls = list(set(current_page_tags_urls))
-            random.shuffle(current_page_tags_urls)
-            
-            temp_structure.append({
-                'target_page': target_url,
-                'chosen_links': current_page_tags_urls
-            })
-            unique_urls_to_fetch.update(current_page_tags_urls)
+    # --- SUB-TAB: AI ---
+    with sub_ai:
+        st.markdown("### AI Генератор (Perplexity)")
+        pplx_key = st.text_input("Perplexity API Key", value="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", type="password", key="pplx_key_input")
+        target_url_gen = st.text_input("URL Страницы (донор тегов)", key="pplx_url_input")
+        if st.button("🚀 Начать генерацию", key="btn_start_gen", disabled=not pplx_key):
+            st.session_state.ai_generated_df = None
+            if not openai: st.error("Нет openai"); st.stop()
+            client = openai.OpenAI(api_key=pplx_key, base_url="https://api.perplexity.ai")
+            with st.status("Генерация...", expanded=True) as status:
+                base_text, tags, err = get_page_data_for_gen(target_url_gen)
+                if err or not tags: st.error(err or "Нет тегов"); st.stop()
+                seo_list = [x['word'] for x in st.session_state.analysis_results.get('missing_semantics_high', []) if x['word'] not in GARBAGE_LATIN_STOPLIST][:15] if st.session_state.analysis_results else []
+                all_rows = []
+                bar = st.progress(0)
+                for i, tag in enumerate(tags):
+                    blocks = generate_five_blocks(client, base_text, tag['name'], seo_list)
+                    all_rows.append({'TagName': tag['name'], 'URL': tag['url'], 'IP_PROP4839': blocks[0], 'IP_PROP4816': blocks[1], 'IP_PROP4838': blocks[2], 'IP_PROP4829': blocks[3], 'IP_PROP4831': blocks[4], **STATIC_DATA_GEN})
+                    bar.progress((i+1)/len(tags))
+                df = pd.DataFrame(all_rows)
+                st.session_state.ai_generated_df = df
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df.to_excel(writer, index=False)
+                st.session_state.ai_excel_bytes = buffer.getvalue()
+                st.rerun()
+        if st.session_state.ai_generated_df is not None:
+            st.download_button("📥 Скачать Excel", st.session_state.ai_excel_bytes, "seo_texts.xlsx", "application/vnd.ms-excel")
+            st.dataframe(st.session_state.ai_generated_df.head())
 
-        status_box.write(f"🌍 Получаем названия из Хлебных крошек ({len(unique_urls_to_fetch)} URL)...")
-        
-        # 5. ПАРСИНГ НАЗВАНИЙ (Многопоточно) - ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ
-        url_name_cache = {}
-        
-        def fetch_name_worker(u):
-            # ВЫЗЫВАЕМ ФУНКЦИЮ ТОЛЬКО ДЛЯ КРОШЕК
-            return u, get_breadcrumb_only(u)
+    # --- SUB-TAB: TAGS ---
+    with sub_tags:
+        st.markdown("### 🏷️ Генератор плитки тегов (Breadcrumbs Only)")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_url = {executor.submit(fetch_name_worker, u): u for u in unique_urls_to_fetch}
-            done_count = 0
-            prog_bar = status_box.progress(0)
+        col_t1, col_t2 = st.columns([1, 1])
+        with col_t1:
+            st.markdown("##### 🔗 Источник")
+            category_url = st.text_input("URL Категории (где размещаем теги)", placeholder="https://site.ru/catalog/truba/", key="tags_cat_url")
             
-            for future in concurrent.futures.as_completed(future_to_url):
-                u, name = future.result()
-                if name:
-                    url_name_cache[u] = name
-                else:
-                    # Fallback: Если крошек нет, берем из URL (транслит)
-                    slug = u.rstrip('/').split('/')[-1]
-                    url_name_cache[u] = force_cyrillic_name_global(slug)
-                
-                done_count += 1
-                prog_bar.progress(done_count / len(unique_urls_to_fetch))
-        
-        status_box.write("🧠 Генерация HTML...")
-        
-        # 6. Сборка HTML
-        final_rows = []
-        for item in temp_structure:
-            target_page = item['target_page']
-            links = item['chosen_links']
+            st.markdown("##### 📂 База ссылок")
+            default_tags_path = "data/links_base.txt"
+            tags_file_source = None
+            tags_file_content = ""
             
-            if links:
-                html_parts = []
-                html_parts.append('<div class="popular-tags">')
-                for link in links:
-                    name = url_name_cache.get(link, "Товар")
-                    html_parts.append(f'    <a href="{link}" class="tag-link">{name}</a>')
-                html_parts.append('</div>')
-                html_block = "\n".join(html_parts)
+            manual_upload_tags = st.checkbox("Загрузить файл вручную", key="manual_tags_cb")
+            
+            if not manual_upload_tags and os.path.exists(default_tags_path):
+                st.success(f"✅ Используется файл: `data/links_base.txt`")
+                with open(default_tags_path, "r", encoding="utf-8") as f:
+                    tags_file_content = f.read()
+                tags_file_source = "repo"
             else:
-                html_block = ""
-                
-            final_rows.append({'Page URL': target_page, 'Tags HTML': html_block})
-            
-        # 7. Сохранение
-        df_result = pd.DataFrame(final_rows)
-        st.session_state.tags_generated_df = df_result
-        
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: 
-            df_result.to_excel(writer, index=False)
-        st.session_state.tags_excel_data = buffer.getvalue()
-        
-        status_box.update(label="✅ Готово! Таблица сформирована.", state="complete", expanded=False)
+                uploaded_file = st.file_uploader("Загрузите файл ссылок (.txt)", type=["txt"], key="urls_uploader_mass_v4")
+                if uploaded_file:
+                    tags_file_content = uploaded_file.getvalue().decode("utf-8")
+                    tags_file_source = "upload"
 
-    # 8. Отображение (persistent)
-    if st.session_state.tags_generated_df is not None:
-        st.success(f"Сформировано тегов для {len(st.session_state.tags_generated_df)} страниц.")
-        
-        c_down, c_view = st.columns([1, 2])
-        with c_down:
-            st.download_button(
-                label="📥 Скачать Excel", 
-                data=st.session_state.tags_excel_data, 
-                file_name="smart_tags_breadcrumbs.xlsx",
-                mime="application/vnd.ms-excel",
-                key="btn_dl_tags_persistent"
+        with col_t2:
+            st.markdown("##### 📝 Ключевые слова (Товары)")
+            
+            # БЕРЕМ СЛОВА ИЗ ПЕРЕМЕННОЙ auto_tags_words
+            tags_source = st.session_state.get('auto_tags_words', [])
+            
+            # Если пусто (анализ не запускали), пробуем взять общий список (на всякий случай)
+            if not tags_source:
+                tags_source = st.session_state.get('categorized_products', [])
+                
+            default_prod_text = "\n".join(tags_source) if tags_source else ""
+            
+            products_input = st.text_area(
+                "Список товаров (Автозаполнение):", 
+                value=default_prod_text, 
+                height=200, 
+                key="tags_products_edit_final",
+                help="Здесь первая часть списка товаров (или все, если их < 20)."
             )
+            products = [line.strip() for line in products_input.split('\n') if line.strip()]
+
+        st.markdown("---")
         
-        st.markdown("### 👁️ Предпросмотр результата")
-        st.dataframe(st.session_state.tags_generated_df.head(10), use_container_width=True)
-        
-        with st.expander("🔍 Посмотреть HTML первого блока"):
-            first_val = st.session_state.tags_generated_df.iloc[0]['Tags HTML']
-            st.code(first_val, language='html')
-# ------------------------------------------
-# TAB 4: TABLES
-# ------------------------------------------
-with tab_tables:
-    st.header("🧩 Генератор HTML таблиц (Smart Style)")
-    st.caption("Автоматически определяет товар по URL категории + Тегу. Генерирует таблицы с жестким стилем (черные рамки). Удаляет сноски [1].")
-    if 'tables_generated_df' not in st.session_state: st.session_state.tables_generated_df = None
-    if 'tables_excel_data' not in st.session_state: st.session_state.tables_excel_data = None
-    col_tbl_1, col_tbl_2 = st.columns([2, 1])
-    with col_tbl_1:
-        pplx_key_tbl = st.text_input("Perplexity API Key", value="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", type="password", key="pplx_key_tbl_v3")
-        parent_cat_url = st.text_input("URL Категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/nikel/")
-    with col_tbl_2:
-        num_tables = st.selectbox("Количество таблиц на страницу", options=[1, 2, 3, 4, 5], index=1, key="num_tables_select_v3")
-    if num_tables > 0:
-        st.markdown(f"### 📝 Темы таблиц")
-        st.caption("Нейросеть сама поймет, о каком товаре речь. Здесь укажите только название блока (например: 'Характеристики').")
-        table_prompts = []
-        defaults = ["Характеристики", "Размеры и вес", "Химический состав", "Условия поставки", "Применение"]
-        for i in range(num_tables):
-            def_val = defaults[i] if i < len(defaults) else f"Таблица {i+1}"
-            t_title = st.text_input(f"Заголовок {i+1}", value=def_val, key=f"tbl_title_v3_{i}")
-            table_prompts.append(t_title)
-
-    st.markdown("---")
-    if st.button("🚀 Запустить генерацию", key="btn_gen_tbl_smart", disabled=(not pplx_key_tbl or not parent_cat_url)):
-        if not openai: st.error("Библиотека OpenAI не найдена."); st.stop()
-        client = openai.OpenAI(api_key=pplx_key_tbl, base_url="https://api.perplexity.ai")
-        status_box = st.status("⚙️ Анализ категории...", expanded=True)
-        try:
-            path = urlparse(parent_cat_url).path.strip('/')
-            slug = path.split('/')[-1]
-            decoded_slug = unquote(slug)
-            parent_name = decoded_slug.replace('-', ' ').replace('_', ' ').capitalize()
-            if not parent_name: parent_name = "Товар"
-        except: parent_name = "Товар"
-        status_box.write(f"🧠 Определена категория товара: **{parent_name}**")
-        tags_found = []
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            r = requests.get(parent_cat_url, headers=headers, timeout=15)
-            if r.status_code == 200:
-                soup = BeautifulSoup(r.text, 'html.parser')
-                tags_container = soup.find(class_='popular-tags-inner')
-                if tags_container:
-                    links = tags_container.find_all('a')
-                    for link in links:
-                        href = link.get('href')
-                        name = link.get_text(strip=True)
-                        if href and name:
-                            full_url = urljoin(parent_cat_url, href)
-                            tags_found.append({'name': name, 'url': full_url})
-            else: status_box.error(f"Ошибка доступа: {r.status_code}"); st.stop()
-        except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
-
-        if not tags_found: status_box.error("Теги не найдены (проверьте .popular-tags-inner)"); st.stop()
-        status_box.write(f"✅ Найдено тегов: {len(tags_found)}")
-        status_box.write("🤖 Генерация таблиц (Perplexity)...")
-        results_rows = []
-        progress_bar = st.progress(0)
-        total_steps = len(tags_found)
-        style_instruction = """STRICT RULES: 1. Create a <table> with style="border-collapse: collapse; width: 100%; border: 2px solid black;" 2. Every <th> and <td> must have style="border: 2px solid black; padding: 5px;" 3. Do NOT use <style> tags or classes. ONLY inline styles. 4. Do NOT include citation markers like [1], [2] in the text. 5. Output ONLY the HTML code."""
-        for idx, tag in enumerate(tags_found):
-            row_data = {'Tag Name': tag['name'], 'Tag URL': tag['url']}
-            full_product_name = f"{parent_name} {tag['name']}"
-            for t_i, t_topic in enumerate(table_prompts):
-                system_prompt = f"You are a strict HTML generator. {style_instruction}"
-                user_prompt = f"""Task: Create a technical HTML table. Product: "{full_product_name}". Table Topic: "{t_topic}". Content: Generate realistic technical data (dimensions, grades, properties) relevant to '{full_product_name}' and the topic '{t_topic}'."""
-                try:
-                    response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}], temperature=0.5)
-                    content = response.choices[0].message.content
-                    content = re.sub(r'\[\d+\]', '', content)
-                    clean_html = content.replace("```html", "").replace("```", "").strip()
-                    row_data[f'Table_{t_i+1}_HTML'] = clean_html
-                except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
-            results_rows.append(row_data)
-            progress_bar.progress((idx + 1) / total_steps)
-        status_box.update(label="✅ Готово!", state="complete", expanded=False)
-        df_final = pd.DataFrame(results_rows)
-        st.session_state.tables_generated_df = df_final
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_final.to_excel(writer, index=False)
-        st.session_state.tables_excel_data = buffer.getvalue()
-        st.rerun()
-
-    if st.session_state.tables_generated_df is not None:
-        st.success(f"Сгенерировано таблиц для {len(st.session_state.tables_generated_df)} товаров.")
-        st.download_button(label="📥 Скачать Excel", data=st.session_state.tables_excel_data, file_name="smart_tables.xlsx", mime="application/vnd.ms-excel", key="btn_down_tbl_smart")
-        st.dataframe(st.session_state.tables_generated_df.head(), use_container_width=True)
-        with st.expander("👁️ Предпросмотр первой таблицы (без сносок)", expanded=False):
-            first_html = st.session_state.tables_generated_df.iloc[0].get('Table_1_HTML', '')
-            st.markdown(first_html, unsafe_allow_html=True)
-            st.text_area("HTML код:", value=first_html, height=200)
-
-# ------------------------------------------
-# TAB 5: PROMO (UPDATED v10 - Dynamic Container)
-# ------------------------------------------
-with tab_promo:
-    st.header("Генератор блока Акции (Smart Match)")
-    
-    # CSS Hack для selectbox
-    st.markdown("""<style>div[data-baseweb="select"] input { caret-color: transparent !important; cursor: pointer !important; } div[data-baseweb="select"] > div { cursor: pointer !important; }</style>""", unsafe_allow_html=True)
-
-    if 'promo_generated_df' not in st.session_state: st.session_state.promo_generated_df = None
-    if 'promo_excel_data' not in st.session_state: st.session_state.promo_excel_data = None
-    if 'promo_html_preview' not in st.session_state: st.session_state.promo_html_preview = None
-    
-    PROMO_TITLES_LIST = [
-        "Смотрите также", "Похожие товары", "Рекомендуемые товары", "Дополнительные позиции",
-        "С этим товаром покупают", "Спецпредложения недели", "Лучшая цена", "Товары дня",
-        "Выгодное предложение", "Только сейчас", "Лидеры продаж", "Выбор наших клиентов",
-        "Топ запросов", "Популярное в разделе", "Лидеры отгрузок", "В наличии на складе",
-        "Сопутствующий прокат", "Подобрали для вас", "Вам может подойти",
-        "Специально для вашего проекта", "Вы недавно смотрели"
-    ]
-
-    # --- ВЕРХНИЕ НАСТРОЙКИ ---
-    c1, c2 = st.columns([1, 1])
-    
-    with c1: 
-        st.markdown("##### 🔗 Источник данных")
-        parent_cat_url = st.text_input("URL Родительской категории", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db", help="Отсюда мы возьмем теги")
-    
-    with c2: 
-        st.markdown("##### 🏷️ Заголовок блока (h3)")
-        
-        # 1. Создаем пустой контейнер, который будет меняться
-        title_placeholder = st.empty()
-        
-        # 2. Чекбокс находится СНИЗУ (как вы просили)
-        is_manual_mode = st.checkbox("✍️ Вписать свой заголовок вручную", key="promo_manual_checkbox_v10")
-        
-        # 3. Наполняем контейнер в зависимости от чекбокса
-        with title_placeholder:
-            if is_manual_mode:
-                # Если галочка стоит — показываем ТОЛЬКО ввод текста
-                custom_input = st.text_input(
-                    "Введите текст:", 
-                    value="", 
-                    placeholder="Например: Рекомендуем посмотреть", 
-                    label_visibility="collapsed", 
-                    key="promo_title_custom_input_v10"
-                )
-                promo_title = custom_input.strip() if custom_input.strip() else "Рекомендуем посмотреть"
-            else:
-                # Если галочка НЕ стоит — показываем ТОЛЬКО список
-                st.caption("👇 Выберите готовый шаблон:")
-                selected_variant = st.selectbox(
-                    "Варианты", 
-                    options=PROMO_TITLES_LIST, 
-                    label_visibility="collapsed", 
-                    key="promo_title_selector_v10"
-                )
-                promo_title = selected_variant
+        # Кнопка запуска
+        if st.button("🚀 Спарсить, Назвать и Собрать Excel", key="btn_tags_smart_gen", disabled=(not products or not tags_file_source or not category_url)):
             
-    st.markdown("---")
-    
-    col_p1, col_p2 = st.columns([1, 1])
-    
-    # --- ЛЕВАЯ КОЛОНКА: БАЗА ДАННЫХ (EXCEL) ---
-    with col_p1:
-        st.markdown("#### 1. База данных (Excel)")
-        st.caption("Файл должен содержать 2 столбца: [1] URL Категории, [2] URL Картинки")
-        
-        default_db_path = "data/images_db.xlsx"
-        df_db_promo = None
-        db_source = None
-        
-        # Чекбокс для ручной загрузки
-        manual_db = st.checkbox("Загрузить базу вручную (.xlsx)", key="manual_db_promo_cb")
-        
-        if not manual_db and os.path.exists(default_db_path):
+            # Сброс прошлых результатов
+            st.session_state.tags_generated_df = None
+            st.session_state.tags_excel_data = None
+            
+            status_box = st.status("🚀 Запуск процесса...", expanded=True)
+            
+            # 1. Парсинг целевой категории
+            status_box.write(f"🕵️ Парсим категорию: {category_url}")
+            target_urls_list = []
             try:
-                df_db_promo = pd.read_excel(default_db_path)
-                st.success(f"✅ Подгружена база из репозитория")
-                db_source = "repo"
-            except Exception as e:
-                st.error(f"Ошибка чтения репозитория: {e}")
-        else:
-            up_db = st.file_uploader("Выберите файл (.xlsx)", type=["xlsx"], key="promo_db_upl")
-            if up_db: 
-                try:
-                    df_db_promo = pd.read_excel(up_db)
-                    db_source = "upload"
-                except Exception as e:
-                    st.error(f"Ошибка Excel: {e}")
-
-    # --- ПРАВАЯ КОЛОНКА: КЛЮЧЕВЫЕ СЛОВА ---
-    with col_p2:
-        st.markdown("#### 2. Ключевые слова (Товары)")
-        
-        # БЕРЕМ СЛОВА ИЗ ПЕРЕМЕННОЙ auto_promo_words
-        promo_source = st.session_state.get('auto_promo_words', [])
-        
-        default_promo_text = "\n".join(promo_source) if promo_source else ""
-        
-        promo_keywords_input = st.text_area(
-            "Список товаров для акций:", 
-            value=default_promo_text, 
-            height=200, 
-            key="promo_keywords_area_final",
-            help="Здесь вторая часть списка товаров (если их было больше 20)."
-        )
-        promo_keywords = [line.strip() for line in promo_keywords_input.split('\n') if line.strip()]
-
-    # --- КНОПКА ЗАПУСКА ---
-    if st.button("🛠️ Подобрать и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_smart"):
-        # Принудительно сохраняем введенные данные в state перед запуском
-        if promo_keywords:
-             st.session_state.auto_promo_words = promo_keywords
-             
-        if not parent_cat_url or not db_source or df_db_promo is None or not promo_keywords:
-            st.error("Заполните все поля (URL, База Excel и Слова)!"); st.stop()
-        
-        if df_db_promo.shape[1] < 2:
-            st.error("❌ В Excel должно быть минимум 2 столбца (URL и Картинка)!"); st.stop()
-
-        status = st.status("⚙️ Запуск магии...", expanded=True)
-        
-        # 1. ОБРАБОТКА БАЗЫ
-        img_map = {}
-        all_links = []
-        
-        try:
-            for index, row in df_db_promo.iterrows():
-                raw_url = str(row.iloc[0]).strip()
-                img_val = str(row.iloc[1]).strip()
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                r = requests.get(category_url, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                    tags_container = soup.find(class_='popular-tags-inner')
+                    if tags_container:
+                        for link in tags_container.find_all('a'):
+                            href = link.get('href')
+                            if href: target_urls_list.append(urljoin(category_url, href))
+            except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
                 
-                if raw_url and raw_url.lower() != 'nan':
-                    all_links.append(raw_url)
-                    if img_val and img_val.lower() != 'nan':
-                        img_map[raw_url.rstrip('/')] = img_val
-                        
-            status.write(f"✅ База проиндексирована: {len(all_links)} ссылок, {len(img_map)} картинок.")
-        except Exception as e: status.error(f"Ошибка обработки базы: {e}"); st.stop()
-        
-        # 3. ПОИСК
-        status.write("🔍 Сопоставление: Слово -> Ссылка...")
-        
-        final_items = []
-        used_urls = set()
-        parent_clean = parent_cat_url.rstrip('/')
-        
-        for word in promo_keywords:
-            tr = transliterate_text(word)
-            clean_tr = tr.replace(' ', '-').replace('_', '-')
+            if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)"); st.stop()
+            status_box.write(f"✅ Найдено страниц для размещения: {len(target_urls_list)}")
             
-            if len(clean_tr) < 3: continue
+            # 2. Подготовка базы
+            status_box.write("📂 Индексация базы ссылок...")
+            stringio = io.StringIO(tags_file_content)
+            all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
             
-            matches = [u for u in all_links if clean_tr in u]
-            valid_matches = [u for u in matches if u.rstrip('/') != parent_clean and u not in used_urls]
+            # 3. Сопоставление
+            product_candidates_map = {}
+            for p in products:
+                tr = transliterate_text(p)
+                clean_tr = tr.replace(' ', '-').replace('_', '-')
+                if len(clean_tr) >= 3:
+                    matches = [u for u in all_txt_links if clean_tr in u]
+                    if matches: 
+                        product_candidates_map[p] = matches
+
+            status_box.write(f"✅ Товары сопоставлены: {len(product_candidates_map)} шт.")
             
-            if valid_matches:
-                chosen_url = random.choice(valid_matches)
-                clean_chosen_url = chosen_url.rstrip('/')
-                img_src = img_map.get(clean_chosen_url, "")
+            # 4. Выбор ссылок
+            unique_urls_to_fetch = set()
+            temp_structure = [] 
+            
+            for target_url in target_urls_list:
+                current_page_tags_urls = []
+                for prod_name, candidates in product_candidates_map.items():
+                    valid = [u for u in candidates if u.rstrip('/') != target_url.rstrip('/')]
+                    if valid:
+                        chosen = random.choice(valid)
+                        current_page_tags_urls.append(chosen)
                 
-                if img_src:
-                    used_urls.add(chosen_url)
-                    slug = clean_chosen_url.split('/')[-1]
-                    name_rus = force_cyrillic_name_global(slug)
+                current_page_tags_urls = list(set(current_page_tags_urls))
+                random.shuffle(current_page_tags_urls)
+                
+                temp_structure.append({
+                    'target_page': target_url,
+                    'chosen_links': current_page_tags_urls
+                })
+                unique_urls_to_fetch.update(current_page_tags_urls)
+
+            status_box.write(f"🌍 Получаем названия из Хлебных крошек ({len(unique_urls_to_fetch)} URL)...")
+            
+            # 5. ПАРСИНГ НАЗВАНИЙ (Многопоточно) - ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ
+            url_name_cache = {}
+            
+            def fetch_name_worker(u):
+                # ВЫЗЫВАЕМ ФУНКЦИЮ ТОЛЬКО ДЛЯ КРОШЕК
+                return u, get_breadcrumb_only(u)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_url = {executor.submit(fetch_name_worker, u): u for u in unique_urls_to_fetch}
+                done_count = 0
+                prog_bar = status_box.progress(0)
+                
+                for future in concurrent.futures.as_completed(future_to_url):
+                    u, name = future.result()
+                    if name:
+                        url_name_cache[u] = name
+                    else:
+                        # Fallback: Если крошек нет, берем из URL (транслит)
+                        slug = u.rstrip('/').split('/')[-1]
+                        url_name_cache[u] = force_cyrillic_name_global(slug)
                     
-                    final_items.append({
-                        'name': name_rus,
-                        'url': chosen_url,
-                        'img': img_src
-                    })
-        
-        if not final_items:
-            status.error("❌ Не удалось найти совпадений.")
-            st.stop()
+                    done_count += 1
+                    prog_bar.progress(done_count / len(unique_urls_to_fetch))
             
-        status.write(f"✅ Успешно собрано {len(final_items)} карточек товаров.")
-        
-        # 4. ГЕНЕРАЦИЯ HTML
-        items_html = ""
-        for item in final_items:
-             items_html += f"""            <div class="gallery-item">
-                <h3><a href="{item['url']}" target="_blank">{item['name']}</a></h3>
-                <figure>
-                    <a href="{item['url']}" target="_blank">
-                        <picture>
-                            <img src="{item['img']}" 
-                                 alt="{item['name']}" 
-                                 title="{item['name']}" 
-                                 loading="lazy">
-                        </picture>
-                    </a>
-                </figure>
-            </div>\n"""
+            status_box.write("🧠 Генерация HTML...")
             
-        css_styles = """<style>.outer-full-width-section { padding: 25px 0; width: 100%; } .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; } h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; } .five-col-gallery { display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; } .gallery-item { flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; } .gallery-item h3 { font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; } .gallery-item h3 a { text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; } .gallery-item h3 a:hover { color: #007bff; } .gallery-item figure { width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; } .gallery-item figure a { display: block; height: 100%; text-decoration: none; } .gallery-item img { width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; } .gallery-item figure a:hover img { transform: scale(1.05); }</style>"""
-        full_block_html = f"""{css_styles}<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div></div>"""
-        
-        # 5. ПАРСИНГ ТЕГОВ
-        status.write(f"🕵️ Ищем страницы для размещения...")
-        found_tags = []
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            r = requests.get(parent_cat_url, headers=headers, timeout=10)
-            if r.status_code == 200:
-                soup = BeautifulSoup(r.text, 'html.parser')
-                tags_container = soup.find(class_='popular-tags-inner')
-                if tags_container:
-                    for link in tags_container.find_all('a'):
-                        href = link.get('href')
-                        if href: found_tags.append(urljoin(parent_cat_url, href))
-        except: pass
-        if not found_tags: found_tags.append(parent_cat_url)
-        
-        excel_rows = []
-        for tag_url in found_tags: excel_rows.append({'Page URL': tag_url, 'HTML Block': full_block_html})
-        df_promo = pd.DataFrame(excel_rows)
-        
-        # 6. СОХРАНЕНИЕ
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_promo.to_excel(writer, index=False)
-        st.session_state.promo_generated_df = df_promo
-        st.session_state.promo_excel_data = buffer.getvalue()
-        st.session_state.promo_html_preview = full_block_html
-        
-        status.update(label="Готово!", state="complete", expanded=False)
-
-    if st.session_state.promo_generated_df is not None:
-        st.success(f"🎉 Сформирован блок с {len(st.session_state.promo_generated_df)} записями!")
-        st.download_button(label="📥 Скачать Excel (Promo Block)", data=st.session_state.promo_excel_data, file_name="promo_smart_block.xlsx", mime="application/vnd.ms-excel", key="btn_down_promo_db")
-        with st.expander("👁️ Предпросмотр блока (HTML)", expanded=True):
-            components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
-            st.text_area("HTML Код", value=st.session_state.promo_html_preview, height=200)
-# ------------------------------------------
-# TAB 6: SIDEBAR
-# ------------------------------------------
-with tab_sidebar:
-    st.header("📑 Генератор HTML бокового меню (Mass Excel)")
-    
-    col_sb1, col_sb2 = st.columns([1, 1])
-    with col_sb1: 
-        sidebar_cat_url = st.text_input("URL Категории-донора", placeholder="https://stalmetural.ru/catalog/alyuminiy/", key="sidebar_cat_url_input")
-    
-    with col_sb2: 
-        st.markdown("##### 2. Структура меню")
-        # --- ЛОГИКА АВТОЗАГРУЗКИ ---
-        default_menu_path = "data/menu_structure.txt"
-        sidebar_file_content = None
-        
-        manual_upload_sidebar = st.checkbox("Загрузить файл меню вручную", key="manual_sidebar_cb")
-        
-        if not manual_upload_sidebar and os.path.exists(default_menu_path):
-            st.success(f"✅ Используется файл меню из репозитория: `data/menu_structure.txt`")
-            with open(default_menu_path, "r", encoding="utf-8") as f:
-                sidebar_file_content = f.read()
-        else:
-            sidebar_file = st.file_uploader("Загрузить список (.txt)", type=["txt"], key="sidebar_uploader_mass")
-            if sidebar_file:
-                sidebar_file_content = sidebar_file.getvalue().decode("utf-8")
-    
-    SIDEBAR_ASSETS = """<style>:root { font-size: 14px; } @media (min-width: 2201px) { font-size: 16px; } #sidebar-menu ul, #sidebar-menu li { list-style: none !important; margin: 0 !important; padding: 0 !important; } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 0.85em; padding: 0.5rem 0.5rem; padding-right: 1.5rem; display: block; text-decoration: none; color: #3D4858; transition: all 0.2s ease-in-out; position: relative; font-weight: 600; cursor: pointer; } #sidebar-menu .level-1-header > span.dropdown-toggle { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-1-header > a { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 1rem; } #sidebar-menu .level-3-link > a { padding-left: 2rem; color: #555; font-weight: 400; } #sidebar-menu .level-2-link-special { background: #F6F7FC; } #sidebar-menu .level-2-link-special > a { padding-left: 1rem; font-weight: 600; color: #3D4858; position: relative; padding-right: 1rem; } #sidebar-menu .level-2-link-special > a::after { content: none !important; } #sidebar-menu .level-2-link-special > a:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .list-unstyled a:hover, #sidebar-menu .level-3-link a:hover, #sidebar-menu .list-unstyled span.dropdown-toggle:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #F6F7FC; color: #277EFF; } #sidebar-menu .collapse-menu { list-style: none; padding: 0; background: #F6F7FC; display: none; } #sidebar-menu .dropdown-toggle::after { content: '▶'; position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%); transition: transform 0.3s; font-size: 0.7em; color: #999; } #sidebar-menu .dropdown-toggle.active::after { content: '▼'; transform: translateY(-50%) rotate(0deg); color: #277EFF; } #sidebar-menu .level-1-header > a::after { content: none !important; } .page-content-with-sidebar { margin-left: 0 !important; } .sidebar-wrapper { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; z-index: 1001; } #sidebar-menu, #sidebar-menu * { box-sizing: border-box; } .menu-toggle-button { position: fixed; top: 20px; right: 10px; background: #277EFF; color: white; border: none; padding: 5px 10px; font-size: 24px; line-height: 1; cursor: pointer; z-index: 1002; border-radius: 5px; display: none; transition: all 0.3s ease; } #sidebar-menu { z-index: 1000; background: #FFFFFF; color: #3D4858; transition: transform 0.3s ease; font-family: 'Open Sans', sans-serif; box-shadow: 0 0 30px rgba(0, 0, 0, 0.3); position: fixed; top: 0; left: 0; width: auto; max-width: 350px; height: 100vh; max-height: 100vh; transform: translateX(-100%); padding-top: 60px; border-radius: 0; display: block; overflow-y: auto; } #sidebar-menu.active { transform: translateX(0); } @media (max-width: 1800px) { .menu-toggle-button { display: block; top: 20px; } @media (min-width: 1180px) and (max-width: 1580px) { .menu-toggle-button { right: 183px; top: 30px; transition: right 0.3s ease, top 0.3s ease; } } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 16px !important; padding: 10px 15px !important; padding-right: 30px !important; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 25px !important; } #sidebar-menu .level-3-link > a { padding-left: 40px !important; } #sidebar-menu .level-2-link-special > a { padding-left: 25px !important; padding-right: 25px !important; } } @media (max-width: 350px) { #sidebar-menu { width: 100%; max-width: 100%; } .menu-toggle-button { right: 5px; padding: 5px 8px; } } @media (min-width: 1801px) { #sidebar-menu { width: 14.28rem; } .page-content-with-sidebar { margin-left: 15.7rem; } .menu-toggle-button { display: none; } .sidebar-wrapper { position: static; width: auto; height: auto; overflow: visible; } #sidebar-menu { height: auto; position: fixed; top: calc(150px + 70px); left: 10px; max-height: calc(100vh - 250px - 70px); transform: translateX(0); padding-top: 0; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); border-radius: 10px; display: block; overflow-y: hidden; } #sidebar-menu .list-unstyled.components { max-height: calc(100vh - 250px - 70px); overflow-y: auto; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #FFFFFF !important; color: #3D4858; } #sidebar-menu .level-1-header:hover > span.dropdown-toggle, #sidebar-menu .level-2-header:hover > span.dropdown-toggle { background: #EBF5FF; color: #277EFF; } #sidebar-menu .level-2-link-special { background: #FFFFFF; } #sidebar-menu .level-2-link-special > a:hover { background: #EBF5FF; } #sidebar-menu .level-1-header > a:hover { background: #EBF5FF; color: #277EFF; } } </style><script>document.addEventListener('DOMContentLoaded', function() { const menu = document.getElementById('sidebar-menu'); const listComponents = menu ? menu.querySelector('.list-unstyled.components') : null; const mobileToggle = document.getElementById('mobile-menu-toggle'); if (!menu || !listComponents || !mobileToggle) return; const toggles = menu.querySelectorAll('.dropdown-toggle'); const desktopBreakpoint = 1801; function resetMenuState() { menu.querySelectorAll('.collapse-menu').forEach(sub => { sub.style.display = 'none'; }); menu.querySelectorAll('.level-1-header, .level-2-header').forEach(li => { li.classList.remove('active'); const toggle = li.querySelector('.dropdown-toggle'); if(toggle) toggle.classList.remove('active'); }); } function handleResize() { if (window.innerWidth >= desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; resetMenuState(); } } handleResize(); window.addEventListener('resize', handleResize); if (mobileToggle) { mobileToggle.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.toggle('active'); this.textContent = menu.classList.contains('active') ? '✖' : '☰'; } }); } menu.querySelectorAll('a').forEach(link => { if (link.closest('.level-3-link') || link.closest('.level-2-link-special') || link.parentElement.classList.contains('level-1-header')) { link.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; } }); } }); toggles.forEach(toggle => { toggle.addEventListener('click', function(event) { event.preventDefault(); const parentLi = this.parentElement; const parentUl = parentLi.parentElement; const targetMenu = parentLi.querySelector('.collapse-menu'); if (!targetMenu) return; const isActive = parentLi.classList.contains('active'); const activeSiblings = parentUl.querySelectorAll('.level-1-header.active, .level-2-header.active'); activeSiblings.forEach(sibling => { if (sibling !== parentLi) { sibling.classList.remove('active'); const siblingToggle = sibling.querySelector('.dropdown-toggle'); if (siblingToggle) siblingToggle.classList.remove('active'); const siblingMenu = sibling.querySelector('.collapse-menu'); if (siblingMenu) siblingMenu.style.display = 'none'; } }); parentLi.classList.toggle('active', !isActive); this.classList.toggle('active', !isActive); targetMenu.style.display = !isActive ? 'block' : 'none'; }); }); });</script>"""
-
-    if st.button("🚀 Создать Excel", disabled=(not sidebar_cat_url or not sidebar_file_content), key="btn_gen_sidebar_mass"):
-        status_box = st.status("⚙️ Обработка...", expanded=True)
-        try:
-            status_box.write("🔨 Сборка меню из файла...")
-            stringio = io.StringIO(sidebar_file_content)
-            urls = [line.strip() for line in stringio.readlines() if line.strip()]
-            urls = list(dict.fromkeys(urls))
-            if not urls: status_box.error("❌ Файл пуст!"); st.stop()
-            tree = {}
-            for url in urls:
-                path = urlparse(url).path.strip('/')
-                parts = [p for p in path.split('/') if p]
-                start_idx = 0
-                if 'catalog' in parts: start_idx = parts.index('catalog') + 1
-                relevant_parts = parts[start_idx:] if parts[start_idx:] else parts
-                current_level = tree
-                for i, part in enumerate(relevant_parts):
-                    if part not in current_level: current_level[part] = {}
-                    if i == len(relevant_parts) - 1:
-                        current_level[part]['__url__'] = url
-                        current_level[part]['__name__'] = force_cyrillic_name_global(part)
-                    current_level = current_level[part]
-
-            def render_tree(node, level=1):
-                html = ""
-                keys = sorted([k for k in node.keys() if not k.startswith('__')])
-                for key in keys:
-                    child = node[key]
-                    name = child.get('__name__', force_cyrillic_name_global(key))
-                    url = child.get('__url__')
-                    has_children = any(k for k in child.keys() if not k.startswith('__'))
-                    if level == 1:
-                        html += '<li class="level-1-header">\n'
-                        if has_children:
-                            html += f'    <span class="dropdown-toggle">{name}</span>\n'
-                            html += '    <ul class="collapse-menu list-unstyled">\n'
-                            html += render_tree(child, level=2)
-                            html += '    </ul>\n'
-                        else:
-                            target = url if url else "#"
-                            html += f'    <a href="{target}">{name}</a>\n'
-                        html += '</li>\n'
-                    elif level == 2:
-                        if has_children:
-                            html += '<li class="level-2-header">\n'
-                            html += f'    <span class="dropdown-toggle">{name}</span>\n'
-                            html += '    <ul class="collapse-menu list-unstyled">\n'
-                            html += render_tree(child, level=3)
-                            html += '    </ul>\n'
-                            html += '</li>\n'
-                        else:
-                            target = url if url else "#"
-                            html += f'<li class="level-2-link-special"><a href="{target}">{name}</a></li>\n'
-                    elif level >= 3:
-                        target = url if url else "#"
-                        html += f'<li class="level-3-link"><a href="{target}">{name}</a></li>\n'
-                return html
-
-            inner_html = render_tree(tree, level=1)
-            full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>{SIDEBAR_ASSETS}"""
-            status_box.write("✅ Меню успешно собрано.")
-        except Exception as e: status_box.error(f"Ошибка при сборке меню: {e}"); st.stop()
-
-        found_tags_urls = []
-        try:
-            status_box.write(f"🕵️ Сканируем URL: {sidebar_cat_url}")
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            r = requests.get(sidebar_cat_url, headers=headers, timeout=15)
-            if r.status_code == 200:
-                soup = BeautifulSoup(r.text, 'html.parser')
-                tags_container = soup.find(class_='popular-tags-inner')
-                if tags_container:
-                    for link in tags_container.find_all('a'):
-                        href = link.get('href')
-                        if href: found_tags_urls.append(urljoin(sidebar_cat_url, href))
+            # 6. Сборка HTML
+            final_rows = []
+            for item in temp_structure:
+                target_page = item['target_page']
+                links = item['chosen_links']
+                
+                if links:
+                    html_parts = []
+                    html_parts.append('<div class="popular-tags">')
+                    for link in links:
+                        name = url_name_cache.get(link, "Товар")
+                        html_parts.append(f'    <a href="{link}" class="tag-link">{name}</a>')
+                    html_parts.append('</div>')
+                    html_block = "\n".join(html_parts)
                 else:
-                    status_box.warning("Теги .popular-tags-inner не найдены. Добавлю только сам URL категории.")
-                    found_tags_urls.append(sidebar_cat_url)
-            else: status_box.error(f"Ошибка доступа к сайту: {r.status_code}"); st.stop()
-        except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
+                    html_block = ""
+                    
+                final_rows.append({'Page URL': target_page, 'Tags HTML': html_block})
+                
+            # 7. Сохранение
+            df_result = pd.DataFrame(final_rows)
+            st.session_state.tags_generated_df = df_result
+            
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: 
+                df_result.to_excel(writer, index=False)
+            st.session_state.tags_excel_data = buffer.getvalue()
+            
+            status_box.update(label="✅ Готово! Таблица сформирована.", state="complete", expanded=False)
 
-        status_box.write(f"📊 Формируем таблицу для {len(found_tags_urls)} страниц...")
-        excel_data = []
-        for tag_url in found_tags_urls: excel_data.append({'Page URL': tag_url, 'Sidebar HTML': full_sidebar_code})
-        df_sidebar = pd.DataFrame(excel_data)
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_sidebar.to_excel(writer, index=False)
-        st.session_state.sidebar_gen_df = df_sidebar
-        st.session_state.sidebar_excel_bytes = buffer.getvalue()
-        status_box.update(label="✅ Готово! Файл создан.", state="complete", expanded=False)
+        # 8. Отображение (persistent)
+        if st.session_state.tags_generated_df is not None:
+            st.success(f"Сформировано тегов для {len(st.session_state.tags_generated_df)} страниц.")
+            
+            c_down, c_view = st.columns([1, 2])
+            with c_down:
+                st.download_button(
+                    label="📥 Скачать Excel", 
+                    data=st.session_state.tags_excel_data, 
+                    file_name="smart_tags_breadcrumbs.xlsx",
+                    mime="application/vnd.ms-excel",
+                    key="btn_dl_tags_persistent"
+                )
+            
+            st.markdown("### 👁️ Предпросмотр результата")
+            st.dataframe(st.session_state.tags_generated_df.head(10), use_container_width=True)
+            
+            with st.expander("🔍 Посмотреть HTML первого блока"):
+                first_val = st.session_state.tags_generated_df.iloc[0]['Tags HTML']
+                st.code(first_val, language='html')
 
-    if st.session_state.sidebar_gen_df is not None:
-        st.success(f"Файл готов: {len(st.session_state.sidebar_gen_df)} строк.")
-        st.download_button(label="📥 Скачать Excel (Menu)", data=st.session_state.sidebar_excel_bytes, file_name="sidebar_menu_mass.xlsx", mime="application/vnd.ms-excel", key="btn_down_sidebar_mass")
-        with st.expander("👁️ Просмотр данных"): st.dataframe(st.session_state.sidebar_gen_df.head())
-        with st.expander("🖼️ Предпросмотр меню (HTML)"):
-            html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
-            components.html(html_preview, height=600, scrolling=True)
+    # --- SUB-TAB: TABLES ---
+    with sub_tables:
+        st.markdown("### 🧩 Генератор HTML таблиц (Smart Style)")
+        st.caption("Автоматически определяет товар по URL категории + Тегу. Генерирует таблицы с жестким стилем (черные рамки). Удаляет сноски [1].")
+        if 'tables_generated_df' not in st.session_state: st.session_state.tables_generated_df = None
+        if 'tables_excel_data' not in st.session_state: st.session_state.tables_excel_data = None
+        col_tbl_1, col_tbl_2 = st.columns([2, 1])
+        with col_tbl_1:
+            pplx_key_tbl = st.text_input("Perplexity API Key", value="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", type="password", key="pplx_key_tbl_v3")
+            parent_cat_url = st.text_input("URL Категории (источник тегов)", placeholder="https://stalmetural.ru/catalog/nikel/")
+        with col_tbl_2:
+            num_tables = st.selectbox("Количество таблиц на страницу", options=[1, 2, 3, 4, 5], index=1, key="num_tables_select_v3")
+        if num_tables > 0:
+            st.markdown(f"### 📝 Темы таблиц")
+            st.caption("Нейросеть сама поймет, о каком товаре речь. Здесь укажите только название блока (например: 'Характеристики').")
+            table_prompts = []
+            defaults = ["Характеристики", "Размеры и вес", "Химический состав", "Условия поставки", "Применение"]
+            for i in range(num_tables):
+                def_val = defaults[i] if i < len(defaults) else f"Таблица {i+1}"
+                t_title = st.text_input(f"Заголовок {i+1}", value=def_val, key=f"tbl_title_v3_{i}")
+                table_prompts.append(t_title)
 
+        st.markdown("---")
+        if st.button("🚀 Запустить генерацию", key="btn_gen_tbl_smart", disabled=(not pplx_key_tbl or not parent_cat_url)):
+            if not openai: st.error("Библиотека OpenAI не найдена."); st.stop()
+            client = openai.OpenAI(api_key=pplx_key_tbl, base_url="https://api.perplexity.ai")
+            status_box = st.status("⚙️ Анализ категории...", expanded=True)
+            try:
+                path = urlparse(parent_cat_url).path.strip('/')
+                slug = path.split('/')[-1]
+                decoded_slug = unquote(slug)
+                parent_name = decoded_slug.replace('-', ' ').replace('_', ' ').capitalize()
+                if not parent_name: parent_name = "Товар"
+            except: parent_name = "Товар"
+            status_box.write(f"🧠 Определена категория товара: **{parent_name}**")
+            tags_found = []
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                r = requests.get(parent_cat_url, headers=headers, timeout=15)
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                    tags_container = soup.find(class_='popular-tags-inner')
+                    if tags_container:
+                        links = tags_container.find_all('a')
+                        for link in links:
+                            href = link.get('href')
+                            name = link.get_text(strip=True)
+                            if href and name:
+                                full_url = urljoin(parent_cat_url, href)
+                                tags_found.append({'name': name, 'url': full_url})
+                else: status_box.error(f"Ошибка доступа: {r.status_code}"); st.stop()
+            except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
 
+            if not tags_found: status_box.error("Теги не найдены (проверьте .popular-tags-inner)"); st.stop()
+            status_box.write(f"✅ Найдено тегов: {len(tags_found)}")
+            status_box.write("🤖 Генерация таблиц (Perplexity)...")
+            results_rows = []
+            progress_bar = st.progress(0)
+            total_steps = len(tags_found)
+            style_instruction = """STRICT RULES: 1. Create a <table> with style="border-collapse: collapse; width: 100%; border: 2px solid black;" 2. Every <th> and <td> must have style="border: 2px solid black; padding: 5px;" 3. Do NOT use <style> tags or classes. ONLY inline styles. 4. Do NOT include citation markers like [1], [2] in the text. 5. Output ONLY the HTML code."""
+            for idx, tag in enumerate(tags_found):
+                row_data = {'Tag Name': tag['name'], 'Tag URL': tag['url']}
+                full_product_name = f"{parent_name} {tag['name']}"
+                for t_i, t_topic in enumerate(table_prompts):
+                    system_prompt = f"You are a strict HTML generator. {style_instruction}"
+                    user_prompt = f"""Task: Create a technical HTML table. Product: "{full_product_name}". Table Topic: "{t_topic}". Content: Generate realistic technical data (dimensions, grades, properties) relevant to '{full_product_name}' and the topic '{t_topic}'."""
+                    try:
+                        response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}], temperature=0.5)
+                        content = response.choices[0].message.content
+                        content = re.sub(r'\[\d+\]', '', content)
+                        clean_html = content.replace("```html", "").replace("```", "").strip()
+                        row_data[f'Table_{t_i+1}_HTML'] = clean_html
+                    except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
+                results_rows.append(row_data)
+                progress_bar.progress((idx + 1) / total_steps)
+            status_box.update(label="✅ Готово!", state="complete", expanded=False)
+            df_final = pd.DataFrame(results_rows)
+            st.session_state.tables_generated_df = df_final
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_final.to_excel(writer, index=False)
+            st.session_state.tables_excel_data = buffer.getvalue()
+            st.rerun()
+
+        if st.session_state.tables_generated_df is not None:
+            st.success(f"Сгенерировано таблиц для {len(st.session_state.tables_generated_df)} товаров.")
+            st.download_button(label="📥 Скачать Excel", data=st.session_state.tables_excel_data, file_name="smart_tables.xlsx", mime="application/vnd.ms-excel", key="btn_down_tbl_smart")
+            st.dataframe(st.session_state.tables_generated_df.head(), use_container_width=True)
+            with st.expander("👁️ Предпросмотр первой таблицы (без сносок)", expanded=False):
+                first_html = st.session_state.tables_generated_df.iloc[0].get('Table_1_HTML', '')
+                st.markdown(first_html, unsafe_allow_html=True)
+                st.text_area("HTML код:", value=first_html, height=200)
+
+    # --- SUB-TAB: PROMO ---
+    with sub_promo:
+        st.markdown("### Генератор блока Акции (Smart Match)")
+        
+        # CSS Hack для selectbox
+        st.markdown("""<style>div[data-baseweb="select"] input { caret-color: transparent !important; cursor: pointer !important; } div[data-baseweb="select"] > div { cursor: pointer !important; }</style>""", unsafe_allow_html=True)
+
+        if 'promo_generated_df' not in st.session_state: st.session_state.promo_generated_df = None
+        if 'promo_excel_data' not in st.session_state: st.session_state.promo_excel_data = None
+        if 'promo_html_preview' not in st.session_state: st.session_state.promo_html_preview = None
+        
+        PROMO_TITLES_LIST = [
+            "Смотрите также", "Похожие товары", "Рекомендуемые товары", "Дополнительные позиции",
+            "С этим товаром покупают", "Спецпредложения недели", "Лучшая цена", "Товары дня",
+            "Выгодное предложение", "Только сейчас", "Лидеры продаж", "Выбор наших клиентов",
+            "Топ запросов", "Популярное в разделе", "Лидеры отгрузок", "В наличии на складе",
+            "Сопутствующий прокат", "Подобрали для вас", "Вам может подойти",
+            "Специально для вашего проекта", "Вы недавно смотрели"
+        ]
+
+        # --- ВЕРХНИЕ НАСТРОЙКИ ---
+        c1, c2 = st.columns([1, 1])
+        
+        with c1: 
+            st.markdown("##### 🔗 Источник данных")
+            parent_cat_url = st.text_input("URL Родительской категории", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db", help="Отсюда мы возьмем теги")
+        
+        with c2: 
+            st.markdown("##### 🏷️ Заголовок блока (h3)")
+            
+            # 1. Создаем пустой контейнер, который будет меняться
+            title_placeholder = st.empty()
+            
+            # 2. Чекбокс находится СНИЗУ (как вы просили)
+            is_manual_mode = st.checkbox("✍️ Вписать свой заголовок вручную", key="promo_manual_checkbox_v10")
+            
+            # 3. Наполняем контейнер в зависимости от чекбокса
+            with title_placeholder:
+                if is_manual_mode:
+                    # Если галочка стоит — показываем ТОЛЬКО ввод текста
+                    custom_input = st.text_input(
+                        "Введите текст:", 
+                        value="", 
+                        placeholder="Например: Рекомендуем посмотреть", 
+                        label_visibility="collapsed", 
+                        key="promo_title_custom_input_v10"
+                    )
+                    promo_title = custom_input.strip() if custom_input.strip() else "Рекомендуем посмотреть"
+                else:
+                    # Если галочка НЕ стоит — показываем ТОЛЬКО список
+                    st.caption("👇 Выберите готовый шаблон:")
+                    selected_variant = st.selectbox(
+                        "Варианты", 
+                        options=PROMO_TITLES_LIST, 
+                        label_visibility="collapsed", 
+                        key="promo_title_selector_v10"
+                    )
+                    promo_title = selected_variant
+                
+        st.markdown("---")
+        
+        col_p1, col_p2 = st.columns([1, 1])
+        
+        # --- ЛЕВАЯ КОЛОНКА: БАЗА ДАННЫХ (EXCEL) ---
+        with col_p1:
+            st.markdown("#### 1. База данных (Excel)")
+            st.caption("Файл должен содержать 2 столбца: [1] URL Категории, [2] URL Картинки")
+            
+            default_db_path = "data/images_db.xlsx"
+            df_db_promo = None
+            db_source = None
+            
+            # Чекбокс для ручной загрузки
+            manual_db = st.checkbox("Загрузить базу вручную (.xlsx)", key="manual_db_promo_cb")
+            
+            if not manual_db and os.path.exists(default_db_path):
+                try:
+                    df_db_promo = pd.read_excel(default_db_path)
+                    st.success(f"✅ Подгружена база из репозитория")
+                    db_source = "repo"
+                except Exception as e:
+                    st.error(f"Ошибка чтения репозитория: {e}")
+            else:
+                up_db = st.file_uploader("Выберите файл (.xlsx)", type=["xlsx"], key="promo_db_upl")
+                if up_db: 
+                    try:
+                        df_db_promo = pd.read_excel(up_db)
+                        db_source = "upload"
+                    except Exception as e:
+                        st.error(f"Ошибка Excel: {e}")
+
+        # --- ПРАВАЯ КОЛОНКА: КЛЮЧЕВЫЕ СЛОВА ---
+        with col_p2:
+            st.markdown("#### 2. Ключевые слова (Товары)")
+            
+            # БЕРЕМ СЛОВА ИЗ ПЕРЕМЕННОЙ auto_promo_words
+            promo_source = st.session_state.get('auto_promo_words', [])
+            
+            default_promo_text = "\n".join(promo_source) if promo_source else ""
+            
+            promo_keywords_input = st.text_area(
+                "Список товаров для акций:", 
+                value=default_promo_text, 
+                height=200, 
+                key="promo_keywords_area_final",
+                help="Здесь вторая часть списка товаров (если их было больше 20)."
+            )
+            promo_keywords = [line.strip() for line in promo_keywords_input.split('\n') if line.strip()]
+
+        # --- КНОПКА ЗАПУСКА ---
+        if st.button("🛠️ Подобрать и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_smart"):
+            # Принудительно сохраняем введенные данные в state перед запуском
+            if promo_keywords:
+                 st.session_state.auto_promo_words = promo_keywords
+                 
+            if not parent_cat_url or not db_source or df_db_promo is None or not promo_keywords:
+                st.error("Заполните все поля (URL, База Excel и Слова)!"); st.stop()
+            
+            if df_db_promo.shape[1] < 2:
+                st.error("❌ В Excel должно быть минимум 2 столбца (URL и Картинка)!"); st.stop()
+
+            status = st.status("⚙️ Запуск магии...", expanded=True)
+            
+            # 1. ОБРАБОТКА БАЗЫ
+            img_map = {}
+            all_links = []
+            
+            try:
+                for index, row in df_db_promo.iterrows():
+                    raw_url = str(row.iloc[0]).strip()
+                    img_val = str(row.iloc[1]).strip()
+                    
+                    if raw_url and raw_url.lower() != 'nan':
+                        all_links.append(raw_url)
+                        if img_val and img_val.lower() != 'nan':
+                            img_map[raw_url.rstrip('/')] = img_val
+                            
+                status.write(f"✅ База проиндексирована: {len(all_links)} ссылок, {len(img_map)} картинок.")
+            except Exception as e: status.error(f"Ошибка обработки базы: {e}"); st.stop()
+            
+            # 3. ПОИСК
+            status.write("🔍 Сопоставление: Слово -> Ссылка...")
+            
+            final_items = []
+            used_urls = set()
+            parent_clean = parent_cat_url.rstrip('/')
+            
+            for word in promo_keywords:
+                tr = transliterate_text(word)
+                clean_tr = tr.replace(' ', '-').replace('_', '-')
+                
+                if len(clean_tr) < 3: continue
+                
+                matches = [u for u in all_links if clean_tr in u]
+                valid_matches = [u for u in matches if u.rstrip('/') != parent_clean and u not in used_urls]
+                
+                if valid_matches:
+                    chosen_url = random.choice(valid_matches)
+                    clean_chosen_url = chosen_url.rstrip('/')
+                    img_src = img_map.get(clean_chosen_url, "")
+                    
+                    if img_src:
+                        used_urls.add(chosen_url)
+                        slug = clean_chosen_url.split('/')[-1]
+                        name_rus = force_cyrillic_name_global(slug)
+                        
+                        final_items.append({
+                            'name': name_rus,
+                            'url': chosen_url,
+                            'img': img_src
+                        })
+            
+            if not final_items:
+                status.error("❌ Не удалось найти совпадений.")
+                st.stop()
+                
+            status.write(f"✅ Успешно собрано {len(final_items)} карточек товаров.")
+            
+            # 4. ГЕНЕРАЦИЯ HTML
+            items_html = ""
+            for item in final_items:
+                 items_html += f"""            <div class="gallery-item">
+                    <h3><a href="{item['url']}" target="_blank">{item['name']}</a></h3>
+                    <figure>
+                        <a href="{item['url']}" target="_blank">
+                            <picture>
+                                <img src="{item['img']}" 
+                                     alt="{item['name']}" 
+                                     title="{item['name']}" 
+                                     loading="lazy">
+                            </picture>
+                        </a>
+                    </figure>
+                </div>\n"""
+                
+            css_styles = """<style>.outer-full-width-section { padding: 25px 0; width: 100%; } .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; } h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; } .five-col-gallery { display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; } .gallery-item { flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; } .gallery-item h3 { font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; } .gallery-item h3 a { text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; } .gallery-item h3 a:hover { color: #007bff; } .gallery-item figure { width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; } .gallery-item figure a { display: block; height: 100%; text-decoration: none; } .gallery-item img { width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; } .gallery-item figure a:hover img { transform: scale(1.05); }</style>"""
+            full_block_html = f"""{css_styles}<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div></div>"""
+            
+            # 5. ПАРСИНГ ТЕГОВ
+            status.write(f"🕵️ Ищем страницы для размещения...")
+            found_tags = []
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                r = requests.get(parent_cat_url, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                    tags_container = soup.find(class_='popular-tags-inner')
+                    if tags_container:
+                        for link in tags_container.find_all('a'):
+                            href = link.get('href')
+                            if href: found_tags.append(urljoin(parent_cat_url, href))
+            except: pass
+            if not found_tags: found_tags.append(parent_cat_url)
+            
+            excel_rows = []
+            for tag_url in found_tags: excel_rows.append({'Page URL': tag_url, 'HTML Block': full_block_html})
+            df_promo = pd.DataFrame(excel_rows)
+            
+            # 6. СОХРАНЕНИЕ
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_promo.to_excel(writer, index=False)
+            st.session_state.promo_generated_df = df_promo
+            st.session_state.promo_excel_data = buffer.getvalue()
+            st.session_state.promo_html_preview = full_block_html
+            
+            status.update(label="Готово!", state="complete", expanded=False)
+
+        if st.session_state.promo_generated_df is not None:
+            st.success(f"🎉 Сформирован блок с {len(st.session_state.promo_generated_df)} записями!")
+            st.download_button(label="📥 Скачать Excel (Promo Block)", data=st.session_state.promo_excel_data, file_name="promo_smart_block.xlsx", mime="application/vnd.ms-excel", key="btn_down_promo_db")
+            with st.expander("👁️ Предпросмотр блока (HTML)", expanded=True):
+                components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
+                st.text_area("HTML Код", value=st.session_state.promo_html_preview, height=200)
+
+    # --- SUB-TAB: SIDEBAR ---
+    with sub_sidebar:
+        st.markdown("### 📑 Генератор HTML бокового меню (Mass Excel)")
+        
+        col_sb1, col_sb2 = st.columns([1, 1])
+        with col_sb1: 
+            sidebar_cat_url = st.text_input("URL Категории-донора", placeholder="https://stalmetural.ru/catalog/alyuminiy/", key="sidebar_cat_url_input")
+        
+        with col_sb2: 
+            st.markdown("##### 2. Структура меню")
+            # --- ЛОГИКА АВТОЗАГРУЗКИ ---
+            default_menu_path = "data/menu_structure.txt"
+            sidebar_file_content = None
+            
+            manual_upload_sidebar = st.checkbox("Загрузить файл меню вручную", key="manual_sidebar_cb")
+            
+            if not manual_upload_sidebar and os.path.exists(default_menu_path):
+                st.success(f"✅ Используется файл меню из репозитория: `data/menu_structure.txt`")
+                with open(default_menu_path, "r", encoding="utf-8") as f:
+                    sidebar_file_content = f.read()
+            else:
+                sidebar_file = st.file_uploader("Загрузить список (.txt)", type=["txt"], key="sidebar_uploader_mass")
+                if sidebar_file:
+                    sidebar_file_content = sidebar_file.getvalue().decode("utf-8")
+        
+        SIDEBAR_ASSETS = """<style>:root { font-size: 14px; } @media (min-width: 2201px) { font-size: 16px; } #sidebar-menu ul, #sidebar-menu li { list-style: none !important; margin: 0 !important; padding: 0 !important; } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 0.85em; padding: 0.5rem 0.5rem; padding-right: 1.5rem; display: block; text-decoration: none; color: #3D4858; transition: all 0.2s ease-in-out; position: relative; font-weight: 600; cursor: pointer; } #sidebar-menu .level-1-header > span.dropdown-toggle { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-1-header > a { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 1rem; } #sidebar-menu .level-3-link > a { padding-left: 2rem; color: #555; font-weight: 400; } #sidebar-menu .level-2-link-special { background: #F6F7FC; } #sidebar-menu .level-2-link-special > a { padding-left: 1rem; font-weight: 600; color: #3D4858; position: relative; padding-right: 1rem; } #sidebar-menu .level-2-link-special > a::after { content: none !important; } #sidebar-menu .level-2-link-special > a:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .list-unstyled a:hover, #sidebar-menu .level-3-link a:hover, #sidebar-menu .list-unstyled span.dropdown-toggle:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #F6F7FC; color: #277EFF; } #sidebar-menu .collapse-menu { list-style: none; padding: 0; background: #F6F7FC; display: none; } #sidebar-menu .dropdown-toggle::after { content: '▶'; position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%); transition: transform 0.3s; font-size: 0.7em; color: #999; } #sidebar-menu .dropdown-toggle.active::after { content: '▼'; transform: translateY(-50%) rotate(0deg); color: #277EFF; } #sidebar-menu .level-1-header > a::after { content: none !important; } .page-content-with-sidebar { margin-left: 0 !important; } .sidebar-wrapper { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; z-index: 1001; } #sidebar-menu, #sidebar-menu * { box-sizing: border-box; } .menu-toggle-button { position: fixed; top: 20px; right: 10px; background: #277EFF; color: white; border: none; padding: 5px 10px; font-size: 24px; line-height: 1; cursor: pointer; z-index: 1002; border-radius: 5px; display: none; transition: all 0.3s ease; } #sidebar-menu { z-index: 1000; background: #FFFFFF; color: #3D4858; transition: transform 0.3s ease; font-family: 'Open Sans', sans-serif; box-shadow: 0 0 30px rgba(0, 0, 0, 0.3); position: fixed; top: 0; left: 0; width: auto; max-width: 350px; height: 100vh; max-height: 100vh; transform: translateX(-100%); padding-top: 60px; border-radius: 0; display: block; overflow-y: auto; } #sidebar-menu.active { transform: translateX(0); } @media (max-width: 1800px) { .menu-toggle-button { display: block; top: 20px; } @media (min-width: 1180px) and (max-width: 1580px) { .menu-toggle-button { right: 183px; top: 30px; transition: right 0.3s ease, top 0.3s ease; } } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 16px !important; padding: 10px 15px !important; padding-right: 30px !important; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 25px !important; } #sidebar-menu .level-3-link > a { padding-left: 40px !important; } #sidebar-menu .level-2-link-special > a { padding-left: 25px !important; padding-right: 25px !important; } } @media (max-width: 350px) { #sidebar-menu { width: 100%; max-width: 100%; } .menu-toggle-button { right: 5px; padding: 5px 8px; } } @media (min-width: 1801px) { #sidebar-menu { width: 14.28rem; } .page-content-with-sidebar { margin-left: 15.7rem; } .menu-toggle-button { display: none; } .sidebar-wrapper { position: static; width: auto; height: auto; overflow: visible; } #sidebar-menu { height: auto; position: fixed; top: calc(150px + 70px); left: 10px; max-height: calc(100vh - 250px - 70px); transform: translateX(0); padding-top: 0; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); border-radius: 10px; display: block; overflow-y: hidden; } #sidebar-menu .list-unstyled.components { max-height: calc(100vh - 250px - 70px); overflow-y: auto; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #FFFFFF !important; color: #3D4858; } #sidebar-menu .level-1-header:hover > span.dropdown-toggle, #sidebar-menu .level-2-header:hover > span.dropdown-toggle { background: #EBF5FF; color: #277EFF; } #sidebar-menu .level-2-link-special { background: #FFFFFF; } #sidebar-menu .level-2-link-special > a:hover { background: #EBF5FF; } #sidebar-menu .level-1-header > a:hover { background: #EBF5FF; color: #277EFF; } } </style><script>document.addEventListener('DOMContentLoaded', function() { const menu = document.getElementById('sidebar-menu'); const listComponents = menu ? menu.querySelector('.list-unstyled.components') : null; const mobileToggle = document.getElementById('mobile-menu-toggle'); if (!menu || !listComponents || !mobileToggle) return; const toggles = menu.querySelectorAll('.dropdown-toggle'); const desktopBreakpoint = 1801; function resetMenuState() { menu.querySelectorAll('.collapse-menu').forEach(sub => { sub.style.display = 'none'; }); menu.querySelectorAll('.level-1-header, .level-2-header').forEach(li => { li.classList.remove('active'); const toggle = li.querySelector('.dropdown-toggle'); if(toggle) toggle.classList.remove('active'); }); } function handleResize() { if (window.innerWidth >= desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; resetMenuState(); } } handleResize(); window.addEventListener('resize', handleResize); if (mobileToggle) { mobileToggle.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.toggle('active'); this.textContent = menu.classList.contains('active') ? '✖' : '☰'; } }); } menu.querySelectorAll('a').forEach(link => { if (link.closest('.level-3-link') || link.closest('.level-2-link-special') || link.parentElement.classList.contains('level-1-header')) { link.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; } }); } }); toggles.forEach(toggle => { toggle.addEventListener('click', function(event) { event.preventDefault(); const parentLi = this.parentElement; const parentUl = parentLi.parentElement; const targetMenu = parentLi.querySelector('.collapse-menu'); if (!targetMenu) return; const isActive = parentLi.classList.contains('active'); const activeSiblings = parentUl.querySelectorAll('.level-1-header.active, .level-2-header.active'); activeSiblings.forEach(sibling => { if (sibling !== parentLi) { sibling.classList.remove('active'); const siblingToggle = sibling.querySelector('.dropdown-toggle'); if (siblingToggle) siblingToggle.classList.remove('active'); const siblingMenu = sibling.querySelector('.collapse-menu'); if (siblingMenu) siblingMenu.style.display = 'none'; } }); parentLi.classList.toggle('active', !isActive); this.classList.toggle('active', !isActive); targetMenu.style.display = !isActive ? 'block' : 'none'; }); }); });</script>"""
+
+        if st.button("🚀 Создать Excel", disabled=(not sidebar_cat_url or not sidebar_file_content), key="btn_gen_sidebar_mass"):
+            status_box = st.status("⚙️ Обработка...", expanded=True)
+            try:
+                status_box.write("🔨 Сборка меню из файла...")
+                stringio = io.StringIO(sidebar_file_content)
+                urls = [line.strip() for line in stringio.readlines() if line.strip()]
+                urls = list(dict.fromkeys(urls))
+                if not urls: status_box.error("❌ Файл пуст!"); st.stop()
+                tree = {}
+                for url in urls:
+                    path = urlparse(url).path.strip('/')
+                    parts = [p for p in path.split('/') if p]
+                    start_idx = 0
+                    if 'catalog' in parts: start_idx = parts.index('catalog') + 1
+                    relevant_parts = parts[start_idx:] if parts[start_idx:] else parts
+                    current_level = tree
+                    for i, part in enumerate(relevant_parts):
+                        if part not in current_level: current_level[part] = {}
+                        if i == len(relevant_parts) - 1:
+                            current_level[part]['__url__'] = url
+                            current_level[part]['__name__'] = force_cyrillic_name_global(part)
+                        current_level = current_level[part]
+
+                def render_tree(node, level=1):
+                    html = ""
+                    keys = sorted([k for k in node.keys() if not k.startswith('__')])
+                    for key in keys:
+                        child = node[key]
+                        name = child.get('__name__', force_cyrillic_name_global(key))
+                        url = child.get('__url__')
+                        has_children = any(k for k in child.keys() if not k.startswith('__'))
+                        if level == 1:
+                            html += '<li class="level-1-header">\n'
+                            if has_children:
+                                html += f'    <span class="dropdown-toggle">{name}</span>\n'
+                                html += '    <ul class="collapse-menu list-unstyled">\n'
+                                html += render_tree(child, level=2)
+                                html += '    </ul>\n'
+                            else:
+                                target = url if url else "#"
+                                html += f'    <a href="{target}">{name}</a>\n'
+                            html += '</li>\n'
+                        elif level == 2:
+                            if has_children:
+                                html += '<li class="level-2-header">\n'
+                                html += f'    <span class="dropdown-toggle">{name}</span>\n'
+                                html += '    <ul class="collapse-menu list-unstyled">\n'
+                                html += render_tree(child, level=3)
+                                html += '    </ul>\n'
+                                html += '</li>\n'
+                            else:
+                                target = url if url else "#"
+                                html += f'<li class="level-2-link-special"><a href="{target}">{name}</a></li>\n'
+                        elif level >= 3:
+                            target = url if url else "#"
+                            html += f'<li class="level-3-link"><a href="{target}">{name}</a></li>\n'
+                    return html
+
+                inner_html = render_tree(tree, level=1)
+                full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>{SIDEBAR_ASSETS}"""
+                status_box.write("✅ Меню успешно собрано.")
+            except Exception as e: status_box.error(f"Ошибка при сборке меню: {e}"); st.stop()
+
+            found_tags_urls = []
+            try:
+                status_box.write(f"🕵️ Сканируем URL: {sidebar_cat_url}")
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                r = requests.get(sidebar_cat_url, headers=headers, timeout=15)
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                    tags_container = soup.find(class_='popular-tags-inner')
+                    if tags_container:
+                        for link in tags_container.find_all('a'):
+                            href = link.get('href')
+                            if href: found_tags_urls.append(urljoin(sidebar_cat_url, href))
+                    else:
+                        status_box.warning("Теги .popular-tags-inner не найдены. Добавлю только сам URL категории.")
+                        found_tags_urls.append(sidebar_cat_url)
+                else: status_box.error(f"Ошибка доступа к сайту: {r.status_code}"); st.stop()
+            except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
+
+            status_box.write(f"📊 Формируем таблицу для {len(found_tags_urls)} страниц...")
+            excel_data = []
+            for tag_url in found_tags_urls: excel_data.append({'Page URL': tag_url, 'Sidebar HTML': full_sidebar_code})
+            df_sidebar = pd.DataFrame(excel_data)
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_sidebar.to_excel(writer, index=False)
+            st.session_state.sidebar_gen_df = df_sidebar
+            st.session_state.sidebar_excel_bytes = buffer.getvalue()
+            status_box.update(label="✅ Готово! Файл создан.", state="complete", expanded=False)
+
+        if st.session_state.sidebar_gen_df is not None:
+            st.success(f"Файл готов: {len(st.session_state.sidebar_gen_df)} строк.")
+            st.download_button(label="📥 Скачать Excel (Menu)", data=st.session_state.sidebar_excel_bytes, file_name="sidebar_menu_mass.xlsx", mime="application/vnd.ms-excel", key="btn_down_sidebar_mass")
+            with st.expander("👁️ Просмотр данных"): st.dataframe(st.session_state.sidebar_gen_df.head())
+            with st.expander("🖼️ Предпросмотр меню (HTML)"):
+                html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
+                components.html(html_preview, height=600, scrolling=True)
