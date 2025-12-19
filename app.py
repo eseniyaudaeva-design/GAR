@@ -1088,6 +1088,7 @@ with tab_wholesale_main:
     # 2. ВЫБОР МОДУЛЕЙ
     # ==========================================
     st.subheader("2. Какие блоки генерируем?")
+    # Порядок чекбоксов: 1.Текст, 2.Теги, 3.Таблицы, 4.Промо, 5.Сайдбар
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
     with col_ch1: use_text = st.checkbox("🤖 AI Тексты", value=True)
     with col_ch2: use_tags = st.checkbox("🏷️ Теги")
@@ -1096,7 +1097,7 @@ with tab_wholesale_main:
     with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар")
 
     # ==========================================
-    # 3. НАСТРОЙКИ (БЛОКИ В РАМКАХ)
+    # 3. НАСТРОЙКИ (СТРОГИЙ ПОРЯДОК)
     # ==========================================
     
     # Инициализация переменных
@@ -1107,37 +1108,36 @@ with tab_wholesale_main:
     promo_title = "Рекомендуем"
     sidebar_content = ""
     
-    # Показываем заголовок настроек только если что-то выбрано
     if any([use_text, use_tags, use_tables, use_promo, use_sidebar]):
         st.subheader("3. Настройки модулей")
 
-        # --- БЛОК 1: ОБЩИЕ СЛОВА (Только если нужны Теги или Промо) ---
-        if use_tags or use_promo:
-            with st.container(border=True):
-                st.markdown("#### 🔑 Список товаров (Общее)")
-                st.caption("Нужен для поиска соответствий в базах ссылок и картинок.")
-                auto_kws = st.session_state.get('categorized_products', [])
-                def_text = "\n".join(auto_kws) if auto_kws else ""
-                kws_input = st.text_area("Список товаров", value=def_text, height=100, label_visibility="collapsed", key="kws_vertical")
-                global_keywords = [x.strip() for x in kws_input.split('\n') if x.strip()]
-
-        # --- БЛОК 2: ТЕКСТЫ ---
+        # --- [1] AI ТЕКСТЫ (ВСЕГДА ПЕРВЫЕ) ---
         if use_text:
             with st.container(border=True):
-                st.markdown("#### 🤖 Настройки: AI Тексты")
+                st.markdown("#### 🤖 1. AI Тексты")
                 st.info("✅ Используется общий API Key. Будет создано 5 блоков (Описание, Доставка и др).")
 
-        # --- БЛОК 3: ТЕГИ ---
+        # --- [2] ТЕГИ (ВТОРОЙ БЛОК) ---
         if use_tags:
             with st.container(border=True):
-                st.markdown("#### 🏷️ Настройки: Теги")
+                st.markdown("#### 🏷️ 2. Теги")
+                
+                # 2.1 Ввод товаров (перенесли внутрь блока Тегов, чтобы не ломать порядок)
+                st.caption("👇 Введите список товаров для генерации тегов:")
+                auto_kws = st.session_state.get('categorized_products', [])
+                def_text = "\n".join(auto_kws) if auto_kws else ""
+                kws_input = st.text_area("Список товаров (по 1 в строке)", value=def_text, height=100, key="kws_inside_tags")
+                global_keywords = [x.strip() for x in kws_input.split('\n') if x.strip()]
+
+                # 2.2 База ссылок
+                st.markdown("---")
                 col_t1, col_t2 = st.columns([1, 2])
                 with col_t1:
                     u_manual = st.checkbox("Загрузить базу ссылок вручную", key="cb_tags_vert")
                 with col_t2:
                     default_tags_path = "data/links_base.txt"
                     if not u_manual and os.path.exists(default_tags_path):
-                        st.success("✅ Подключена база репозитория (`links_base.txt`)")
+                        st.success(f"✅ Подключена база репозитория (`links_base.txt`)")
                         with open(default_tags_path, "r", encoding="utf-8") as f: tags_file_content = f.read()
                     elif u_manual:
                         up_t = st.file_uploader("Файл .txt", type=["txt"], key="up_tags_vert", label_visibility="collapsed")
@@ -1145,10 +1145,10 @@ with tab_wholesale_main:
                     else:
                         st.error("❌ Файл базы не найден!")
 
-        # --- БЛОК 4: ТАБЛИЦЫ ---
+        # --- [3] ТАБЛИЦЫ (ТРЕТИЙ БЛОК) ---
         if use_tables:
             with st.container(border=True):
-                st.markdown("#### 🧩 Настройки: Таблицы")
+                st.markdown("#### 🧩 3. Таблицы")
                 cnt = st.number_input("Количество таблиц на страницу", 1, 5, 2, key="num_tbl_vert")
                 defaults = ["Характеристики", "Размеры", "Хим. состав"]
                 for i in range(cnt):
@@ -1156,10 +1156,23 @@ with tab_wholesale_main:
                     t_p = st.text_input(f"Тема таблицы {i+1}", value=val, key=f"tbl_topic_vert_{i}")
                     table_prompts.append(t_p)
 
-        # --- БЛОК 5: ПРОМО ---
+        # --- [4] ПРОМО (ЧЕТВЕРТЫЙ БЛОК) ---
         if use_promo:
             with st.container(border=True):
-                st.markdown("#### 🔥 Настройки: Промо-блок")
+                st.markdown("#### 🔥 4. Промо-блок")
+                
+                # ЛОГИКА: Если теги были выключены, то список товаров мы еще не вводили.
+                # Спрашиваем его здесь. Если теги были включены - берем оттуда.
+                if not use_tags:
+                    st.caption("👇 Введите список товаров для подбора картинок:")
+                    auto_kws = st.session_state.get('categorized_products', [])
+                    def_text = "\n".join(auto_kws) if auto_kws else ""
+                    kws_input_promo = st.text_area("Список товаров (по 1 в строке)", value=def_text, height=100, key="kws_inside_promo")
+                    global_keywords = [x.strip() for x in kws_input_promo.split('\n') if x.strip()]
+                elif use_tags:
+                    st.info(f"✅ Используется список товаров из блока «Теги» ({len(global_keywords)} шт.)")
+
+                st.markdown("---")
                 col_p1, col_p2 = st.columns([1, 2])
                 with col_p1:
                     promo_title = st.text_input("Заголовок блока", "Смотрите также", key="pr_tit_vert")
@@ -1176,10 +1189,10 @@ with tab_wholesale_main:
                     else:
                         st.error("❌ База картинок не найдена!")
 
-        # --- БЛОК 6: САЙДБАР ---
+        # --- [5] САЙДБАР (ПЯТЫЙ БЛОК) ---
         if use_sidebar:
             with st.container(border=True):
-                st.markdown("#### 📑 Настройки: Сайдбар")
+                st.markdown("#### 📑 5. Сайдбар")
                 col_s1, col_s2 = st.columns([1, 2])
                 with col_s1:
                     u_sb_man = st.checkbox("Свой файл меню", key="cb_sb_vert")
