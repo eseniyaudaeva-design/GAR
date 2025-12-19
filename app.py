@@ -1070,7 +1070,7 @@ with tab_seo_main:
             if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
             with st.spinner("API Arsenkin (Запрос расширенного ТОПа)..."):
                 # Запрашиваем 50, чтобы был запас на случай ошибок парсинга
-                raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=50)
+                raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
                 
                 if not raw_top: st.stop()
                 
@@ -1678,3 +1678,4 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
