@@ -419,7 +419,7 @@ REGION_MAP = {
     "Алматы (KZ)": {"ya": 162, "go": 1014601}
 }
 
-DEFAULT_EXCLUDE_DOMAINS = ["yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "aliexpress.ru", "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com"]
+DEFAULT_EXCLUDE_DOMAINS = ["yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com"]
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
 
@@ -759,13 +759,22 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # --- ИСПРАВЛЕННОЕ ФОРМИРОВАНИЕ ТАБЛИЦЫ РЕЛЕВАНТНОСТИ ---
     table_rel = []
     
-    # 1. Сначала добавляем только успешных конкурентов
+    # Флаг: нашли ли мы ваш сайт внутри списка конкурентов (в ТОПе)?
+    my_site_found_in_top = False
+    my_clean_domain = my_data['domain'].replace('www.', '') if (my_data and my_data.get('domain')) else ""
+
+    # 1. Добавляем всех скачанных (включая Вас, если вы были в топе)
     for item in original_results:
         url = item['url']
-        # Если конкурента нет в словаре оценок (значит он не спарсился) — ПРОПУСКАЕМ ЕГО
         if url not in competitor_scores_map:
             continue
             
+        # Проверяем, не является ли эта строка Вашим сайтом
+        # (Сравниваем домены, чтобы понять, есть ли мы уже в таблице)
+        row_domain = urlparse(url).netloc.replace('www.', '')
+        if my_clean_domain and my_clean_domain in row_domain:
+            my_site_found_in_top = True
+
         scores = competitor_scores_map[url]
         table_rel.append({ 
             "Домен": urlparse(url).netloc, 
@@ -774,23 +783,23 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Глубина (балл)": scores['depth_final'] 
         })
         
-    # 2. Добавляем Ваш сайт в конец (всегда)
-    my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
-    # Позиция 0, если нас нет в топе, или реальная позиция, если она была найдена API
-    my_display_pos = my_serp_pos if my_serp_pos > 0 else 0 
-    
-    table_rel.append({ 
-        "Домен": my_label, 
-        "Позиция": my_display_pos, 
-        "Ширина (балл)": my_width_score_final, 
-        "Глубина (балл)": my_depth_score_final 
-    })
+    # 2. Логика добавления итоговой строки "Ваш сайт"
+    # Добавляем строку снизу ТОЛЬКО если нас НЕ было в списке конкурентов (не в топе)
+    # Или если мы анализировали текст/код вручную (Local)
+    if not my_site_found_in_top:
+        my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
+        display_pos = my_serp_pos if my_serp_pos > 0 else 0
+        
+        table_rel.append({ 
+            "Домен": my_label, 
+            "Позиция": display_pos, 
+            "Ширина (балл)": my_width_score_final, 
+            "Глубина (балл)": my_depth_score_final 
+        })
 
     return { 
         "depth": pd.DataFrame(table_depth), 
         "hybrid": pd.DataFrame(table_hybrid), 
-        # Сортируем таблицу: сначала по позиции (конкуренты 1-10), Ваш сайт с поз. 0 уйдет в начало или в конец в зависимости от сортировки, 
-        # но мы хотим видеть конкурентов по порядку.
         "relevance_top": pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True), 
         "my_score": {"width": my_width_score_final, "depth": my_depth_score_final}, 
         "missing_semantics_high": missing_semantics_high, 
@@ -1015,14 +1024,17 @@ with tab_seo_main:
         st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
         st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
         st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
-        st.selectbox("Глубина сбора (ТОП)", [10, 20, 30], index=0, key="settings_top_n")
+        
+        # ИЗМЕНЕНИЕ: Убрали 30, оставили только 10 и 20
+        st.selectbox("Кол-во конкурентов для анализа", [10, 20], index=0, key="settings_top_n")
+        
         st.checkbox("Исключать <noindex>", True, key="settings_noindex")
         st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
         st.checkbox("Учитывать числа", False, key="settings_numbers")
         st.checkbox("Нормировать по длине", True, key="settings_norm")
         st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
-if st.session_state.get('start_analysis_flag'):
+    if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         
         # Настройки парсинга
@@ -1074,8 +1086,7 @@ if st.session_state.get('start_analysis_flag'):
                     if my_domain and (my_domain in dom or dom in my_domain):
                         if my_serp_pos == 0 or res['pos'] < my_serp_pos: 
                             my_serp_pos = res['pos']
-                        # Себя тоже добавляем в пул, чтобы участвовать в расчетах, 
-                        # но в таблице релевантности обработаем отдельно
+                        # Себя тоже добавляем в пул, чтобы участвовать в расчетах
                     
                     # 2. Проверка на агрегаторы
                     is_garbage = False
@@ -1175,7 +1186,7 @@ if st.session_state.get('start_analysis_flag'):
 
             st.rerun()
 
-        if st.session_state.analysis_done and st.session_state.analysis_results:
+    if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
@@ -1667,5 +1678,3 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
-
