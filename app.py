@@ -126,9 +126,10 @@ def force_cyrillic_name_global(slug_text):
     draft_phrase = draft_phrase.replace('йа', 'я').replace('йо', 'ё')
 
     return draft_phrase.capitalize()
-def get_page_h1_or_breadcrumb(url, ua_settings="Mozilla/5.0"):
+def get_breadcrumb_only(url, ua_settings="Mozilla/5.0"):
     """
-    Заходит по URL и пытается достать название из H1 или последней хлебной крошки.
+    Заходит по URL и достает название ТОЛЬКО из последнего элемента хлебных крошек.
+    H1 игнорируется.
     """
     try:
         headers = {'User-Agent': ua_settings}
@@ -138,27 +139,26 @@ def get_page_h1_or_breadcrumb(url, ua_settings="Mozilla/5.0"):
         
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # 1. Пробуем найти H1 (обычно совпадает с последней крошкой и чище)
-        h1 = soup.find('h1')
-        if h1:
-            text = h1.get_text(strip=True)
-            if text: return text
+        # 1. Ищем контейнер хлебных крошек по популярным классам/id
+        # Добавил 'bx-breadcrumb', так как часто бывает на Битриксе
+        breadcrumbs = soup.find(class_=re.compile(r'breadcrumb|breadcrumbs|nav-path|nav-chain|bx-breadcrumb', re.I))
+        if not breadcrumbs:
+            breadcrumbs = soup.find(id=re.compile(r'breadcrumb|breadcrumbs|nav-path', re.I))
 
-        # 2. Если H1 нет, ищем хлебные крошки (стандартные классы)
-        breadcrumbs = soup.find(class_=re.compile(r'breadcrumb|breadcrumbs|nav-path'))
         if breadcrumbs:
-            # Ищем последний элемент (span, li или a)
-            items = breadcrumbs.find_all(['li', 'span', 'a'])
-            if items:
-                # Берем последний непустой элемент
-                for item in reversed(items):
-                    t = item.get_text(strip=True)
-                    if t and len(t) > 2 and "главная" not in t.lower():
-                        return t
-                        
-        # 3. Fallback: Title
-        if soup.title:
-            return soup.title.get_text(strip=True).split('|')[0].strip()
+            # Метод: получаем весь текст с разделителем, разбиваем и берем последнее
+            # Это надежнее, чем искать конкретный span или li, так как верстка везде разная
+            full_text = breadcrumbs.get_text(separator='|||', strip=True)
+            parts = [p.strip() for p in full_text.split('|||') if p.strip()]
+            
+            # Фильтруем мусорные символы разделителей
+            clean_parts = [p for p in parts if p not in ['/', '\\', '>', '»', '•', '-', '|']]
+            
+            if clean_parts:
+                last_item = clean_parts[-1]
+                # Проверка: если последний элемент слишком короткий или это "Главная", значит что-то не то
+                if len(last_item) > 2 and last_item.lower() != "главная":
+                    return last_item
             
     except:
         return None
@@ -1706,6 +1706,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
