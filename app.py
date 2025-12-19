@@ -1125,14 +1125,37 @@ with tab_ai:
 # ------------------------------------------
 # TAB 3: TAGS
 # ------------------------------------------
+# ------------------------------------------
+# TAB 3: TAGS
+# ------------------------------------------
 with tab_tags:
     st.title("🏷️ Генератор плитки тегов")
+
     col_t1, col_t2 = st.columns([1, 1])
     with col_t1:
         st.markdown("##### 🔗 Источник")
         category_url = st.text_input("URL Категории", placeholder="https://site.ru/catalog/truba/")
+        
         st.markdown("##### 📂 База ссылок")
-        uploaded_file = st.file_uploader("Загрузите файл ссылок (.txt)", type=["txt"], key="urls_uploader_mass_v4")
+        # --- ЛОГИКА АВТОЗАГРУЗКИ ---
+        default_tags_path = "data/links_base.txt"
+        tags_file_source = None
+        
+        # Чекбокс, чтобы принудительно включить ручную загрузку
+        manual_upload_tags = st.checkbox("Загрузить файл вручную", key="manual_tags_cb")
+        
+        if not manual_upload_tags and os.path.exists(default_tags_path):
+            st.success(f"✅ Используется файл из репозитория: `data/links_base.txt`")
+            # Читаем файл сразу
+            with open(default_tags_path, "r", encoding="utf-8") as f:
+                tags_file_content = f.read()
+            tags_file_source = "repo"
+        else:
+            uploaded_file = st.file_uploader("Загрузите файл ссылок (.txt)", type=["txt"], key="urls_uploader_mass_v4")
+            if uploaded_file:
+                tags_file_content = uploaded_file.getvalue().decode("utf-8")
+                tags_file_source = "upload"
+
     with col_t2:
         st.markdown("##### 📝 Ключевые слова (Товары)")
         raw_products = st.session_state.get('categorized_products', [])
@@ -1141,7 +1164,8 @@ with tab_tags:
         products = [line.strip() for line in products_input.split('\n') if line.strip()]
 
     st.markdown("---")
-    if st.button("🚀 Спарсить и собрать Excel (Smart)", key="btn_tags_smart_gen", disabled=(not products or not uploaded_file or not category_url)):
+    # Кнопка активна, если есть контент (из файла или из загрузки)
+    if st.button("🚀 Спарсить и собрать Excel (Smart)", key="btn_tags_smart_gen", disabled=(not products or not tags_file_source or not category_url)):
         status_box = st.status("🚀 Запуск процесса...", expanded=True)
         status_box.write(f"🕵️ Парсим категорию: {category_url}")
         target_urls_list = []
@@ -1159,9 +1183,12 @@ with tab_tags:
             
         if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)"); st.stop()
         status_box.write(f"✅ Найдено целей: {len(target_urls_list)}")
+        
         status_box.write("📂 Индексация базы ссылок...")
-        stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
+        # Используем прочитанный контент
+        stringio = io.StringIO(tags_file_content)
         all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
+        
         product_candidates_map = {}
         for p in products:
             tr = transliterate_text(p)
@@ -1294,29 +1321,56 @@ with tab_promo:
     if 'promo_generated_df' not in st.session_state: st.session_state.promo_generated_df = None
     if 'promo_excel_data' not in st.session_state: st.session_state.promo_excel_data = None
     if 'promo_html_preview' not in st.session_state: st.session_state.promo_html_preview = None
+    
     c1, c2 = st.columns([1, 1])
     with c1: parent_cat_url = st.text_input("URL Родительской категории (откуда берем теги для файла)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db")
     with c2: promo_title = st.text_input("Заголовок блока (h3)", value="Рекомендуем посмотреть", key="promo_title_input_db")
     st.markdown("---")
-    st.markdown("#### 1. Загрузите Базу картинок (Excel)")
-    uploaded_db = st.file_uploader("Выберите файл .xlsx", type=["xlsx", "xls"], key="promo_db_uploader")
+    
+    # --- ЛОГИКА АВТОЗАГРУЗКИ EXCEL ---
+    st.markdown("#### 1. База картинок (Excel)")
+    default_img_path = "data/images_db.xlsx"
+    promo_db_source = None
+    df_db_promo = None # DataFrame
+
+    manual_upload_promo = st.checkbox("Загрузить Excel вручную", key="manual_promo_cb")
+
+    if not manual_upload_promo and os.path.exists(default_img_path):
+        st.success(f"✅ Используется база из репозитория: `data/images_db.xlsx`")
+        try:
+            df_db_promo = pd.read_excel(default_img_path)
+            promo_db_source = "repo"
+        except Exception as e:
+            st.error(f"Ошибка чтения файла из репозитория: {e}")
+    else:
+        uploaded_db = st.file_uploader("Выберите файл .xlsx", type=["xlsx", "xls"], key="promo_db_uploader")
+        if uploaded_db:
+            try:
+                df_db_promo = pd.read_excel(uploaded_db)
+                promo_db_source = "upload"
+            except: pass
+
     st.markdown("#### 2. Вставьте список ссылок для блока Акции")
     promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, placeholder="https://stalmetural.ru/catalog/tovar-1/\nhttps://stalmetural.ru/catalog/tovar-2/", key="promo_links_area_db")
 
     if st.button("🛠️ Найти картинки и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_db"):
-        if not parent_cat_url or not uploaded_db or not promo_links_text: st.error("Заполните все поля!"); st.stop()
+        if not parent_cat_url or not promo_db_source or not promo_links_text: st.error("Заполните все поля и загрузите базу!"); st.stop()
+        
         status = st.status("⚙️ Обработка базы данных...", expanded=True)
         try:
-            df_db = pd.read_excel(uploaded_db)
+            # df_db_promo уже загружен выше
             img_db = {}
-            for index, row in df_db.iterrows():
-                raw_url = str(row.iloc[0]).strip()
-                img_val = str(row.iloc[1]).strip()
-                if raw_url and raw_url.lower() != 'nan':
-                    key_url = raw_url.rstrip('/') 
-                    img_db[key_url] = img_val
-            status.write(f"✅ База проиндексирована: {len(img_db)} товаров с картинками.")
-        except Exception as e: status.error(f"Ошибка чтения Excel: {e}"); st.stop()
+            if df_db_promo is not None and df_db_promo.shape[1] >= 2:
+                for index, row in df_db_promo.iterrows():
+                    raw_url = str(row.iloc[0]).strip()
+                    img_val = str(row.iloc[1]).strip()
+                    if raw_url and raw_url.lower() != 'nan':
+                        key_url = raw_url.rstrip('/') 
+                        img_db[key_url] = img_val
+                status.write(f"✅ База проиндексирована: {len(img_db)} товаров с картинками.")
+            else:
+                status.error("Некорректный формат Excel (нужно минимум 2 колонки)"); st.stop()
+        except Exception as e: status.error(f"Ошибка обработки Excel: {e}"); st.stop()
 
         status.write("🔨 Подбор картинок и сборка HTML...")
         target_links = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
@@ -1382,17 +1436,35 @@ with tab_promo:
 # ------------------------------------------
 with tab_sidebar:
     st.header("📑 Генератор HTML бокового меню (Mass Excel)")
+    
     col_sb1, col_sb2 = st.columns([1, 1])
-    with col_sb1: sidebar_cat_url = st.text_input("URL Категории-донора", placeholder="https://stalmetural.ru/catalog/alyuminiy/", key="sidebar_cat_url_input")
-    with col_sb2: sidebar_file = st.file_uploader("Загрузить список (.txt)", type=["txt"], key="sidebar_uploader_mass")
+    with col_sb1: 
+        sidebar_cat_url = st.text_input("URL Категории-донора", placeholder="https://stalmetural.ru/catalog/alyuminiy/", key="sidebar_cat_url_input")
+    
+    with col_sb2: 
+        st.markdown("##### 2. Структура меню")
+        # --- ЛОГИКА АВТОЗАГРУЗКИ ---
+        default_menu_path = "data/menu_structure.txt"
+        sidebar_file_content = None
+        
+        manual_upload_sidebar = st.checkbox("Загрузить файл меню вручную", key="manual_sidebar_cb")
+        
+        if not manual_upload_sidebar and os.path.exists(default_menu_path):
+            st.success(f"✅ Используется файл меню из репозитория: `data/menu_structure.txt`")
+            with open(default_menu_path, "r", encoding="utf-8") as f:
+                sidebar_file_content = f.read()
+        else:
+            sidebar_file = st.file_uploader("Загрузить список (.txt)", type=["txt"], key="sidebar_uploader_mass")
+            if sidebar_file:
+                sidebar_file_content = sidebar_file.getvalue().decode("utf-8")
     
     SIDEBAR_ASSETS = """<style>:root { font-size: 14px; } @media (min-width: 2201px) { font-size: 16px; } #sidebar-menu ul, #sidebar-menu li { list-style: none !important; margin: 0 !important; padding: 0 !important; } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 0.85em; padding: 0.5rem 0.5rem; padding-right: 1.5rem; display: block; text-decoration: none; color: #3D4858; transition: all 0.2s ease-in-out; position: relative; font-weight: 600; cursor: pointer; } #sidebar-menu .level-1-header > span.dropdown-toggle { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-1-header > a { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 1rem; } #sidebar-menu .level-3-link > a { padding-left: 2rem; color: #555; font-weight: 400; } #sidebar-menu .level-2-link-special { background: #F6F7FC; } #sidebar-menu .level-2-link-special > a { padding-left: 1rem; font-weight: 600; color: #3D4858; position: relative; padding-right: 1rem; } #sidebar-menu .level-2-link-special > a::after { content: none !important; } #sidebar-menu .level-2-link-special > a:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .list-unstyled a:hover, #sidebar-menu .level-3-link a:hover, #sidebar-menu .list-unstyled span.dropdown-toggle:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #F6F7FC; color: #277EFF; } #sidebar-menu .collapse-menu { list-style: none; padding: 0; background: #F6F7FC; display: none; } #sidebar-menu .dropdown-toggle::after { content: '▶'; position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%); transition: transform 0.3s; font-size: 0.7em; color: #999; } #sidebar-menu .dropdown-toggle.active::after { content: '▼'; transform: translateY(-50%) rotate(0deg); color: #277EFF; } #sidebar-menu .level-1-header > a::after { content: none !important; } .page-content-with-sidebar { margin-left: 0 !important; } .sidebar-wrapper { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; z-index: 1001; } #sidebar-menu, #sidebar-menu * { box-sizing: border-box; } .menu-toggle-button { position: fixed; top: 20px; right: 10px; background: #277EFF; color: white; border: none; padding: 5px 10px; font-size: 24px; line-height: 1; cursor: pointer; z-index: 1002; border-radius: 5px; display: none; transition: all 0.3s ease; } #sidebar-menu { z-index: 1000; background: #FFFFFF; color: #3D4858; transition: transform 0.3s ease; font-family: 'Open Sans', sans-serif; box-shadow: 0 0 30px rgba(0, 0, 0, 0.3); position: fixed; top: 0; left: 0; width: auto; max-width: 350px; height: 100vh; max-height: 100vh; transform: translateX(-100%); padding-top: 60px; border-radius: 0; display: block; overflow-y: auto; } #sidebar-menu.active { transform: translateX(0); } @media (max-width: 1800px) { .menu-toggle-button { display: block; top: 20px; } @media (min-width: 1180px) and (max-width: 1580px) { .menu-toggle-button { right: 183px; top: 30px; transition: right 0.3s ease, top 0.3s ease; } } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 16px !important; padding: 10px 15px !important; padding-right: 30px !important; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 25px !important; } #sidebar-menu .level-3-link > a { padding-left: 40px !important; } #sidebar-menu .level-2-link-special > a { padding-left: 25px !important; padding-right: 25px !important; } } @media (max-width: 350px) { #sidebar-menu { width: 100%; max-width: 100%; } .menu-toggle-button { right: 5px; padding: 5px 8px; } } @media (min-width: 1801px) { #sidebar-menu { width: 14.28rem; } .page-content-with-sidebar { margin-left: 15.7rem; } .menu-toggle-button { display: none; } .sidebar-wrapper { position: static; width: auto; height: auto; overflow: visible; } #sidebar-menu { height: auto; position: fixed; top: calc(150px + 70px); left: 10px; max-height: calc(100vh - 250px - 70px); transform: translateX(0); padding-top: 0; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); border-radius: 10px; display: block; overflow-y: hidden; } #sidebar-menu .list-unstyled.components { max-height: calc(100vh - 250px - 70px); overflow-y: auto; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #FFFFFF !important; color: #3D4858; } #sidebar-menu .level-1-header:hover > span.dropdown-toggle, #sidebar-menu .level-2-header:hover > span.dropdown-toggle { background: #EBF5FF; color: #277EFF; } #sidebar-menu .level-2-link-special { background: #FFFFFF; } #sidebar-menu .level-2-link-special > a:hover { background: #EBF5FF; } #sidebar-menu .level-1-header > a:hover { background: #EBF5FF; color: #277EFF; } } </style><script>document.addEventListener('DOMContentLoaded', function() { const menu = document.getElementById('sidebar-menu'); const listComponents = menu ? menu.querySelector('.list-unstyled.components') : null; const mobileToggle = document.getElementById('mobile-menu-toggle'); if (!menu || !listComponents || !mobileToggle) return; const toggles = menu.querySelectorAll('.dropdown-toggle'); const desktopBreakpoint = 1801; function resetMenuState() { menu.querySelectorAll('.collapse-menu').forEach(sub => { sub.style.display = 'none'; }); menu.querySelectorAll('.level-1-header, .level-2-header').forEach(li => { li.classList.remove('active'); const toggle = li.querySelector('.dropdown-toggle'); if(toggle) toggle.classList.remove('active'); }); } function handleResize() { if (window.innerWidth >= desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; resetMenuState(); } } handleResize(); window.addEventListener('resize', handleResize); if (mobileToggle) { mobileToggle.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.toggle('active'); this.textContent = menu.classList.contains('active') ? '✖' : '☰'; } }); } menu.querySelectorAll('a').forEach(link => { if (link.closest('.level-3-link') || link.closest('.level-2-link-special') || link.parentElement.classList.contains('level-1-header')) { link.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; } }); } }); toggles.forEach(toggle => { toggle.addEventListener('click', function(event) { event.preventDefault(); const parentLi = this.parentElement; const parentUl = parentLi.parentElement; const targetMenu = parentLi.querySelector('.collapse-menu'); if (!targetMenu) return; const isActive = parentLi.classList.contains('active'); const activeSiblings = parentUl.querySelectorAll('.level-1-header.active, .level-2-header.active'); activeSiblings.forEach(sibling => { if (sibling !== parentLi) { sibling.classList.remove('active'); const siblingToggle = sibling.querySelector('.dropdown-toggle'); if (siblingToggle) siblingToggle.classList.remove('active'); const siblingMenu = sibling.querySelector('.collapse-menu'); if (siblingMenu) siblingMenu.style.display = 'none'; } }); parentLi.classList.toggle('active', !isActive); this.classList.toggle('active', !isActive); targetMenu.style.display = !isActive ? 'block' : 'none'; }); }); });</script>"""
 
-    if st.button("🚀 Создать Excel", disabled=(not sidebar_cat_url or not sidebar_file), key="btn_gen_sidebar_mass"):
+    if st.button("🚀 Создать Excel", disabled=(not sidebar_cat_url or not sidebar_file_content), key="btn_gen_sidebar_mass"):
         status_box = st.status("⚙️ Обработка...", expanded=True)
         try:
             status_box.write("🔨 Сборка меню из файла...")
-            stringio = io.StringIO(sidebar_file.getvalue().decode("utf-8"))
+            stringio = io.StringIO(sidebar_file_content)
             urls = [line.strip() for line in stringio.readlines() if line.strip()]
             urls = list(dict.fromkeys(urls))
             if not urls: status_box.error("❌ Файл пуст!"); st.stop()
