@@ -1281,12 +1281,11 @@ with tab_wholesale_main:
         status_box.write(f"✅ Найдено страниц для обработки: {len(target_pages)}")
         
         # ==========================================
-        # ПОДГОТОВКА (СБОР URL)
+        # ПОДГОТОВКА И СБОР URL ДЛЯ ПАРСИНГА ИМЕН
         # ==========================================
         
-        # A. СБОР URL-кандидатов для всех модулей
-        urls_to_fetch_names = set()
-
+        urls_to_fetch_names = set() # Собираем сюда все URL, для которых нужны имена
+        
         # [TAGS]
         tags_map = {}
         if use_tags:
@@ -1301,7 +1300,7 @@ with tab_wholesale_main:
                         urls_to_fetch_names.update(matches)
 
         # [PROMO]
-        promo_items_pool = [] # Пока храним словари {'url': ..., 'img': ...}
+        promo_items_pool = [] 
         if use_promo:
             p_img_map = {}
             for _, row in df_db_promo.iterrows():
@@ -1315,7 +1314,6 @@ with tab_wholesale_main:
                 matches = [u for u in p_img_map.keys() if tr in u]
                 for m in matches:
                     if m not in used_urls:
-                        # Сохраняем URL для парсинга имени
                         urls_to_fetch_names.add(m)
                         promo_items_pool.append({'url': m, 'img': p_img_map[m]})
                         used_urls.add(m)
@@ -1336,18 +1334,17 @@ with tab_wholesale_main:
             else:
                 sidebar_matched_urls = all_menu_urls
             
-            # Добавляем в список для скачивания имен
             urls_to_fetch_names.update(sidebar_matched_urls)
 
         # ==========================================
-        # МАССОВЫЙ ПАРСИНГ ИМЕН (ХЛЕБНЫЕ КРОШКИ)
+        # МАССОВЫЙ ПАРСИНГ ИМЕН
         # ==========================================
         url_name_cache = {}
         if urls_to_fetch_names:
             status_box.write(f"🌍 Получаем реальные названия для {len(urls_to_fetch_names)} ссылок...")
             
             def fetch_name_worker(u): 
-                return u, get_breadcrumb_only(u) # Функция определена в начале файла
+                return u, get_breadcrumb_only(u) 
             
             with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                 future_to_url = {executor.submit(fetch_name_worker, u): u for u in urls_to_fetch_names}
@@ -1355,12 +1352,14 @@ with tab_wholesale_main:
                 prog_fetch = status_box.progress(0)
                 for future in concurrent.futures.as_completed(future_to_url):
                     u_res, name_res = future.result()
+                    # Ключ кэша — URL без слеша на конце, для надежности
+                    norm_key = u_res.rstrip('/')
+                    
                     if name_res:
-                        url_name_cache[u_res] = name_res
+                        url_name_cache[norm_key] = name_res
                     else:
-                        # Fallback
-                        slug = u_res.rstrip('/').split('/')[-1]
-                        url_name_cache[u_res] = force_cyrillic_name_global(slug)
+                        slug = norm_key.split('/')[-1]
+                        url_name_cache[norm_key] = force_cyrillic_name_global(slug)
                     
                     done_cnt += 1
                     prog_fetch.progress(done_cnt / len(urls_to_fetch_names))
@@ -1371,7 +1370,7 @@ with tab_wholesale_main:
         # СБОРКА КОНТЕНТА
         # ==========================================
         
-        # 1. SIDEBAR (Строится один раз, так как общий)
+        # 1. SIDEBAR (Сборка с использованием кэша имен)
         full_sidebar_code = ""
         if use_sidebar:
             status_box.write("🔨 Сборка меню...")
@@ -1388,8 +1387,9 @@ with tab_wholesale_main:
                     if part not in curr: curr[part] = {}
                     if i == len(rel_parts) - 1:
                         curr[part]['__url__'] = url
-                        # ВАЖНО: Берем имя из кэша!
-                        curr[part]['__name__'] = url_name_cache.get(url, force_cyrillic_name_global(part))
+                        # БЕРЕМ ИМЯ ИЗ КЭША (по нормализованному ключу)
+                        cache_key = url.rstrip('/')
+                        curr[part]['__name__'] = url_name_cache.get(cache_key, force_cyrillic_name_global(part))
                     curr = curr[part]
             
             def render_tree_internal(node, level=1):
@@ -1397,12 +1397,10 @@ with tab_wholesale_main:
                 keys = sorted([k for k in node.keys() if not k.startswith('__')])
                 for key in keys:
                     child = node[key]
-                    # Имя берем из узла, если есть, иначе fallback
                     name = child.get('__name__', force_cyrillic_name_global(key))
                     url = child.get('__url__')
                     has_children = any(k for k in child.keys() if not k.startswith('__'))
                     
-                    # HTML structure (kept same as before)
                     if level == 1:
                         html += '<li class="level-1-header">\n'
                         if has_children:
@@ -1432,13 +1430,12 @@ with tab_wholesale_main:
             inner_html = render_tree_internal(tree, level=1)
             full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>{SIDEBAR_ASSETS}"""
 
-
         # 2. CLIENT
         client = None
         if openai and (use_text or use_tables):
             client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
 
-        # 3. LOOP
+        # 3. ЦИКЛ ПО СТРАНИЦАМ
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
         
@@ -1468,8 +1465,8 @@ with tab_wholesale_main:
                 if selected:
                     html_parts = ['<div class="popular-tags">']
                     for l in selected:
-                        # ВАЖНО: Берем имя из кэша!
-                        nm = url_name_cache.get(l, "Товар") 
+                        cache_key = l.rstrip('/')
+                        nm = url_name_cache.get(cache_key, "Товар")
                         html_parts.append(f'<a href="{l}" class="tag-link">{nm}</a>')
                     html_parts.append('</div>')
                     row_data['Tags HTML'] = "\n".join(html_parts)
@@ -1497,8 +1494,8 @@ with tab_wholesale_main:
                 if chosen:
                     items_html = ""
                     for item in chosen:
-                        # ВАЖНО: Берем имя из кэша!
-                        real_name = url_name_cache.get(item['url'], "Товар")
+                        cache_key = item['url'].rstrip('/')
+                        real_name = url_name_cache.get(cache_key, "Товар") # БЕРЕМ ИЗ КЭША
                         items_html += f"""<div class="gallery-item"><h3><a href="{item['url']}">{real_name}</a></h3><figure><a href="{item['url']}"><img src="{item['img']}" loading="lazy"></a></figure></div>"""
                     css = "<style>.five-col-gallery{display:flex;gap:15px;}</style>"
                     full_promo = f"""{css}<div class="gallery-wrapper"><h3>{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div>"""
