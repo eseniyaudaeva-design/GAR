@@ -1162,10 +1162,10 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# TAB 3: TAGS (UPDATED)
+# TAB 3: TAGS (UPDATED v2 - ONLY BREADCRUMBS)
 # ------------------------------------------
 with tab_tags:
-    st.title("🏷️ Генератор плитки тегов (Smart Names)")
+    st.title("🏷️ Генератор плитки тегов (Breadcrumbs Only)")
 
     col_t1, col_t2 = st.columns([1, 1])
     with col_t1:
@@ -1194,7 +1194,6 @@ with tab_tags:
         st.markdown("##### 📝 Ключевые слова (Товары)")
         # АВТОЗАПОЛНЕНИЕ ИЗ SEO АНАЛИЗА
         raw_products = st.session_state.get('categorized_products', [])
-        # Если есть результаты анализа, используем их по умолчанию
         default_prod_text = "\n".join(raw_products) if raw_products else ""
         
         products_input = st.text_area(
@@ -1217,7 +1216,7 @@ with tab_tags:
         
         status_box = st.status("🚀 Запуск процесса...", expanded=True)
         
-        # 1. Парсинг целевой категории (куда вставлять)
+        # 1. Парсинг целевой категории
         status_box.write(f"🕵️ Парсим категорию: {category_url}")
         target_urls_list = []
         try:
@@ -1225,7 +1224,6 @@ with tab_tags:
             r = requests.get(category_url, headers=headers, timeout=10)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
-                # Ищем контейнер тегов
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
                     for link in tags_container.find_all('a'):
@@ -1233,20 +1231,18 @@ with tab_tags:
                         if href: target_urls_list.append(urljoin(category_url, href))
         except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
             
-        if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner на сайте)"); st.stop()
+        if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)"); st.stop()
         status_box.write(f"✅ Найдено страниц для размещения: {len(target_urls_list)}")
         
-        # 2. Подготовка базы ссылок
+        # 2. Подготовка базы
         status_box.write("📂 Индексация базы ссылок...")
         stringio = io.StringIO(tags_file_content)
         all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
         
-        # 3. Сопоставление: Товар -> Список подходящих ссылок
+        # 3. Сопоставление
         product_candidates_map = {}
         for p in products:
-            tr = transliterate_text(p) # Превращаем "медный круг" в "mednyy krug"
-            # Разбиваем на части, если транслит сложный, но для начала ищем вхождение
-            # Упрощенная логика: если транслит слова есть в URL
+            tr = transliterate_text(p)
             clean_tr = tr.replace(' ', '-').replace('_', '-')
             if len(clean_tr) >= 3:
                 matches = [u for u in all_txt_links if clean_tr in u]
@@ -1255,29 +1251,18 @@ with tab_tags:
 
         status_box.write(f"✅ Товары сопоставлены: {len(product_candidates_map)} шт.")
         
-        # 4. СБОР УНИКАЛЬНЫХ ССЫЛОК ДЛЯ ПОЛУЧЕНИЯ НАЗВАНИЙ
-        # Чтобы не парсить одну страницу 100 раз, соберем пул ссылок
+        # 4. Выбор ссылок
         unique_urls_to_fetch = set()
-        
-        # Предварительное распределение (черновик)
-        # Нам нужно знать, какие ссылки мы реально будем использовать, чтобы получить их названия
-        # Сделаем жадную выборку: возьмем по 1 случайной ссылке на каждый товар для каждой страницы
-        # Это может быть много запросов. Оптимизируем:
-        # Просто соберем все возможные кандидаты, которые могут выпасть? Нет, это слишком много.
-        # Давайте сначала сгенерируем структуру, выбрав URL, а потом пойдем за названиями.
-        
-        temp_structure = [] # List of {'page_url': ..., 'tags': [{'url': ...}]}
+        temp_structure = [] 
         
         for target_url in target_urls_list:
             current_page_tags_urls = []
             for prod_name, candidates in product_candidates_map.items():
-                # Исключаем ссылку на саму себя
                 valid = [u for u in candidates if u.rstrip('/') != target_url.rstrip('/')]
                 if valid:
                     chosen = random.choice(valid)
                     current_page_tags_urls.append(chosen)
             
-            # Перемешиваем и берем уникальные
             current_page_tags_urls = list(set(current_page_tags_urls))
             random.shuffle(current_page_tags_urls)
             
@@ -1287,19 +1272,17 @@ with tab_tags:
             })
             unique_urls_to_fetch.update(current_page_tags_urls)
 
-        status_box.write(f"🌍 Необходимо получить названия для {len(unique_urls_to_fetch)} уникальных ссылок (Хлебные крошки/H1)...")
+        status_box.write(f"🌍 Получаем названия из Хлебных крошек ({len(unique_urls_to_fetch)} URL)...")
         
-        # 5. ПАРСИНГ НАЗВАНИЙ (Многопоточно)
+        # 5. ПАРСИНГ НАЗВАНИЙ (Многопоточно) - ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ
         url_name_cache = {}
         
-        # Функция для потока
         def fetch_name_worker(u):
-            return u, get_page_h1_or_breadcrumb(u)
+            # ВЫЗЫВАЕМ ФУНКЦИЮ ТОЛЬКО ДЛЯ КРОШЕК
+            return u, get_breadcrumb_only(u)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            # Запускаем задачи
             future_to_url = {executor.submit(fetch_name_worker, u): u for u in unique_urls_to_fetch}
-            
             done_count = 0
             prog_bar = status_box.progress(0)
             
@@ -1308,7 +1291,7 @@ with tab_tags:
                 if name:
                     url_name_cache[u] = name
                 else:
-                    # Fallback: если не смогли спарсить, делаем красивое название из URL
+                    # Fallback: Если крошек нет, берем из URL (транслит)
                     slug = u.rstrip('/').split('/')[-1]
                     url_name_cache[u] = force_cyrillic_name_global(slug)
                 
@@ -1317,7 +1300,7 @@ with tab_tags:
         
         status_box.write("🧠 Генерация HTML...")
         
-        # 6. СБОРКА ИТОГОВОГО HTML
+        # 6. Сборка HTML
         final_rows = []
         for item in temp_structure:
             target_page = item['target_page']
@@ -1336,7 +1319,7 @@ with tab_tags:
                 
             final_rows.append({'Page URL': target_page, 'Tags HTML': html_block})
             
-        # 7. СОХРАНЕНИЕ
+        # 7. Сохранение
         df_result = pd.DataFrame(final_rows)
         st.session_state.tags_generated_df = df_result
         
@@ -1347,7 +1330,7 @@ with tab_tags:
         
         status_box.update(label="✅ Готово! Таблица сформирована.", state="complete", expanded=False)
 
-    # 8. ОТОБРАЖЕНИЕ РЕЗУЛЬТАТА (Вне блока кнопки, чтобы сохранялось)
+    # 8. Отображение (persistent)
     if st.session_state.tags_generated_df is not None:
         st.success(f"Сформировано тегов для {len(st.session_state.tags_generated_df)} страниц.")
         
@@ -1706,6 +1689,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
