@@ -1071,17 +1071,29 @@ with tab_wholesale_main:
     st.markdown("Соберите конфигурацию необходимых блоков и получите единый Excel-файл со всеми данными.")
 
     # ==========================================
-    # 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ (ИСТОЧНИК)
+    # 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ (ИСТОЧНИК И ДОСТУПЫ)
     # ==========================================
     with st.container():
-        st.markdown("### 1. Источник страниц")
-        col_src_1, col_src_2 = st.columns([2, 1])
+        st.markdown("### 1. Источник и Доступы")
+        col_src_1, col_src_2 = st.columns([3, 1])
+        
         with col_src_1:
             main_category_url = st.text_input("URL Категории (Донор страниц)", 
                 placeholder="https://stalmetural.ru/catalog/truba-nerzhaveyushchaya/",
                 help="Скрипт зайдет сюда, найдет ссылки на товары и сгенерирует для них контент.")
+        
         with col_src_2:
-            st.info("💡 Результат: Один Excel файл, где каждая строка — это страница товара с заполненными ячейками.")
+            # Логика ключа API теперь здесь, наверху
+            default_key = st.session_state.get('pplx_key_cache', "")
+            if not default_key:
+                # Дефолтный ключ (если есть в коде) или пустота
+                default_key = "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"
+            
+            pplx_api_key = st.text_input("Perplexity API Key", value=default_key, type="password", key="global_pplx_key_top", help="Один ключ для всех AI-модулей")
+            
+            # Сохраняем в кэш сессии при вводе
+            if pplx_api_key:
+                st.session_state.pplx_key_cache = pplx_api_key
 
     st.markdown("---")
 
@@ -1103,25 +1115,9 @@ with tab_wholesale_main:
         use_sidebar = st.checkbox("📑 Сайдбар", value=False)
 
     # ==========================================
-    # 3. ОБЩИЕ НАСТРОЙКИ (AI KEY & KEYWORDS)
+    # 3. ОБЩИЕ СПИСКИ (ТОВАРЫ)
     # ==========================================
     
-    # --- GLOBAL AI KEY (Единый ввод) ---
-    pplx_api_key = None
-    if use_text or use_tables:
-        with st.expander("🔑 Настройки AI (API Key)", expanded=True):
-            # Проверяем кэш или secrets, чтобы не вводить каждый раз
-            default_key = st.session_state.get('pplx_key_cache', "")
-            if not default_key:
-                # Если ключа нет в кэше, пробуем дефолтный из кода (если есть) или пустоту
-                default_key = "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" 
-            
-            pplx_api_key = st.text_input("Perplexity API Key", value=default_key, type="password", key="global_pplx_key", help="Один ключ для всех AI-модулей")
-            
-            # Сохраняем в кэш сессии при вводе
-            if pplx_api_key:
-                st.session_state.pplx_key_cache = pplx_api_key
-
     # --- GLOBAL KEYWORDS (Нужны для Тегов и Промо) ---
     global_keywords = []
     if use_tags or use_promo:
@@ -1140,7 +1136,6 @@ with tab_wholesale_main:
     if use_text:
         with st.expander("⚙️ Настройки: AI Тексты", expanded=True):
             st.caption("Будет сгенерировано 5 блоков: Описание, Доставка, Оплата, Гарантии и т.д.")
-            # Тут больше настроек нет, ключ берется из глобального
 
     # --- CONFIG: TAGS ---
     tags_file_content = ""
@@ -1159,7 +1154,6 @@ with tab_wholesale_main:
     table_prompts = []
     if use_tables:
         with st.expander("⚙️ Настройки: AI Таблицы", expanded=True):
-            # Ключ убрали, он теперь общий
             num_tables = st.selectbox("Кол-во таблиц на страницу", [1, 2, 3], index=1, key="cfg_tbl_count")
             cols_tbl = st.columns(num_tables)
             defaults = ["Характеристики", "Размеры", "Хим. состав"]
@@ -1211,10 +1205,10 @@ with tab_wholesale_main:
     ready_to_go = True
     if not main_category_url: ready_to_go = False
     
-    # Проверка ключа (если нужен)
+    # Проверяем ключ только если выбраны AI модули
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
     
-    # Проверка остальных модулей
+    # Проверка остальных ресурсов
     if use_tags and not tags_file_content: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
@@ -1224,7 +1218,7 @@ with tab_wholesale_main:
         start_process = st.button("🚀 ЗАПУСТИТЬ КОНВЕЙЕР", type="primary", disabled=not ready_to_go, use_container_width=True)
     with btn_col_2:
         if not ready_to_go:
-            st.warning("⚠️ Заполните все поля! (URL, API Key, или загрузите необходимые базы данных)")
+            st.warning("⚠️ Заполните URL и API Key (если нужен AI), а также загрузите базы данных для выбранных модулей.")
     
     if start_process:
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
@@ -1294,7 +1288,6 @@ with tab_wholesale_main:
         sidebar_html_cache = ""
         if use_sidebar:
             status_box.write("🔨 Сборка меню...")
-            # (Тут должна быть логика сборки дерева, используем заглушку или скопированный код render_tree)
             sidebar_html_cache = f"""<div class="sidebar-wrapper">Menu Loaded ({len(sidebar_content)} bytes)</div>""" 
 
         # 2. ИНИЦИАЛИЗАЦИЯ CLIENT (ОДИН РАЗ)
