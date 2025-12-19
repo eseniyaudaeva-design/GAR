@@ -1175,7 +1175,7 @@ if st.session_state.get('start_analysis_flag'):
 
             st.rerun()
 
-    if st.session_state.analysis_done and st.session_state.analysis_results:
+        if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
@@ -1667,4 +1667,5 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
