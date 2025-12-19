@@ -1149,6 +1149,7 @@ with tab_wholesale_main:
     # ==========================================
     # 0. СБОР И РАСПРЕДЕЛЕНИЕ СЕМАНТИКИ
     # ==========================================
+    # 1. Группа СТРУКТУРА (Товары + Услуги) -> Теги, Промо, Сайдбар
     cat_products = st.session_state.get('categorized_products', [])
     cat_services = st.session_state.get('categorized_services', [])
     structure_keywords = cat_products + cat_services
@@ -1158,22 +1159,28 @@ with tab_wholesale_main:
     promo_default_text = ""
     sidebar_default_text = ""
 
+    # Логика деления слов
     if count_struct > 0:
         if count_struct < 10:
+            # Мало слов -> Всё в теги
             tags_default_text = "\n".join(structure_keywords)
         elif count_struct < 30:
+            # Средне -> 50/50 Теги и Промо
             mid = math.ceil(count_struct / 2)
             tags_default_text = "\n".join(structure_keywords[:mid])
             promo_default_text = "\n".join(structure_keywords[mid:])
         else:
+            # Много -> 33/33/33 Теги, Промо, Сайдбар
             part = math.ceil(count_struct / 3)
             tags_default_text = "\n".join(structure_keywords[:part])
             promo_default_text = "\n".join(structure_keywords[part:part*2])
             sidebar_default_text = "\n".join(structure_keywords[part*2:])
 
-    # Техничка и Контекст
+    # 2. Группа ТЕХНИЧКА (Размеры, Марки, ГОСТ) -> Таблицы
     cat_dimensions = st.session_state.get('categorized_dimensions', [])
     tech_context_text = ", ".join(cat_dimensions) if cat_dimensions else ""
+
+    # 3. Группа КОНТЕКСТ (Коммерция, Общие, Гео) -> Текст
     cat_commercial = st.session_state.get('categorized_commercial', [])
     cat_general = st.session_state.get('categorized_general', [])
     cat_geo = st.session_state.get('categorized_geo', [])
@@ -1196,7 +1203,7 @@ with tab_wholesale_main:
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
         
         if count_struct > 0:
-            st.info(f"📊 **SEO-данные:** Структура ({count_struct}), Техничка ({len(cat_dimensions)}), Текст ({len(text_context_list)}).")
+            st.info(f"📊 **SEO-данные:** Структура ({count_struct} сл.), Техничка ({len(cat_dimensions)} сл.), Текст ({len(text_context_list)} сл.).")
 
     # ==========================================
     # 2. ВЫБОР МОДУЛЕЙ
@@ -1231,9 +1238,9 @@ with tab_wholesale_main:
             with st.container(border=True):
                 st.markdown("#### 🤖 1. AI Тексты")
                 if text_context_list:
-                    st.success(f"✅ В текст будут внедрены слова: {text_context_str[:50]}...")
+                    st.success(f"✅ В текст будут внедрены слова: {text_context_str[:60]}...")
                 else:
-                    st.warning("⚠️ Нет доп. слов для текста.")
+                    st.warning("⚠️ Нет доп. слов для текста (Коммерция/Гео).")
 
         # --- [2] ТЕГИ ---
         if use_tags:
@@ -1261,7 +1268,7 @@ with tab_wholesale_main:
             with st.container(border=True):
                 st.markdown("#### 🧩 3. Таблицы")
                 if tech_context_text:
-                    st.caption(f"Контекст: {tech_context_text[:100]}...")
+                    st.caption(f"Контекст (Марки/ГОСТ): {tech_context_text[:100]}...")
                 cnt = st.number_input("Кол-во таблиц", 1, 5, 2, key="num_tbl_vert")
                 defaults = ["Характеристики", "Размеры", "Хим. состав"]
                 for i in range(cnt):
@@ -1323,6 +1330,7 @@ with tab_wholesale_main:
     ready_to_go = True
     if not main_category_url: ready_to_go = False
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
+    
     if use_tags and not tags_file_content: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
@@ -1414,7 +1422,7 @@ with tab_wholesale_main:
             urls_to_fetch_names.update(sidebar_matched_urls)
 
         # ==========================================
-        # МАССОВЫЙ ПАРСИНГ ИМЕН
+        # МАССОВЫЙ ПАРСИНГ ИМЕН (ХЛЕБНЫЕ КРОШКИ)
         # ==========================================
         url_name_cache = {}
         if urls_to_fetch_names:
@@ -1429,7 +1437,6 @@ with tab_wholesale_main:
                 prog_fetch = status_box.progress(0)
                 for future in concurrent.futures.as_completed(future_to_url):
                     u_res, name_res = future.result()
-                    # Ключ кэша — URL без слеша на конце, для надежности
                     norm_key = u_res.rstrip('/')
                     
                     if name_res:
@@ -1464,7 +1471,7 @@ with tab_wholesale_main:
                     if part not in curr: curr[part] = {}
                     if i == len(rel_parts) - 1:
                         curr[part]['__url__'] = url
-                        # БЕРЕМ ИМЯ ИЗ КЭША (по нормализованному ключу)
+                        # БЕРЕМ ИМЯ ИЗ КЭША
                         cache_key = url.rstrip('/')
                         curr[part]['__name__'] = url_name_cache.get(cache_key, force_cyrillic_name_global(part))
                     curr = curr[part]
@@ -1603,5 +1610,3 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
-
