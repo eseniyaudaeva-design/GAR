@@ -1070,24 +1070,33 @@ with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
     # ==========================================
-    # 0. АВТО-РАСПРЕДЕЛЕНИЕ СЛОВ
+    # 0. АВТО-РАСПРЕДЕЛЕНИЕ СЛОВ (НОВАЯ ЛОГИКА)
     # ==========================================
     all_found_products = st.session_state.get('categorized_products', [])
     count_prods = len(all_found_products)
 
     tags_default_text = ""
     promo_default_text = ""
+    sidebar_default_text = ""
 
     if count_prods > 0:
-        if count_prods <= 10:
+        if count_prods < 10:
+            # < 10: Всё в ТЕГИ
             tags_default_text = "\n".join(all_found_products)
-            promo_default_text = ""
+        
+        elif count_prods < 30:
+            # 10..29: Делим на ТЕГИ и ПРОМО (50/50)
+            mid = math.ceil(count_prods / 2)
+            tags_default_text = "\n".join(all_found_products[:mid])
+            promo_default_text = "\n".join(all_found_products[mid:])
+            
         else:
-            mid_index = math.ceil(count_prods / 2)
-            tags_part = all_found_products[:mid_index]
-            promo_part = all_found_products[mid_index:]
-            tags_default_text = "\n".join(tags_part)
-            promo_default_text = "\n".join(promo_part)
+            # 30+: Делим на ТЕГИ, ПРОМО и САЙДБАР (33/33/33)
+            # Чтобы в Сайдбар попало минимум ~10 слов
+            part = math.ceil(count_prods / 3)
+            tags_default_text = "\n".join(all_found_products[:part])
+            promo_default_text = "\n".join(all_found_products[part:part*2])
+            sidebar_default_text = "\n".join(all_found_products[part*2:])
 
     # ==========================================
     # 1. ВВОДНЫЕ ДАННЫЕ
@@ -1105,7 +1114,7 @@ with tab_wholesale_main:
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
         
         if count_prods > 0:
-            st.caption(f"✅ Из SEO-анализа подтянуто **{count_prods}** товаров. Они распределены ниже.")
+            st.caption(f"✅ Подтянуто **{count_prods}** товаров. Распределены: Теги ({(len(tags_default_text.splitlines()))}), Промо ({len(promo_default_text.splitlines())}), Сайдбар ({len(sidebar_default_text.splitlines())}).")
 
     # ==========================================
     # 2. ВЫБОР МОДУЛЕЙ
@@ -1122,8 +1131,11 @@ with tab_wholesale_main:
     # 3. НАСТРОЙКИ МОДУЛЕЙ
     # ==========================================
     
+    # Инициализация переменных
     global_tags_list = []
     global_promo_list = []
+    global_sidebar_list = []
+    
     tags_file_content = ""
     table_prompts = []
     df_db_promo = None
@@ -1143,115 +1155,95 @@ with tab_wholesale_main:
         if use_tags:
             with st.container(border=True):
                 st.markdown("#### 🏷️ 2. Теги")
-                
-                kws_input_tags = st.text_area(
-                    "Список товаров для тегов (Автозаполнение)", 
-                    value=tags_default_text, 
-                    height=100, 
-                    key="kws_tags_auto"
-                )
+                kws_input_tags = st.text_area("Список товаров для тегов", value=tags_default_text, height=100, key="kws_tags_auto")
                 global_tags_list = [x.strip() for x in kws_input_tags.split('\n') if x.strip()]
                 
-                # ВАЛИДАЦИЯ ТУТ ЖЕ
-                if not global_tags_list:
-                    st.warning("⚠️ Список пуст! Введите товары или проведите SEO-анализ.")
+                if not global_tags_list: st.warning("⚠️ Список пуст!")
 
                 st.markdown("---")
                 col_t1, col_t2 = st.columns([1, 2])
-                with col_t1:
-                    u_manual = st.checkbox("Загрузить базу ссылок вручную", key="cb_tags_vert")
+                with col_t1: u_manual = st.checkbox("Своя база ссылок (.txt)", key="cb_tags_vert")
                 with col_t2:
                     default_tags_path = "data/links_base.txt"
                     if not u_manual and os.path.exists(default_tags_path):
-                        st.success(f"✅ Подключена база репозитория (`links_base.txt`)")
+                        st.success(f"✅ База репозитория (`links_base.txt`)")
                         with open(default_tags_path, "r", encoding="utf-8") as f: tags_file_content = f.read()
                     elif u_manual:
                         up_t = st.file_uploader("Файл .txt", type=["txt"], key="up_tags_vert", label_visibility="collapsed")
                         if up_t: tags_file_content = up_t.getvalue().decode("utf-8")
-                    else:
-                        st.error("❌ Файл базы не найден!")
+                    else: st.error("❌ Файл базы не найден!")
 
         # --- [3] ТАБЛИЦЫ ---
         if use_tables:
             with st.container(border=True):
                 st.markdown("#### 🧩 3. Таблицы")
-                cnt = st.number_input("Количество таблиц на страницу", 1, 5, 2, key="num_tbl_vert")
+                cnt = st.number_input("Кол-во таблиц", 1, 5, 2, key="num_tbl_vert")
                 defaults = ["Характеристики", "Размеры", "Хим. состав"]
                 for i in range(cnt):
                     val = defaults[i] if i < len(defaults) else f"Таблица {i+1}"
-                    t_p = st.text_input(f"Тема таблицы {i+1}", value=val, key=f"tbl_topic_vert_{i}")
+                    t_p = st.text_input(f"Тема {i+1}", value=val, key=f"tbl_topic_vert_{i}")
                     table_prompts.append(t_p)
 
         # --- [4] ПРОМО ---
         if use_promo:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
-                
-                kws_input_promo = st.text_area(
-                    "Список товаров для промо (Автозаполнение)", 
-                    value=promo_default_text, 
-                    height=100, 
-                    key="kws_promo_auto"
-                )
+                kws_input_promo = st.text_area("Список товаров для промо", value=promo_default_text, height=100, key="kws_promo_auto")
                 global_promo_list = [x.strip() for x in kws_input_promo.split('\n') if x.strip()]
 
-                # ВАЛИДАЦИЯ ТУТ ЖЕ
-                if not global_promo_list:
-                    st.warning("⚠️ Список пуст! Введите товары вручную.")
+                if not global_promo_list: st.warning("⚠️ Список пуст!")
 
                 st.markdown("---")
                 col_p1, col_p2 = st.columns([1, 2])
                 with col_p1:
-                    promo_title = st.text_input("Заголовок блока", "Смотрите также", key="pr_tit_vert")
+                    promo_title = st.text_input("Заголовок", "Смотрите также", key="pr_tit_vert")
                     u_img_man = st.checkbox("Своя база картинок", key="cb_img_vert")
                 with col_p2:
                     default_img_db = "data/images_db.xlsx"
                     if not u_img_man and os.path.exists(default_img_db):
-                        st.success("✅ Подключена база картинок (`images_db.xlsx`)")
+                        st.success("✅ База картинок (`images_db.xlsx`)")
                         try: df_db_promo = pd.read_excel(default_img_db)
                         except: pass
                     elif u_img_man:
                         up_i = st.file_uploader("Файл .xlsx", type=['xlsx'], key="up_img_vert", label_visibility="collapsed")
                         if up_i: df_db_promo = pd.read_excel(up_i)
-                    else:
-                        st.error("❌ База картинок не найдена!")
+                    else: st.error("❌ База картинок не найдена!")
 
-        # --- [5] САЙДБАР ---
+        # --- [5] САЙДБАР (С ВОЗВРАЩЕННЫМ ПОЛЕМ) ---
         if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
+                # ВОЗВРАЩЕНО ПОЛЕ ВВОДА
+                kws_input_sidebar = st.text_area("Список товаров для меню", value=sidebar_default_text, height=100, key="kws_sidebar_auto")
+                global_sidebar_list = [x.strip() for x in kws_input_sidebar.split('\n') if x.strip()]
+                
+                if not global_sidebar_list: st.warning("⚠️ Список пуст! Будет выведено пустое меню или дефолтное.")
+
+                st.markdown("---")
                 col_s1, col_s2 = st.columns([1, 2])
-                with col_s1:
-                    u_sb_man = st.checkbox("Свой файл меню", key="cb_sb_vert")
+                with col_s1: u_sb_man = st.checkbox("Свой файл меню (.txt)", key="cb_sb_vert")
                 with col_s2:
                     def_menu = "data/menu_structure.txt"
                     if not u_sb_man and os.path.exists(def_menu):
-                        st.success("✅ Подключено меню репозитория (`menu_structure.txt`)")
+                        st.success("✅ Меню репозитория (`menu_structure.txt`)")
                         with open(def_menu, "r", encoding="utf-8") as f: sidebar_content = f.read()
                     elif u_sb_man:
                         up_s = st.file_uploader("Файл .txt", type=['txt'], key="up_sb_vert", label_visibility="collapsed")
                         if up_s: sidebar_content = up_s.getvalue().decode("utf-8")
-                    else:
-                        st.error("❌ Файл меню не найден!")
+                    else: st.error("❌ Файл меню не найден!")
 
     st.markdown("---")
     
     # ==========================================
-    # 4. ФИНАЛЬНАЯ ПРОВЕРКА И ЗАПУСК
+    # 4. ВАЛИДАЦИЯ И ЗАПУСК
     # ==========================================
     
     ready_to_go = True
     if not main_category_url: ready_to_go = False
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
     
-    if use_tags:
-        if not tags_file_content: ready_to_go = False
-        # Кнопку не блокируем при пустом списке, но предупреждение внутри блока уже показали
-            
-    if use_promo:
-        if df_db_promo is None: ready_to_go = False
-        # Аналогично, предупреждение внутри блока
-
+    if use_tags and not tags_file_content: ready_to_go = False
+    if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ (ОДНА КНОПКА)", type="primary", disabled=not ready_to_go, use_container_width=True):
@@ -1288,9 +1280,11 @@ with tab_wholesale_main:
         status_box.write(f"✅ Найдено страниц для обработки: {len(target_pages)}")
         
         # ПОДГОТОВКА РЕСУРСОВ
+        
+        # --- [TAGS] ---
         tags_map = {}
         if use_tags:
-            status_box.write("📂 Индексация базы ссылок (Теги)...")
+            status_box.write("📂 Подготовка Тегов...")
             s_io = io.StringIO(tags_file_content)
             all_links = [l.strip() for l in s_io.readlines() if l.strip()]
             for kw in global_tags_list:
@@ -1299,9 +1293,10 @@ with tab_wholesale_main:
                     matches = [u for u in all_links if tr in u]
                     if matches: tags_map[kw] = matches
         
+        # --- [PROMO] ---
         promo_items_pool = []
         if use_promo:
-            status_box.write("🎨 Подбор товаров для промо...")
+            status_box.write("🎨 Подготовка Промо...")
             p_img_map = {}
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
@@ -1319,10 +1314,86 @@ with tab_wholesale_main:
                         promo_items_pool.append({'name': rus_name, 'url': m, 'img': p_img_map[m]})
                         used_urls.add(m)
         
-        sidebar_html_cache = ""
+        # --- [SIDEBAR] ---
+        sidebar_tree_structure = {}
         if use_sidebar:
-            status_box.write("🔨 Сборка меню...")
-            sidebar_html_cache = f"""<div class="sidebar-wrapper">Menu Loaded ({len(sidebar_content)} bytes)</div>""" 
+            status_box.write("🔨 Подготовка Меню...")
+            # 1. Парсим файл меню
+            s_io = io.StringIO(sidebar_content)
+            all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
+            
+            # 2. Фильтруем ссылки по ключевым словам (global_sidebar_list)
+            matched_urls = []
+            if global_sidebar_list:
+                for kw in global_sidebar_list:
+                    tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                    if len(tr) < 3: continue
+                    # Ищем совпадения в структуре меню
+                    found = [u for u in all_menu_urls if tr in u]
+                    matched_urls.extend(found)
+                matched_urls = list(set(matched_urls)) # Уникальные
+            else:
+                # Если список слов пуст, но модуль включен - берем всё (или ничего, но лучше всё, чтобы не ломать)
+                matched_urls = all_menu_urls
+
+            # 3. Строим дерево только из matched_urls
+            tree = {}
+            for url in matched_urls:
+                path = urlparse(url).path.strip('/')
+                parts = [p for p in path.split('/') if p]
+                idx_start = 0
+                if 'catalog' in parts: idx_start = parts.index('catalog') + 1
+                rel_parts = parts[idx_start:] if parts[idx_start:] else parts
+                
+                curr = tree
+                for i, part in enumerate(rel_parts):
+                    if part not in curr: curr[part] = {}
+                    if i == len(rel_parts) - 1:
+                        curr[part]['__url__'] = url
+                        curr[part]['__name__'] = force_cyrillic_name_global(part)
+                    curr = curr[part]
+            
+            # 4. Функция рендера (внутренняя)
+            def render_tree_internal(node, level=1):
+                html = ""
+                keys = sorted([k for k in node.keys() if not k.startswith('__')])
+                for key in keys:
+                    child = node[key]
+                    name = child.get('__name__', force_cyrillic_name_global(key))
+                    url = child.get('__url__')
+                    has_children = any(k for k in child.keys() if not k.startswith('__'))
+                    
+                    if level == 1:
+                        html += '<li class="level-1-header">\n'
+                        if has_children:
+                            html += f'    <span class="dropdown-toggle">{name}</span>\n'
+                            html += '    <ul class="collapse-menu list-unstyled">\n'
+                            html += render_tree_internal(child, level=2)
+                            html += '    </ul>\n'
+                        else:
+                            target = url if url else "#"
+                            html += f'    <a href="{target}">{name}</a>\n'
+                        html += '</li>\n'
+                    elif level == 2:
+                        if has_children:
+                            html += '<li class="level-2-header">\n'
+                            html += f'    <span class="dropdown-toggle">{name}</span>\n'
+                            html += '    <ul class="collapse-menu list-unstyled">\n'
+                            html += render_tree_internal(child, level=3)
+                            html += '    </ul>\n'
+                            html += '</li>\n'
+                        else:
+                            target = url if url else "#"
+                            html += f'<li class="level-2-link-special"><a href="{target}">{name}</a></li>\n'
+                    elif level >= 3:
+                        target = url if url else "#"
+                        html += f'<li class="level-3-link"><a href="{target}">{name}</a></li>\n'
+                return html
+
+            inner_html = render_tree_internal(tree, level=1)
+            # Вставляем CSS/JS активы (SIDEBAR_ASSETS определен глобально в начале файла)
+            full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>{SIDEBAR_ASSETS}"""
+
 
         # 2. ИНИЦИАЛИЗАЦИЯ CLIENT
         client = None
@@ -1392,7 +1463,9 @@ with tab_wholesale_main:
 
             # --- SIDEBAR ---
             if use_sidebar:
-                row_data['Sidebar HTML'] = sidebar_html_cache
+                # В данной реализации мы собрали одно меню на основе ключевых слов
+                # И вставляем его одинаковым для всех страниц
+                row_data['Sidebar HTML'] = full_sidebar_code
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
