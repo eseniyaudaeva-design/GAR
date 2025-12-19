@@ -1277,7 +1277,7 @@ with tab_wholesale_main:
     # ==========================================
     st.subheader("2. Какие блоки генерируем?")
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
-    with col_ch1: use_text = st.checkbox("🤖 AI Тексты", value=True)
+    with col_ch1: use_text = st.checkbox("🤖 AI Тексты")
     with col_ch2: use_tags = st.checkbox("🏷️ Теги")
     with col_ch3: use_tables = st.checkbox("🧩 Таблицы")
     with col_ch4: use_promo = st.checkbox("🔥 Промо")
@@ -1677,5 +1677,6 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
