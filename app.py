@@ -1070,27 +1070,22 @@ with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
     # ==========================================
-    # 0. АВТО-РАСПРЕДЕЛЕНИЕ СЛОВ (ЛОГИКА)
+    # 0. АВТО-РАСПРЕДЕЛЕНИЕ СЛОВ
     # ==========================================
-    # Берем товары из SEO анализа
     all_found_products = st.session_state.get('categorized_products', [])
     count_prods = len(all_found_products)
 
-    # Переменные по умолчанию
     tags_default_text = ""
     promo_default_text = ""
 
     if count_prods > 0:
         if count_prods <= 10:
-            # ЛОГИКА 1: Если <= 10 слов, всё отдаем в ТЕГИ
             tags_default_text = "\n".join(all_found_products)
-            promo_default_text = "" # Промо остается пустым, не хватило слов
+            promo_default_text = ""
         else:
-            # ЛОГИКА 2: Если > 10 слов, делим пополам
             mid_index = math.ceil(count_prods / 2)
             tags_part = all_found_products[:mid_index]
             promo_part = all_found_products[mid_index:]
-            
             tags_default_text = "\n".join(tags_part)
             promo_default_text = "\n".join(promo_part)
 
@@ -1109,11 +1104,8 @@ with tab_wholesale_main:
             pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
         
-        # Информационная плашка о распределении
         if count_prods > 0:
-            st.caption(f"✅ Из SEO-анализа подтянуто **{count_prods}** товаров. Они автоматически распределены по блокам ниже.")
-        else:
-            st.caption("⚠️ Товары из SEO-анализа не найдены. Поля ключевых слов будут пустыми.")
+            st.caption(f"✅ Из SEO-анализа подтянуто **{count_prods}** товаров. Они распределены ниже.")
 
     # ==========================================
     # 2. ВЫБОР МОДУЛЕЙ
@@ -1127,10 +1119,9 @@ with tab_wholesale_main:
     with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар")
 
     # ==========================================
-    # 3. НАСТРОЙКИ (СТРОГИЙ ПОРЯДОК)
+    # 3. НАСТРОЙКИ МОДУЛЕЙ
     # ==========================================
     
-    # Инициализация переменных для сборки
     global_tags_list = []
     global_promo_list = []
     tags_file_content = ""
@@ -1146,14 +1137,13 @@ with tab_wholesale_main:
         if use_text:
             with st.container(border=True):
                 st.markdown("#### 🤖 1. AI Тексты")
-                st.info("✅ Используется общий API Key. Будет создано 5 блоков (Описание, Доставка и др).")
+                st.info("✅ Используется общий API Key. Будет создано 5 блоков.")
 
         # --- [2] ТЕГИ ---
         if use_tags:
             with st.container(border=True):
                 st.markdown("#### 🏷️ 2. Теги")
                 
-                # Авто-заполненное поле
                 kws_input_tags = st.text_area(
                     "Список товаров для тегов (Автозаполнение)", 
                     value=tags_default_text, 
@@ -1161,6 +1151,10 @@ with tab_wholesale_main:
                     key="kws_tags_auto"
                 )
                 global_tags_list = [x.strip() for x in kws_input_tags.split('\n') if x.strip()]
+                
+                # ВАЛИДАЦИЯ ТУТ ЖЕ
+                if not global_tags_list:
+                    st.warning("⚠️ Список пуст! Введите товары или проведите SEO-анализ.")
 
                 st.markdown("---")
                 col_t1, col_t2 = st.columns([1, 2])
@@ -1193,15 +1187,17 @@ with tab_wholesale_main:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
                 
-                # Авто-заполненное поле
                 kws_input_promo = st.text_area(
                     "Список товаров для промо (Автозаполнение)", 
                     value=promo_default_text, 
                     height=100, 
-                    key="kws_promo_auto",
-                    help="Если товаров было мало (<=10), этот список может быть пустым."
+                    key="kws_promo_auto"
                 )
                 global_promo_list = [x.strip() for x in kws_input_promo.split('\n') if x.strip()]
+
+                # ВАЛИДАЦИЯ ТУТ ЖЕ
+                if not global_promo_list:
+                    st.warning("⚠️ Список пуст! Введите товары вручную.")
 
                 st.markdown("---")
                 col_p1, col_p2 = st.columns([1, 2])
@@ -1224,7 +1220,6 @@ with tab_wholesale_main:
         if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
-                st.caption("ℹ️ Сайдбар строится строго по структуре файла меню, поэтому список слов сюда не передается.")
                 col_s1, col_s2 = st.columns([1, 2])
                 with col_s1:
                     u_sb_man = st.checkbox("Свой файл меню", key="cb_sb_vert")
@@ -1242,22 +1237,20 @@ with tab_wholesale_main:
     st.markdown("---")
     
     # ==========================================
-    # 4. ВАЛИДАЦИЯ И ЗАПУСК
+    # 4. ФИНАЛЬНАЯ ПРОВЕРКА И ЗАПУСК
     # ==========================================
     
     ready_to_go = True
     if not main_category_url: ready_to_go = False
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
     
-    # Проверки с учетом списков слов
     if use_tags:
         if not tags_file_content: ready_to_go = False
-        # Не блокируем если список слов пуст, вдруг база позволяет рандом, но предупредим
-        if not global_tags_list: st.warning("⚠️ Список товаров для тегов пуст.")
+        # Кнопку не блокируем при пустом списке, но предупреждение внутри блока уже показали
             
     if use_promo:
         if df_db_promo is None: ready_to_go = False
-        if not global_promo_list: st.warning("⚠️ Список товаров для промо пуст.")
+        # Аналогично, предупреждение внутри блока
 
     if use_sidebar and not sidebar_content: ready_to_go = False
     
@@ -1300,7 +1293,6 @@ with tab_wholesale_main:
             status_box.write("📂 Индексация базы ссылок (Теги)...")
             s_io = io.StringIO(tags_file_content)
             all_links = [l.strip() for l in s_io.readlines() if l.strip()]
-            # Используем global_tags_list
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                 if len(tr) >= 3:
@@ -1316,7 +1308,6 @@ with tab_wholesale_main:
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
             
             used_urls = set()
-            # Используем global_promo_list
             for kw in global_promo_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                 if len(tr) < 3: continue
