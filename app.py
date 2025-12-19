@@ -1532,7 +1532,7 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
     
-    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ (ОДНА КНОПКА)", type="primary", disabled=not ready_to_go, use_container_width=True):
+    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
         final_data = [] 
         
@@ -1833,6 +1833,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
