@@ -13,4 +13,5 @@ openpyxl
 setuptools
 openai
 XlsxWriter
-pip install curl_cffi
+curl_cffi
+
