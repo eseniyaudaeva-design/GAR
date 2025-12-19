@@ -1365,13 +1365,28 @@ with tab_wholesale_main:
     # ==========================================
     # 1. ВВОДНЫЕ ДАННЫЕ
     # ==========================================
+# ==========================================
+    # 1. ВВОДНЫЕ ДАННЫЕ
+    # ==========================================
     with st.container(border=True):
         st.subheader("1. Источник и Доступы")
         col_top_1, col_top_2 = st.columns([3, 1])
         with col_top_1:
-            main_category_url = st.text_input("URL Категории", 
-                placeholder="https://site.ru/catalog/...", 
-                help="Скрипт соберет товары с этой страницы")
+            # Чек-бокс для переключения режима
+            use_manual_html = st.checkbox("📝 Вставить HTML код вручную (если сайт блокирует)", key="cb_manual_html_mode")
+            
+            if use_manual_html:
+                manual_html_source = st.text_area("Исходный код страницы (HTML)", height=200, placeholder="<html>...</html>", help="Скопируйте сюда исходный код страницы, если парсер не может к ней подключиться.")
+                # URL все равно нужен для склейки относительных ссылок (/catalog/...)
+                main_category_url = st.text_input("URL этой страницы (для корректности ссылок)", 
+                    placeholder="https://site.ru/catalog/...", 
+                    help="Нужен, чтобы превратить ссылки вида /tovar в https://site.ru/tovar")
+            else:
+                main_category_url = st.text_input("URL Категории", 
+                    placeholder="https://site.ru/catalog/...", 
+                    help="Скрипт соберет товары с этой страницы")
+                manual_html_source = None
+
         with col_top_2:
             default_key = st.session_state.get('pplx_key_cache', "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")
             pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
@@ -1498,60 +1513,77 @@ with tab_wholesale_main:
 
     st.markdown("---")
     
-    # ==========================================
+# ==========================================
     # 4. ЗАПУСК
     # ==========================================
     
     ready_to_go = True
-    if not main_category_url: ready_to_go = False
+    
+    # Проверка условий запуска в зависимости от режима
+    if use_manual_html:
+        if not manual_html_source: ready_to_go = False
+        # URL желателен для склейки ссылок, но если нет — скрипт попытается работать так
+    else:
+        if not main_category_url: ready_to_go = False
+
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
     
     if use_tags and not tags_file_content: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
     
-    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ (ОДНА КНОПКА)", type="primary", disabled=not ready_to_go,
-    use_container_width=True):
+    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ (ОДНА КНОПКА)", type="primary", disabled=not ready_to_go, use_container_width=True):
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
         final_data = [] 
         
         # 1. Сбор целевых страниц
         target_pages = []
+        soup = None
+        current_base_url = main_category_url if main_category_url else "http://localhost"
+
         try:
-            status_box.write(f"🕵️ Сканируем категорию: {main_category_url}")
+            if use_manual_html:
+                status_box.write("📂 Обрабатываем загруженный HTML код...")
+                soup = BeautifulSoup(manual_html_source, 'html.parser')
+            else:
+                status_box.write(f"🕵️ Сканируем категорию: {main_category_url}")
+                # Настраиваем сессию с повторными попытками
+                session = requests.Session()
+                retry = Retry(connect=3, read=3, redirect=3, backoff_factor=0.5)
+                adapter = HTTPAdapter(max_retries=retry)
+                session.mount('http://', adapter)
+                session.mount('https://', adapter)
+                
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                r = session.get(main_category_url, headers=headers, timeout=30, verify=False)
+                
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                else: 
+                    status_box.error(f"Ошибка доступа: {r.status_code}")
+                    st.stop()
             
-            # Настраиваем сессию с повторными попытками
-            session = requests.Session()
-            retry = Retry(connect=3, read=3, redirect=3, backoff_factor=0.5)
-            adapter = HTTPAdapter(max_retries=retry)
-            session.mount('http://', adapter)
-            session.mount('https://', adapter)
-            
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            # Тайм-аут увеличен до 30 секунд
-            r = session.get(main_category_url, headers=headers, timeout=30)
-            
-            if r.status_code == 200:
-                soup = BeautifulSoup(r.text, 'html.parser')
+            # Общая логика парсинга (работает и для URL, и для HTML)
+            if soup:
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
                     for link in tags_container.find_all('a'):
                         href = link.get('href')
                         name = link.get_text(strip=True)
                         if href and name:
-                            full_url = urljoin(main_category_url, href)
+                            # Если href уже с http, urljoin оставит его как есть
+                            full_url = urljoin(current_base_url, href)
                             target_pages.append({'url': full_url, 'name': name})
                 
                 if not target_pages:
-                    status_box.warning("Теги не найдены. Обрабатываем только указанный URL.")
+                    status_box.warning("Теги (товары) не найдены в классе .popular-tags-inner.")
+                    # Пытаемся взять H1 как "единственный товар" на странице
                     h1 = soup.find('h1')
                     name = h1.get_text(strip=True) if h1 else "Товар"
-                    target_pages.append({'url': main_category_url, 'name': name})
-            else: 
-                status_box.error(f"Ошибка доступа: {r.status_code}")
-                st.stop()
+                    target_pages.append({'url': current_base_url, 'name': name})
+                    
         except Exception as e: 
-            status_box.error(f"Ошибка соединения: {e}")
+            status_box.error(f"Критическая ошибка: {e}")
             st.stop()
             
         status_box.write(f"✅ Найдено страниц для обработки: {len(target_pages)}")
@@ -1801,4 +1833,5 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
