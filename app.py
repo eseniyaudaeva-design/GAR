@@ -606,14 +606,19 @@ def parse_page(url, settings):
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     all_forms_map = defaultdict(set)
-    if not my_data or not my_data.get('body_text'): my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
+    
+    # 1. Обработка вашего сайта
+    if not my_data or not my_data.get('body_text'): 
+        my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
     else:
         my_lemmas, my_forms = process_text_detailed(my_data['body_text'], settings)
         my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
         my_len = len(my_lemmas)
         for k, v in my_forms.items(): all_forms_map[k].update(v)
 
+    # 2. Обработка конкурентов (Только успешно скачанные!)
     comp_data_parsed = [d for d in comp_data_full if d.get('body_text')]
+    
     comp_docs = []
     for p in comp_data_parsed:
         body, c_forms = process_text_detailed(p['body_text'], settings)
@@ -622,8 +627,10 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for k, v in c_forms.items(): all_forms_map[k].update(v)
 
     if not comp_docs:
+        # Если ни один конкурент не скачался — возвращаем пустые данные
         return { "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}, "missing_semantics_high": [], "missing_semantics_low": [] }
 
+    # ... [Блок расчетов TF-IDF и BM25 без изменений] ...
     c_lens = [len(d['body']) for d in comp_docs]
     avg_dl = np.mean(c_lens) if c_lens else 1
     median_len = np.median(c_lens) if c_lens else 0
@@ -710,6 +717,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     my_depth_score_final = min(100, int(round((my_bm25 / spam_limit) * 100)))
     my_width_score_final = min(100, calculate_width_score_val(my_full_lemmas_set))
 
+    # [Сборка таблиц]
     table_depth, table_hybrid = [], []
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
@@ -748,15 +756,46 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "TF-IDF у вас": round(weight_hybrid, 4), "Сайтов": df, "Переспам": max_total
         })
 
+    # --- ИСПРАВЛЕННОЕ ФОРМИРОВАНИЕ ТАБЛИЦЫ РЕЛЕВАНТНОСТИ ---
     table_rel = []
+    
+    # 1. Сначала добавляем только успешных конкурентов
     for item in original_results:
         url = item['url']
-        scores = competitor_scores_map.get(url, {'width_final':0, 'depth_final':0})
-        table_rel.append({ "Домен": urlparse(url).netloc, "Позиция": item['pos'], "Ширина (балл)": scores['width_final'], "Глубина (балл)": scores['depth_final'] })
+        # Если конкурента нет в словаре оценок (значит он не спарсился) — ПРОПУСКАЕМ ЕГО
+        if url not in competitor_scores_map:
+            continue
+            
+        scores = competitor_scores_map[url]
+        table_rel.append({ 
+            "Домен": urlparse(url).netloc, 
+            "Позиция": item['pos'], 
+            "Ширина (балл)": scores['width_final'], 
+            "Глубина (балл)": scores['depth_final'] 
+        })
+        
+    # 2. Добавляем Ваш сайт в конец (всегда)
     my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
-    table_rel.append({ "Домен": my_label, "Позиция": my_serp_pos if my_serp_pos > 0 else len(original_results) + 1, "Ширина (балл)": my_width_score_final, "Глубина (балл)": my_depth_score_final })
+    # Позиция 0, если нас нет в топе, или реальная позиция, если она была найдена API
+    my_display_pos = my_serp_pos if my_serp_pos > 0 else 0 
+    
+    table_rel.append({ 
+        "Домен": my_label, 
+        "Позиция": my_display_pos, 
+        "Ширина (балл)": my_width_score_final, 
+        "Глубина (балл)": my_depth_score_final 
+    })
 
-    return { "depth": pd.DataFrame(table_depth), "hybrid": pd.DataFrame(table_hybrid), "relevance_top": pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True), "my_score": {"width": my_width_score_final, "depth": my_depth_score_final}, "missing_semantics_high": missing_semantics_high, "missing_semantics_low": missing_semantics_low }
+    return { 
+        "depth": pd.DataFrame(table_depth), 
+        "hybrid": pd.DataFrame(table_hybrid), 
+        # Сортируем таблицу: сначала по позиции (конкуренты 1-10), Ваш сайт с поз. 0 уйдет в начало или в конец в зависимости от сортировки, 
+        # но мы хотим видеть конкурентов по порядку.
+        "relevance_top": pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True), 
+        "my_score": {"width": my_width_score_final, "depth": my_depth_score_final}, 
+        "missing_semantics_high": missing_semantics_high, 
+        "missing_semantics_low": missing_semantics_low 
+    }
 
 def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
     if df.empty: st.info(f"{title_text}: Нет данных."); return
@@ -1564,4 +1603,5 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
