@@ -1069,60 +1069,26 @@ with tab_seo_main:
 with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
-    # ==========================================
-    # 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ (ИСТОЧНИК И ДОСТУПЫ)
-    # ==========================================
-    with st.container():
-        st.markdown("### 1. Источник и Доступы")
-        col_src_1, col_src_2 = st.columns([3, 1])
-        
-        with col_src_1:
-            main_category_url = st.text_input("URL Категории (Донор страниц)", 
-                placeholder="https://stalmetural.ru/catalog/truba-nerzhaveyushchaya/",
-                help="Скрипт зайдет сюда, найдет ссылки на товары и сгенерирует для них контент.")
-        
-        with col_src_2:
-            default_key = st.session_state.get('pplx_key_cache', "")
-            if not default_key:
-                default_key = "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"
-            
-            pplx_api_key = st.text_input("Perplexity API Key", value=default_key, type="password", key="global_pplx_key_top", help="Один ключ для всех AI-модулей")
+    # --- 1. ВЕРХНЯЯ ПАНЕЛЬ: ИСТОЧНИК И ЧЕКБОКСЫ ---
+    with st.container(border=True):
+        st.markdown("##### 1. Основные настройки")
+        c_src_1, c_src_2 = st.columns([3, 1])
+        with c_src_1:
+            main_category_url = st.text_input("URL Категории", placeholder="https://site.ru/catalog/...", label_visibility="collapsed")
+        with c_src_2:
+            default_key = st.session_state.get('pplx_key_cache', "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")
+            pplx_api_key = st.text_input("API Key", value=default_key, type="password", label_visibility="collapsed", key="global_pplx_key_v3")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
 
-    st.markdown("---")
+        st.markdown("##### 2. Модули")
+        col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
+        with col_ch1: use_text = st.checkbox("🤖 AI Тексты")
+        with col_ch2: use_tags = st.checkbox("🏷️ Теги")
+        with col_ch3: use_tables = st.checkbox("🧩 Таблицы")
+        with col_ch4: use_promo = st.checkbox("🔥 Промо")
+        with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар")
 
-    # ==========================================
-    # 2. АКТИВАЦИЯ МОДУЛЕЙ
-    # ==========================================
-    st.markdown("### 2. Какие модули использовать?")
-    
-    # Визуально выделим блок чекбоксов
-    with st.container():
-        col_check_1, col_check_2, col_check_3, col_check_4, col_check_5 = st.columns(5)
-        with col_check_1: use_text = st.checkbox("🤖 AI Тексты", value=False)
-        with col_check_2: use_tags = st.checkbox("🏷️ Умные теги", value=False)
-        with col_check_3: use_tables = st.checkbox("🧩 AI Таблицы", value=False)
-        with col_check_4: use_promo = st.checkbox("🔥 Промо-блок", value=False)
-        with col_check_5: use_sidebar = st.checkbox("📑 Сайдбар", value=False)
-
-    # ==========================================
-    # 3. НАСТРОЙКИ (ВКЛАДКИ)
-    # ==========================================
-    
-    # Собираем список необходимых вкладок динамически
-    tabs_labels = []
-    
-    # "Общие" показываем, если нужны ключевые слова (для тегов или промо)
-    show_general = use_tags or use_promo
-    if show_general: tabs_labels.append("🔑 Слова и Товары")
-    
-    if use_text: tabs_labels.append("⚙️ Тексты")
-    if use_tags: tabs_labels.append("⚙️ Теги")
-    if use_tables: tabs_labels.append("⚙️ Таблицы")
-    if use_promo: tabs_labels.append("⚙️ Промо")
-    if use_sidebar: tabs_labels.append("⚙️ Сайдбар")
-
-    # Инициализация переменных настроек
+    # --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
     global_keywords = []
     tags_file_content = ""
     table_prompts = []
@@ -1130,128 +1096,92 @@ with tab_wholesale_main:
     promo_title = "Рекомендуем"
     sidebar_content = ""
 
-    if tabs_labels:
-        st.markdown("### 3. Настройка выбранных модулей")
-        # Создаем вкладки
-        active_tabs = st.tabs(tabs_labels)
+    # --- 3. ПАНЕЛЬ НАСТРОЕК (GRID LAYOUT) ---
+    # Показываем настройки только если что-то выбрано
+    if any([use_text, use_tags, use_tables, use_promo, use_sidebar]):
+        st.markdown("### ⚙️ Настройки модулей")
         
-        # Индекс для отслеживания текущей вкладки при итерации
-        current_tab_idx = 0
-
-        # --- TAB: GENERAL (KEYWORDS) ---
-        if show_general:
-            with active_tabs[current_tab_idx]:
-                st.info("Эти слова используются для поиска товаров в базе ссылок (Теги) и базе картинок (Промо).")
+        # Общий блок ключевых слов (на всю ширину)
+        if use_tags or use_promo:
+            with st.expander("🔑 Список товаров (для Тегов и Промо)", expanded=True):
                 auto_kws = st.session_state.get('categorized_products', [])
                 def_text = "\n".join(auto_kws) if auto_kws else ""
-                kws_input = st.text_area("Список товаров (по 1 в строке)", value=def_text, height=200, key="global_kws_input")
+                kws_input = st.text_area("Вставьте список товаров (по 1 в строке)", value=def_text, height=100, label_visibility="collapsed", key="global_kws_input_v3")
                 global_keywords = [x.strip() for x in kws_input.split('\n') if x.strip()]
-            current_tab_idx += 1
 
-        # --- TAB: TEXT ---
-        if use_text:
-            with active_tabs[current_tab_idx]:
-                st.caption("AI сгенерирует 5 блоков (Описание, Доставка, Оплата, Гарантии, Преимущества).")
-                st.success("✅ Ключ API получен из верхнего блока. Дополнительных настроек не требуется.")
-            current_tab_idx += 1
+        # Разбиваем настройки на 2 колонки для компактности
+        col_set_left, col_set_right = st.columns(2)
 
-        # --- TAB: TAGS ---
-        if use_tags:
-            with active_tabs[current_tab_idx]:
-                default_tags_path = "data/links_base.txt"
-                col_tags_1, col_tags_2 = st.columns(2)
-                with col_tags_1:
-                    use_manual_tags = st.checkbox("Загрузить свой файл (.txt)", key="cfg_tags_manual")
-                with col_tags_2:
-                    if not use_manual_tags and os.path.exists(default_tags_path):
-                        st.success(f"Используется база репозитория: `links_base.txt`")
+        # ЛЕВАЯ КОЛОНКА
+        with col_set_left:
+            if use_text:
+                with st.expander("🤖 Настройки: Тексты", expanded=True):
+                    st.success("✅ Используется общий API Key.")
+                    st.caption("Генерируется 5 блоков: Описание, Доставка, Оплата и др.")
+
+            if use_tags:
+                with st.expander("🏷️ Настройки: Теги", expanded=True):
+                    default_tags_path = "data/links_base.txt"
+                    u_manual = st.checkbox("Загрузить файл вручную", key="cb_tags_man_v3")
+                    if not u_manual and os.path.exists(default_tags_path):
+                        st.info(f"База: `links_base.txt`")
                         with open(default_tags_path, "r", encoding="utf-8") as f: tags_file_content = f.read()
-                    else:
-                        st.warning("Требуется файл")
-                
-                if use_manual_tags:
-                    up_tags = st.file_uploader("Загрузить базу ссылок (.txt)", type=["txt"], key="cfg_tags_upload")
-                    if up_tags: tags_file_content = up_tags.getvalue().decode("utf-8")
-            current_tab_idx += 1
+                    elif u_manual:
+                        up_t = st.file_uploader("Файл ссылок (.txt)", type=["txt"], key="up_tags_v3")
+                        if up_t: tags_file_content = up_t.getvalue().decode("utf-8")
+                    else: st.error("Нет файла базы!")
 
-        # --- TAB: TABLES ---
-        if use_tables:
-            with active_tabs[current_tab_idx]:
-                num_tables = st.selectbox("Кол-во таблиц на страницу", [1, 2, 3], index=1, key="cfg_tbl_count")
-                cols_tbl = st.columns(num_tables)
-                defaults = ["Характеристики", "Размеры", "Хим. состав"]
-                for i in range(num_tables):
-                    val = defaults[i] if i < len(defaults) else f"Таблица {i+1}"
-                    with cols_tbl[i]:
-                        t_p = st.text_input(f"Тема таблицы {i+1}", value=val, key=f"cfg_tbl_topic_{i}")
+        # ПРАВАЯ КОЛОНКА
+        with col_set_right:
+            if use_tables:
+                with st.expander("🧩 Настройки: Таблицы", expanded=True):
+                    cnt = st.number_input("Кол-во таблиц", 1, 5, 2, key="num_tbl_v3")
+                    defaults = ["Характеристики", "Размеры", "Хим. состав"]
+                    for i in range(cnt):
+                        val = defaults[i] if i < len(defaults) else f"Таблица {i+1}"
+                        t_p = st.text_input(f"Тема {i+1}", value=val, key=f"tbl_top_v3_{i}")
                         table_prompts.append(t_p)
-            current_tab_idx += 1
 
-        # --- TAB: PROMO ---
-        if use_promo:
-            with active_tabs[current_tab_idx]:
-                col_p_1, col_p_2 = st.columns([1, 1])
-                with col_p_1:
-                    promo_title = st.text_input("Заголовок блока (h3)", value="Смотрите также", key="cfg_promo_title")
-                with col_p_2:
+            if use_promo:
+                with st.expander("🔥 Настройки: Промо", expanded=True):
+                    promo_title = st.text_input("Заголовок", "Смотрите также", key="pr_tit_v3")
                     default_img_db = "data/images_db.xlsx"
-                    use_manual_img = st.checkbox("Своя база картинок (.xlsx)", key="cfg_promo_manual")
-                    
-                    if not use_manual_img and os.path.exists(default_img_db):
-                        st.success("✅ База картинок подключена (repo)")
+                    u_img_man = st.checkbox("Свой файл картинок", key="cb_img_man_v3")
+                    if not u_img_man and os.path.exists(default_img_db):
+                        st.info("База: `images_db.xlsx`")
                         try: df_db_promo = pd.read_excel(default_img_db)
                         except: pass
-                    elif use_manual_img:
-                        up_img = st.file_uploader("Загрузить базу картинок", type=['xlsx'], key="cfg_promo_up")
-                        if up_img: df_db_promo = pd.read_excel(up_img)
-                    else:
-                        st.warning("База картинок не найдена")
-            current_tab_idx += 1
+                    elif u_img_man:
+                        up_i = st.file_uploader("Картинки (.xlsx)", type=['xlsx'], key="up_img_v3")
+                        if up_i: df_db_promo = pd.read_excel(up_i)
+                    else: st.error("Нет базы картинок!")
 
-        # --- TAB: SIDEBAR ---
-        if use_sidebar:
-            with active_tabs[current_tab_idx]:
-                default_menu = "data/menu_structure.txt"
-                use_manual_sb = st.checkbox("Загрузить структуру меню (.txt)", key="cfg_sb_manual")
-                if not use_manual_sb and os.path.exists(default_menu):
-                    st.success("✅ Меню подключено (repo)")
-                    with open(default_menu, "r", encoding="utf-8") as f: sidebar_content = f.read()
-                elif use_manual_sb:
-                    up_sb = st.file_uploader("Загрузить файл меню", type=['txt'], key="cfg_sb_up")
-                    if up_sb: sidebar_content = up_sb.getvalue().decode("utf-8")
-                else:
-                    st.warning("Файл меню не найден")
-            current_tab_idx += 1
-            
-    else:
-        st.info("👈 Выберите модули выше, чтобы увидеть их настройки.")
+            if use_sidebar:
+                with st.expander("📑 Настройки: Сайдбар", expanded=True):
+                    def_menu = "data/menu_structure.txt"
+                    u_sb_man = st.checkbox("Свой файл меню", key="cb_sb_man_v3")
+                    if not u_sb_man and os.path.exists(def_menu):
+                        st.info("Файл: `menu_structure.txt`")
+                        with open(def_menu, "r", encoding="utf-8") as f: sidebar_content = f.read()
+                    elif u_sb_man:
+                        up_s = st.file_uploader("Меню (.txt)", type=['txt'], key="up_sb_v3")
+                        if up_s: sidebar_content = up_s.getvalue().decode("utf-8")
+                    else: st.error("Нет файла меню!")
 
     st.markdown("---")
     
     # ==========================================
     # 4. ЗАПУСК
     # ==========================================
-    
-    # Проверка валидации
     ready_to_go = True
     if not main_category_url: ready_to_go = False
-    
-    # Проверка ключа (если нужен)
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
-    
-    # Проверка остальных ресурсов
     if use_tags and not tags_file_content: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
     
-    btn_col_1, btn_col_2 = st.columns([1, 4])
-    with btn_col_1:
-        start_process = st.button("🚀 ЗАПУСТИТЬ КОНВЕЙЕР", type="primary", disabled=not ready_to_go, use_container_width=True)
-    with btn_col_2:
-        if not ready_to_go:
-            st.warning("⚠️ Заполните URL, API Key и проверьте настройки во вкладках выше (загружены ли базы).")
-    
-    if start_process:
+    # Кнопка на всю ширину для удобства
+    if st.button("🚀 ЗАПУСТИТЬ КОНВЕЙЕР", type="primary", disabled=not ready_to_go, use_container_width=True):
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
         final_data = [] 
         
@@ -1321,7 +1251,7 @@ with tab_wholesale_main:
             status_box.write("🔨 Сборка меню...")
             sidebar_html_cache = f"""<div class="sidebar-wrapper">Menu Loaded ({len(sidebar_content)} bytes)</div>""" 
 
-        # 2. ИНИЦИАЛИЗАЦИЯ CLIENT (ОДИН РАЗ)
+        # 2. ИНИЦИАЛИЗАЦИЯ CLIENT
         client = None
         if openai and (use_text or use_tables):
             client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
