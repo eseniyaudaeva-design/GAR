@@ -426,7 +426,7 @@ REGION_MAP = {
     "Алматы (KZ)": {"ya": 162, "go": 1014601}
 }
 
-DEFAULT_EXCLUDE_DOMAINS = ["yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com"]
+DEFAULT_EXCLUDE_DOMAINS = ["yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "aliexpress.ru", "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com"]
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
 
@@ -1006,83 +1006,88 @@ def get_page_data_for_gen(url):
 def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
     
-    # 1. Формируем инструкцию по SEO (только для первого блока)
-    keywords_instruction = ""
+    # 1. Формируем ГЛОБАЛЬНУЮ инструкцию по SEO (для всех блоков)
+    seo_instruction_block = ""
     if seo_words and len(seo_words) > 0:
         keywords_str = ", ".join(seo_words)
-        # ИЗМЕНЕНИЕ: Максимально естественная инструкция без жестких рамок
-        keywords_instruction = (
-            f"В текст Блока 1 постарайся органично включить слова: {keywords_str}. "
-            "Используй их естественно, по смыслу. Разрешено свободно склонять, менять окончания и формы слов. "
-            "Главное — чтобы текст звучал грамотно и по-русски."
-        )
+        seo_instruction_block = f"""
+    --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
+    Тебе нужно внедрить в текст следующие слова: {keywords_str}
+    
+    ПРАВИЛА ВНЕДРЕНИЯ:
+    1. РАСПРЕДЕЛЕНИЕ: Не пихай все слова в один блок! Раскидай их по всем 5 блокам там, где они подходят по смыслу (коммерческие слова — в 1 блок, технические — в 2-5 блоки).
+    2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b> осуществляется..."
+    3. ЕСТЕСТВЕННОСТЬ (ОЧЕНЬ ВАЖНО): 
+       - Склоняй слова как угодно. Меняй окончания, числа, падежи.
+       - Текст должен быть связным и грамотным. Не вставляй слова просто списком.
+    4. КОНТЕКСТ И ГЕОГРАФИЯ:
+       - Если слово выглядит как часть названия (например, "Дон"), восстанови полное название (пиши "Ростов-на-Дону", а не просто "Дон").
+       - Если слово "СПБ" — пиши "Санкт-Петербург".
+       - Внедряй слова так, чтобы читатель не заметил подвоха.
+    -------------------------------------------
+        """
 
-    # 2. Системная роль (Запрещаем болтовню)
+    # 2. Системная роль
     system_instruction = (
-        "Ты — строгий технический редактор и HTML-верстальщик для сайта металлопроката. "
-        "Твоя задача — выдавать ТОЛЬКО HTML-код. "
-        "Запрещено писать вступления, пояснения, слова 'Введение', 'Основная часть', 'Заключение'. "
-        "Запрещено использовать ссылки на источники вида [1], [2]."
+        "Ты — профессиональный технический копирайтер и верстальщик. "
+        "Твоя цель — писать полезный, естественный текст для людей, но с соблюдением требований SEO. "
+        "Ты выдаешь ТОЛЬКО HTML-код."
     )
 
     # 3. Пользовательский промт
     user_prompt = f"""
     ИСХОДНЫЕ ДАННЫЕ:
-    Название товара (Тег): "{tag_name}"
-    Базовый текст (Технические данные): \"\"\"{base_text[:3500]}\"\"\"
+    Название товара: "{tag_name}"
+    Базовый текст (фактура): \"\"\"{base_text[:3500]}\"\"\"
+    
+    {seo_instruction_block}
     
     ЗАДАЧА:
-    Напиши 5 (пять) смысловых HTML-блоков, разделенных строго строкой: |||BLOCK_SEP|||
+    Напиши 5 (пять) HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||
     
-    СТРУКТУРА БЛОКОВ:
+    ТРЕБОВАНИЯ К БЛОКАМ:
     
-    --- БЛОК 1 (Коммерческий + Общий) ---
-    1. Обязательно начни этот блок с заголовка: <h2>{tag_name}</h2> (Используй название товара в точности как указано, не меняй его).
-    2. Напиши 1-2 абзаца общего описания и условий покупки/доставки.
-    3. {keywords_instruction}
+    --- БЛОК 1 (Вводный) ---
+    - Заголовок строго: <h2>{tag_name}</h2>
+    - Описание товара, назначение, кратко условия покупки.
     
-    --- БЛОК 2, 3, 4, 5 (Строго Технические) ---
-    1. Используй заголовки только уровня <h3> (Например: <h3>Характеристики</h3>, <h3>Применение</h3>, <h3>Особенности производства</h3>, <h3>Химический состав</h3>).
-    2. Содержание должно быть сухим, техническим, основанным на Базовом тексте.
-    3. Используй абзацы <p> и маркированные списки <ul><li>, где это уместно для характеристик.
-    4. В этих блоках НЕ используй коммерческие призывы "купить", пиши про свойства металла.
+    --- БЛОКИ 2, 3, 4, 5 (Технические детали) ---
+    - Заголовки уровня <h3> (Примеры: Характеристики, Сферы применения, Производство, Состав).
+    - Используй данные из "Базового текста". Если данных мало — пиши общие характеристики для этого типа металла.
+    - Используй списки <ul> и абзацы <p>.
     
-    ВАЖНО:
-    - Никаких ссылок [1].
-    - Никакого Markdown (```html).
-    - Не повторяй заголовок H2 в блоках 2-5.
-    - В ответе должен быть только HTML код, разделенный |||BLOCK_SEP|||.
+    ФИНАЛЬНЫЕ УСЛОВИЯ:
+    - Никаких вводных слов типа "Вот ваш код".
+    - Никакого Markdown (```).
+    - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
     """
 
-    # Цикл повторных попыток (3 раза)
+    # Цикл повторных попыток
     for attempt in range(3):
         try:
-            # Используем модель sonar-pro или любую другую доступную
             response = client.chat.completions.create(
                 model="sonar-pro", 
                 messages=[
                     {"role": "system", "content": system_instruction}, 
                     {"role": "user", "content": user_prompt}
                 ], 
-                temperature=0.6 # Чуть понизил температуру для большей технической точности
+                temperature=0.7 # Чуть повысили температуру для большей "человечности" языка
             )
             content = response.choices[0].message.content
             
-            # Пост-обработка: чистка от маркдауна и ссылок, если они все-таки пролезли
+            # Пост-обработка
             content = re.sub(r'\[\d+\]', '', content)
             content = content.replace("```html", "").replace("```", "").strip()
             
-            # Разбиваем по разделителю
             blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
             
-            # Если блоков меньше 5, добиваем пустыми строками, чтобы скрипт не упал
             while len(blocks) < 5: 
                 blocks.append("")
                 
             return blocks[:5]
         except Exception as e:
             if attempt == 2: return [f"API Error: {str(e)}"] * 5
-            time.sleep(2) # Пауза перед повтором
+            time.sleep(2)
 
 # ==========================================
 # 7. UI TABS RESTRUCTURED
@@ -1838,6 +1843,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
