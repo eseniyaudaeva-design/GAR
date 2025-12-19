@@ -1068,19 +1068,10 @@ with tab_seo_main:
 # ------------------------------------------
 with tab_wholesale_main:
     st.header("🏭 Генератор контента (Опт)")
-    
-    # Create sub-tabs within the main Wholesale tab
-    sub_ai, sub_tags, sub_tables, sub_promo, sub_sidebar = st.tabs([
-        "🤖 AI Генерация", 
-        "🏷️ Генератор тегов", 
-        "🧩 Таблицы", 
-        "🔥 Генератор акций", 
-        "📑 Боковое меню"
-    ])
+    st.caption("Все инструменты для генерации контента собраны ниже. Разверните нужный блок.")
 
-    # --- SUB-TAB: AI ---
-    with sub_ai:
-        st.markdown("### AI Генератор (Perplexity)")
+    # --- SECTION 1: AI GENERATOR ---
+    with st.expander("🤖 AI Генерация (Perplexity)", expanded=False):
         pplx_key = st.text_input("Perplexity API Key", value="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", type="password", key="pplx_key_input")
         target_url_gen = st.text_input("URL Страницы (донор тегов)", key="pplx_url_input")
         if st.button("🚀 Начать генерацию", key="btn_start_gen", disabled=not pplx_key):
@@ -1107,10 +1098,8 @@ with tab_wholesale_main:
             st.download_button("📥 Скачать Excel", st.session_state.ai_excel_bytes, "seo_texts.xlsx", "application/vnd.ms-excel")
             st.dataframe(st.session_state.ai_generated_df.head())
 
-    # --- SUB-TAB: TAGS ---
-    with sub_tags:
-        st.markdown("### 🏷️ Генератор плитки тегов (Breadcrumbs Only)")
-
+    # --- SECTION 2: TAGS GENERATOR ---
+    with st.expander("🏷️ Генератор тегов (Breadcrumbs)", expanded=False):
         col_t1, col_t2 = st.columns([1, 1])
         with col_t1:
             st.markdown("##### 🔗 Источник")
@@ -1136,37 +1125,17 @@ with tab_wholesale_main:
 
         with col_t2:
             st.markdown("##### 📝 Ключевые слова (Товары)")
-            
-            # БЕРЕМ СЛОВА ИЗ ПЕРЕМЕННОЙ auto_tags_words
             tags_source = st.session_state.get('auto_tags_words', [])
-            
-            # Если пусто (анализ не запускали), пробуем взять общий список (на всякий случай)
-            if not tags_source:
-                tags_source = st.session_state.get('categorized_products', [])
-                
+            if not tags_source: tags_source = st.session_state.get('categorized_products', [])
             default_prod_text = "\n".join(tags_source) if tags_source else ""
-            
-            products_input = st.text_area(
-                "Список товаров (Автозаполнение):", 
-                value=default_prod_text, 
-                height=200, 
-                key="tags_products_edit_final",
-                help="Здесь первая часть списка товаров (или все, если их < 20)."
-            )
+            products_input = st.text_area("Список товаров (Автозаполнение):", value=default_prod_text, height=200, key="tags_products_edit_final", help="Здесь первая часть списка товаров (или все, если их < 20).")
             products = [line.strip() for line in products_input.split('\n') if line.strip()]
 
         st.markdown("---")
-        
-        # Кнопка запуска
         if st.button("🚀 Спарсить, Назвать и Собрать Excel", key="btn_tags_smart_gen", disabled=(not products or not tags_file_source or not category_url)):
-            
-            # Сброс прошлых результатов
             st.session_state.tags_generated_df = None
             st.session_state.tags_excel_data = None
-            
             status_box = st.status("🚀 Запуск процесса...", expanded=True)
-            
-            # 1. Парсинг целевой категории
             status_box.write(f"🕵️ Парсим категорию: {category_url}")
             target_urls_list = []
             try:
@@ -1183,28 +1152,19 @@ with tab_wholesale_main:
                 
             if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)"); st.stop()
             status_box.write(f"✅ Найдено страниц для размещения: {len(target_urls_list)}")
-            
-            # 2. Подготовка базы
             status_box.write("📂 Индексация базы ссылок...")
             stringio = io.StringIO(tags_file_content)
             all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
-            
-            # 3. Сопоставление
             product_candidates_map = {}
             for p in products:
                 tr = transliterate_text(p)
                 clean_tr = tr.replace(' ', '-').replace('_', '-')
                 if len(clean_tr) >= 3:
                     matches = [u for u in all_txt_links if clean_tr in u]
-                    if matches: 
-                        product_candidates_map[p] = matches
-
+                    if matches: product_candidates_map[p] = matches
             status_box.write(f"✅ Товары сопоставлены: {len(product_candidates_map)} шт.")
-            
-            # 4. Выбор ссылок
             unique_urls_to_fetch = set()
             temp_structure = [] 
-            
             for target_url in target_urls_list:
                 current_page_tags_urls = []
                 for prod_name, candidates in product_candidates_map.items():
@@ -1212,50 +1172,30 @@ with tab_wholesale_main:
                     if valid:
                         chosen = random.choice(valid)
                         current_page_tags_urls.append(chosen)
-                
                 current_page_tags_urls = list(set(current_page_tags_urls))
                 random.shuffle(current_page_tags_urls)
-                
-                temp_structure.append({
-                    'target_page': target_url,
-                    'chosen_links': current_page_tags_urls
-                })
+                temp_structure.append({'target_page': target_url, 'chosen_links': current_page_tags_urls})
                 unique_urls_to_fetch.update(current_page_tags_urls)
-
             status_box.write(f"🌍 Получаем названия из Хлебных крошек ({len(unique_urls_to_fetch)} URL)...")
-            
-            # 5. ПАРСИНГ НАЗВАНИЙ (Многопоточно) - ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ
             url_name_cache = {}
-            
-            def fetch_name_worker(u):
-                # ВЫЗЫВАЕМ ФУНКЦИЮ ТОЛЬКО ДЛЯ КРОШЕК
-                return u, get_breadcrumb_only(u)
-
+            def fetch_name_worker(u): return u, get_breadcrumb_only(u)
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 future_to_url = {executor.submit(fetch_name_worker, u): u for u in unique_urls_to_fetch}
                 done_count = 0
                 prog_bar = status_box.progress(0)
-                
                 for future in concurrent.futures.as_completed(future_to_url):
                     u, name = future.result()
-                    if name:
-                        url_name_cache[u] = name
+                    if name: url_name_cache[u] = name
                     else:
-                        # Fallback: Если крошек нет, берем из URL (транслит)
                         slug = u.rstrip('/').split('/')[-1]
                         url_name_cache[u] = force_cyrillic_name_global(slug)
-                    
                     done_count += 1
                     prog_bar.progress(done_count / len(unique_urls_to_fetch))
-            
             status_box.write("🧠 Генерация HTML...")
-            
-            # 6. Сборка HTML
             final_rows = []
             for item in temp_structure:
                 target_page = item['target_page']
                 links = item['chosen_links']
-                
                 if links:
                     html_parts = []
                     html_parts.append('<div class="popular-tags">')
@@ -1264,47 +1204,27 @@ with tab_wholesale_main:
                         html_parts.append(f'    <a href="{link}" class="tag-link">{name}</a>')
                     html_parts.append('</div>')
                     html_block = "\n".join(html_parts)
-                else:
-                    html_block = ""
-                    
+                else: html_block = ""
                 final_rows.append({'Page URL': target_page, 'Tags HTML': html_block})
-                
-            # 7. Сохранение
             df_result = pd.DataFrame(final_rows)
             st.session_state.tags_generated_df = df_result
-            
             buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: 
-                df_result.to_excel(writer, index=False)
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_result.to_excel(writer, index=False)
             st.session_state.tags_excel_data = buffer.getvalue()
-            
             status_box.update(label="✅ Готово! Таблица сформирована.", state="complete", expanded=False)
 
-        # 8. Отображение (persistent)
         if st.session_state.tags_generated_df is not None:
             st.success(f"Сформировано тегов для {len(st.session_state.tags_generated_df)} страниц.")
-            
             c_down, c_view = st.columns([1, 2])
-            with c_down:
-                st.download_button(
-                    label="📥 Скачать Excel", 
-                    data=st.session_state.tags_excel_data, 
-                    file_name="smart_tags_breadcrumbs.xlsx",
-                    mime="application/vnd.ms-excel",
-                    key="btn_dl_tags_persistent"
-                )
-            
+            with c_down: st.download_button(label="📥 Скачать Excel", data=st.session_state.tags_excel_data, file_name="smart_tags_breadcrumbs.xlsx", mime="application/vnd.ms-excel", key="btn_dl_tags_persistent")
             st.markdown("### 👁️ Предпросмотр результата")
             st.dataframe(st.session_state.tags_generated_df.head(10), use_container_width=True)
-            
             with st.expander("🔍 Посмотреть HTML первого блока"):
                 first_val = st.session_state.tags_generated_df.iloc[0]['Tags HTML']
                 st.code(first_val, language='html')
 
-    # --- SUB-TAB: TABLES ---
-    with sub_tables:
-        st.markdown("### 🧩 Генератор HTML таблиц (Smart Style)")
-        st.caption("Автоматически определяет товар по URL категории + Тегу. Генерирует таблицы с жестким стилем (черные рамки). Удаляет сноски [1].")
+    # --- SECTION 3: TABLES GENERATOR ---
+    with st.expander("🧩 Таблицы (Perplexity)", expanded=False):
         if 'tables_generated_df' not in st.session_state: st.session_state.tables_generated_df = None
         if 'tables_excel_data' not in st.session_state: st.session_state.tables_excel_data = None
         col_tbl_1, col_tbl_2 = st.columns([2, 1])
@@ -1314,8 +1234,7 @@ with tab_wholesale_main:
         with col_tbl_2:
             num_tables = st.selectbox("Количество таблиц на страницу", options=[1, 2, 3, 4, 5], index=1, key="num_tables_select_v3")
         if num_tables > 0:
-            st.markdown(f"### 📝 Темы таблиц")
-            st.caption("Нейросеть сама поймет, о каком товаре речь. Здесь укажите только название блока (например: 'Характеристики').")
+            st.caption("Нейросеть сама поймет, о каком товаре речь. Здесь укажите только название блока.")
             table_prompts = []
             defaults = ["Характеристики", "Размеры и вес", "Химический состав", "Условия поставки", "Применение"]
             for i in range(num_tables):
@@ -1393,11 +1312,8 @@ with tab_wholesale_main:
                 st.markdown(first_html, unsafe_allow_html=True)
                 st.text_area("HTML код:", value=first_html, height=200)
 
-    # --- SUB-TAB: PROMO ---
-    with sub_promo:
-        st.markdown("### Генератор блока Акции (Smart Match)")
-        
-        # CSS Hack для selectbox
+    # --- SECTION 4: PROMO GENERATOR ---
+    with st.expander("🔥 Генератор акций", expanded=False):
         st.markdown("""<style>div[data-baseweb="select"] input { caret-color: transparent !important; cursor: pointer !important; } div[data-baseweb="select"] > div { cursor: pointer !important; }</style>""", unsafe_allow_html=True)
 
         if 'promo_generated_df' not in st.session_state: st.session_state.promo_generated_df = None
@@ -1413,165 +1329,96 @@ with tab_wholesale_main:
             "Специально для вашего проекта", "Вы недавно смотрели"
         ]
 
-        # --- ВЕРХНИЕ НАСТРОЙКИ ---
         c1, c2 = st.columns([1, 1])
-        
         with c1: 
             st.markdown("##### 🔗 Источник данных")
             parent_cat_url = st.text_input("URL Родительской категории", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db", help="Отсюда мы возьмем теги")
-        
         with c2: 
             st.markdown("##### 🏷️ Заголовок блока (h3)")
-            
-            # 1. Создаем пустой контейнер, который будет меняться
             title_placeholder = st.empty()
-            
-            # 2. Чекбокс находится СНИЗУ (как вы просили)
             is_manual_mode = st.checkbox("✍️ Вписать свой заголовок вручную", key="promo_manual_checkbox_v10")
-            
-            # 3. Наполняем контейнер в зависимости от чекбокса
             with title_placeholder:
                 if is_manual_mode:
-                    # Если галочка стоит — показываем ТОЛЬКО ввод текста
-                    custom_input = st.text_input(
-                        "Введите текст:", 
-                        value="", 
-                        placeholder="Например: Рекомендуем посмотреть", 
-                        label_visibility="collapsed", 
-                        key="promo_title_custom_input_v10"
-                    )
+                    custom_input = st.text_input("Введите текст:", value="", placeholder="Например: Рекомендуем посмотреть", label_visibility="collapsed", key="promo_title_custom_input_v10")
                     promo_title = custom_input.strip() if custom_input.strip() else "Рекомендуем посмотреть"
                 else:
-                    # Если галочка НЕ стоит — показываем ТОЛЬКО список
                     st.caption("👇 Выберите готовый шаблон:")
-                    selected_variant = st.selectbox(
-                        "Варианты", 
-                        options=PROMO_TITLES_LIST, 
-                        label_visibility="collapsed", 
-                        key="promo_title_selector_v10"
-                    )
+                    selected_variant = st.selectbox("Варианты", options=PROMO_TITLES_LIST, label_visibility="collapsed", key="promo_title_selector_v10")
                     promo_title = selected_variant
                 
         st.markdown("---")
-        
         col_p1, col_p2 = st.columns([1, 1])
-        
-        # --- ЛЕВАЯ КОЛОНКА: БАЗА ДАННЫХ (EXCEL) ---
         with col_p1:
             st.markdown("#### 1. База данных (Excel)")
             st.caption("Файл должен содержать 2 столбца: [1] URL Категории, [2] URL Картинки")
-            
             default_db_path = "data/images_db.xlsx"
             df_db_promo = None
             db_source = None
-            
-            # Чекбокс для ручной загрузки
             manual_db = st.checkbox("Загрузить базу вручную (.xlsx)", key="manual_db_promo_cb")
-            
             if not manual_db and os.path.exists(default_db_path):
                 try:
                     df_db_promo = pd.read_excel(default_db_path)
                     st.success(f"✅ Подгружена база из репозитория")
                     db_source = "repo"
-                except Exception as e:
-                    st.error(f"Ошибка чтения репозитория: {e}")
+                except Exception as e: st.error(f"Ошибка чтения репозитория: {e}")
             else:
                 up_db = st.file_uploader("Выберите файл (.xlsx)", type=["xlsx"], key="promo_db_upl")
                 if up_db: 
                     try:
                         df_db_promo = pd.read_excel(up_db)
                         db_source = "upload"
-                    except Exception as e:
-                        st.error(f"Ошибка Excel: {e}")
+                    except Exception as e: st.error(f"Ошибка Excel: {e}")
 
-        # --- ПРАВАЯ КОЛОНКА: КЛЮЧЕВЫЕ СЛОВА ---
         with col_p2:
             st.markdown("#### 2. Ключевые слова (Товары)")
-            
-            # БЕРЕМ СЛОВА ИЗ ПЕРЕМЕННОЙ auto_promo_words
             promo_source = st.session_state.get('auto_promo_words', [])
-            
             default_promo_text = "\n".join(promo_source) if promo_source else ""
-            
-            promo_keywords_input = st.text_area(
-                "Список товаров для акций:", 
-                value=default_promo_text, 
-                height=200, 
-                key="promo_keywords_area_final",
-                help="Здесь вторая часть списка товаров (если их было больше 20)."
-            )
+            promo_keywords_input = st.text_area("Список товаров для акций:", value=default_promo_text, height=200, key="promo_keywords_area_final", help="Здесь вторая часть списка товаров (если их было больше 20).")
             promo_keywords = [line.strip() for line in promo_keywords_input.split('\n') if line.strip()]
 
-        # --- КНОПКА ЗАПУСКА ---
         if st.button("🛠️ Подобрать и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_smart"):
-            # Принудительно сохраняем введенные данные в state перед запуском
-            if promo_keywords:
-                 st.session_state.auto_promo_words = promo_keywords
-                 
+            if promo_keywords: st.session_state.auto_promo_words = promo_keywords
             if not parent_cat_url or not db_source or df_db_promo is None or not promo_keywords:
                 st.error("Заполните все поля (URL, База Excel и Слова)!"); st.stop()
-            
             if df_db_promo.shape[1] < 2:
                 st.error("❌ В Excel должно быть минимум 2 столбца (URL и Картинка)!"); st.stop()
 
             status = st.status("⚙️ Запуск магии...", expanded=True)
-            
-            # 1. ОБРАБОТКА БАЗЫ
             img_map = {}
             all_links = []
-            
             try:
                 for index, row in df_db_promo.iterrows():
                     raw_url = str(row.iloc[0]).strip()
                     img_val = str(row.iloc[1]).strip()
-                    
                     if raw_url and raw_url.lower() != 'nan':
                         all_links.append(raw_url)
-                        if img_val and img_val.lower() != 'nan':
-                            img_map[raw_url.rstrip('/')] = img_val
-                            
+                        if img_val and img_val.lower() != 'nan': img_map[raw_url.rstrip('/')] = img_val
                 status.write(f"✅ База проиндексирована: {len(all_links)} ссылок, {len(img_map)} картинок.")
             except Exception as e: status.error(f"Ошибка обработки базы: {e}"); st.stop()
             
-            # 3. ПОИСК
             status.write("🔍 Сопоставление: Слово -> Ссылка...")
-            
             final_items = []
             used_urls = set()
             parent_clean = parent_cat_url.rstrip('/')
-            
             for word in promo_keywords:
                 tr = transliterate_text(word)
                 clean_tr = tr.replace(' ', '-').replace('_', '-')
-                
                 if len(clean_tr) < 3: continue
-                
                 matches = [u for u in all_links if clean_tr in u]
                 valid_matches = [u for u in matches if u.rstrip('/') != parent_clean and u not in used_urls]
-                
                 if valid_matches:
                     chosen_url = random.choice(valid_matches)
                     clean_chosen_url = chosen_url.rstrip('/')
                     img_src = img_map.get(clean_chosen_url, "")
-                    
                     if img_src:
                         used_urls.add(chosen_url)
                         slug = clean_chosen_url.split('/')[-1]
                         name_rus = force_cyrillic_name_global(slug)
-                        
-                        final_items.append({
-                            'name': name_rus,
-                            'url': chosen_url,
-                            'img': img_src
-                        })
+                        final_items.append({'name': name_rus, 'url': chosen_url, 'img': img_src})
             
-            if not final_items:
-                status.error("❌ Не удалось найти совпадений.")
-                st.stop()
-                
+            if not final_items: status.error("❌ Не удалось найти совпадений."); st.stop()
             status.write(f"✅ Успешно собрано {len(final_items)} карточек товаров.")
             
-            # 4. ГЕНЕРАЦИЯ HTML
             items_html = ""
             for item in final_items:
                  items_html += f"""            <div class="gallery-item">
@@ -1579,19 +1426,14 @@ with tab_wholesale_main:
                     <figure>
                         <a href="{item['url']}" target="_blank">
                             <picture>
-                                <img src="{item['img']}" 
-                                     alt="{item['name']}" 
-                                     title="{item['name']}" 
-                                     loading="lazy">
+                                <img src="{item['img']}" alt="{item['name']}" title="{item['name']}" loading="lazy">
                             </picture>
                         </a>
                     </figure>
                 </div>\n"""
-                
             css_styles = """<style>.outer-full-width-section { padding: 25px 0; width: 100%; } .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; } h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; } .five-col-gallery { display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; } .gallery-item { flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; } .gallery-item h3 { font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; } .gallery-item h3 a { text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; } .gallery-item h3 a:hover { color: #007bff; } .gallery-item figure { width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; } .gallery-item figure a { display: block; height: 100%; text-decoration: none; } .gallery-item img { width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; } .gallery-item figure a:hover img { transform: scale(1.05); }</style>"""
             full_block_html = f"""{css_styles}<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div></div>"""
             
-            # 5. ПАРСИНГ ТЕГОВ
             status.write(f"🕵️ Ищем страницы для размещения...")
             found_tags = []
             try:
@@ -1611,7 +1453,6 @@ with tab_wholesale_main:
             for tag_url in found_tags: excel_rows.append({'Page URL': tag_url, 'HTML Block': full_block_html})
             df_promo = pd.DataFrame(excel_rows)
             
-            # 6. СОХРАНЕНИЕ
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_promo.to_excel(writer, index=False)
             st.session_state.promo_generated_df = df_promo
@@ -1627,30 +1468,22 @@ with tab_wholesale_main:
                 components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
                 st.text_area("HTML Код", value=st.session_state.promo_html_preview, height=200)
 
-    # --- SUB-TAB: SIDEBAR ---
-    with sub_sidebar:
-        st.markdown("### 📑 Генератор HTML бокового меню (Mass Excel)")
-        
+    # --- SECTION 5: SIDEBAR GENERATOR ---
+    with st.expander("📑 Боковое меню", expanded=False):
         col_sb1, col_sb2 = st.columns([1, 1])
         with col_sb1: 
             sidebar_cat_url = st.text_input("URL Категории-донора", placeholder="https://stalmetural.ru/catalog/alyuminiy/", key="sidebar_cat_url_input")
-        
         with col_sb2: 
             st.markdown("##### 2. Структура меню")
-            # --- ЛОГИКА АВТОЗАГРУЗКИ ---
             default_menu_path = "data/menu_structure.txt"
             sidebar_file_content = None
-            
             manual_upload_sidebar = st.checkbox("Загрузить файл меню вручную", key="manual_sidebar_cb")
-            
             if not manual_upload_sidebar and os.path.exists(default_menu_path):
                 st.success(f"✅ Используется файл меню из репозитория: `data/menu_structure.txt`")
-                with open(default_menu_path, "r", encoding="utf-8") as f:
-                    sidebar_file_content = f.read()
+                with open(default_menu_path, "r", encoding="utf-8") as f: sidebar_file_content = f.read()
             else:
                 sidebar_file = st.file_uploader("Загрузить список (.txt)", type=["txt"], key="sidebar_uploader_mass")
-                if sidebar_file:
-                    sidebar_file_content = sidebar_file.getvalue().decode("utf-8")
+                if sidebar_file: sidebar_file_content = sidebar_file.getvalue().decode("utf-8")
         
         SIDEBAR_ASSETS = """<style>:root { font-size: 14px; } @media (min-width: 2201px) { font-size: 16px; } #sidebar-menu ul, #sidebar-menu li { list-style: none !important; margin: 0 !important; padding: 0 !important; } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 0.85em; padding: 0.5rem 0.5rem; padding-right: 1.5rem; display: block; text-decoration: none; color: #3D4858; transition: all 0.2s ease-in-out; position: relative; font-weight: 600; cursor: pointer; } #sidebar-menu .level-1-header > span.dropdown-toggle { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-1-header > a { border-bottom: 1px solid #e9ecef; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 1rem; } #sidebar-menu .level-3-link > a { padding-left: 2rem; color: #555; font-weight: 400; } #sidebar-menu .level-2-link-special { background: #F6F7FC; } #sidebar-menu .level-2-link-special > a { padding-left: 1rem; font-weight: 600; color: #3D4858; position: relative; padding-right: 1rem; } #sidebar-menu .level-2-link-special > a::after { content: none !important; } #sidebar-menu .level-2-link-special > a:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .list-unstyled a:hover, #sidebar-menu .level-3-link a:hover, #sidebar-menu .list-unstyled span.dropdown-toggle:hover { color: #277EFF; background: #EBF5FF; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #F6F7FC; color: #277EFF; } #sidebar-menu .collapse-menu { list-style: none; padding: 0; background: #F6F7FC; display: none; } #sidebar-menu .dropdown-toggle::after { content: '▶'; position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%); transition: transform 0.3s; font-size: 0.7em; color: #999; } #sidebar-menu .dropdown-toggle.active::after { content: '▼'; transform: translateY(-50%) rotate(0deg); color: #277EFF; } #sidebar-menu .level-1-header > a::after { content: none !important; } .page-content-with-sidebar { margin-left: 0 !important; } .sidebar-wrapper { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; z-index: 1001; } #sidebar-menu, #sidebar-menu * { box-sizing: border-box; } .menu-toggle-button { position: fixed; top: 20px; right: 10px; background: #277EFF; color: white; border: none; padding: 5px 10px; font-size: 24px; line-height: 1; cursor: pointer; z-index: 1002; border-radius: 5px; display: none; transition: all 0.3s ease; } #sidebar-menu { z-index: 1000; background: #FFFFFF; color: #3D4858; transition: transform 0.3s ease; font-family: 'Open Sans', sans-serif; box-shadow: 0 0 30px rgba(0, 0, 0, 0.3); position: fixed; top: 0; left: 0; width: auto; max-width: 350px; height: 100vh; max-height: 100vh; transform: translateX(-100%); padding-top: 60px; border-radius: 0; display: block; overflow-y: auto; } #sidebar-menu.active { transform: translateX(0); } @media (max-width: 1800px) { .menu-toggle-button { display: block; top: 20px; } @media (min-width: 1180px) and (max-width: 1580px) { .menu-toggle-button { right: 183px; top: 30px; transition: right 0.3s ease, top 0.3s ease; } } #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle { font-size: 16px !important; padding: 10px 15px !important; padding-right: 30px !important; } #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 25px !important; } #sidebar-menu .level-3-link > a { padding-left: 40px !important; } #sidebar-menu .level-2-link-special > a { padding-left: 25px !important; padding-right: 25px !important; } } @media (max-width: 350px) { #sidebar-menu { width: 100%; max-width: 100%; } .menu-toggle-button { right: 5px; padding: 5px 8px; } } @media (min-width: 1801px) { #sidebar-menu { width: 14.28rem; } .page-content-with-sidebar { margin-left: 15.7rem; } .menu-toggle-button { display: none; } .sidebar-wrapper { position: static; width: auto; height: auto; overflow: visible; } #sidebar-menu { height: auto; position: fixed; top: calc(150px + 70px); left: 10px; max-height: calc(100vh - 250px - 70px); transform: translateX(0); padding-top: 0; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); border-radius: 10px; display: block; overflow-y: hidden; } #sidebar-menu .list-unstyled.components { max-height: calc(100vh - 250px - 70px); overflow-y: auto; } #sidebar-menu .level-1-header.active > span.dropdown-toggle, #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #FFFFFF !important; color: #3D4858; } #sidebar-menu .level-1-header:hover > span.dropdown-toggle, #sidebar-menu .level-2-header:hover > span.dropdown-toggle { background: #EBF5FF; color: #277EFF; } #sidebar-menu .level-2-link-special { background: #FFFFFF; } #sidebar-menu .level-2-link-special > a:hover { background: #EBF5FF; } #sidebar-menu .level-1-header > a:hover { background: #EBF5FF; color: #277EFF; } } </style><script>document.addEventListener('DOMContentLoaded', function() { const menu = document.getElementById('sidebar-menu'); const listComponents = menu ? menu.querySelector('.list-unstyled.components') : null; const mobileToggle = document.getElementById('mobile-menu-toggle'); if (!menu || !listComponents || !mobileToggle) return; const toggles = menu.querySelectorAll('.dropdown-toggle'); const desktopBreakpoint = 1801; function resetMenuState() { menu.querySelectorAll('.collapse-menu').forEach(sub => { sub.style.display = 'none'; }); menu.querySelectorAll('.level-1-header, .level-2-header').forEach(li => { li.classList.remove('active'); const toggle = li.querySelector('.dropdown-toggle'); if(toggle) toggle.classList.remove('active'); }); } function handleResize() { if (window.innerWidth >= desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; resetMenuState(); } } handleResize(); window.addEventListener('resize', handleResize); if (mobileToggle) { mobileToggle.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.toggle('active'); this.textContent = menu.classList.contains('active') ? '✖' : '☰'; } }); } menu.querySelectorAll('a').forEach(link => { if (link.closest('.level-3-link') || link.closest('.level-2-link-special') || link.parentElement.classList.contains('level-1-header')) { link.addEventListener('click', function() { if (window.innerWidth < desktopBreakpoint) { menu.classList.remove('active'); if (mobileToggle) mobileToggle.textContent = '☰'; } }); } }); toggles.forEach(toggle => { toggle.addEventListener('click', function(event) { event.preventDefault(); const parentLi = this.parentElement; const parentUl = parentLi.parentElement; const targetMenu = parentLi.querySelector('.collapse-menu'); if (!targetMenu) return; const isActive = parentLi.classList.contains('active'); const activeSiblings = parentUl.querySelectorAll('.level-1-header.active, .level-2-header.active'); activeSiblings.forEach(sibling => { if (sibling !== parentLi) { sibling.classList.remove('active'); const siblingToggle = sibling.querySelector('.dropdown-toggle'); if (siblingToggle) siblingToggle.classList.remove('active'); const siblingMenu = sibling.querySelector('.collapse-menu'); if (siblingMenu) siblingMenu.style.display = 'none'; } }); parentLi.classList.toggle('active', !isActive); this.classList.toggle('active', !isActive); targetMenu.style.display = !isActive ? 'block' : 'none'; }); }); });</script>"""
 
