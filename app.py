@@ -5,6 +5,8 @@ import requests
 from bs4 import BeautifulSoup, Comment
 import re
 from collections import Counter, defaultdict
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import math
 import concurrent.futures
 from urllib.parse import urlparse, urljoin, unquote
@@ -557,29 +559,50 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def parse_page(url, settings):
+    # Настройка повторных попыток (Retries)
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    
     headers = {'User-Agent': settings['ua']}
     try:
-        r = requests.get(url, headers=headers, timeout=15)
+        # Увеличили timeout до 20 секунд
+        r = session.get(url, headers=headers, timeout=20)
         if r.status_code != 200: return None
+        
         soup = BeautifulSoup(r.text, 'html.parser')
+        
         tags_to_remove = []
         if settings['noindex']: tags_to_remove.append('noindex')
+        
+        # Удаляем комментарии и лишние теги
         for c in soup.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
         if tags_to_remove:
             for t in soup.find_all(tags_to_remove): t.decompose()
+            
+        # Сбор анкоров
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
+        
+        # Сбор мета и alt
         extra_text = []
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'): extra_text.append(meta_desc['content'])
+        
         if settings['alt_title']:
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
+            
+        # Основной текст
         body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
+        
         if not body_text: return None
         return {'url': url, 'domain': urlparse(url).netloc, 'body_text': body_text, 'anchor_text': anchor_text}
-    except: return None
+    except: 
+        return None
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     all_forms_map = defaultdict(set)
@@ -997,14 +1020,29 @@ with tab_seo_main:
             target_urls_raw = [{'url': u.strip(), 'pos': i+1} for i, u in enumerate(raw_urls.split('\n')) if u.strip()]
         if not target_urls_raw: st.error("Нет конкурентов."); st.stop()
         comp_data_full = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(parse_page, u['url'], settings): u['url'] for u in target_urls_raw}
-            done, total = 0, len(target_urls_raw)
-            prog = st.progress(0)
-            for f in concurrent.futures.as_completed(futures):
-                if res := f.result(): comp_data_full.append(res)
-                done += 1; prog.progress(done / total)
-        prog.empty()
+        with st.status("🕵️ Сканирование конкурентов...", expanded=True) as status:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {executor.submit(parse_page, u['url'], settings): u['url'] for u in target_urls_raw}
+                done_count = 0
+                total = len(target_urls_raw)
+                
+                for f in concurrent.futures.as_completed(futures):
+                    res = f.result()
+                    if res: 
+                        comp_data_full.append(res)
+                    done_count += 1
+                    # Обновляем статус, чтобы было видно прогресс
+                    status.update(label=f"Сканирование: {done_count}/{total} (Успешно: {len(comp_data_full)})")
+            
+            # ВАЖНО: Сортируем данные по URL, чтобы порядок всегда был одинаковым!
+            # Это устраняет "плавающие" баги при расчетах, зависящих от порядка.
+            comp_data_full.sort(key=lambda x: x['url'])
+
+            if len(comp_data_full) < len(target_urls_raw):
+                st.warning(f"⚠️ Не удалось скачать {len(target_urls_raw) - len(comp_data_full)} сайтов. Рекомендации могут быть неточными.")
+            else:
+                st.success(f"✅ Успешно скачано {len(comp_data_full)} из {len(target_urls_raw)} конкурентов.")
+
         with st.spinner("Расчет метрик..."):
             st.session_state.analysis_results = calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, target_urls_raw)
             st.session_state.analysis_done = True
@@ -1526,3 +1564,4 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
