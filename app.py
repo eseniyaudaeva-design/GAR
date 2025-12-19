@@ -435,6 +435,8 @@ if 'categorized_commercial' not in st.session_state: st.session_state.categorize
 if 'categorized_dimensions' not in st.session_state: st.session_state.categorized_dimensions = []
 if 'categorized_geo' not in st.session_state: st.session_state.categorized_geo = []
 if 'categorized_general' not in st.session_state: st.session_state.categorized_general = []
+if 'auto_tags_words' not in st.session_state: st.session_state.auto_tags_words = []
+if 'auto_promo_words' not in st.session_state: st.session_state.auto_promo_words = []
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
 
 # ==========================================
@@ -1106,20 +1108,21 @@ with tab_seo:
                 st.session_state.categorized_geo = categorized['geo']
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
-                # --- НОВАЯ ЛОГИКА РАСПРЕДЕЛЕНИЯ (TAGS vs PROMO) ---
-            all_prods = st.session_state.categorized_products
-            total_prods = len(all_prods)
+
+            all_found_products = st.session_state.categorized_products
+            count_prods = len(all_found_products)
             
-            if total_prods < 20:
-                # Если мало слов — всё отдаем в Теги, Акциям ничего
-                st.session_state.auto_tags_words = all_prods
+            if count_prods < 20:
+                # Если слов мало (<20) -> ВСЁ отдаем в "Генератор тегов", в "Акции" пусто
+                st.session_state.auto_tags_words = all_found_products
                 st.session_state.auto_promo_words = []
             else:
-                # Если слов много — делим 50/50
-                mid_index = math.ceil(total_prods / 2) # Округляем вверх
-                st.session_state.auto_tags_words = all_prods[:mid_index] # Первая половина -> Теги
-                st.session_state.auto_promo_words = all_prods[mid_index:] # Вторая половина -> Акции
-            
+                # Если слов много (>=20) -> Делим 50/50
+                half_count = math.ceil(count_prods / 2)
+                st.session_state.auto_tags_words = all_found_products[:half_count] # Первая половина -> Теги
+                st.session_state.auto_promo_words = all_found_products[half_count:] # Вторая половина -> Акции
+            # === ВСТАВИТЬ ЭТОТ БЛОК (КОНЕЦ) ===
+
             st.rerun()
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
@@ -1206,20 +1209,22 @@ with tab_tags:
 
     with col_t2:
         st.markdown("##### 📝 Ключевые слова (Товары)")
-        # АВТОЗАПОЛНЕНИЕ (Берем только ту часть, что выделил алгоритм распределения)
-        auto_words = st.session_state.get('auto_tags_words', [])
-        # Если распределения еще не было, но есть старый список, берем его как запасной вариант
-        if not auto_words:
-             auto_words = st.session_state.get('categorized_products', [])
-             
-        default_prod_text = "\n".join(auto_words) if auto_words else ""
+        
+        # БЕРЕМ СЛОВА ИЗ ПЕРЕМЕННОЙ auto_tags_words
+        tags_source = st.session_state.get('auto_tags_words', [])
+        
+        # Если пусто (анализ не запускали), пробуем взять общий список (на всякий случай)
+        if not tags_source:
+            tags_source = st.session_state.get('categorized_products', [])
+            
+        default_prod_text = "\n".join(tags_source) if tags_source else ""
         
         products_input = st.text_area(
             "Список товаров (Автозаполнение):", 
             value=default_prod_text, 
             height=200, 
-            key="tags_products_edit_v13",
-            help="Сюда попадают слова согласно правилу распределения (<20 = все, >20 = 50%)"
+            key="tags_products_edit_final",
+            help="Здесь первая часть списка товаров (или все, если их < 20)."
         )
         products = [line.strip() for line in products_input.split('\n') if line.strip()]
 
@@ -1539,16 +1544,17 @@ with tab_promo:
     with col_p2:
         st.markdown("#### 2. Ключевые слова (Товары)")
         
-        # АВТОЗАПОЛНЕНИЕ (Вторая половина списка)
-        auto_promo = st.session_state.get('auto_promo_words', [])
-        default_promo_text = "\n".join(auto_promo) if auto_promo else ""
+        # БЕРЕМ СЛОВА ИЗ ПЕРЕМЕННОЙ auto_promo_words
+        promo_source = st.session_state.get('auto_promo_words', [])
+        
+        default_promo_text = "\n".join(promo_source) if promo_source else ""
         
         promo_keywords_input = st.text_area(
             "Список товаров для акций:", 
             value=default_promo_text, 
             height=250, 
-            key="promo_keywords_area",
-            help="Сюда попадают слова, оставшиеся после распределения (если слов > 20)"
+            key="promo_keywords_area_final",
+            help="Здесь вторая часть списка товаров (если их было больше 20). Если меньше 20 — тут будет пусто."
         )
         promo_keywords = [line.strip() for line in promo_keywords_input.split('\n') if line.strip()]
 
@@ -1811,6 +1817,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
