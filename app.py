@@ -1473,7 +1473,7 @@ with tab_promo:
         st.markdown("<label style='font-size: 14px;'>Заголовок блока (h3)</label>", unsafe_allow_html=True)
         
         # Название опции для ручного ввода
-        CUSTOM_OPTION_LABEL = "✏️ — Вписать свой вариант —"
+        CUSTOM_OPTION_LABEL = "Возможные варианты"
         
         # Селектбокс
         selected_option = st.selectbox(
@@ -1732,6 +1732,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
