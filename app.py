@@ -1,3 +1,15 @@
+Вот полный, исправленный и почищенный код.
+
+**Что сделано:**
+1.  **Удален дубликат функции** `classify_semantics_with_api` (в вашем коде она встречалась дважды, я оставил последнюю, рабочую версию).
+2.  **Вкладка 1 (SEO):** Логика распределения слов (50/50 или все в теги) теперь жестко вшита в процесс анализа перед перезагрузкой страницы. Добавлено принудительное приведение к `int`, чтобы деление работало корректно.
+3.  **Вкладка 3 (Теги):** Поле автоматически подтягивает слова из переменной `auto_tags_words`.
+4.  **Вкладка 5 (Акции):** Поле автоматически подтягивает слова из переменной `auto_promo_words`.
+5.  **Лечебные блоки удалены**, код чистый.
+
+Просто скопируйте этот код целиком и замените содержимое вашего файла. После этого нажмите **"ЗАПУСТИТЬ АНАЛИЗ"** еще раз, чтобы пересчитать распределение.
+
+```python
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -126,6 +138,7 @@ def force_cyrillic_name_global(slug_text):
     draft_phrase = draft_phrase.replace('йа', 'я').replace('йо', 'ё')
 
     return draft_phrase.capitalize()
+
 def get_breadcrumb_only(url, ua_settings="Mozilla/5.0"):
     """
     Заходит по URL и достает название ТОЛЬКО из последнего элемента хлебных крошек.
@@ -140,32 +153,25 @@ def get_breadcrumb_only(url, ua_settings="Mozilla/5.0"):
         soup = BeautifulSoup(r.text, 'html.parser')
         
         # 1. Ищем контейнер хлебных крошек по популярным классам/id
-        # Добавил 'bx-breadcrumb', так как часто бывает на Битриксе
         breadcrumbs = soup.find(class_=re.compile(r'breadcrumb|breadcrumbs|nav-path|nav-chain|bx-breadcrumb', re.I))
         if not breadcrumbs:
             breadcrumbs = soup.find(id=re.compile(r'breadcrumb|breadcrumbs|nav-path', re.I))
 
         if breadcrumbs:
-            # Метод: получаем весь текст с разделителем, разбиваем и берем последнее
-            # Это надежнее, чем искать конкретный span или li, так как верстка везде разная
             full_text = breadcrumbs.get_text(separator='|||', strip=True)
             parts = [p.strip() for p in full_text.split('|||') if p.strip()]
-            
-            # Фильтруем мусорные символы разделителей
             clean_parts = [p for p in parts if p not in ['/', '\\', '>', '»', '•', '-', '|']]
             
             if clean_parts:
                 last_item = clean_parts[-1]
-                # Проверка: если последний элемент слишком короткий или это "Главная", значит что-то не то
                 if len(last_item) > 2 and last_item.lower() != "главная":
                     return last_item
-            
     except:
         return None
     return None
 
 # ==========================================
-# ОБНОВЛЕННАЯ ФУНКЦИЯ ЗАГРУЗКИ (читает и слово, и лемму)
+# ЗАГРУЗКА СЛОВАРЕЙ
 # ==========================================
 @st.cache_data
 def load_lemmatized_dictionaries():
@@ -209,9 +215,8 @@ def load_lemmatized_dictionaries():
                 if isinstance(raw_comm, list):
                     for w in raw_comm:
                         w_clean = str(w).lower().strip()
-                        commercial_lemmas.add(w_clean) # Добавляем как есть ("оптом")
+                        commercial_lemmas.add(w_clean)
                         if morph: 
-                            # Добавляем лемму (может стать "опт")
                             commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
         except: pass
 
@@ -260,7 +265,7 @@ def load_lemmatized_dictionaries():
     return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas
 
 # ==========================================
-# ОБНОВЛЕННАЯ ФУНКЦИЯ КЛАССИФИКАЦИИ
+# КЛАССИФИКАТОР
 # ==========================================
 def classify_semantics_with_api(words_list, yandex_key):
     PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET = load_lemmatized_dictionaries()
@@ -268,83 +273,6 @@ def classify_semantics_with_api(words_list, yandex_key):
     if 'debug_geo_count' not in st.session_state:
         st.session_state.debug_geo_count = len(GEO_SET)
     
-    # Отладка в сайдбар, чтобы видеть количество слов
-    st.sidebar.info(f"Базы:\n📦 Товары: {len(PRODUCTS_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n⚙️ Марки: {len(SPECS_SET)}\n💰 Коммерц: {len(COMM_SET)}")
-
-    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
-    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
-    
-    # Расширенный хардкод на всякий случай
-    DEFAULT_COMMERCIAL = {'цена', 'купить', 'прайс', 'корзина', 'заказ', 'руб', 'наличие', 'склад', 
-                          'магазин', 'акция', 'скидка', 'опт', 'розница', 'каталог', 'телефон', 
-                          'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия', 
-                          'оптом', 'недорого', 'стоимость'}
-
-    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set(), 'general': set()}
-    
-    for word in words_list:
-        word_lower = word.lower()
-        
-        # 1. ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ
-        if word_lower in SPECS_SET:
-            categories['dimensions'].add(word_lower); continue
-            
-        if morph:
-            p = morph.parse(word_lower)[0]
-            lemma = p.normal_form
-            pos = p.tag.POS
-        else:
-            lemma = word_lower
-            pos = 'NOUN'
-
-        if lemma in SPECS_SET:
-            categories['dimensions'].add(lemma); continue
-
-        # 2. РАЗМЕРЫ (регулярки)
-        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
-            categories['dimensions'].add(word_lower); continue
-
-        # 3. ТОВАРЫ
-        if lemma in PRODUCTS_SET or word_lower in PRODUCTS_SET:
-            categories['products'].add(lemma); continue
-
-        # 4. ГЕО
-        if lemma in GEO_SET or word_lower in GEO_SET:
-            categories['geo'].add(lemma); continue
-        
-        is_geo_derivative = False
-        if len(lemma) > 5: 
-            for city in GEO_SET:
-                if len(city) > 4 and lemma.startswith(city[:-1]): 
-                    categories['geo'].add(lemma)
-                    is_geo_derivative = True
-                    break
-        if is_geo_derivative: continue
-
-        # 5. УСЛУГИ
-        if lemma in SERVICES_SET or word_lower in SERVICES_SET or lemma.endswith('обработка') or lemma.endswith('изготовление'):
-            categories['services'].add(lemma); continue
-
-        # 6. КОММЕРЦИЯ (Самое важное изменение здесь)
-        # Проверяем и лемму, и точное слово, и словарь из файла, и дефолтный список
-        if (lemma in COMM_SET or word_lower in COMM_SET or 
-            lemma in DEFAULT_COMMERCIAL or word_lower in DEFAULT_COMMERCIAL):
-            categories['commercial'].add(lemma); continue
-            
-        # 7. ОБЩИЕ
-        categories['general'].add(lemma)
-
-    return {k: sorted(list(v)) for k, v in categories.items()}
-# ==========================================
-# 0.3 КЛАССИФИКАТОР С ГЕО
-# ==========================================
-def classify_semantics_with_api(words_list, yandex_key):
-    # Распаковываем 5 словарей
-    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET = load_lemmatized_dictionaries()
-    
-    if 'debug_geo_count' not in st.session_state:
-        st.session_state.debug_geo_count = len(GEO_SET)
-    # Выводим отладку в сайдбар, чтобы видеть, загрузились ли марки
     st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n⚙️ Марки/ГОСТ: {len(SPECS_SET)}\n🌍 Города: {len(GEO_SET)}")
 
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
@@ -359,8 +287,7 @@ def classify_semantics_with_api(words_list, yandex_key):
     for word in words_list:
         word_lower = word.lower()
         
-        # 1. Сначала проверяем на технические параметры (Марки, ГОСТы из файла)
-        # Проверяем и точное совпадение, и лемму
+        # 1. Сначала проверяем на технические параметры
         if word_lower in SPECS_SET:
             categories['dimensions'].add(word_lower)
             continue
@@ -368,16 +295,14 @@ def classify_semantics_with_api(words_list, yandex_key):
         if morph:
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
-            pos = p.tag.POS
         else:
             lemma = word_lower
-            pos = 'NOUN'
 
         if lemma in SPECS_SET:
             categories['dimensions'].add(lemma)
             continue
 
-        # 2. Регулярки для размеров (10х20)
+        # 2. Регулярки для размеров
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower)
             continue
@@ -411,13 +336,13 @@ def classify_semantics_with_api(words_list, yandex_key):
             categories['commercial'].add(lemma)
             continue
             
-        # 7. ОБЩИЕ (Всё остальное)
+        # 7. ОБЩИЕ
         categories['general'].add(lemma)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
 
 # ==========================================
-# 0.5 STATE INIT
+# STATE INIT
 # ==========================================
 if 'sidebar_gen_df' not in st.session_state: st.session_state.sidebar_gen_df = None
 if 'sidebar_excel_bytes' not in st.session_state: st.session_state.sidebar_excel_bytes = None
@@ -1109,20 +1034,18 @@ with tab_seo:
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
 
+            # --- ЛОГИКА РАСПРЕДЕЛЕНИЯ (ВШИТА В АНАЛИЗ) ---
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
             
             if count_prods < 20:
-                # Если слов мало (<20) -> ВСЁ отдаем в "Генератор тегов", в "Акции" пусто
                 st.session_state.auto_tags_words = all_found_products
                 st.session_state.auto_promo_words = []
             else:
-                # Если слов много (>=20) -> Делим 50/50
-                half_count = math.ceil(count_prods / 2)
-                st.session_state.auto_tags_words = all_found_products[:half_count] # Первая половина -> Теги
-                st.session_state.auto_promo_words = all_found_products[half_count:] # Вторая половина -> Акции
-            # === ВСТАВИТЬ ЭТОТ БЛОК (КОНЕЦ) ===
-
+                half_count = int(math.ceil(count_prods / 2)) # Forced int
+                st.session_state.auto_tags_words = all_found_products[:half_count]
+                st.session_state.auto_promo_words = all_found_products[half_count:]
+            
             st.rerun()
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
@@ -1817,18 +1740,3 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
