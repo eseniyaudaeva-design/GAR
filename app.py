@@ -1010,7 +1010,12 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     keywords_instruction = ""
     if seo_words and len(seo_words) > 0:
         keywords_str = ", ".join(seo_words)
-        keywords_instruction = f"В БЛОК 1 (и только туда) органично впиши эти слова (можно склонять), выдели их тегом <b>: {keywords_str}."
+        # ИЗМЕНЕНИЕ: Максимально естественная инструкция без жестких рамок
+        keywords_instruction = (
+            f"В текст Блока 1 постарайся органично включить слова: {keywords_str}. "
+            "Используй их естественно, по смыслу. Разрешено свободно склонять, менять окончания и формы слов. "
+            "Главное — чтобы текст звучал грамотно и по-русски."
+        )
 
     # 2. Системная роль (Запрещаем болтовню)
     system_instruction = (
@@ -1833,6 +1838,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
