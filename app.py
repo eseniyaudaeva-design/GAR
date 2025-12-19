@@ -1005,43 +1005,79 @@ def get_page_data_for_gen(url):
 
 def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
-    system_instruction = "Ты — профессиональный технический копирайтер. Напиши 5 HTML блоков. Не используй markdown."
+    
+    # 1. Формируем инструкцию по SEO (только для первого блока)
     keywords_instruction = ""
     if seo_words and len(seo_words) > 0:
         keywords_str = ", ".join(seo_words)
-        keywords_instruction = f"Включи эти слова (склоняя их) и выдели <b>: {keywords_str}"
+        keywords_instruction = f"В БЛОК 1 (и только туда) органично впиши эти слова (можно склонять), выдели их тегом <b>: {keywords_str}."
 
-    user_prompt = f"""ВВОДНЫЕ: Тег "{tag_name}". База: \"\"\"{base_text[:3000]}\"\"\" {keywords_instruction}
-    ЗАДАЧА: 5 блоков. Структура: h2/h3, абзац, вводная фраза:, список, заключение. Без [1] ссылок. Разделитель: |||BLOCK_SEP|||"""
+    # 2. Системная роль (Запрещаем болтовню)
+    system_instruction = (
+        "Ты — строгий технический редактор и HTML-верстальщик для сайта металлопроката. "
+        "Твоя задача — выдавать ТОЛЬКО HTML-код. "
+        "Запрещено писать вступления, пояснения, слова 'Введение', 'Основная часть', 'Заключение'. "
+        "Запрещено использовать ссылки на источники вида [1], [2]."
+    )
+
+    # 3. Пользовательский промт
+    user_prompt = f"""
+    ИСХОДНЫЕ ДАННЫЕ:
+    Название товара (Тег): "{tag_name}"
+    Базовый текст (Технические данные): \"\"\"{base_text[:3500]}\"\"\"
+    
+    ЗАДАЧА:
+    Напиши 5 (пять) смысловых HTML-блоков, разделенных строго строкой: |||BLOCK_SEP|||
+    
+    СТРУКТУРА БЛОКОВ:
+    
+    --- БЛОК 1 (Коммерческий + Общий) ---
+    1. Обязательно начни этот блок с заголовка: <h2>{tag_name}</h2> (Используй название товара в точности как указано, не меняй его).
+    2. Напиши 1-2 абзаца общего описания и условий покупки/доставки.
+    3. {keywords_instruction}
+    
+    --- БЛОК 2, 3, 4, 5 (Строго Технические) ---
+    1. Используй заголовки только уровня <h3> (Например: <h3>Характеристики</h3>, <h3>Применение</h3>, <h3>Особенности производства</h3>, <h3>Химический состав</h3>).
+    2. Содержание должно быть сухим, техническим, основанным на Базовом тексте.
+    3. Используй абзацы <p> и маркированные списки <ul><li>, где это уместно для характеристик.
+    4. В этих блоках НЕ используй коммерческие призывы "купить", пиши про свойства металла.
+    
+    ВАЖНО:
+    - Никаких ссылок [1].
+    - Никакого Markdown (```html).
+    - Не повторяй заголовок H2 в блоках 2-5.
+    - В ответе должен быть только HTML код, разделенный |||BLOCK_SEP|||.
+    """
 
     # Цикл повторных попыток (3 раза)
     for attempt in range(3):
         try:
-            response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
+            # Используем модель sonar-pro или любую другую доступную
+            response = client.chat.completions.create(
+                model="sonar-pro", 
+                messages=[
+                    {"role": "system", "content": system_instruction}, 
+                    {"role": "user", "content": user_prompt}
+                ], 
+                temperature=0.6 # Чуть понизил температуру для большей технической точности
+            )
             content = response.choices[0].message.content
-            content = re.sub(r'\[\d+\]', '', content).replace("```html", "").replace("```", "")
+            
+            # Пост-обработка: чистка от маркдауна и ссылок, если они все-таки пролезли
+            content = re.sub(r'\[\d+\]', '', content)
+            content = content.replace("```html", "").replace("```", "").strip()
+            
+            # Разбиваем по разделителю
             blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
-            while len(blocks) < 5: blocks.append("")
+            
+            # Если блоков меньше 5, добиваем пустыми строками, чтобы скрипт не упал
+            while len(blocks) < 5: 
+                blocks.append("")
+                
             return blocks[:5]
         except Exception as e:
             if attempt == 2: return [f"API Error: {str(e)}"] * 5
             time.sleep(2) # Пауза перед повтором
-
-def generate_html_table(client, user_prompt, seo_keywords_data=None):
-    seo_instruction = ""
-    if seo_keywords_data:
-        words_desc = [f"- '{item['word']}': {item['count']} times" for item in seo_keywords_data]
-        seo_instruction = f"MANDATORY SEO: Use these words ({', '.join(words_desc)}). Wrap in <b>."
-    system_instruction = f"Generate HTML tables. Inline CSS: table border 2px solid black, th bg #f0f0f0. {seo_instruction} No markdown."
-    
-    # Цикл повторных попыток (3 раза)
-    for attempt in range(3):
-        try:
-            response = client.chat.completions.create(model="sonar-pro", messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}], temperature=0.7)
-            return re.sub(r'\[\d+\]', '', response.choices[0].message.content).replace("```html", "").replace("```", "").strip()
-        except Exception as e:
-            if attempt == 2: return f"Error: {e}"
-            time.sleep(2)
 
 # ==========================================
 # 7. UI TABS RESTRUCTURED
@@ -1765,3 +1801,4 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
