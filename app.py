@@ -610,27 +610,28 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # 1. Обработка вашего сайта
     if not my_data or not my_data.get('body_text'): 
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
+        my_clean_domain = "local"
     else:
         my_lemmas, my_forms = process_text_detailed(my_data['body_text'], settings)
         my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
         my_len = len(my_lemmas)
         for k, v in my_forms.items(): all_forms_map[k].update(v)
+        # Получаем чистый домен для сравнения (без www)
+        my_clean_domain = my_data['domain'].lower().replace('www.', '').split(':')[0]
 
-    # 2. Обработка конкурентов (Только успешно скачанные!)
-    comp_data_parsed = [d for d in comp_data_full if d.get('body_text')]
-    
+    # 2. Обработка конкурентов (comp_data_full - это уже обрезанный топ-10 или 20)
     comp_docs = []
-    for p in comp_data_parsed:
+    for p in comp_data_full:
+        if not p.get('body_text'): continue
         body, c_forms = process_text_detailed(p['body_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
         comp_docs.append({'body': body, 'anchor': anchor, 'url': p['url'], 'domain': p['domain']})
         for k, v in c_forms.items(): all_forms_map[k].update(v)
 
     if not comp_docs:
-        # Если ни один конкурент не скачался — возвращаем пустые данные
         return { "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}, "missing_semantics_high": [], "missing_semantics_low": [] }
 
-    # ... [Блок расчетов TF-IDF и BM25 без изменений] ...
+    # ... [Блок расчетов TF-IDF и BM25 оставляем без изменений] ...
     c_lens = [len(d['body']) for d in comp_docs]
     avg_dl = np.mean(c_lens) if c_lens else 1
     median_len = np.median(c_lens) if c_lens else 0
@@ -717,7 +718,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     my_depth_score_final = min(100, int(round((my_bm25 / spam_limit) * 100)))
     my_width_score_final = min(100, calculate_width_score_val(my_full_lemmas_set))
 
-    # [Сборка таблиц]
+    # [Сборка таблицы Глубина/Гибрид - ОСТАВЛЯЕМ БЕЗ ИЗМЕНЕНИЙ]
     table_depth, table_hybrid = [], []
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
@@ -756,43 +757,48 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "TF-IDF у вас": round(weight_hybrid, 4), "Сайтов": df, "Переспам": max_total
         })
 
-    # --- ИСПРАВЛЕННОЕ ФОРМИРОВАНИЕ ТАБЛИЦЫ РЕЛЕВАНТНОСТИ ---
+    # --- [ИСПРАВЛЕННАЯ ЛОГИКА ТАБЛИЦЫ РЕЛЕВАНТНОСТИ] ---
     table_rel = []
     
-    # Флаг: нашли ли мы ваш сайт внутри списка конкурентов (в ТОПе)?
-    my_site_found_in_top = False
-    my_clean_domain = my_data['domain'].replace('www.', '') if (my_data and my_data.get('domain')) else ""
-
-    # 1. Добавляем всех скачанных (включая Вас, если вы были в топе)
+    # Флаг: был ли наш сайт в числе отобранных топ-N конкурентов
+    my_site_found_in_selection = False
+    
+    # 1. Добавляем конкурентов из списка original_results (это уже обрезанные топ-10 или 20)
     for item in original_results:
         url = item['url']
         if url not in competitor_scores_map:
             continue
             
-        # Проверяем, не является ли эта строка Вашим сайтом
-        # (Сравниваем домены, чтобы понять, есть ли мы уже в таблице)
-        row_domain = urlparse(url).netloc.replace('www.', '')
-        if my_clean_domain and my_clean_domain in row_domain:
-            my_site_found_in_top = True
+        row_domain = urlparse(url).netloc.lower().replace('www.', '')
+        
+        # Проверяем, это наш сайт?
+        is_my_site = False
+        if my_clean_domain and my_clean_domain != "local" and my_clean_domain in row_domain:
+            is_my_site = True
+            my_site_found_in_selection = True
+            display_name = f"{urlparse(url).netloc} (Вы)"
+        else:
+            display_name = urlparse(url).netloc
 
         scores = competitor_scores_map[url]
         table_rel.append({ 
-            "Домен": urlparse(url).netloc, 
+            "Домен": display_name, 
             "Позиция": item['pos'], 
             "Ширина (балл)": scores['width_final'], 
             "Глубина (балл)": scores['depth_final'] 
         })
         
-    # 2. Логика добавления итоговой строки "Ваш сайт"
-    # Добавляем строку снизу ТОЛЬКО если нас НЕ было в списке конкурентов (не в топе)
-    # Или если мы анализировали текст/код вручную (Local)
-    if not my_site_found_in_top:
+    # 2. Если нас НЕТ в этом списке (выпали из топ-10/20) - добавляем отдельной строкой
+    if not my_site_found_in_selection:
+        # Пытаемся взять реальную позицию, если Арсенкин её находил (но она была дальше N)
+        # Если не находил - ставим 0
+        pos_to_show = my_serp_pos if my_serp_pos > 0 else 0
+        
         my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
-        display_pos = my_serp_pos if my_serp_pos > 0 else 0
         
         table_rel.append({ 
             "Домен": my_label, 
-            "Позиция": display_pos, 
+            "Позиция": pos_to_show, 
             "Ширина (балл)": my_width_score_final, 
             "Глубина (балл)": my_depth_score_final 
         })
@@ -1059,17 +1065,17 @@ with tab_seo_main:
         elif current_input_type == "Исходный код страницы или текст":
             my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
             
-        # 2. Сбор КАНДИДАТОВ (Берем с запасом!)
-        candidates_pool = [] # Сюда кладем всех потенциальных конкурентов
+        # 2. Сбор КАНДИДАТОВ
+        candidates_pool = []
         
         current_source_val = st.session_state.get("competitor_source_radio")
-        needed_count = st.session_state.settings_top_n 
+        needed_count = st.session_state.settings_top_n  # 10 или 20
         
         # --- ЛОГИКА API ---
         if "API" in current_source_val:
             if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
-            with st.spinner("API Arsenkin (Запрос расширенного ТОПа)..."):
-                # Запрашиваем 50, чтобы был запас на случай ошибок парсинга
+            # ЗАПРАШИВАЕМ 30 (Максимум Арсенкина)
+            with st.spinner(f"API Arsenkin (Запрос Топ-30)..."):
                 raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
                 
                 if not raw_top: st.stop()
@@ -1082,13 +1088,13 @@ with tab_seo_main:
                 for res in raw_top:
                     dom = urlparse(res['url']).netloc.lower()
                     
-                    # 1. Если это НАШ сайт
+                    # Если это НАШ сайт - запоминаем позицию.
+                    # В пул кандидатов добавляем тоже, фильтровать "себя" будем в таблице релевантности (чтобы подсветить)
                     if my_domain and (my_domain in dom or dom in my_domain):
                         if my_serp_pos == 0 or res['pos'] < my_serp_pos: 
                             my_serp_pos = res['pos']
-                        # Себя тоже добавляем в пул, чтобы участвовать в расчетах
                     
-                    # 2. Проверка на агрегаторы
+                    # Фильтр мусорных доменов
                     is_garbage = False
                     for x in excl:
                         if x.lower() in dom:
@@ -1097,7 +1103,6 @@ with tab_seo_main:
                     if is_garbage: 
                         continue
                         
-                    # Добавляем в пул кандидатов
                     candidates_pool.append(res)
                 
         # --- ЛОГИКА РУЧНОГО СПИСКА ---
@@ -1107,13 +1112,11 @@ with tab_seo_main:
 
         if not candidates_pool: st.error("После фильтрации не осталось кандидатов."); st.stop()
         
-        # 3. СКАЧИВАНИЕ (Пытаемся скачать ВСЕХ кандидатов, чтобы набрать нужное кол-во)
+        # 3. СКАЧИВАНИЕ (Пытаемся скачать ВСЕХ кандидатов из пула)
         comp_data_valid = []
         
         with st.status(f"🕵️ Глубокое сканирование (Кандидатов: {len(candidates_pool)})...", expanded=True) as status:
-            # Запускаем парсинг для ВСЕХ кандидатов, а не только для первых 10
             with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-                # Передаем весь объект item, чтобы сохранить позицию (pos)
                 futures = {executor.submit(parse_page, item['url'], settings): item for item in candidates_pool}
                 
                 done_count = 0
@@ -1136,10 +1139,9 @@ with tab_seo_main:
             comp_data_valid.sort(key=lambda x: x['pos'])
             
             # Берем ровно столько, сколько просил пользователь (10 или 20)
-            # Если скачалось меньше (например 8), берем всех 8.
             final_competitors_data = comp_data_valid[:needed_count]
             
-            # Формируем список URL-ов для отображения в text area (чтобы юзер видел, кто реально попал в анализ)
+            # Формируем список URL-ов для отображения в text area
             # И этот же список передаем в calculate_metrics как "original_results"
             final_targets_list = [{'url': d['url'], 'pos': d['pos']} for d in final_competitors_data]
             st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_competitors_data])
@@ -1147,15 +1149,13 @@ with tab_seo_main:
             if len(final_competitors_data) < needed_count:
                 st.warning(f"⚠️ Удалось собрать только {len(final_competitors_data)} валидных страниц (из {needed_count} требуемых).")
             else:
-                st.success(f"✅ Анализ выполнен по {len(final_competitors_data)} конкурентам.")
+                st.success(f"✅ Анализ выполнен по Топ-{len(final_competitors_data)} конкурентам.")
 
         # 5. РАСЧЕТ МЕТРИК
-        # Важно: передаем именно final_competitors_data (данные с текстами) и final_targets_list (список для таблицы)
         with st.spinner("Расчет метрик..."):
             st.session_state.analysis_results = calculate_metrics(final_competitors_data, my_data, settings, my_serp_pos, final_targets_list)
             st.session_state.analysis_done = True
             
-            # Классификация слов
             res = st.session_state.analysis_results
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             if not words_to_check:
@@ -1170,7 +1170,6 @@ with tab_seo_main:
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
 
-            # Логика авто-заполнения генератора
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
             if count_prods < 20:
@@ -1678,4 +1677,5 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
