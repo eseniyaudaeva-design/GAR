@@ -1069,110 +1069,137 @@ with tab_seo_main:
 with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
-    # --- 1. ВЕРХНЯЯ ПАНЕЛЬ: ИСТОЧНИК И ЧЕКБОКСЫ ---
+    # ==========================================
+    # 1. ВВОДНЫЕ ДАННЫЕ (В РАМКЕ)
+    # ==========================================
     with st.container(border=True):
-        st.markdown("##### 1. Основные настройки")
-        c_src_1, c_src_2 = st.columns([3, 1])
-        with c_src_1:
-            main_category_url = st.text_input("URL Категории", placeholder="https://site.ru/catalog/...", label_visibility="collapsed")
-        with c_src_2:
+        st.subheader("1. Источник и Доступы")
+        col_top_1, col_top_2 = st.columns([3, 1])
+        with col_top_1:
+            main_category_url = st.text_input("URL Категории", 
+                placeholder="https://site.ru/catalog/...", 
+                help="Скрипт соберет товары с этой страницы")
+        with col_top_2:
             default_key = st.session_state.get('pplx_key_cache', "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")
-            pplx_api_key = st.text_input("API Key", value=default_key, type="password", label_visibility="collapsed", key="global_pplx_key_v3")
+            pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
 
-        st.markdown("##### 2. Модули")
-        col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
-        with col_ch1: use_text = st.checkbox("🤖 AI Тексты")
-        with col_ch2: use_tags = st.checkbox("🏷️ Теги")
-        with col_ch3: use_tables = st.checkbox("🧩 Таблицы")
-        with col_ch4: use_promo = st.checkbox("🔥 Промо")
-        with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар")
+    # ==========================================
+    # 2. ВЫБОР МОДУЛЕЙ
+    # ==========================================
+    st.subheader("2. Какие блоки генерируем?")
+    col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
+    with col_ch1: use_text = st.checkbox("🤖 AI Тексты", value=True)
+    with col_ch2: use_tags = st.checkbox("🏷️ Теги")
+    with col_ch3: use_tables = st.checkbox("🧩 Таблицы")
+    with col_ch4: use_promo = st.checkbox("🔥 Промо")
+    with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар")
 
-    # --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
+    # ==========================================
+    # 3. НАСТРОЙКИ (БЛОКИ В РАМКАХ)
+    # ==========================================
+    
+    # Инициализация переменных
     global_keywords = []
     tags_file_content = ""
     table_prompts = []
     df_db_promo = None
     promo_title = "Рекомендуем"
     sidebar_content = ""
-
-    # --- 3. ПАНЕЛЬ НАСТРОЕК (GRID LAYOUT) ---
-    # Показываем настройки только если что-то выбрано
+    
+    # Показываем заголовок настроек только если что-то выбрано
     if any([use_text, use_tags, use_tables, use_promo, use_sidebar]):
-        st.markdown("### ⚙️ Настройки модулей")
-        
-        # Общий блок ключевых слов (на всю ширину)
+        st.subheader("3. Настройки модулей")
+
+        # --- БЛОК 1: ОБЩИЕ СЛОВА (Только если нужны Теги или Промо) ---
         if use_tags or use_promo:
-            with st.expander("🔑 Список товаров (для Тегов и Промо)", expanded=True):
+            with st.container(border=True):
+                st.markdown("#### 🔑 Список товаров (Общее)")
+                st.caption("Нужен для поиска соответствий в базах ссылок и картинок.")
                 auto_kws = st.session_state.get('categorized_products', [])
                 def_text = "\n".join(auto_kws) if auto_kws else ""
-                kws_input = st.text_area("Вставьте список товаров (по 1 в строке)", value=def_text, height=100, label_visibility="collapsed", key="global_kws_input_v3")
+                kws_input = st.text_area("Список товаров", value=def_text, height=100, label_visibility="collapsed", key="kws_vertical")
                 global_keywords = [x.strip() for x in kws_input.split('\n') if x.strip()]
 
-        # Разбиваем настройки на 2 колонки для компактности
-        col_set_left, col_set_right = st.columns(2)
+        # --- БЛОК 2: ТЕКСТЫ ---
+        if use_text:
+            with st.container(border=True):
+                st.markdown("#### 🤖 Настройки: AI Тексты")
+                st.info("✅ Используется общий API Key. Будет создано 5 блоков (Описание, Доставка и др).")
 
-        # ЛЕВАЯ КОЛОНКА
-        with col_set_left:
-            if use_text:
-                with st.expander("🤖 Настройки: Тексты", expanded=True):
-                    st.success("✅ Используется общий API Key.")
-                    st.caption("Генерируется 5 блоков: Описание, Доставка, Оплата и др.")
-
-            if use_tags:
-                with st.expander("🏷️ Настройки: Теги", expanded=True):
+        # --- БЛОК 3: ТЕГИ ---
+        if use_tags:
+            with st.container(border=True):
+                st.markdown("#### 🏷️ Настройки: Теги")
+                col_t1, col_t2 = st.columns([1, 2])
+                with col_t1:
+                    u_manual = st.checkbox("Загрузить базу ссылок вручную", key="cb_tags_vert")
+                with col_t2:
                     default_tags_path = "data/links_base.txt"
-                    u_manual = st.checkbox("Загрузить файл вручную", key="cb_tags_man_v3")
                     if not u_manual and os.path.exists(default_tags_path):
-                        st.info(f"База: `links_base.txt`")
+                        st.success("✅ Подключена база репозитория (`links_base.txt`)")
                         with open(default_tags_path, "r", encoding="utf-8") as f: tags_file_content = f.read()
                     elif u_manual:
-                        up_t = st.file_uploader("Файл ссылок (.txt)", type=["txt"], key="up_tags_v3")
+                        up_t = st.file_uploader("Файл .txt", type=["txt"], key="up_tags_vert", label_visibility="collapsed")
                         if up_t: tags_file_content = up_t.getvalue().decode("utf-8")
-                    else: st.error("Нет файла базы!")
+                    else:
+                        st.error("❌ Файл базы не найден!")
 
-        # ПРАВАЯ КОЛОНКА
-        with col_set_right:
-            if use_tables:
-                with st.expander("🧩 Настройки: Таблицы", expanded=True):
-                    cnt = st.number_input("Кол-во таблиц", 1, 5, 2, key="num_tbl_v3")
-                    defaults = ["Характеристики", "Размеры", "Хим. состав"]
-                    for i in range(cnt):
-                        val = defaults[i] if i < len(defaults) else f"Таблица {i+1}"
-                        t_p = st.text_input(f"Тема {i+1}", value=val, key=f"tbl_top_v3_{i}")
-                        table_prompts.append(t_p)
+        # --- БЛОК 4: ТАБЛИЦЫ ---
+        if use_tables:
+            with st.container(border=True):
+                st.markdown("#### 🧩 Настройки: Таблицы")
+                cnt = st.number_input("Количество таблиц на страницу", 1, 5, 2, key="num_tbl_vert")
+                defaults = ["Характеристики", "Размеры", "Хим. состав"]
+                for i in range(cnt):
+                    val = defaults[i] if i < len(defaults) else f"Таблица {i+1}"
+                    t_p = st.text_input(f"Тема таблицы {i+1}", value=val, key=f"tbl_topic_vert_{i}")
+                    table_prompts.append(t_p)
 
-            if use_promo:
-                with st.expander("🔥 Настройки: Промо", expanded=True):
-                    promo_title = st.text_input("Заголовок", "Смотрите также", key="pr_tit_v3")
+        # --- БЛОК 5: ПРОМО ---
+        if use_promo:
+            with st.container(border=True):
+                st.markdown("#### 🔥 Настройки: Промо-блок")
+                col_p1, col_p2 = st.columns([1, 2])
+                with col_p1:
+                    promo_title = st.text_input("Заголовок блока", "Смотрите также", key="pr_tit_vert")
+                    u_img_man = st.checkbox("Своя база картинок", key="cb_img_vert")
+                with col_p2:
                     default_img_db = "data/images_db.xlsx"
-                    u_img_man = st.checkbox("Свой файл картинок", key="cb_img_man_v3")
                     if not u_img_man and os.path.exists(default_img_db):
-                        st.info("База: `images_db.xlsx`")
+                        st.success("✅ Подключена база картинок (`images_db.xlsx`)")
                         try: df_db_promo = pd.read_excel(default_img_db)
                         except: pass
                     elif u_img_man:
-                        up_i = st.file_uploader("Картинки (.xlsx)", type=['xlsx'], key="up_img_v3")
+                        up_i = st.file_uploader("Файл .xlsx", type=['xlsx'], key="up_img_vert", label_visibility="collapsed")
                         if up_i: df_db_promo = pd.read_excel(up_i)
-                    else: st.error("Нет базы картинок!")
+                    else:
+                        st.error("❌ База картинок не найдена!")
 
-            if use_sidebar:
-                with st.expander("📑 Настройки: Сайдбар", expanded=True):
+        # --- БЛОК 6: САЙДБАР ---
+        if use_sidebar:
+            with st.container(border=True):
+                st.markdown("#### 📑 Настройки: Сайдбар")
+                col_s1, col_s2 = st.columns([1, 2])
+                with col_s1:
+                    u_sb_man = st.checkbox("Свой файл меню", key="cb_sb_vert")
+                with col_s2:
                     def_menu = "data/menu_structure.txt"
-                    u_sb_man = st.checkbox("Свой файл меню", key="cb_sb_man_v3")
                     if not u_sb_man and os.path.exists(def_menu):
-                        st.info("Файл: `menu_structure.txt`")
+                        st.success("✅ Подключено меню репозитория (`menu_structure.txt`)")
                         with open(def_menu, "r", encoding="utf-8") as f: sidebar_content = f.read()
                     elif u_sb_man:
-                        up_s = st.file_uploader("Меню (.txt)", type=['txt'], key="up_sb_v3")
+                        up_s = st.file_uploader("Файл .txt", type=['txt'], key="up_sb_vert", label_visibility="collapsed")
                         if up_s: sidebar_content = up_s.getvalue().decode("utf-8")
-                    else: st.error("Нет файла меню!")
+                    else:
+                        st.error("❌ Файл меню не найден!")
 
     st.markdown("---")
     
     # ==========================================
-    # 4. ЗАПУСК
+    # 4. ВАЛИДАЦИЯ И ЗАПУСК
     # ==========================================
+    
     ready_to_go = True
     if not main_category_url: ready_to_go = False
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
@@ -1180,8 +1207,7 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
     
-    # Кнопка на всю ширину для удобства
-    if st.button("🚀 ЗАПУСТИТЬ КОНВЕЙЕР", type="primary", disabled=not ready_to_go, use_container_width=True):
+    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ (ОДНА КНОПКА)", type="primary", disabled=not ready_to_go, use_container_width=True):
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
         final_data = [] 
         
