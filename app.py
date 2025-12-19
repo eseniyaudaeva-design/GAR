@@ -566,86 +566,34 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def parse_page(url, settings):
-    # Импортируем st внутри, чтобы точно вывести ошибку на экран
-    import streamlit as st
+    # Настройка повторных попыток (Retries)
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
     
-    # 1. Пытаемся использовать curl_cffi (для обхода защиты)
+    headers = {'User-Agent': settings['ua']}
     try:
-        from curl_cffi import requests as cffi_requests
+        # Увеличили timeout до 20 секунд
+        r = session.get(url, headers=headers, timeout=20)
+        if r.status_code != 200: return None
         
-        # Настройки для маскировки
-        headers = {
-            'User-Agent': settings['ua'],
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        }
-        
-        # Пытаемся скачать через curl_cffi
-        r = cffi_requests.get(url, headers=headers, timeout=20, impersonate="chrome110")
-        
-        # Если снова 403, пробуем старый метод ниже
-        if r.status_code == 403:
-            raise Exception("CURL_CFFI получил 403 Forbidden")
-            
-        if r.status_code != 200:
-            st.warning(f"⚠️ Статус ответа (curl_cffi): {r.status_code}")
-            return None
-            
-        # Если все ок, берем контент
-        content = r.content
-        encoding = r.encoding if r.encoding else 'utf-8'
-
-    # 2. Если curl_cffi не установлен ИЛИ выдал ошибку — используем обычный requests
-    except Exception as e_cffi:
-        # st.warning(f"Debug: curl_cffi не сработал ({e_cffi}), пробую обычный метод...") 
-        
-        try:
-            import requests
-            from requests.adapters import HTTPAdapter
-            from urllib3.util.retry import Retry
-            import urllib3
-            
-            # Отключаем предупреждения о небезопасном SSL
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            
-            session = requests.Session()
-            retry = Retry(connect=3, read=3, redirect=5, backoff_factor=0.5)
-            adapter = HTTPAdapter(max_retries=retry)
-            session.mount('http://', adapter)
-            session.mount('https://', adapter)
-            
-            headers = {'User-Agent': settings['ua']}
-            
-            # verify=False — Ключевой момент, отключает проверку сертификатов
-            r = session.get(url, headers=headers, timeout=20, verify=False)
-            
-            if r.status_code != 200:
-                st.error(f"❌ Ошибка (Standard): Сервер вернул код {r.status_code}")
-                return None
-                
-            content = r.content
-            encoding = r.apparent_encoding
-            
-        except Exception as e_final:
-            # ВОТ ЗДЕСЬ мы увидим реальную причину
-            st.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА СКАЧИВАНИЯ:\n{e_final}")
-            return None
-
-    # 3. Парсинг (общий для обоих методов)
-    try:
-        soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
+        soup = BeautifulSoup(r.text, 'html.parser')
         
         tags_to_remove = []
         if settings['noindex']: tags_to_remove.append('noindex')
         
+        # Удаляем комментарии и лишние теги
         for c in soup.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
         if tags_to_remove:
             for t in soup.find_all(tags_to_remove): t.decompose()
-        for script in soup(["script", "style", "svg", "path", "noscript"]):
-            script.decompose()
-
+            
+        # Сбор анкоров
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
         
+        # Сбор мета и alt
         extra_text = []
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'): extra_text.append(meta_desc['content'])
@@ -654,17 +602,13 @@ def parse_page(url, settings):
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
             
+        # Основной текст
         body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
         
-        if not body_text: 
-            st.warning("⚠️ Страница скачалась, но текст не найден (пустой body).")
-            return None
-            
+        if not body_text: return None
         return {'url': url, 'domain': urlparse(url).netloc, 'body_text': body_text, 'anchor_text': anchor_text}
-        
-    except Exception as e_parse:
-        st.error(f"❌ Ошибка при обработке HTML: {e_parse}")
+    except: 
         return None
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
@@ -1765,8 +1709,6 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
-
 
 
 
