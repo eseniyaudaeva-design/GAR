@@ -1106,6 +1106,20 @@ with tab_seo:
                 st.session_state.categorized_geo = categorized['geo']
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
+                # --- НОВАЯ ЛОГИКА РАСПРЕДЕЛЕНИЯ (TAGS vs PROMO) ---
+            all_prods = st.session_state.categorized_products
+            total_prods = len(all_prods)
+            
+            if total_prods < 20:
+                # Если мало слов — всё отдаем в Теги, Акциям ничего
+                st.session_state.auto_tags_words = all_prods
+                st.session_state.auto_promo_words = []
+            else:
+                # Если слов много — делим 50/50
+                mid_index = math.ceil(total_prods / 2) # Округляем вверх
+                st.session_state.auto_tags_words = all_prods[:mid_index] # Первая половина -> Теги
+                st.session_state.auto_promo_words = all_prods[mid_index:] # Вторая половина -> Акции
+            
             st.rerun()
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
@@ -1797,6 +1811,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
