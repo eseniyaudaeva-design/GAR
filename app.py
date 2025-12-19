@@ -126,6 +126,43 @@ def force_cyrillic_name_global(slug_text):
     draft_phrase = draft_phrase.replace('йа', 'я').replace('йо', 'ё')
 
     return draft_phrase.capitalize()
+def get_page_h1_or_breadcrumb(url, ua_settings="Mozilla/5.0"):
+    """
+    Заходит по URL и пытается достать название из H1 или последней хлебной крошки.
+    """
+    try:
+        headers = {'User-Agent': ua_settings}
+        r = requests.get(url, headers=headers, timeout=5)
+        if r.status_code != 200: 
+            return None
+        
+        soup = BeautifulSoup(r.text, 'html.parser')
+        
+        # 1. Пробуем найти H1 (обычно совпадает с последней крошкой и чище)
+        h1 = soup.find('h1')
+        if h1:
+            text = h1.get_text(strip=True)
+            if text: return text
+
+        # 2. Если H1 нет, ищем хлебные крошки (стандартные классы)
+        breadcrumbs = soup.find(class_=re.compile(r'breadcrumb|breadcrumbs|nav-path'))
+        if breadcrumbs:
+            # Ищем последний элемент (span, li или a)
+            items = breadcrumbs.find_all(['li', 'span', 'a'])
+            if items:
+                # Берем последний непустой элемент
+                for item in reversed(items):
+                    t = item.get_text(strip=True)
+                    if t and len(t) > 2 and "главная" not in t.lower():
+                        return t
+                        
+        # 3. Fallback: Title
+        if soup.title:
+            return soup.title.get_text(strip=True).split('|')[0].strip()
+            
+    except:
+        return None
+    return None
 
 # ==========================================
 # ОБНОВЛЕННАЯ ФУНКЦИЯ ЗАГРУЗКИ (читает и слово, и лемму)
@@ -390,6 +427,8 @@ if 'ai_generated_df' not in st.session_state: st.session_state.ai_generated_df =
 if 'ai_excel_bytes' not in st.session_state: st.session_state.ai_excel_bytes = None
 if 'tags_html_result' not in st.session_state: st.session_state.tags_html_result = None
 if 'table_html_result' not in st.session_state: st.session_state.table_html_result = None
+if 'tags_generated_df' not in st.session_state: st.session_state.tags_generated_df = None
+if 'tags_excel_data' not in st.session_state: st.session_state.tags_excel_data = None
 if 'categorized_products' not in st.session_state: st.session_state.categorized_products = []
 if 'categorized_services' not in st.session_state: st.session_state.categorized_services = []
 if 'categorized_commercial' not in st.session_state: st.session_state.categorized_commercial = []
@@ -1123,30 +1162,25 @@ with tab_ai:
         st.dataframe(st.session_state.ai_generated_df.head())
 
 # ------------------------------------------
-# TAB 3: TAGS
-# ------------------------------------------
-# ------------------------------------------
-# TAB 3: TAGS
+# TAB 3: TAGS (UPDATED)
 # ------------------------------------------
 with tab_tags:
-    st.title("🏷️ Генератор плитки тегов")
+    st.title("🏷️ Генератор плитки тегов (Smart Names)")
 
     col_t1, col_t2 = st.columns([1, 1])
     with col_t1:
         st.markdown("##### 🔗 Источник")
-        category_url = st.text_input("URL Категории", placeholder="https://site.ru/catalog/truba/")
+        category_url = st.text_input("URL Категории (где размещаем теги)", placeholder="https://site.ru/catalog/truba/", key="tags_cat_url")
         
         st.markdown("##### 📂 База ссылок")
-        # --- ЛОГИКА АВТОЗАГРУЗКИ ---
         default_tags_path = "data/links_base.txt"
         tags_file_source = None
+        tags_file_content = ""
         
-        # Чекбокс, чтобы принудительно включить ручную загрузку
         manual_upload_tags = st.checkbox("Загрузить файл вручную", key="manual_tags_cb")
         
         if not manual_upload_tags and os.path.exists(default_tags_path):
-            st.success(f"✅ Используется файл из репозитория: `data/links_base.txt`")
-            # Читаем файл сразу
+            st.success(f"✅ Используется файл: `data/links_base.txt`")
             with open(default_tags_path, "r", encoding="utf-8") as f:
                 tags_file_content = f.read()
             tags_file_source = "repo"
@@ -1158,15 +1192,32 @@ with tab_tags:
 
     with col_t2:
         st.markdown("##### 📝 Ключевые слова (Товары)")
+        # АВТОЗАПОЛНЕНИЕ ИЗ SEO АНАЛИЗА
         raw_products = st.session_state.get('categorized_products', [])
-        default_text = "\n".join(raw_products) if raw_products else ""
-        products_input = st.text_area("Список товаров:", value=default_text, height=200, key="tags_products_edit_v12")
+        # Если есть результаты анализа, используем их по умолчанию
+        default_prod_text = "\n".join(raw_products) if raw_products else ""
+        
+        products_input = st.text_area(
+            "Список товаров (Автозаполнение из SEO):", 
+            value=default_prod_text, 
+            height=200, 
+            key="tags_products_edit_v12",
+            help="Сюда подтягиваются слова из вкладки SEO Анализ -> Товары"
+        )
         products = [line.strip() for line in products_input.split('\n') if line.strip()]
 
     st.markdown("---")
-    # Кнопка активна, если есть контент (из файла или из загрузки)
-    if st.button("🚀 Спарсить и собрать Excel (Smart)", key="btn_tags_smart_gen", disabled=(not products or not tags_file_source or not category_url)):
+    
+    # Кнопка запуска
+    if st.button("🚀 Спарсить, Назвать и Собрать Excel", key="btn_tags_smart_gen", disabled=(not products or not tags_file_source or not category_url)):
+        
+        # Сброс прошлых результатов
+        st.session_state.tags_generated_df = None
+        st.session_state.tags_excel_data = None
+        
         status_box = st.status("🚀 Запуск процесса...", expanded=True)
+        
+        # 1. Парсинг целевой категории (куда вставлять)
         status_box.write(f"🕵️ Парсим категорию: {category_url}")
         target_urls_list = []
         try:
@@ -1174,6 +1225,7 @@ with tab_tags:
             r = requests.get(category_url, headers=headers, timeout=10)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, 'html.parser')
+                # Ищем контейнер тегов
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
                     for link in tags_container.find_all('a'):
@@ -1181,44 +1233,140 @@ with tab_tags:
                         if href: target_urls_list.append(urljoin(category_url, href))
         except Exception as e: status_box.error(f"Ошибка парсинга: {e}"); st.stop()
             
-        if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner)"); st.stop()
-        status_box.write(f"✅ Найдено целей: {len(target_urls_list)}")
+        if not target_urls_list: status_box.error("Теги не найдены (проверьте класс .popular-tags-inner на сайте)"); st.stop()
+        status_box.write(f"✅ Найдено страниц для размещения: {len(target_urls_list)}")
         
+        # 2. Подготовка базы ссылок
         status_box.write("📂 Индексация базы ссылок...")
-        # Используем прочитанный контент
         stringio = io.StringIO(tags_file_content)
         all_txt_links = [line.strip() for line in stringio.readlines() if line.strip()]
         
+        # 3. Сопоставление: Товар -> Список подходящих ссылок
         product_candidates_map = {}
         for p in products:
-            tr = transliterate_text(p)
-            if len(tr) >= 3:
-                matches = [u for u in all_txt_links if tr in u]
-                if matches: product_candidates_map[p] = matches
-        status_box.write(f"✅ Товары сопоставлены ({len(product_candidates_map)} шт.)")
-        status_box.write("🧠 Генерация 'умных' анкоров через Яндекс.Спеллер...")
+            tr = transliterate_text(p) # Превращаем "медный круг" в "mednyy krug"
+            # Разбиваем на части, если транслит сложный, но для начала ищем вхождение
+            # Упрощенная логика: если транслит слова есть в URL
+            clean_tr = tr.replace(' ', '-').replace('_', '-')
+            if len(clean_tr) >= 3:
+                matches = [u for u in all_txt_links if clean_tr in u]
+                if matches: 
+                    product_candidates_map[p] = matches
+
+        status_box.write(f"✅ Товары сопоставлены: {len(product_candidates_map)} шт.")
         
-        final_rows = []
-        prog_bar = st.progress(0)
-        for i, target_url in enumerate(target_urls_list):
-            current_page_tags = []
+        # 4. СБОР УНИКАЛЬНЫХ ССЫЛОК ДЛЯ ПОЛУЧЕНИЯ НАЗВАНИЙ
+        # Чтобы не парсить одну страницу 100 раз, соберем пул ссылок
+        unique_urls_to_fetch = set()
+        
+        # Предварительное распределение (черновик)
+        # Нам нужно знать, какие ссылки мы реально будем использовать, чтобы получить их названия
+        # Сделаем жадную выборку: возьмем по 1 случайной ссылке на каждый товар для каждой страницы
+        # Это может быть много запросов. Оптимизируем:
+        # Просто соберем все возможные кандидаты, которые могут выпасть? Нет, это слишком много.
+        # Давайте сначала сгенерируем структуру, выбрав URL, а потом пойдем за названиями.
+        
+        temp_structure = [] # List of {'page_url': ..., 'tags': [{'url': ...}]}
+        
+        for target_url in target_urls_list:
+            current_page_tags_urls = []
             for prod_name, candidates in product_candidates_map.items():
+                # Исключаем ссылку на саму себя
                 valid = [u for u in candidates if u.rstrip('/') != target_url.rstrip('/')]
                 if valid:
-                    chosen_url = random.choice(valid)
-                    current_page_tags.append({'name': prod_name.capitalize(), 'url': chosen_url})
-            if current_page_tags:
-                random.shuffle(current_page_tags)
-                html_block = '<div class="popular-tags">\n' + "\n".join([f'    <a href="{item["url"]}" class="tag-link">{item["name"]}</a>' for item in current_page_tags]) + '\n</div>'
-            else: html_block = ""
-            final_rows.append({'Page URL': target_url, 'Tags HTML': html_block})
-            prog_bar.progress((i + 1) / len(target_urls_list))
-        
-        df_tags_result = pd.DataFrame(final_rows)
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_tags_result.to_excel(writer, index=False)
-        st.download_button(label="📥 Скачать Excel", data=buffer.getvalue(), file_name="tags_tiles_smart.xlsx")
+                    chosen = random.choice(valid)
+                    current_page_tags_urls.append(chosen)
+            
+            # Перемешиваем и берем уникальные
+            current_page_tags_urls = list(set(current_page_tags_urls))
+            random.shuffle(current_page_tags_urls)
+            
+            temp_structure.append({
+                'target_page': target_url,
+                'chosen_links': current_page_tags_urls
+            })
+            unique_urls_to_fetch.update(current_page_tags_urls)
 
+        status_box.write(f"🌍 Необходимо получить названия для {len(unique_urls_to_fetch)} уникальных ссылок (Хлебные крошки/H1)...")
+        
+        # 5. ПАРСИНГ НАЗВАНИЙ (Многопоточно)
+        url_name_cache = {}
+        
+        # Функция для потока
+        def fetch_name_worker(u):
+            return u, get_page_h1_or_breadcrumb(u)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # Запускаем задачи
+            future_to_url = {executor.submit(fetch_name_worker, u): u for u in unique_urls_to_fetch}
+            
+            done_count = 0
+            prog_bar = status_box.progress(0)
+            
+            for future in concurrent.futures.as_completed(future_to_url):
+                u, name = future.result()
+                if name:
+                    url_name_cache[u] = name
+                else:
+                    # Fallback: если не смогли спарсить, делаем красивое название из URL
+                    slug = u.rstrip('/').split('/')[-1]
+                    url_name_cache[u] = force_cyrillic_name_global(slug)
+                
+                done_count += 1
+                prog_bar.progress(done_count / len(unique_urls_to_fetch))
+        
+        status_box.write("🧠 Генерация HTML...")
+        
+        # 6. СБОРКА ИТОГОВОГО HTML
+        final_rows = []
+        for item in temp_structure:
+            target_page = item['target_page']
+            links = item['chosen_links']
+            
+            if links:
+                html_parts = []
+                html_parts.append('<div class="popular-tags">')
+                for link in links:
+                    name = url_name_cache.get(link, "Товар")
+                    html_parts.append(f'    <a href="{link}" class="tag-link">{name}</a>')
+                html_parts.append('</div>')
+                html_block = "\n".join(html_parts)
+            else:
+                html_block = ""
+                
+            final_rows.append({'Page URL': target_page, 'Tags HTML': html_block})
+            
+        # 7. СОХРАНЕНИЕ
+        df_result = pd.DataFrame(final_rows)
+        st.session_state.tags_generated_df = df_result
+        
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: 
+            df_result.to_excel(writer, index=False)
+        st.session_state.tags_excel_data = buffer.getvalue()
+        
+        status_box.update(label="✅ Готово! Таблица сформирована.", state="complete", expanded=False)
+
+    # 8. ОТОБРАЖЕНИЕ РЕЗУЛЬТАТА (Вне блока кнопки, чтобы сохранялось)
+    if st.session_state.tags_generated_df is not None:
+        st.success(f"Сформировано тегов для {len(st.session_state.tags_generated_df)} страниц.")
+        
+        c_down, c_view = st.columns([1, 2])
+        with c_down:
+            st.download_button(
+                label="📥 Скачать Excel", 
+                data=st.session_state.tags_excel_data, 
+                file_name="smart_tags_breadcrumbs.xlsx",
+                mime="application/vnd.ms-excel",
+                key="btn_dl_tags_persistent"
+            )
+        
+        st.markdown("### 👁️ Предпросмотр результата")
+        st.dataframe(st.session_state.tags_generated_df.head(10), use_container_width=True)
+        
+        with st.expander("🔍 Посмотреть HTML первого блока"):
+            first_val = st.session_state.tags_generated_df.iloc[0]['Tags HTML']
+            st.code(first_val, language='html')
 # ------------------------------------------
 # TAB 4: TABLES
 # ------------------------------------------
@@ -1558,5 +1706,6 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
