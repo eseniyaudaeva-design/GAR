@@ -1373,7 +1373,7 @@ with tab_wholesale_main:
         col_top_1, col_top_2 = st.columns([3, 1])
         with col_top_1:
             # Чек-бокс для переключения режима
-            use_manual_html = st.checkbox("📝 Вставить HTML код вручную (если сайт блокирует)", key="cb_manual_html_mode")
+            use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode")
             
             if use_manual_html:
                 manual_html_source = st.text_area("Исходный код страницы (HTML)", height=200, placeholder="<html>...</html>", help="Скопируйте сюда исходный код страницы, если парсер не может к ней подключиться.")
@@ -1833,5 +1833,6 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
