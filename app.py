@@ -1445,10 +1445,26 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# TAB 5: PROMO (UPDATED v5 - Strict No-Type Selection)
+# TAB 5: PROMO (UPDATED v6 - Fixed Selectbox + CSS Hack)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока Акции (База Excel)")
+    
+    # --- CSS ХАК: Скрываем курсор ввода в Selectbox, чтобы он выглядел как строгая кнопка ---
+    st.markdown("""
+        <style>
+        /* Скрываем мигающий курсор в выпадающем списке */
+        div[data-baseweb="select"] input {
+            caret-color: transparent !important;
+            cursor: pointer !important;
+        }
+        /* Меняем курсор на руку при наведении */
+        div[data-baseweb="select"] > div {
+            cursor: pointer !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     if 'promo_generated_df' not in st.session_state: st.session_state.promo_generated_df = None
     if 'promo_excel_data' not in st.session_state: st.session_state.promo_excel_data = None
     if 'promo_html_preview' not in st.session_state: st.session_state.promo_html_preview = None
@@ -1471,7 +1487,7 @@ with tab_promo:
     with c2: 
         st.markdown("<label style='font-size: 14px;'>Заголовок блока (h3)</label>", unsafe_allow_html=True)
         
-        # 1. ГАЛОЧКА-ПЕРЕКЛЮЧАТЕЛЬ
+        # 1. ГАЛОЧКА-ПЕРЕКЛЮЧАТЕЛЬ (Разделяет логику)
         is_manual_mode = st.checkbox("Вписать свой заголовок вручную", key="promo_manual_checkbox")
         
         # 2. ЛОГИКА
@@ -1482,32 +1498,21 @@ with tab_promo:
                 value="", 
                 placeholder="Например: Рекомендуем посмотреть",
                 label_visibility="collapsed", 
-                key="promo_title_custom_input_v5"
+                key="promo_title_custom_input_v6"
             )
             promo_title = custom_input.strip() if custom_input.strip() else "Рекомендуем посмотреть"
             
         else:
-            # --- РЕЖИМ СТРОГОГО ВЫБОРА (БЕЗ ТЕКСТОВОГО ПОЛЯ) ---
-            
-            # Инициализация дефолтного значения в session_state, если нет
-            if "promo_radio_selection" not in st.session_state:
-                st.session_state.promo_radio_selection = PROMO_TITLES_LIST[2] # "Рекомендуемые товары" по умолчанию
-
-            # Показываем, что выбрано сейчас (Красивая плашка)
-            current_selection = st.session_state.promo_radio_selection
-            st.info(f"Выбрано: **{current_selection}**")
-
-            # Прячем радио-кнопки в экспандер, чтобы не занимать место
-            with st.expander("📂 Открыть список вариантов (Кликните здесь)"):
-                st.session_state.promo_radio_selection = st.radio(
-                    "Список заголовков:",
-                    PROMO_TITLES_LIST,
-                    index=PROMO_TITLES_LIST.index(current_selection) if current_selection in PROMO_TITLES_LIST else 0,
-                    label_visibility="collapsed",
-                    key="promo_radio_widget_v5"
-                )
-            
-            promo_title = st.session_state.promo_radio_selection
+            # --- РЕЖИМ СТРОГОГО ВЫБОРА (ВЫПАДАЮЩИЙ СПИСОК) ---
+            selected_option = st.selectbox(
+                "Выберите заголовок из списка", 
+                options=PROMO_TITLES_LIST, 
+                label_visibility="collapsed",
+                key="promo_title_selector_v6"
+                # В этом поле нельзя создать свой вариант, можно только выбрать из списка.
+                # CSS выше скрывает курсор, чтобы не смущать возможностью ввода.
+            )
+            promo_title = selected_option
             
     st.markdown("---")
     
@@ -1742,6 +1747,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
