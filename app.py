@@ -566,19 +566,47 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def parse_page(url, settings):
-    # Настройка повторных попыток (Retries)
+    # Настройка сессии
     session = requests.Session()
-    retry = Retry(connect=3, backoff_factor=0.5)
+    # Увеличиваем количество попыток и добавляем паузу
+    retry = Retry(connect=3, read=3, redirect=5, backoff_factor=1.0, status_forcelist=[500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retry)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     
-    headers = {'User-Agent': settings['ua']}
+    # 1. МАКСИМАЛЬНАЯ ИМИТАЦИЯ БРАУЗЕРА
+    # Простого User-Agent часто мало. Добавляем полные заголовки.
+    headers = {
+        'User-Agent': settings['ua'],
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'DNT': '1'
+    }
+    
     try:
-        # Увеличили timeout до 20 секунд
-        r = session.get(url, headers=headers, timeout=20)
-        if r.status_code != 200: return None
+        # 2. ОТКЛЮЧЕНИЕ VERIFY (SSL)
+        # verify=False позволяет игнорировать ошибки сертификатов, которые часто блокируют парсеры
+        r = session.get(url, headers=headers, timeout=25, verify=False)
         
+        # Если сайт вернул 403 (Forbidden), значит сработала защита
+        if r.status_code == 403:
+            st.error(f"Сайт заблокировал запрос (403 Forbidden). Попробуйте сменить User-Agent в настройках справа.")
+            return None
+            
+        if r.status_code != 200:
+            st.warning(f"Код ответа: {r.status_code} для {url}")
+            return None
+        
+        # Иногда кодировка определяется неверно, принудительно ставим utf-8 или из контента
+        r.encoding = r.apparent_encoding if r.encoding == 'ISO-8859-1' else r.encoding
+
         soup = BeautifulSoup(r.text, 'html.parser')
         
         tags_to_remove = []
@@ -588,7 +616,11 @@ def parse_page(url, settings):
         for c in soup.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
         if tags_to_remove:
             for t in soup.find_all(tags_to_remove): t.decompose()
-            
+        
+        # Удаляем скрипты и стили, чтобы они не попадали в текст
+        for script in soup(["script", "style", "svg", "path"]):
+            script.decompose()
+
         # Сбор анкоров
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
@@ -608,7 +640,9 @@ def parse_page(url, settings):
         
         if not body_text: return None
         return {'url': url, 'domain': urlparse(url).netloc, 'body_text': body_text, 'anchor_text': anchor_text}
-    except: 
+    except Exception as e:
+        # Выводим реальную ошибку на экран, чтобы понять причину
+        st.error(f"Ошибка при подключении к {url}: {e}")
         return None
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
@@ -1709,6 +1743,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
