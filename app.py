@@ -1445,7 +1445,7 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# TAB 5: PROMO (UPDATED v4 - Checkbox Toggle)
+# TAB 5: PROMO (UPDATED v5 - Strict No-Type Selection)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока Акции (База Excel)")
@@ -1474,28 +1474,40 @@ with tab_promo:
         # 1. ГАЛОЧКА-ПЕРЕКЛЮЧАТЕЛЬ
         is_manual_mode = st.checkbox("Вписать свой заголовок вручную", key="promo_manual_checkbox")
         
-        # 2. ЛОГИКА ОТОБРАЖЕНИЯ ПОЛЕЙ
+        # 2. ЛОГИКА
         if is_manual_mode:
-            # РЕЖИМ РУЧНОГО ВВОДА (Выпадающий список скрыт)
+            # --- РЕЖИМ РУЧНОГО ВВОДА ---
             custom_input = st.text_input(
                 "Введите текст заголовка", 
                 value="", 
                 placeholder="Например: Рекомендуем посмотреть",
                 label_visibility="collapsed", 
-                key="promo_title_custom_input_v4"
+                key="promo_title_custom_input_v5"
             )
-            # Если пусто, ставим дефолт, иначе то, что ввели
             promo_title = custom_input.strip() if custom_input.strip() else "Рекомендуем посмотреть"
             
         else:
-            # РЕЖИМ ВЫБОРА ИЗ СПИСКА (Поле ввода скрыто)
-            selected_option = st.selectbox(
-                "Выберите заголовок из списка", 
-                options=PROMO_TITLES_LIST, 
-                label_visibility="collapsed",
-                key="promo_title_selector_v4"
-            )
-            promo_title = selected_option
+            # --- РЕЖИМ СТРОГОГО ВЫБОРА (БЕЗ ТЕКСТОВОГО ПОЛЯ) ---
+            
+            # Инициализация дефолтного значения в session_state, если нет
+            if "promo_radio_selection" not in st.session_state:
+                st.session_state.promo_radio_selection = PROMO_TITLES_LIST[2] # "Рекомендуемые товары" по умолчанию
+
+            # Показываем, что выбрано сейчас (Красивая плашка)
+            current_selection = st.session_state.promo_radio_selection
+            st.info(f"Выбрано: **{current_selection}**")
+
+            # Прячем радио-кнопки в экспандер, чтобы не занимать место
+            with st.expander("📂 Открыть список вариантов (Кликните здесь)"):
+                st.session_state.promo_radio_selection = st.radio(
+                    "Список заголовков:",
+                    PROMO_TITLES_LIST,
+                    index=PROMO_TITLES_LIST.index(current_selection) if current_selection in PROMO_TITLES_LIST else 0,
+                    label_visibility="collapsed",
+                    key="promo_radio_widget_v5"
+                )
+            
+            promo_title = st.session_state.promo_radio_selection
             
     st.markdown("---")
     
@@ -1730,6 +1742,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
