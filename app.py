@@ -1070,33 +1070,38 @@ with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
     # ==========================================
-    # 0. АВТО-РАСПРЕДЕЛЕНИЕ СЛОВ (НОВАЯ ЛОГИКА)
+    # 0. СБОР И РАСПРЕДЕЛЕНИЕ СЕМАНТИКИ
     # ==========================================
-    all_found_products = st.session_state.get('categorized_products', [])
-    count_prods = len(all_found_products)
+    cat_products = st.session_state.get('categorized_products', [])
+    cat_services = st.session_state.get('categorized_services', [])
+    structure_keywords = cat_products + cat_services
+    count_struct = len(structure_keywords)
 
     tags_default_text = ""
     promo_default_text = ""
     sidebar_default_text = ""
 
-    if count_prods > 0:
-        if count_prods < 10:
-            # < 10: Всё в ТЕГИ
-            tags_default_text = "\n".join(all_found_products)
-        
-        elif count_prods < 30:
-            # 10..29: Делим на ТЕГИ и ПРОМО (50/50)
-            mid = math.ceil(count_prods / 2)
-            tags_default_text = "\n".join(all_found_products[:mid])
-            promo_default_text = "\n".join(all_found_products[mid:])
-            
+    if count_struct > 0:
+        if count_struct < 10:
+            tags_default_text = "\n".join(structure_keywords)
+        elif count_struct < 30:
+            mid = math.ceil(count_struct / 2)
+            tags_default_text = "\n".join(structure_keywords[:mid])
+            promo_default_text = "\n".join(structure_keywords[mid:])
         else:
-            # 30+: Делим на ТЕГИ, ПРОМО и САЙДБАР (33/33/33)
-            # Чтобы в Сайдбар попало минимум ~10 слов
-            part = math.ceil(count_prods / 3)
-            tags_default_text = "\n".join(all_found_products[:part])
-            promo_default_text = "\n".join(all_found_products[part:part*2])
-            sidebar_default_text = "\n".join(all_found_products[part*2:])
+            part = math.ceil(count_struct / 3)
+            tags_default_text = "\n".join(structure_keywords[:part])
+            promo_default_text = "\n".join(structure_keywords[part:part*2])
+            sidebar_default_text = "\n".join(structure_keywords[part*2:])
+
+    # Техничка и Контекст
+    cat_dimensions = st.session_state.get('categorized_dimensions', [])
+    tech_context_text = ", ".join(cat_dimensions) if cat_dimensions else ""
+    cat_commercial = st.session_state.get('categorized_commercial', [])
+    cat_general = st.session_state.get('categorized_general', [])
+    cat_geo = st.session_state.get('categorized_geo', [])
+    text_context_list = cat_commercial + cat_general + cat_geo
+    text_context_str = ", ".join(text_context_list)
 
     # ==========================================
     # 1. ВВОДНЫЕ ДАННЫЕ
@@ -1113,8 +1118,8 @@ with tab_wholesale_main:
             pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
         
-        if count_prods > 0:
-            st.caption(f"✅ Подтянуто **{count_prods}** товаров. Распределены: Теги ({(len(tags_default_text.splitlines()))}), Промо ({len(promo_default_text.splitlines())}), Сайдбар ({len(sidebar_default_text.splitlines())}).")
+        if count_struct > 0:
+            st.info(f"📊 **SEO-данные:** Структура ({count_struct}), Техничка ({len(cat_dimensions)}), Текст ({len(text_context_list)}).")
 
     # ==========================================
     # 2. ВЫБОР МОДУЛЕЙ
@@ -1131,7 +1136,6 @@ with tab_wholesale_main:
     # 3. НАСТРОЙКИ МОДУЛЕЙ
     # ==========================================
     
-    # Инициализация переменных
     global_tags_list = []
     global_promo_list = []
     global_sidebar_list = []
@@ -1149,17 +1153,19 @@ with tab_wholesale_main:
         if use_text:
             with st.container(border=True):
                 st.markdown("#### 🤖 1. AI Тексты")
-                st.info("✅ Используется общий API Key. Будет создано 5 блоков.")
+                if text_context_list:
+                    st.success(f"✅ В текст будут внедрены слова: {text_context_str[:50]}...")
+                else:
+                    st.warning("⚠️ Нет доп. слов для текста.")
 
         # --- [2] ТЕГИ ---
         if use_tags:
             with st.container(border=True):
                 st.markdown("#### 🏷️ 2. Теги")
-                kws_input_tags = st.text_area("Список товаров для тегов", value=tags_default_text, height=100, key="kws_tags_auto")
+                kws_input_tags = st.text_area("Список (Товары + Услуги)", value=tags_default_text, height=100, key="kws_tags_auto")
                 global_tags_list = [x.strip() for x in kws_input_tags.split('\n') if x.strip()]
                 
                 if not global_tags_list: st.warning("⚠️ Список пуст!")
-
                 st.markdown("---")
                 col_t1, col_t2 = st.columns([1, 2])
                 with col_t1: u_manual = st.checkbox("Своя база ссылок (.txt)", key="cb_tags_vert")
@@ -1177,6 +1183,8 @@ with tab_wholesale_main:
         if use_tables:
             with st.container(border=True):
                 st.markdown("#### 🧩 3. Таблицы")
+                if tech_context_text:
+                    st.caption(f"Контекст: {tech_context_text[:100]}...")
                 cnt = st.number_input("Кол-во таблиц", 1, 5, 2, key="num_tbl_vert")
                 defaults = ["Характеристики", "Размеры", "Хим. состав"]
                 for i in range(cnt):
@@ -1188,11 +1196,10 @@ with tab_wholesale_main:
         if use_promo:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
-                kws_input_promo = st.text_area("Список товаров для промо", value=promo_default_text, height=100, key="kws_promo_auto")
+                kws_input_promo = st.text_area("Список (Товары + Услуги)", value=promo_default_text, height=100, key="kws_promo_auto")
                 global_promo_list = [x.strip() for x in kws_input_promo.split('\n') if x.strip()]
 
                 if not global_promo_list: st.warning("⚠️ Список пуст!")
-
                 st.markdown("---")
                 col_p1, col_p2 = st.columns([1, 2])
                 with col_p1:
@@ -1209,16 +1216,14 @@ with tab_wholesale_main:
                         if up_i: df_db_promo = pd.read_excel(up_i)
                     else: st.error("❌ База картинок не найдена!")
 
-        # --- [5] САЙДБАР (С ВОЗВРАЩЕННЫМ ПОЛЕМ) ---
+        # --- [5] САЙДБАР ---
         if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
-                # ВОЗВРАЩЕНО ПОЛЕ ВВОДА
-                kws_input_sidebar = st.text_area("Список товаров для меню", value=sidebar_default_text, height=100, key="kws_sidebar_auto")
+                kws_input_sidebar = st.text_area("Список (Товары + Услуги)", value=sidebar_default_text, height=100, key="kws_sidebar_auto")
                 global_sidebar_list = [x.strip() for x in kws_input_sidebar.split('\n') if x.strip()]
                 
-                if not global_sidebar_list: st.warning("⚠️ Список пуст! Будет выведено пустое меню или дефолтное.")
-
+                if not global_sidebar_list: st.warning("⚠️ Список пуст!")
                 st.markdown("---")
                 col_s1, col_s2 = st.columns([1, 2])
                 with col_s1: u_sb_man = st.checkbox("Свой файл меню (.txt)", key="cb_sb_vert")
@@ -1235,13 +1240,12 @@ with tab_wholesale_main:
     st.markdown("---")
     
     # ==========================================
-    # 4. ВАЛИДАЦИЯ И ЗАПУСК
+    # 4. ЗАПУСК
     # ==========================================
     
     ready_to_go = True
     if not main_category_url: ready_to_go = False
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
-    
     if use_tags and not tags_file_content: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
@@ -1250,7 +1254,7 @@ with tab_wholesale_main:
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
         final_data = [] 
         
-        # 1. СБОР ЦЕЛЕВЫХ СТРАНИЦ
+        # 1. Сбор целевых страниц
         target_pages = []
         try:
             status_box.write(f"🕵️ Сканируем категорию: {main_category_url}")
@@ -1272,31 +1276,33 @@ with tab_wholesale_main:
                     h1 = soup.find('h1')
                     name = h1.get_text(strip=True) if h1 else "Товар"
                     target_pages.append({'url': main_category_url, 'name': name})
-            else:
-                status_box.error(f"Ошибка доступа: {r.status_code}"); st.stop()
-        except Exception as e:
-            status_box.error(f"Ошибка соединения: {e}"); st.stop()
-            
+            else: status_box.error(f"Ошибка доступа: {r.status_code}"); st.stop()
+        except Exception as e: status_box.error(f"Ошибка соединения: {e}"); st.stop()
         status_box.write(f"✅ Найдено страниц для обработки: {len(target_pages)}")
         
-        # ПОДГОТОВКА РЕСУРСОВ
+        # ==========================================
+        # ПОДГОТОВКА (СБОР URL)
+        # ==========================================
         
-        # --- [TAGS] ---
+        # A. СБОР URL-кандидатов для всех модулей
+        urls_to_fetch_names = set()
+
+        # [TAGS]
         tags_map = {}
         if use_tags:
-            status_box.write("📂 Подготовка Тегов...")
             s_io = io.StringIO(tags_file_content)
             all_links = [l.strip() for l in s_io.readlines() if l.strip()]
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                 if len(tr) >= 3:
                     matches = [u for u in all_links if tr in u]
-                    if matches: tags_map[kw] = matches
-        
-        # --- [PROMO] ---
-        promo_items_pool = []
+                    if matches: 
+                        tags_map[kw] = matches
+                        urls_to_fetch_names.update(matches)
+
+        # [PROMO]
+        promo_items_pool = [] # Пока храним словари {'url': ..., 'img': ...}
         if use_promo:
-            status_box.write("🎨 Подготовка Промо...")
             p_img_map = {}
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
@@ -1309,36 +1315,68 @@ with tab_wholesale_main:
                 matches = [u for u in p_img_map.keys() if tr in u]
                 for m in matches:
                     if m not in used_urls:
-                        slug = m.split('/')[-1]
-                        rus_name = force_cyrillic_name_global(slug)
-                        promo_items_pool.append({'name': rus_name, 'url': m, 'img': p_img_map[m]})
+                        # Сохраняем URL для парсинга имени
+                        urls_to_fetch_names.add(m)
+                        promo_items_pool.append({'url': m, 'img': p_img_map[m]})
                         used_urls.add(m)
-        
-        # --- [SIDEBAR] ---
-        sidebar_tree_structure = {}
+
+        # [SIDEBAR]
+        sidebar_matched_urls = []
         if use_sidebar:
-            status_box.write("🔨 Подготовка Меню...")
-            # 1. Парсим файл меню
             s_io = io.StringIO(sidebar_content)
             all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
             
-            # 2. Фильтруем ссылки по ключевым словам (global_sidebar_list)
-            matched_urls = []
             if global_sidebar_list:
                 for kw in global_sidebar_list:
                     tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                     if len(tr) < 3: continue
-                    # Ищем совпадения в структуре меню
                     found = [u for u in all_menu_urls if tr in u]
-                    matched_urls.extend(found)
-                matched_urls = list(set(matched_urls)) # Уникальные
+                    sidebar_matched_urls.extend(found)
+                sidebar_matched_urls = list(set(sidebar_matched_urls))
             else:
-                # Если список слов пуст, но модуль включен - берем всё (или ничего, но лучше всё, чтобы не ломать)
-                matched_urls = all_menu_urls
+                sidebar_matched_urls = all_menu_urls
+            
+            # Добавляем в список для скачивания имен
+            urls_to_fetch_names.update(sidebar_matched_urls)
 
-            # 3. Строим дерево только из matched_urls
+        # ==========================================
+        # МАССОВЫЙ ПАРСИНГ ИМЕН (ХЛЕБНЫЕ КРОШКИ)
+        # ==========================================
+        url_name_cache = {}
+        if urls_to_fetch_names:
+            status_box.write(f"🌍 Получаем реальные названия для {len(urls_to_fetch_names)} ссылок...")
+            
+            def fetch_name_worker(u): 
+                return u, get_breadcrumb_only(u) # Функция определена в начале файла
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                future_to_url = {executor.submit(fetch_name_worker, u): u for u in urls_to_fetch_names}
+                done_cnt = 0
+                prog_fetch = status_box.progress(0)
+                for future in concurrent.futures.as_completed(future_to_url):
+                    u_res, name_res = future.result()
+                    if name_res:
+                        url_name_cache[u_res] = name_res
+                    else:
+                        # Fallback
+                        slug = u_res.rstrip('/').split('/')[-1]
+                        url_name_cache[u_res] = force_cyrillic_name_global(slug)
+                    
+                    done_cnt += 1
+                    prog_fetch.progress(done_cnt / len(urls_to_fetch_names))
+            
+            status_box.write("✅ Названия собраны!")
+
+        # ==========================================
+        # СБОРКА КОНТЕНТА
+        # ==========================================
+        
+        # 1. SIDEBAR (Строится один раз, так как общий)
+        full_sidebar_code = ""
+        if use_sidebar:
+            status_box.write("🔨 Сборка меню...")
             tree = {}
-            for url in matched_urls:
+            for url in sidebar_matched_urls:
                 path = urlparse(url).path.strip('/')
                 parts = [p for p in path.split('/') if p]
                 idx_start = 0
@@ -1350,19 +1388,21 @@ with tab_wholesale_main:
                     if part not in curr: curr[part] = {}
                     if i == len(rel_parts) - 1:
                         curr[part]['__url__'] = url
-                        curr[part]['__name__'] = force_cyrillic_name_global(part)
+                        # ВАЖНО: Берем имя из кэша!
+                        curr[part]['__name__'] = url_name_cache.get(url, force_cyrillic_name_global(part))
                     curr = curr[part]
             
-            # 4. Функция рендера (внутренняя)
             def render_tree_internal(node, level=1):
                 html = ""
                 keys = sorted([k for k in node.keys() if not k.startswith('__')])
                 for key in keys:
                     child = node[key]
+                    # Имя берем из узла, если есть, иначе fallback
                     name = child.get('__name__', force_cyrillic_name_global(key))
                     url = child.get('__url__')
                     has_children = any(k for k in child.keys() if not k.startswith('__'))
                     
+                    # HTML structure (kept same as before)
                     if level == 1:
                         html += '<li class="level-1-header">\n'
                         if has_children:
@@ -1381,7 +1421,6 @@ with tab_wholesale_main:
                             html += '    <ul class="collapse-menu list-unstyled">\n'
                             html += render_tree_internal(child, level=3)
                             html += '    </ul>\n'
-                            html += '</li>\n'
                         else:
                             target = url if url else "#"
                             html += f'<li class="level-2-link-special"><a href="{target}">{name}</a></li>\n'
@@ -1391,15 +1430,15 @@ with tab_wholesale_main:
                 return html
 
             inner_html = render_tree_internal(tree, level=1)
-            # Вставляем CSS/JS активы (SIDEBAR_ASSETS определен глобально в начале файла)
             full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>{SIDEBAR_ASSETS}"""
 
 
-        # 2. ИНИЦИАЛИЗАЦИЯ CLIENT
+        # 2. CLIENT
         client = None
         if openai and (use_text or use_tables):
             client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
 
+        # 3. LOOP
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
         
@@ -1409,7 +1448,7 @@ with tab_wholesale_main:
             # --- AI TEXT ---
             if use_text and client:
                 try:
-                    blocks = generate_five_blocks(client, f"Контент для {page['name']}", page['name'], seo_words=[])
+                    blocks = generate_five_blocks(client, f"Контент для {page['name']}", page['name'], seo_words=text_context_list)
                     row_data['Text_Block_1'] = blocks[0]
                     row_data['Text_Block_2'] = blocks[1]
                     row_data['Text_Block_3'] = blocks[2]
@@ -1429,8 +1468,8 @@ with tab_wholesale_main:
                 if selected:
                     html_parts = ['<div class="popular-tags">']
                     for l in selected:
-                        slug = l.rstrip('/').split('/')[-1]
-                        nm = force_cyrillic_name_global(slug)
+                        # ВАЖНО: Берем имя из кэша!
+                        nm = url_name_cache.get(l, "Товар") 
                         html_parts.append(f'<a href="{l}" class="tag-link">{nm}</a>')
                     html_parts.append('</div>')
                     row_data['Tags HTML'] = "\n".join(html_parts)
@@ -1440,7 +1479,10 @@ with tab_wholesale_main:
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
                     sys_p = "Generate HTML table only. Inline CSS borders."
-                    usr_p = f"Product: {page['name']}. Table Topic: {t_topic}. Create technical table."
+                    context_hint = ""
+                    if tech_context_text:
+                        context_hint = f" Use specs: {tech_context_text}."
+                    usr_p = f"Product: {page['name']}. Topic: {t_topic}. Realistic table.{context_hint}"
                     try:
                         resp = client.chat.completions.create(model="sonar-pro", messages=[{"role":"system","content":sys_p},{"role":"user","content":usr_p}], temperature=0.5)
                         t_html = resp.choices[0].message.content.replace("```html","").replace("```","")
@@ -1455,7 +1497,9 @@ with tab_wholesale_main:
                 if chosen:
                     items_html = ""
                     for item in chosen:
-                        items_html += f"""<div class="gallery-item"><h3><a href="{item['url']}">{item['name']}</a></h3><figure><a href="{item['url']}"><img src="{item['img']}" loading="lazy"></a></figure></div>"""
+                        # ВАЖНО: Берем имя из кэша!
+                        real_name = url_name_cache.get(item['url'], "Товар")
+                        items_html += f"""<div class="gallery-item"><h3><a href="{item['url']}">{real_name}</a></h3><figure><a href="{item['url']}"><img src="{item['img']}" loading="lazy"></a></figure></div>"""
                     css = "<style>.five-col-gallery{display:flex;gap:15px;}</style>"
                     full_promo = f"""{css}<div class="gallery-wrapper"><h3>{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div>"""
                     row_data['Promo HTML'] = full_promo
@@ -1463,8 +1507,6 @@ with tab_wholesale_main:
 
             # --- SIDEBAR ---
             if use_sidebar:
-                # В данной реализации мы собрали одно меню на основе ключевых слов
-                # И вставляем его одинаковым для всех страниц
                 row_data['Sidebar HTML'] = full_sidebar_code
 
             final_data.append(row_data)
