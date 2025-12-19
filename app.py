@@ -17,7 +17,7 @@ import random
 import streamlit.components.v1 as components
 
 # ==========================================
-# FIX FOR PYTHON 3.11+ (Must be before pymorphy2 init)
+# FIX FOR PYTHON 3.11+
 # ==========================================
 if not hasattr(inspect, 'getargspec'):
     def getargspec(func):
@@ -1034,6 +1034,11 @@ with tab_seo:
                 st.session_state.auto_tags_words = all_found_products[:half_count]
                 st.session_state.auto_promo_words = all_found_products[half_count:]
             
+            # --- ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ WIDGET KEYS ---
+            # Это решает проблему пустых полей даже при rerun
+            st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
+            st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
+
             st.rerun()
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
@@ -1728,4 +1733,3 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
-
