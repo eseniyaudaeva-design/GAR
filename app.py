@@ -1482,7 +1482,7 @@ with tab_promo:
         
         # Если выбран "Свой вариант", показываем поле ввода, иначе берем значение из списка
         if selected_option == "✏️ Свой вариант...":
-            promo_title = st.text_input("Введите свой заголовок", value="Рекомендуем посмотреть", label_visibility="collapsed", key="promo_title_custom_input")
+            promo_title = st.text_input("Введите свой заголовок", placeholder="Рекомендуем посмотреть", label_visibility="collapsed", key="promo_title_custom_input")
         else:
             promo_title = selected_option
             # Пустой инпут, чтобы не ломать верстку (визуальный плейсхолдер, если нужно, или просто скрываем)
@@ -1721,6 +1721,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
