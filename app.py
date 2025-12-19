@@ -1384,7 +1384,7 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# TAB 5: PROMO (UPDATED v7 - Smart Keywords & Auto-Split)
+# TAB 5: PROMO (UPDATED v8 - Single Excel Source)
 # ------------------------------------------
 with tab_promo:
     st.header("Генератор блока Акции (Smart Match)")
@@ -1422,39 +1422,33 @@ with tab_promo:
     
     col_p1, col_p2 = st.columns([1, 1])
     
-    # --- ЛЕВАЯ КОЛОНКА: БАЗЫ ДАННЫХ ---
+    # --- ЛЕВАЯ КОЛОНКА: БАЗА ДАННЫХ (EXCEL) ---
     with col_p1:
-        st.markdown("#### 1. Базы данных")
+        st.markdown("#### 1. База данных (Excel)")
+        st.caption("Файл должен содержать 2 столбца: [1] URL Категории, [2] URL Картинки")
         
-        # A. БАЗА ССЫЛОК (Чтобы найти URL по слову)
-        st.markdown("**А. База ссылок (.txt)**")
-        default_links_path = "data/links_base.txt"
-        links_content = ""
-        links_source = None
-        
-        if os.path.exists(default_links_path):
-            with open(default_links_path, "r", encoding="utf-8") as f: links_content = f.read()
-            st.caption(f"✅ Подгружена из репозитория")
-            links_source = "repo"
-        else:
-            up_links = st.file_uploader("Загрузить links_base.txt", type=["txt"], key="promo_links_upl")
-            if up_links: links_content = up_links.getvalue().decode("utf-8"); links_source = "upload"
-
-        # B. БАЗА КАРТИНОК (Чтобы найти картинку по URL)
-        st.markdown("**Б. База картинок (.xlsx)**")
-        default_img_path = "data/images_db.xlsx"
+        default_db_path = "data/images_db.xlsx"
         df_db_promo = None
-        img_db_source = None
+        db_source = None
         
-        if os.path.exists(default_img_path):
+        # Чекбокс для ручной загрузки
+        manual_db = st.checkbox("Загрузить базу вручную (.xlsx)", key="manual_db_promo_cb")
+        
+        if not manual_db and os.path.exists(default_db_path):
             try:
-                df_db_promo = pd.read_excel(default_img_path)
-                st.caption(f"✅ Подгружена из репозитория")
-                img_db_source = "repo"
-            except: pass
+                df_db_promo = pd.read_excel(default_db_path)
+                st.success(f"✅ Подгружена база из репозитория")
+                db_source = "repo"
+            except Exception as e:
+                st.error(f"Ошибка чтения репозитория: {e}")
         else:
-            up_img = st.file_uploader("Загрузить images_db.xlsx", type=["xlsx"], key="promo_img_upl")
-            if up_img: df_db_promo = pd.read_excel(up_img); img_db_source = "upload"
+            up_db = st.file_uploader("Выберите файл (.xlsx)", type=["xlsx"], key="promo_db_upl")
+            if up_db: 
+                try:
+                    df_db_promo = pd.read_excel(up_db)
+                    db_source = "upload"
+                except Exception as e:
+                    st.error(f"Ошибка Excel: {e}")
 
     # --- ПРАВАЯ КОЛОНКА: КЛЮЧЕВЫЕ СЛОВА ---
     with col_p2:
@@ -1468,38 +1462,44 @@ with tab_promo:
         promo_keywords_input = st.text_area(
             "Список товаров для акций:", 
             value=default_promo_text, 
-            height=250, 
+            height=200, 
             key="promo_keywords_area_final",
             help="Здесь вторая часть списка товаров (если их было больше 20). Если меньше 20 — тут будет пусто."
         )
         promo_keywords = [line.strip() for line in promo_keywords_input.split('\n') if line.strip()]
 
     # --- КНОПКА ЗАПУСКА ---
-    if st.button("🛠️ Подобрать ссылки, Картинки и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_smart"):
-        if not parent_cat_url or not links_source or not img_db_source or not promo_keywords:
-            st.error("Заполните все поля (URL, Базы и Слова)!"); st.stop()
+    if st.button("🛠️ Подобрать и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_smart"):
+        if not parent_cat_url or not db_source or df_db_promo is None or not promo_keywords:
+            st.error("Заполните все поля (URL, База Excel и Слова)!"); st.stop()
         
+        if df_db_promo.shape[1] < 2:
+            st.error("❌ В Excel должно быть минимум 2 столбца (URL и Картинка)!"); st.stop()
+
         status = st.status("⚙️ Запуск магии...", expanded=True)
         
-        # 1. ИНДЕКСАЦИЯ БАЗЫ КАРТИНОК
+        # 1. ОБРАБОТКА БАЗЫ (СОЗДАЕМ И СПИСОК ССЫЛОК, И КАРТУ КАРТИНОК)
         img_map = {}
+        all_links = []
+        
         try:
-            if df_db_promo is not None and df_db_promo.shape[1] >= 2:
-                for index, row in df_db_promo.iterrows():
-                    raw_url = str(row.iloc[0]).strip()
-                    img_val = str(row.iloc[1]).strip()
-                    if raw_url and raw_url.lower() != 'nan':
-                        # Ключ - URL без слеша на конце
+            # Проходим по Excel. Столбец 0 - URL, Столбец 1 - IMG
+            for index, row in df_db_promo.iterrows():
+                raw_url = str(row.iloc[0]).strip()
+                img_val = str(row.iloc[1]).strip()
+                
+                if raw_url and raw_url.lower() != 'nan':
+                    all_links.append(raw_url) # Добавляем в общий пул ссылок для поиска
+                    
+                    # Ключ для картинки - URL без слеша на конце (для надежности)
+                    if img_val and img_val.lower() != 'nan':
                         img_map[raw_url.rstrip('/')] = img_val
-            status.write(f"✅ База картинок: {len(img_map)} записей.")
-        except Exception as e: status.error(f"Ошибка Excel: {e}"); st.stop()
+                        
+            status.write(f"✅ База проиндексирована: {len(all_links)} ссылок, {len(img_map)} картинок.")
+        except Exception as e: status.error(f"Ошибка обработки базы: {e}"); st.stop()
         
-        # 2. ИНДЕКСАЦИЯ БАЗЫ ССЫЛОК
-        all_links = [line.strip() for line in io.StringIO(links_content).readlines() if line.strip()]
-        status.write(f"✅ База ссылок: {len(all_links)} записей.")
-        
-        # 3. ПОИСК (СЛОВО -> URL -> КАРТИНКА)
-        status.write("🔍 Сопоставление: Слово -> Ссылка -> Картинка...")
+        # 3. ПОИСК (СЛОВО -> URL ИЗ EXCEL -> КАРТИНКА ИЗ EXCEL)
+        status.write("🔍 Сопоставление: Слово -> Ссылка...")
         
         final_items = []
         used_urls = set()
@@ -1514,22 +1514,21 @@ with tab_promo:
             
             if len(clean_tr) < 3: continue
             
-            # Б. Поиск подходящих URL в базе
+            # Б. Поиск подходящих URL в базе (all_links теперь из Excel)
             matches = [u for u in all_links if clean_tr in u]
             
             # Фильтруем: исключаем родителя и уже использованные
             valid_matches = [u for u in matches if u.rstrip('/') != parent_clean and u not in used_urls]
             
             if valid_matches:
-                # Берем первый попавшийся или случайный
+                # Берем случайный подходящий URL
                 chosen_url = random.choice(valid_matches)
                 clean_chosen_url = chosen_url.rstrip('/')
                 
-                # В. Поиск картинки для этого URL
+                # В. Поиск картинки для этого URL (из той же базы)
                 img_src = img_map.get(clean_chosen_url, "")
                 
-                # Если картинки нет, пробуем найти для родительской папки (опционально) или пропускаем
-                # Сейчас: если картинки нет - не добавляем в блок (чтобы не было пустышек)
+                # Если картинка есть — добавляем
                 if img_src:
                     used_urls.add(chosen_url)
                     
@@ -1544,7 +1543,7 @@ with tab_promo:
                     })
         
         if not final_items:
-            status.error("❌ Не удалось найти пересечения (Слово+Ссылка+Картинка). Проверьте базы.")
+            status.error("❌ Не удалось найти совпадений. Проверьте, есть ли транслит этих слов в ссылках базы.")
             st.stop()
             
         status.write(f"✅ Успешно собрано {len(final_items)} карточек товаров.")
@@ -1733,3 +1732,4 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
