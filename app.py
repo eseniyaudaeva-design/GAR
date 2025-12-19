@@ -1071,7 +1071,7 @@ with tab_wholesale_main:
     st.caption("Все инструменты для генерации контента собраны ниже. Разверните нужный блок.")
 
     # --- SECTION 1: AI GENERATOR ---
-    with st.expander("🤖 AI Генерация (Perplexity)", expanded=False):
+    with st.expander("🤖 Тексты", expanded=False):
         pplx_key = st.text_input("Perplexity API Key", value="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", type="password", key="pplx_key_input")
         target_url_gen = st.text_input("URL Страницы (донор тегов)", key="pplx_url_input")
         if st.button("🚀 Начать генерацию", key="btn_start_gen", disabled=not pplx_key):
@@ -1099,7 +1099,7 @@ with tab_wholesale_main:
             st.dataframe(st.session_state.ai_generated_df.head())
 
     # --- SECTION 2: TAGS GENERATOR ---
-    with st.expander("🏷️ Генератор тегов (Breadcrumbs)", expanded=False):
+    with st.expander("🏷️ Теги", expanded=False):
         col_t1, col_t2 = st.columns([1, 1])
         with col_t1:
             st.markdown("##### 🔗 Источник")
@@ -1224,7 +1224,7 @@ with tab_wholesale_main:
                 st.code(first_val, language='html')
 
     # --- SECTION 3: TABLES GENERATOR ---
-    with st.expander("🧩 Таблицы (Perplexity)", expanded=False):
+    with st.expander("🧩 Таблицы", expanded=False):
         if 'tables_generated_df' not in st.session_state: st.session_state.tables_generated_df = None
         if 'tables_excel_data' not in st.session_state: st.session_state.tables_excel_data = None
         col_tbl_1, col_tbl_2 = st.columns([2, 1])
@@ -1313,7 +1313,7 @@ with tab_wholesale_main:
                 st.text_area("HTML код:", value=first_html, height=200)
 
     # --- SECTION 4: PROMO GENERATOR ---
-    with st.expander("🔥 Генератор акций", expanded=False):
+    with st.expander("🔥 Промо предложение", expanded=False):
         st.markdown("""<style>div[data-baseweb="select"] input { caret-color: transparent !important; cursor: pointer !important; } div[data-baseweb="select"] > div { cursor: pointer !important; }</style>""", unsafe_allow_html=True)
 
         if 'promo_generated_df' not in st.session_state: st.session_state.promo_generated_df = None
@@ -1585,3 +1585,4 @@ with tab_wholesale_main:
             with st.expander("🖼️ Предпросмотр меню (HTML)"):
                 html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
                 components.html(html_preview, height=600, scrolling=True)
+
