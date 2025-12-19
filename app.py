@@ -1192,16 +1192,20 @@ with tab_tags:
 
     with col_t2:
         st.markdown("##### 📝 Ключевые слова (Товары)")
-        # АВТОЗАПОЛНЕНИЕ ИЗ SEO АНАЛИЗА
-        raw_products = st.session_state.get('categorized_products', [])
-        default_prod_text = "\n".join(raw_products) if raw_products else ""
+        # АВТОЗАПОЛНЕНИЕ (Берем только ту часть, что выделил алгоритм распределения)
+        auto_words = st.session_state.get('auto_tags_words', [])
+        # Если распределения еще не было, но есть старый список, берем его как запасной вариант
+        if not auto_words:
+             auto_words = st.session_state.get('categorized_products', [])
+             
+        default_prod_text = "\n".join(auto_words) if auto_words else ""
         
         products_input = st.text_area(
-            "Список товаров (Автозаполнение из SEO):", 
+            "Список товаров (Автозаполнение):", 
             value=default_prod_text, 
             height=200, 
-            key="tags_products_edit_v12",
-            help="Сюда подтягиваются слова из вкладки SEO Анализ -> Товары"
+            key="tags_products_edit_v13",
+            help="Сюда попадают слова согласно правилу распределения (<20 = все, >20 = 50%)"
         )
         products = [line.strip() for line in products_input.split('\n') if line.strip()]
 
@@ -1445,31 +1449,18 @@ with tab_tables:
             st.text_area("HTML код:", value=first_html, height=200)
 
 # ------------------------------------------
-# TAB 5: PROMO (UPDATED v6 - Fixed Selectbox + CSS Hack)
+# TAB 5: PROMO (UPDATED v7 - Smart Keywords & Auto-Split)
 # ------------------------------------------
 with tab_promo:
-    st.header("Генератор блока Акции (База Excel)")
+    st.header("Генератор блока Акции (Smart Match)")
     
-    # --- CSS ХАК: Скрываем курсор ввода в Selectbox, чтобы он выглядел как строгая кнопка ---
-    st.markdown("""
-        <style>
-        /* Скрываем мигающий курсор в выпадающем списке */
-        div[data-baseweb="select"] input {
-            caret-color: transparent !important;
-            cursor: pointer !important;
-        }
-        /* Меняем курсор на руку при наведении */
-        div[data-baseweb="select"] > div {
-            cursor: pointer !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    # CSS Hack для selectbox
+    st.markdown("""<style>div[data-baseweb="select"] input { caret-color: transparent !important; cursor: pointer !important; } div[data-baseweb="select"] > div { cursor: pointer !important; }</style>""", unsafe_allow_html=True)
 
     if 'promo_generated_df' not in st.session_state: st.session_state.promo_generated_df = None
     if 'promo_excel_data' not in st.session_state: st.session_state.promo_excel_data = None
     if 'promo_html_preview' not in st.session_state: st.session_state.promo_html_preview = None
     
-    # СПИСОК ГОТОВЫХ ЗАГОЛОВКОВ
     PROMO_TITLES_LIST = [
         "Смотрите также", "Похожие товары", "Рекомендуемые товары", "Дополнительные позиции",
         "С этим товаром покупают", "Спецпредложения недели", "Лучшая цена", "Товары дня",
@@ -1479,116 +1470,171 @@ with tab_promo:
         "Специально для вашего проекта", "Вы недавно смотрели"
     ]
 
+    # --- ВЕРХНИЕ НАСТРОЙКИ ---
     c1, c2 = st.columns([1, 1])
-    
     with c1: 
-        parent_cat_url = st.text_input("URL Родительской категории (откуда берем теги для файла)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db")
-    
+        parent_cat_url = st.text_input("URL Родительской категории (источник тегов для файла)", placeholder="https://stalmetural.ru/catalog/alyuminievaya-truba/", key="promo_parent_url_db")
     with c2: 
         st.markdown("<label style='font-size: 14px;'>Заголовок блока (h3)</label>", unsafe_allow_html=True)
-        
-        # 1. ГАЛОЧКА-ПЕРЕКЛЮЧАТЕЛЬ (Разделяет логику)
         is_manual_mode = st.checkbox("Вписать свой заголовок вручную", key="promo_manual_checkbox")
-        
-        # 2. ЛОГИКА
         if is_manual_mode:
-            # --- РЕЖИМ РУЧНОГО ВВОДА ---
-            custom_input = st.text_input(
-                "Введите текст заголовка", 
-                value="", 
-                placeholder="Например: Рекомендуем посмотреть",
-                label_visibility="collapsed", 
-                key="promo_title_custom_input_v6"
-            )
+            custom_input = st.text_input("Введите текст заголовка", value="", placeholder="Например: Рекомендуем посмотреть", label_visibility="collapsed", key="promo_title_custom_input_v6")
             promo_title = custom_input.strip() if custom_input.strip() else "Рекомендуем посмотреть"
-            
         else:
-            # --- РЕЖИМ СТРОГОГО ВЫБОРА (ВЫПАДАЮЩИЙ СПИСОК) ---
-            selected_option = st.selectbox(
-                "Выберите заголовок из списка", 
-                options=PROMO_TITLES_LIST, 
-                label_visibility="collapsed",
-                key="promo_title_selector_v6"
-                # В этом поле нельзя создать свой вариант, можно только выбрать из списка.
-                # CSS выше скрывает курсор, чтобы не смущать возможностью ввода.
-            )
-            promo_title = selected_option
+            promo_title = st.selectbox("Выберите заголовок из списка", options=PROMO_TITLES_LIST, label_visibility="collapsed", key="promo_title_selector_v6")
             
     st.markdown("---")
     
-    # --- ЛОГИКА АВТОЗАГРУЗКИ EXCEL ---
-    st.markdown("#### 1. База картинок (Excel)")
-    default_img_path = "data/images_db.xlsx"
-    promo_db_source = None
-    df_db_promo = None # DataFrame
-
-    manual_upload_promo = st.checkbox("Загрузить Excel вручную", key="manual_promo_cb")
-
-    if not manual_upload_promo and os.path.exists(default_img_path):
-        st.success(f"✅ Используется база из репозитория: `data/images_db.xlsx`")
-        try:
-            df_db_promo = pd.read_excel(default_img_path)
-            promo_db_source = "repo"
-        except Exception as e:
-            st.error(f"Ошибка чтения файла из репозитория: {e}")
-    else:
-        uploaded_db = st.file_uploader("Выберите файл .xlsx", type=["xlsx", "xls"], key="promo_db_uploader")
-        if uploaded_db:
-            try:
-                df_db_promo = pd.read_excel(uploaded_db)
-                promo_db_source = "upload"
-            except: pass
-
-    st.markdown("#### 2. Вставьте список ссылок для блока Акции")
-    promo_links_text = st.text_area("Список ссылок (каждая с новой строки)", height=300, placeholder="https://stalmetural.ru/catalog/tovar-1/\nhttps://stalmetural.ru/catalog/tovar-2/", key="promo_links_area_db")
-
-    if st.button("🛠️ Найти картинки и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_db"):
-        if not parent_cat_url or not promo_db_source or not promo_links_text: st.error("Заполните все поля и загрузите базу!"); st.stop()
+    col_p1, col_p2 = st.columns([1, 1])
+    
+    # --- ЛЕВАЯ КОЛОНКА: БАЗЫ ДАННЫХ ---
+    with col_p1:
+        st.markdown("#### 1. Базы данных")
         
-        status = st.status("⚙️ Обработка базы данных...", expanded=True)
+        # A. БАЗА ССЫЛОК (Чтобы найти URL по слову)
+        st.markdown("**А. База ссылок (.txt)**")
+        default_links_path = "data/links_base.txt"
+        links_content = ""
+        links_source = None
+        
+        if os.path.exists(default_links_path):
+            with open(default_links_path, "r", encoding="utf-8") as f: links_content = f.read()
+            st.caption(f"✅ Подгружена из репозитория")
+            links_source = "repo"
+        else:
+            up_links = st.file_uploader("Загрузить links_base.txt", type=["txt"], key="promo_links_upl")
+            if up_links: links_content = up_links.getvalue().decode("utf-8"); links_source = "upload"
+
+        # B. БАЗА КАРТИНОК (Чтобы найти картинку по URL)
+        st.markdown("**Б. База картинок (.xlsx)**")
+        default_img_path = "data/images_db.xlsx"
+        df_db_promo = None
+        img_db_source = None
+        
+        if os.path.exists(default_img_path):
+            try:
+                df_db_promo = pd.read_excel(default_img_path)
+                st.caption(f"✅ Подгружена из репозитория")
+                img_db_source = "repo"
+            except: pass
+        else:
+            up_img = st.file_uploader("Загрузить images_db.xlsx", type=["xlsx"], key="promo_img_upl")
+            if up_img: df_db_promo = pd.read_excel(up_img); img_db_source = "upload"
+
+    # --- ПРАВАЯ КОЛОНКА: КЛЮЧЕВЫЕ СЛОВА ---
+    with col_p2:
+        st.markdown("#### 2. Ключевые слова (Товары)")
+        
+        # АВТОЗАПОЛНЕНИЕ (Вторая половина списка)
+        auto_promo = st.session_state.get('auto_promo_words', [])
+        default_promo_text = "\n".join(auto_promo) if auto_promo else ""
+        
+        promo_keywords_input = st.text_area(
+            "Список товаров для акций:", 
+            value=default_promo_text, 
+            height=250, 
+            key="promo_keywords_area",
+            help="Сюда попадают слова, оставшиеся после распределения (если слов > 20)"
+        )
+        promo_keywords = [line.strip() for line in promo_keywords_input.split('\n') if line.strip()]
+
+    # --- КНОПКА ЗАПУСКА ---
+    if st.button("🛠️ Подобрать ссылки, Картинки и Сгенерировать", use_container_width=True, type="primary", key="btn_gen_promo_smart"):
+        if not parent_cat_url or not links_source or not img_db_source or not promo_keywords:
+            st.error("Заполните все поля (URL, Базы и Слова)!"); st.stop()
+        
+        status = st.status("⚙️ Запуск магии...", expanded=True)
+        
+        # 1. ИНДЕКСАЦИЯ БАЗЫ КАРТИНОК
+        img_map = {}
         try:
-            # df_db_promo уже загружен выше
-            img_db = {}
             if df_db_promo is not None and df_db_promo.shape[1] >= 2:
                 for index, row in df_db_promo.iterrows():
                     raw_url = str(row.iloc[0]).strip()
                     img_val = str(row.iloc[1]).strip()
                     if raw_url and raw_url.lower() != 'nan':
-                        key_url = raw_url.rstrip('/') 
-                        img_db[key_url] = img_val
-                status.write(f"✅ База проиндексирована: {len(img_db)} товаров с картинками.")
-            else:
-                status.error("Некорректный формат Excel (нужно минимум 2 колонки)"); st.stop()
-        except Exception as e: status.error(f"Ошибка обработки Excel: {e}"); st.stop()
-
-        status.write("🔨 Подбор картинок и сборка HTML...")
-        target_links = [line.strip() for line in promo_links_text.split('\n') if line.strip()]
+                        # Ключ - URL без слеша на конце
+                        img_map[raw_url.rstrip('/')] = img_val
+            status.write(f"✅ База картинок: {len(img_map)} записей.")
+        except Exception as e: status.error(f"Ошибка Excel: {e}"); st.stop()
+        
+        # 2. ИНДЕКСАЦИЯ БАЗЫ ССЫЛОК
+        all_links = [line.strip() for line in io.StringIO(links_content).readlines() if line.strip()]
+        status.write(f"✅ База ссылок: {len(all_links)} записей.")
+        
+        # 3. ПОИСК (СЛОВО -> URL -> КАРТИНКА)
+        status.write("🔍 Сопоставление: Слово -> Ссылка -> Картинка...")
+        
+        final_items = []
+        used_urls = set()
+        
+        # Исключаем родительскую категорию из выдачи
+        parent_clean = parent_cat_url.rstrip('/')
+        
+        for word in promo_keywords:
+            # А. Транслитерация
+            tr = transliterate_text(word)
+            clean_tr = tr.replace(' ', '-').replace('_', '-')
+            
+            if len(clean_tr) < 3: continue
+            
+            # Б. Поиск подходящих URL в базе
+            matches = [u for u in all_links if clean_tr in u]
+            
+            # Фильтруем: исключаем родителя и уже использованные
+            valid_matches = [u for u in matches if u.rstrip('/') != parent_clean and u not in used_urls]
+            
+            if valid_matches:
+                # Берем первый попавшийся или случайный
+                chosen_url = random.choice(valid_matches)
+                clean_chosen_url = chosen_url.rstrip('/')
+                
+                # В. Поиск картинки для этого URL
+                img_src = img_map.get(clean_chosen_url, "")
+                
+                # Если картинки нет, пробуем найти для родительской папки (опционально) или пропускаем
+                # Сейчас: если картинки нет - не добавляем в блок (чтобы не было пустышек)
+                if img_src:
+                    used_urls.add(chosen_url)
+                    
+                    # Г. Формируем название (slug -> rus)
+                    slug = clean_chosen_url.split('/')[-1]
+                    name_rus = force_cyrillic_name_global(slug)
+                    
+                    final_items.append({
+                        'name': name_rus,
+                        'url': chosen_url,
+                        'img': img_src
+                    })
+        
+        if not final_items:
+            status.error("❌ Не удалось найти пересечения (Слово+Ссылка+Картинка). Проверьте базы.")
+            st.stop()
+            
+        status.write(f"✅ Успешно собрано {len(final_items)} карточек товаров.")
+        
+        # 4. ГЕНЕРАЦИЯ HTML
         items_html = ""
-        found_count = 0
-        for link in target_links:
-            search_key = link.rstrip('/') 
-            img_src = img_db.get(search_key, "") 
-            if img_src: found_count += 1
-            slug = search_key.split('/')[-1]
-            name = force_cyrillic_name_global(slug)
-            items_html += f"""            <div class="gallery-item">
-                <h3><a href="{link}" target="_blank">{name}</a></h3>
+        for item in final_items:
+             items_html += f"""            <div class="gallery-item">
+                <h3><a href="{item['url']}" target="_blank">{item['name']}</a></h3>
                 <figure>
-                    <a href="{link}" target="_blank">
+                    <a href="{item['url']}" target="_blank">
                         <picture>
-                            <img src="{img_src}" 
-                                 alt="{name}" 
-                                 title="{name}" 
+                            <img src="{item['img']}" 
+                                 alt="{item['name']}" 
+                                 title="{item['name']}" 
                                  loading="lazy">
                         </picture>
                     </a>
                 </figure>
             </div>\n"""
-        status.write(f"✅ Картинки найдены для {found_count} из {len(target_links)} ссылок.")
+            
         css_styles = """<style>.outer-full-width-section { padding: 25px 0; width: 100%; } .gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; } h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; } .five-col-gallery { display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; } .gallery-item { flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; } .gallery-item h3 { font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; } .gallery-item h3 a { text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; } .gallery-item h3 a:hover { color: #007bff; } .gallery-item figure { width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; } .gallery-item figure a { display: block; height: 100%; text-decoration: none; } .gallery-item img { width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; } .gallery-item figure a:hover img { transform: scale(1.05); }</style>"""
         full_block_html = f"""{css_styles}<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div></div>"""
         
-        status.write(f"🕵️ Сканируем теги на странице: {parent_cat_url}")
+        # 5. ПАРСИНГ ТЕГОВ (ДЛЯ ЗАПИСИ В EXCEL)
+        status.write(f"🕵️ Ищем страницы для размещения (теги родителя)...")
         found_tags = []
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
@@ -1600,22 +1646,26 @@ with tab_promo:
                     for link in tags_container.find_all('a'):
                         href = link.get('href')
                         if href: found_tags.append(urljoin(parent_cat_url, href))
-        except Exception as e: status.error(f"Ошибка парсинга тегов: {e}"); st.stop()
-        if not found_tags: found_tags.append(parent_cat_url)
+        except: pass
+        if not found_tags: found_tags.append(parent_cat_url) # Если тегов нет, ставим хотя бы родителя
         
         excel_rows = []
         for tag_url in found_tags: excel_rows.append({'Page URL': tag_url, 'HTML Block': full_block_html})
         df_promo = pd.DataFrame(excel_rows)
+        
+        # 6. СОХРАНЕНИЕ
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_promo.to_excel(writer, index=False)
         st.session_state.promo_generated_df = df_promo
         st.session_state.promo_excel_data = buffer.getvalue()
         st.session_state.promo_html_preview = full_block_html
+        
         status.update(label="Готово!", state="complete", expanded=False)
 
+    # --- РЕЗУЛЬТАТ ---
     if st.session_state.promo_generated_df is not None:
-        st.success("🎉 Excel сформирован!")
-        st.download_button(label="📥 Скачать Excel (Promo Block)", data=st.session_state.promo_excel_data, file_name="promo_blocks_db.xlsx", mime="application/vnd.ms-excel", key="btn_down_promo_db")
+        st.success(f"🎉 Сформирован блок с {len(st.session_state.promo_generated_df)} записями!")
+        st.download_button(label="📥 Скачать Excel (Promo Block)", data=st.session_state.promo_excel_data, file_name="promo_smart_block.xlsx", mime="application/vnd.ms-excel", key="btn_down_promo_db")
         with st.expander("👁️ Предпросмотр блока (HTML)", expanded=True):
             components.html(st.session_state.promo_html_preview, height=450, scrolling=True)
             st.text_area("HTML Код", value=st.session_state.promo_html_preview, height=200)
@@ -1747,6 +1797,7 @@ with tab_sidebar:
         with st.expander("🖼️ Предпросмотр меню (HTML)"):
             html_preview = st.session_state.sidebar_gen_df.iloc[0]['Sidebar HTML']
             components.html(html_preview, height=600, scrolling=True)
+
 
 
 
