@@ -1091,6 +1091,7 @@ with tab_seo_main:
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
                 st.session_state.categorized_sensitive = categorized['sensitive']
+                st.session_state['sensitive_words_editor_final'] = "\n".join(categorized['sensitive'])
 
                 # 2. !!! ВАЖНО: Сохраняем ОРИГИНАЛЫ (для отката фильтра) !!!
                 # Если этих строк нет, фильтр будет стирать данные
@@ -1739,6 +1740,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
