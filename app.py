@@ -161,6 +161,40 @@ def get_breadcrumb_only(url, ua_settings="Mozilla/5.0"):
         return None
     return None
 
+def render_clean_block(title, icon, words_list):
+    unique_words = sorted(list(set(words_list))) if words_list else []
+    count = len(unique_words)
+    
+    if count > 0:
+        content_html = ", ".join(unique_words)
+        # Карточка раскрывается
+        html_code = f"""
+        <details class="details-card">
+            <summary class="card-summary">
+                <div>
+                    <span class="arrow-icon">▶</span>
+                    {icon} {title}
+                </div>
+                <span class="count-tag">{count}</span>
+            </summary>
+            <div class="card-content">
+                {content_html}
+            </div>
+        </details>
+        """
+    else:
+        # Если пусто - карточка неактивна (без контента)
+        html_code = f"""
+        <div class="details-card">
+            <div class="card-summary" style="cursor: default; color: #9ca3af;">
+                <div>{icon} {title}</div>
+                <span class="count-tag">0</span>
+            </div>
+        </div>
+        """
+    
+    st.markdown(html_code, unsafe_allow_html=True)
+
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ (ИСПРАВЛЕНО)
 # ==========================================
@@ -1291,7 +1325,7 @@ with tab_seo_main:
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-# --- НОВЫЕ СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
+        # --- НОВЫЕ СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
         st.markdown("""
         <style>
             /* Убираем стандартный маркер треугольника у details */
@@ -1370,41 +1404,7 @@ with tab_seo_main:
         </style>
         """, unsafe_allow_html=True)
 
-def render_clean_block(title, icon, words_list):
-            unique_words = sorted(list(set(words_list))) if words_list else []
-            count = len(unique_words)
-            
-            if count > 0:
-                content_html = ", ".join(unique_words)
-                # Карточка раскрывается
-                html_code = f"""
-                <details class="details-card">
-                    <summary class="card-summary">
-                        <div>
-                            <span class="arrow-icon">▶</span>
-                            {icon} {title}
-                        </div>
-                        <span class="count-tag">{count}</span>
-                    </summary>
-                    <div class="card-content">
-                        {content_html}
-                    </div>
-                </details>
-                """
-            else:
-                # Если пусто - карточка неактивна (без контента)
-                html_code = f"""
-                <div class="details-card">
-                    <div class="card-summary" style="cursor: default; color: #9ca3af;">
-                        <div>{icon} {title}</div>
-                        <span class="count-tag">0</span>
-                    </div>
-                </div>
-                """
-            
-            st.markdown(html_code, unsafe_allow_html=True)
-
-            with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
+        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
             if not st.session_state.get('orig_products'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
             else:
@@ -1488,7 +1488,6 @@ def render_clean_block(title, icon, words_list):
                         st.rerun()
 
     # --- УПУЩЕННАЯ СЕМАНТИКА (ВНЕ ЭКСПАНДЕРА) ---
-    # Обратите внимание: этот блок на одном уровне с 'with st.expander', а не внутри него
     high = results.get('missing_semantics_high', [])
     low = results.get('missing_semantics_low', [])
     if high or low:
@@ -1496,8 +1495,7 @@ def render_clean_block(title, icon, words_list):
             if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
             if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
-    # --- ТАБЛИЦЫ (ВНЕ ЭКСПАНДЕРА) ---
-    # Они тоже сдвинуты влево (убран один отступ)
+    # --- ТАБЛИЦЫ ---
     render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
     render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
     render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
@@ -2001,7 +1999,3 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
-
-
-
