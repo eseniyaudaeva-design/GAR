@@ -175,7 +175,6 @@ def load_lemmatized_dictionaries():
     services_lemmas = set()
     sensitive_lemmas = set()
 
-    # 1. ТОВАРЫ
     path_prod = os.path.join(base_path, "metal_products.json")
     if os.path.exists(path_prod):
         try:
@@ -193,12 +192,11 @@ def load_lemmatized_dictionaries():
                     for w in words:
                         clean_w = re.sub(r'[^a-zа-яё0-9-]', '', w)
                         if not clean_w: continue
-                        product_lemmas.add(clean_w) # Оригинал
-                        if morph: product_lemmas.add(morph.parse(clean_w)[0].normal_form) # Лемма
+                        product_lemmas.add(clean_w)
+                        if morph: product_lemmas.add(morph.parse(clean_w)[0].normal_form)
         except Exception as e:
             st.error(f"Ошибка в metal_products.json: {e}")
 
-    # 2. КОММЕРЦИЯ
     path_comm = os.path.join(base_path, "commercial_triggers.json")
     if os.path.exists(path_comm):
         try:
@@ -212,7 +210,6 @@ def load_lemmatized_dictionaries():
                             commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
         except: pass
 
-    # 3. ГЕО
     path_geo = os.path.join(base_path, "geo_locations.json")
     if os.path.exists(path_geo):
         try:
@@ -225,7 +222,6 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в geo_locations.json: {e}")
 
-    # 4. УСЛУГИ
     path_serv = os.path.join(base_path, "services_triggers.json")
     if os.path.exists(path_serv):
         try:
@@ -240,7 +236,6 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в services_triggers.json: {e}")
 
-    # 5. ХАРАКТЕРИСТИКИ
     path_specs = os.path.join(base_path, "tech_specs.json")
     if os.path.exists(path_specs):
         try:
@@ -254,7 +249,6 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в tech_specs.json: {e}")
 
-    # 6. SENSITIVE (файл)
     path_sens = os.path.join(base_path, "SENSITIVE_STOPLIST.json")
     if os.path.exists(path_sens):
         try:
@@ -271,10 +265,7 @@ def load_lemmatized_dictionaries():
 # КЛАССИФИКАТОР
 # ==========================================
 def classify_semantics_with_api(words_list, yandex_key):
-    # Распаковываем 6 значений
     PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = load_lemmatized_dictionaries()
-    
-    # Объединяем глобальный список (хардкод) и загруженный из файла
     FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
 
     if 'debug_geo_count' not in st.session_state:
@@ -295,12 +286,10 @@ def classify_semantics_with_api(words_list, yandex_key):
     for word in words_list:
         word_lower = word.lower()
         
-        # --- 1. ПРОВЕРКА НА ЗАПРЕЩЕНКУ (SENSITIVE) ---
         is_sensitive = False
         if word_lower in FULL_SENSITIVE:
             is_sensitive = True
         else:
-            # Частичное совпадение
             for stop_w in FULL_SENSITIVE:
                 if len(stop_w) > 3 and stop_w in word_lower:
                     is_sensitive = True
@@ -309,7 +298,6 @@ def classify_semantics_with_api(words_list, yandex_key):
         if is_sensitive:
             categories['sensitive'].add(word_lower)
             continue
-        # ---------------------------------------------
         
         if word_lower in SPECS_SET:
             categories['dimensions'].add(word_lower)
@@ -371,6 +359,8 @@ if 'tags_html_result' not in st.session_state: st.session_state.tags_html_result
 if 'table_html_result' not in st.session_state: st.session_state.table_html_result = None
 if 'tags_generated_df' not in st.session_state: st.session_state.tags_generated_df = None
 if 'tags_excel_data' not in st.session_state: st.session_state.tags_excel_data = None
+
+# Current lists
 if 'categorized_products' not in st.session_state: st.session_state.categorized_products = []
 if 'categorized_services' not in st.session_state: st.session_state.categorized_services = []
 if 'categorized_commercial' not in st.session_state: st.session_state.categorized_commercial = []
@@ -378,6 +368,14 @@ if 'categorized_dimensions' not in st.session_state: st.session_state.categorize
 if 'categorized_geo' not in st.session_state: st.session_state.categorized_geo = []
 if 'categorized_general' not in st.session_state: st.session_state.categorized_general = []
 if 'categorized_sensitive' not in st.session_state: st.session_state.categorized_sensitive = []
+
+# Original lists (for restoration)
+if 'orig_products' not in st.session_state: st.session_state.orig_products = []
+if 'orig_services' not in st.session_state: st.session_state.orig_services = []
+if 'orig_commercial' not in st.session_state: st.session_state.orig_commercial = []
+if 'orig_dimensions' not in st.session_state: st.session_state.orig_dimensions = []
+if 'orig_geo' not in st.session_state: st.session_state.orig_geo = []
+if 'orig_general' not in st.session_state: st.session_state.orig_general = []
 
 if 'auto_tags_words' not in st.session_state: st.session_state.auto_tags_words = []
 if 'auto_promo_words' not in st.session_state: st.session_state.auto_promo_words = []
@@ -401,9 +399,6 @@ GARBAGE_LATIN_STOPLIST = {
     'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
 }
 
-# ==========================================
-# STOP LISTS (SENSITIVE / GEO UA)
-# ==========================================
 SENSITIVE_STOPLIST = {
     "украина", "украине", "украины", "украинский", "ukraine", "ua",
     "киев", "киеве", "киева", "kyiv", "kiev",
@@ -544,7 +539,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
 
     status = "process"
     attempts = 0
-    # FIX: Увеличиваем время ожидания до 10 минут (120 попыток по 5 сек)
+    # Timeout increased to 10 minutes (120 * 5s)
     while status == "process" and attempts < 120:
         time.sleep(5); attempts += 1
         try:
@@ -602,111 +597,72 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def parse_page(url, settings):
-    # Импортируем st внутри, чтобы точно вывести ошибку на экран
     import streamlit as st
-    
-    # 1. Пытаемся использовать curl_cffi (для обхода защиты)
     try:
         from curl_cffi import requests as cffi_requests
-        
-        # Настройки для маскировки
         headers = {
             'User-Agent': settings['ua'],
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         }
-        
-        # Пытаемся скачать через curl_cffi
         r = cffi_requests.get(url, headers=headers, timeout=20, impersonate="chrome110")
-        
-        # Если снова 403, пробуем старый метод ниже
-        if r.status_code == 403:
-            raise Exception("CURL_CFFI получил 403 Forbidden")
-            
+        if r.status_code == 403: raise Exception("CURL_CFFI получил 403 Forbidden")
         if r.status_code != 200:
             st.warning(f"⚠️ Статус ответа (curl_cffi): {r.status_code}")
             return None
-            
-        # Если все ок, берем контент
         content = r.content
         encoding = r.encoding if r.encoding else 'utf-8'
-
-    # 2. Если curl_cffi не установлен ИЛИ выдал ошибку — используем обычный requests
     except Exception as e_cffi:
-        # st.warning(f"Debug: curl_cffi не сработал ({e_cffi}), пробую обычный метод...") 
-        
         try:
             import requests
             from requests.adapters import HTTPAdapter
             from urllib3.util.retry import Retry
             import urllib3
-            
-            # Отключаем предупреждения о небезопасном SSL
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            
             session = requests.Session()
             retry = Retry(connect=3, read=3, redirect=5, backoff_factor=0.5)
             adapter = HTTPAdapter(max_retries=retry)
             session.mount('http://', adapter)
             session.mount('https://', adapter)
-            
             headers = {'User-Agent': settings['ua']}
-            
-            # verify=False — Ключевой момент, отключает проверку сертификатов
             r = session.get(url, headers=headers, timeout=20, verify=False)
-            
             if r.status_code != 200:
                 st.error(f"❌ Ошибка (Standard): Сервер вернул код {r.status_code}")
                 return None
-                
             content = r.content
             encoding = r.apparent_encoding
-            
         except Exception as e_final:
-            # ВОТ ЗДЕСЬ мы увидим реальную причину
             st.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА СКАЧИВАНИЯ:\n{e_final}")
             return None
 
-    # 3. Парсинг (общий для обоих методов)
     try:
         soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
-        
         tags_to_remove = []
         if settings['noindex']: tags_to_remove.append('noindex')
-        
         for c in soup.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
         if tags_to_remove:
             for t in soup.find_all(tags_to_remove): t.decompose()
         for script in soup(["script", "style", "svg", "path", "noscript"]):
             script.decompose()
-
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
-        
         extra_text = []
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'): extra_text.append(meta_desc['content'])
-        
         if settings['alt_title']:
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
-            
         body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
-        
         if not body_text: 
             st.warning("⚠️ Страница скачалась, но текст не найден (пустой body).")
             return None
-            
         return {'url': url, 'domain': urlparse(url).netloc, 'body_text': body_text, 'anchor_text': anchor_text}
-        
     except Exception as e_parse:
         st.error(f"❌ Ошибка при обработке HTML: {e_parse}")
         return None
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     all_forms_map = defaultdict(set)
-    
-    # 1. Обработка вашего сайта
     if not my_data or not my_data.get('body_text'): 
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
         my_clean_domain = "local"
@@ -715,10 +671,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
         my_len = len(my_lemmas)
         for k, v in my_forms.items(): all_forms_map[k].update(v)
-        # Получаем чистый домен для сравнения (без www)
         my_clean_domain = my_data['domain'].lower().replace('www.', '').split(':')[0]
 
-    # 2. Обработка конкурентов (comp_data_full - это уже обрезанный топ-10 или 20)
     comp_docs = []
     for p in comp_data_full:
         if not p.get('body_text'): continue
@@ -730,7 +684,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     if not comp_docs:
         return { "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}, "missing_semantics_high": [], "missing_semantics_low": [] }
 
-    # ... [Блок расчетов TF-IDF и BM25 оставляем без изменений] ...
     c_lens = [len(d['body']) for d in comp_docs]
     avg_dl = np.mean(c_lens) if c_lens else 1
     median_len = np.median(c_lens) if c_lens else 0
@@ -817,7 +770,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     my_depth_score_final = min(100, int(round((my_bm25 / spam_limit) * 100)))
     my_width_score_final = min(100, calculate_width_score_val(my_full_lemmas_set))
 
-    # [Сборка таблицы Глубина/Гибрид - ОСТАВЛЯЕМ БЕЗ ИЗМЕНЕНИЙ]
     table_depth, table_hybrid = [], []
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
@@ -856,21 +808,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "TF-IDF у вас": round(weight_hybrid, 4), "Сайтов": df, "Переспам": max_total
         })
 
-    # --- [ИСПРАВЛЕННАЯ ЛОГИКА ТАБЛИЦЫ РЕЛЕВАНТНОСТИ] ---
     table_rel = []
-    
-    # Флаг: был ли наш сайт в числе отобранных топ-N конкурентов
     my_site_found_in_selection = False
-    
-    # 1. Добавляем конкурентов из списка original_results (это уже обрезанные топ-10 или 20)
     for item in original_results:
         url = item['url']
-        if url not in competitor_scores_map:
-            continue
-            
+        if url not in competitor_scores_map: continue
         row_domain = urlparse(url).netloc.lower().replace('www.', '')
-        
-        # Проверяем, это наш сайт?
         is_my_site = False
         if my_clean_domain and my_clean_domain != "local" and my_clean_domain in row_domain:
             is_my_site = True
@@ -878,29 +821,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             display_name = f"{urlparse(url).netloc} (Вы)"
         else:
             display_name = urlparse(url).netloc
-
         scores = competitor_scores_map[url]
-        table_rel.append({ 
-            "Домен": display_name, 
-            "Позиция": item['pos'], 
-            "Ширина (балл)": scores['width_final'], 
-            "Глубина (балл)": scores['depth_final'] 
-        })
+        table_rel.append({ "Домен": display_name, "Позиция": item['pos'], "Ширина (балл)": scores['width_final'], "Глубина (балл)": scores['depth_final'] })
         
-    # 2. Если нас НЕТ в этом списке (выпали из топ-10/20) - добавляем отдельной строкой
     if not my_site_found_in_selection:
-        # Пытаемся взять реальную позицию, если Арсенкин её находил (но она была дальше N)
-        # Если не находил - ставим 0
         pos_to_show = my_serp_pos if my_serp_pos > 0 else 0
-        
         my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
-        
-        table_rel.append({ 
-            "Домен": my_label, 
-            "Позиция": pos_to_show, 
-            "Ширина (балл)": my_width_score_final, 
-            "Глубина (балл)": my_depth_score_final 
-        })
+        table_rel.append({ "Домен": my_label, "Позиция": pos_to_show, "Ширина (балл)": my_width_score_final, "Глубина (балл)": my_depth_score_final })
 
     return { 
         "depth": pd.DataFrame(table_depth), 
@@ -1001,133 +928,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     st.markdown("---")
 
 # ==========================================
-# PERPLEXITY GEN
-# ==========================================
-STATIC_DATA_GEN = {
-    'IP_PROP4817': "Условия поставки",
-    'IP_PROP4818': "Оперативные отгрузки в регионы точно в срок",
-    'IP_PROP4819': """<p>Надежная и быстрая доставка заказа в любую точку страны: "Стальметурал" отгружает товар 24 часа в сутки, 7 дней в неделю. Более 4 000 отгрузок в год. При оформлении заказа менеджер предложит вам оптимальный логистический маршрут.</p>""",
-    'IP_PROP4820': """<p>Наши изделия успешно применяются на некоторых предприятиях Урала, центрального региона, Поволжья, Сибири. Партнеры по логистике предложат доставить заказ самым удобным способом – автомобильным, железнодорожным, даже авиационным транспортом. Для вас разработают транспортную схему под удобный способ получения. Погрузка выполняется полностью с соблюдением особенностей техники безопасности.</p><div class="h4"><h4>Самовывоз</h4></div><p>Если обычно соглашаетесь самостоятельно забрать товар или даете это право уполномоченным, адрес и время работы склада в своем городе уточняйте у менеджера.</p><div class="h4"><h4>Грузовой транспорт компании</h4></div><p>Отправим прокат на ваш объект собственным автопарком. Получение в упаковке для безопасной транспортировки, а именно на деревянном поддоне.</p><div class="h4"><h4>Сотрудничаем с ТК</h4></div><p>Доставка с помощью транспортной компании по России и СНГ. Окончательная цена может измениться, так как ссылается на прайс-лист, который предоставляет контрагент, однако, сравним стоимость логистических служб и выберем лучшую.</p>""",
-    'IP_PROP4821': "Оплата и реквизиты для постоянных клиентов:",
-    'IP_PROP4822': """<p>Наша компания готова принять любые комфортные виды оплаты для юридических и физических лиц: по счету, наличная и безналичная, наложенный платеж, также возможны предоплата и отсрочка платежа.</p>""",
-    'IP_PROP4823': """<div class="h4"><h3>Примеры возможной оплаты</h3></div><div class="an-col-12"><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">С помощью менеджера в центрах продаж</span></p></li></ul><p>Важно! Цена не является публичной офертой. Приходите в наш офис, чтобы уточнить поступление, получить ответы на почти любой вопрос, согласовать возврат, счет, рассчитать логистику.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">На расчетный счет</span></p></li></ul><p>По внутреннему счету в отделении банка или путем перечисления средств через личный кабинет (транзакции защищены, скорость зависит от отделения). Для права подтверждения нужно показать согласие на платежное поручение с отметкой банка.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">Наличными или банковской картой при получении</span></p></li></ul><p><span style="font-weight: 400;">Поможем с оплатой: объем имеет значение. Крупным покупателям – деньги можно перевести после приемки товара.</span></p><p>Менеджеры предоставят необходимую информацию.</p><p>Заказывайте через прайс-лист:</p><p><a class="btn btn-blue" href="/catalog/">Каталог (магазин-меню):</a></p></div></div><br>""",
-    'IP_PROP4824': "Описание, статьи, поиск, отзывы, новости, акции, журнал, info:",
-    'IP_PROP4825': "Можем металлизировать, оцинковать, никелировать, проволочь",
-    'IP_PROP4826': "Современный практический подход",
-    'IP_PROP4834': "Надежность без примесей",
-    'IP_PROP4835': "Популярный поставщик",
-    'IP_PROP4836': "Качество и характер",
-    'IP_PROP4837': "Порядок в ГОСТах"
-}
-
-def get_page_data_for_gen(url):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.encoding = 'utf-8'
-    except Exception as e: return None, None, f"Ошибка соединения: {e}"
-    if response.status_code != 200: return None, None, f"Ошибка статуса: {response.status_code}"
-    soup = BeautifulSoup(response.text, 'html.parser')
-    description_div = soup.find('div', class_='description-container')
-    base_text = description_div.get_text(separator="\n", strip=True) if description_div else soup.body.get_text(separator="\n", strip=True)[:5000]
-    tags_container = soup.find(class_='popular-tags-inner')
-    tags_data = []
-    if tags_container:
-        links = tags_container.find_all('a')
-        for link in links:
-            tag_url = urljoin(url, link.get('href')) if link.get('href') else None
-            if tag_url: tags_data.append({'name': link.get_text(strip=True), 'url': tag_url})
-    return base_text, tags_data, None
-
-def generate_five_blocks(client, base_text, tag_name, seo_words=None):
-    if not base_text: return ["Error: No base text"] * 5
-    
-    # 1. Формируем ГЛОБАЛЬНУЮ инструкцию по SEO (для всех блоков)
-    seo_instruction_block = ""
-    if seo_words and len(seo_words) > 0:
-        keywords_str = ", ".join(seo_words)
-        seo_instruction_block = f"""
-    --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
-    Тебе нужно внедрить в текст следующие слова: {keywords_str}
-    
-    ПРАВИЛА ВНЕДРЕНИЯ:
-    1. РАСПРЕДЕЛЕНИЕ: Не пихай все слова в один блок! Раскидай их по всем 5 блокам там, где они подходят по смыслу (коммерческие слова — в 1 блок, технические — в 2-5 блоки).
-    2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b> осуществляется..."
-    3. ЕСТЕСТВЕННОСТЬ (ОЧЕНЬ ВАЖНО): 
-       - Склоняй слова как угодно. Меняй окончания, числа, падежи.
-       - Текст должен быть связным и грамотным. Не вставляй слова просто списком.
-    4. КОНТЕКСТ И ГЕОГРАФИЯ:
-       - Если слово выглядит как часть названия (например, "Дон"), восстанови полное название (пиши "Ростов-на-Дону", а не просто "Дон").
-       - Если слово "СПБ" — пиши "Санкт-Петербург".
-       - Внедряй слова так, чтобы читатель не заметил подвоха.
-    -------------------------------------------
-        """
-
-    # 2. Системная роль
-    system_instruction = (
-        "Ты — профессиональный технический копирайтер и верстальщик. "
-        "Твоя цель — писать полезный, естественный текст для людей, но с соблюдением требований SEO. "
-        "Ты выдаешь ТОЛЬКО HTML-код. "
-        "СТРОГИЙ ЗАПРЕТ: Не используй упоминания Украины, украинских городов (Киев, Львов и др.), "
-        "политические темы, валюту гривну. Контент должен быть ориентирован строго на рынок РФ/СНГ (без UA)."
-    )
-
-    # 3. Пользовательский промт
-    user_prompt = f"""
-    ИСХОДНЫЕ ДАННЫЕ:
-    Название товара: "{tag_name}"
-    Базовый текст (фактура): \"\"\"{base_text[:3500]}\"\"\"
-    
-    {seo_instruction_block}
-    
-    ЗАДАЧА:
-    Напиши 5 (пять) HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||
-    
-    ТРЕБОВАНИЯ К БЛОКАМ:
-    
-    --- БЛОК 1 (Вводный) ---
-    - Заголовок строго: <h2>{tag_name}</h2>
-    - Описание товара, назначение, кратко условия покупки.
-    
-    --- БЛОКИ 2, 3, 4, 5 (Технические детали) ---
-    - Заголовки уровня <h3> (Примеры: Характеристики, Сферы применения, Производство, Состав).
-    - Используй данные из "Базового текста". Если данных мало — пиши общие характеристики для этого типа металла.
-    - Используй списки <ul> и абзацы <p>.
-    
-    ФИНАЛЬНЫЕ УСЛОВИЯ:
-    - Никаких вводных слов типа "Вот ваш код".
-    - Никакого Markdown (```).
-    - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
-    """
-
-    # Цикл повторных попыток
-    for attempt in range(3):
-        try:
-            response = client.chat.completions.create(
-                model="sonar-pro", 
-                messages=[
-                    {"role": "system", "content": system_instruction}, 
-                    {"role": "user", "content": user_prompt}
-                ], 
-                temperature=0.7 # Чуть повысили температуру для большей "человечности" языка
-            )
-            content = response.choices[0].message.content
-            
-            # Пост-обработка
-            content = re.sub(r'\[\d+\]', '', content)
-            content = content.replace("```html", "").replace("```", "").strip()
-            
-            blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
-            
-            while len(blocks) < 5: 
-                blocks.append("")
-                
-            return blocks[:5]
-        except Exception as e:
-            if attempt == 2: return [f"API Error: {str(e)}"] * 5
-            time.sleep(2)
-
-# ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
 tab_seo_main, tab_wholesale_main = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор"])
@@ -1139,8 +939,6 @@ with tab_seo_main:
     col_main, col_sidebar = st.columns([65, 35])
     with col_main:
         st.title("SEO Анализатор")
-        
-        # Сброс кэша для словарей
         if st.button("🧹 Обновить словари (Кэш)", key="clear_cache_btn"):
             st.cache_data.clear()
             st.rerun()
@@ -1186,10 +984,7 @@ with tab_seo_main:
         st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
         st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
         st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
-        
-        # ИЗМЕНЕНИЕ: Убрали 30, оставили только 10 и 20
         st.selectbox("Кол-во конкурентов для анализа", [10, 20], index=0, key="settings_top_n")
-        
         st.checkbox("Исключать <noindex>", True, key="settings_noindex")
         st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
         st.checkbox("Учитывать числа", False, key="settings_numbers")
@@ -1198,8 +993,6 @@ with tab_seo_main:
 
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
-        
-        # Настройки парсинга
         settings = {
             'noindex': st.session_state.settings_noindex, 
             'alt_title': st.session_state.settings_alt, 
@@ -1212,7 +1005,6 @@ with tab_seo_main:
         my_data, my_domain, my_serp_pos = None, "", 0
         current_input_type = st.session_state.get("my_page_source_radio")
         
-        # 1. Обработка ВАШЕЙ страницы
         if current_input_type == "Релевантная страница на вашем сайте":
             with st.spinner("Скачивание вашей страницы..."):
                 my_data = parse_page(st.session_state.my_url_input, settings)
@@ -1221,84 +1013,55 @@ with tab_seo_main:
         elif current_input_type == "Исходный код страницы или текст":
             my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
             
-        # 2. Сбор КАНДИДАТОВ
         candidates_pool = []
-        
         current_source_val = st.session_state.get("competitor_source_radio")
-        needed_count = st.session_state.settings_top_n  # 10 или 20
+        needed_count = st.session_state.settings_top_n
         
-        # --- ЛОГИКА API ---
         if "API" in current_source_val:
             if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
-            # ЗАПРАШИВАЕМ 30 (Максимум Арсенкина)
             with st.spinner(f"API Arsenkin (Запрос Топ-30)..."):
                 raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
-                
                 if not raw_top: st.stop()
-                
-                # Список исключений
                 excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
                 if st.session_state.settings_agg: 
                     excl.extend(["avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex", "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua", "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis"])
 
                 for res in raw_top:
                     dom = urlparse(res['url']).netloc.lower()
-                    
-                    # Если это НАШ сайт - запоминаем позицию.
-                    # В пул кандидатов добавляем тоже, фильтровать "себя" будем в таблице релевантности (чтобы подсветить)
                     if my_domain and (my_domain in dom or dom in my_domain):
                         if my_serp_pos == 0 or res['pos'] < my_serp_pos: 
                             my_serp_pos = res['pos']
-                    
-                    # Фильтр мусорных доменов
                     is_garbage = False
                     for x in excl:
                         if x.lower() in dom:
                             is_garbage = True
                             break
-                    if is_garbage: 
-                        continue
-                        
+                    if is_garbage: continue
                     candidates_pool.append(res)
-                
-        # --- ЛОГИКА РУЧНОГО СПИСКА ---
         else:
             raw_input_urls = st.session_state.get("persistent_urls", "")
             candidates_pool = [{'url': u.strip(), 'pos': i+1} for i, u in enumerate(raw_input_urls.split('\n')) if u.strip()]
 
         if not candidates_pool: st.error("После фильтрации не осталось кандидатов."); st.stop()
         
-        # 3. СКАЧИВАНИЕ (Пытаемся скачать ВСЕХ кандидатов из пула)
         comp_data_valid = []
-        
         with st.status(f"🕵️ Глубокое сканирование (Кандидатов: {len(candidates_pool)})...", expanded=True) as status:
             with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
                 futures = {executor.submit(parse_page, item['url'], settings): item for item in candidates_pool}
-                
                 done_count = 0
                 for f in concurrent.futures.as_completed(futures):
                     original_item = futures[f]
                     try:
                         res = f.result()
                         if res:
-                            # Сохраняем позицию из выдачи, чтобы потом отсортировать
                             res['pos'] = original_item['pos']
                             comp_data_valid.append(res)
-                    except:
-                        pass
-                    
+                    except: pass
                     done_count += 1
                     status.update(label=f"Обработано: {done_count}/{len(candidates_pool)} | Успешно скачано: {len(comp_data_valid)}")
 
-            # 4. ФИНАЛЬНЫЙ ОТБОР
-            # Сортируем успешные по позиции в выдаче (от 1 до ...)
             comp_data_valid.sort(key=lambda x: x['pos'])
-            
-            # Берем ровно столько, сколько просил пользователь (10 или 20)
             final_competitors_data = comp_data_valid[:needed_count]
-            
-            # Формируем список URL-ов для отображения в text area
-            # И этот же список передаем в calculate_metrics как "original_results"
             final_targets_list = [{'url': d['url'], 'pos': d['pos']} for d in final_competitors_data]
             st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_competitors_data])
 
@@ -1307,7 +1070,6 @@ with tab_seo_main:
             else:
                 st.success(f"✅ Анализ выполнен по Топ-{len(final_competitors_data)} конкурентам.")
 
-        # 5. РАСЧЕТ МЕТРИК
         with st.spinner("Расчет метрик..."):
             st.session_state.analysis_results = calculate_metrics(final_competitors_data, my_data, settings, my_serp_pos, final_targets_list)
             st.session_state.analysis_done = True
@@ -1319,6 +1081,8 @@ with tab_seo_main:
             else:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
+                
+                # 1. Сохраняем ТЕКУЩИЕ (рабочие) списки
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
@@ -1326,6 +1090,14 @@ with tab_seo_main:
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
                 st.session_state.categorized_sensitive = categorized['sensitive']
+
+                # 2. !!! ВАЖНО: Сохраняем ОРИГИНАЛЫ (для восстановления при очистке стоп-листа)
+                st.session_state.orig_products = categorized['products']
+                st.session_state.orig_services = categorized['services']
+                st.session_state.orig_commercial = categorized['commercial']
+                st.session_state.orig_geo = categorized['geo']
+                st.session_state.orig_dimensions = categorized['dimensions']
+                st.session_state.orig_general = categorized['general']
 
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
@@ -1347,96 +1119,94 @@ with tab_seo_main:
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-        # --- СТИЛИ ДЛЯ КРАСИВЫХ ТЕГОВ ---
+        # --- СТИЛИ ДЛЯ КОМПАКТНОСТИ И КРАСОТЫ ---
         st.markdown("""
         <style>
-            .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+            div[data-testid="stExpander"] div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
+            .tag-container { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
             .tag-badge {
-                padding: 4px 10px;
-                border-radius: 12px;
-                font-size: 13px;
+                padding: 2px 8px;
+                border-radius: 6px;
+                font-size: 12px;
                 font-weight: 500;
                 display: inline-block;
-                margin-bottom: 4px;
+                margin-bottom: 2px;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
-            .tag-products { background-color: #E3F2FD; color: #1565C0; border: 1px solid #BBDEFB; }
+            .tag-products { background-color: #E3F2FD; color: #1565C0; border: 1px solid #90CAF9; }
             .tag-services { background-color: #FFEBEE; color: #C62828; border: 1px solid #FFCDD2; }
-            .tag-commercial { background-color: #FFF8E1; color: #F57F17; border: 1px solid #FFECB3; }
-            .tag-geo { background-color: #E8F5E9; color: #2E7D32; border: 1px solid #C8E6C9; }
-            .tag-specs { background-color: #F3E5F5; color: #7B1FA2; border: 1px solid #E1BEE7; }
+            .tag-commercial { background-color: #FFF8E1; color: #F57F17; border: 1px solid #FFE082; }
+            .tag-geo { background-color: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
+            .tag-specs { background-color: #F3E5F5; color: #7B1FA2; border: 1px solid #CE93D8; }
             .tag-general { background-color: #F5F5F5; color: #616161; border: 1px solid #E0E0E0; }
-            .category-header { font-size: 14px; font-weight: 700; margin-bottom: 5px; color: #374151; }
+            .category-label { font-size: 13px; font-weight: 700; color: #555; margin-bottom: 2px; display: block; }
         </style>
         """, unsafe_allow_html=True)
 
-        def render_tags(label, words, css_class):
+        def render_tags_compact(label, words, css_class):
             if not words: return
-            html = f"<div class='category-header'>{label} ({len(words)})</div><div class='tag-container'>"
+            st.markdown(f"<span class='category-label'>{label} ({len(words)})</span>", unsafe_allow_html=True)
+            html = "<div class='tag-container'>"
             for w in words:
                 html += f"<span class='tag-badge {css_class}'>{w}</span>"
             html += "</div>"
             st.markdown(html, unsafe_allow_html=True)
 
-        # --- НОВЫЙ ИНТЕРФЕЙС ГРУППИРОВКИ ---
         with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
-            
-            col_content, col_filter = st.columns([3, 1], gap="medium")
-            
-            # --- ЛЕВАЯ КОЛОНКА ---
-            with col_content:
-                st.caption("✅ Активная семантика (пойдет в генерацию)")
-                has_content = False
-                
-                if st.session_state.categorized_products:
-                    render_tags("🧱 Товары", st.session_state.categorized_products, "tag-products")
-                    has_content = True
-                    
-                if st.session_state.categorized_services:
-                    render_tags("🛠️ Услуги", st.session_state.categorized_services, "tag-services")
-                    has_content = True
-                
-                c_sub1, c_sub2 = st.columns(2)
-                with c_sub1:
-                    render_tags("🌍 Гео", st.session_state.categorized_geo, "tag-geo")
-                    render_tags("💰 Коммерция", st.session_state.categorized_commercial, "tag-commercial")
-                with c_sub2:
-                    render_tags("📏 Размеры/ГОСТ", st.session_state.categorized_dimensions, "tag-specs")
-                    render_tags("📂 Общие", st.session_state.categorized_general, "tag-general")
-                    
-                if not has_content and not st.session_state.categorized_general:
-                    st.info("Семантика не найдена или всё ушло в стоп-слова.")
+            c_left, c_right = st.columns([2.5, 1], gap="small")
 
-            # --- ПРАВАЯ КОЛОНКА: СТОП-СЛОВА ---
-            with col_filter:
-                sens_words = st.session_state.get('categorized_sensitive', [])
-                sens_str = "\n".join(sens_words)
+            with c_left:
+                st.caption("✅ Активная семантика")
                 
-                st.markdown(f"**⛔ Стоп-слова ({len(sens_words)})**", help="Слова здесь исключаются отовсюду")
+                if not st.session_state.get('categorized_products') and not st.session_state.get('orig_products'):
+                    st.info("Нет данных. Запустите анализ.")
+                else:
+                    if st.session_state.categorized_products:
+                        render_tags_compact("🧱 Товары", st.session_state.categorized_products, "tag-products")
+                    
+                    if st.session_state.categorized_services:
+                        render_tags_compact("🛠️ Услуги", st.session_state.categorized_services, "tag-services")
+
+                    cc1, cc2 = st.columns(2)
+                    with cc1:
+                        render_tags_compact("🌍 Гео", st.session_state.categorized_geo, "tag-geo")
+                        render_tags_compact("💰 Коммерция", st.session_state.categorized_commercial, "tag-commercial")
+                    with cc2:
+                        render_tags_compact("📏 Размеры/ГОСТ", st.session_state.categorized_dimensions, "tag-specs")
+                        render_tags_compact("📂 Общие", st.session_state.categorized_general, "tag-general")
+
+            with c_right:
+                sens_words = st.session_state.get('categorized_sensitive', [])
+                sens_str_display = "\n".join(sens_words)
+                
+                st.markdown(f"**⛔ Стоп-слова ({len(sens_words)})**")
                 
                 new_sens_str = st.text_area(
-                    "Редактор фильтра",
-                    value=sens_str,
-                    height=300, 
-                    key="sensitive_words_editor_unique", 
+                    "stop_words_hidden_label",
+                    value=sens_str_display,
+                    height=150, 
+                    key="sensitive_words_editor_final", 
                     label_visibility="collapsed",
-                    placeholder="Вставьте слова для исключения..."
+                    placeholder="Вставьте слова для исключения (каждое с новой строки)..."
                 )
                 
-                if st.button("♻️ Очистить и обновить", type="primary", use_container_width=True):
-                    raw_sens = st.session_state.get("sensitive_words_editor_unique", "")
-                    current_sensitive_set = set([w.strip().lower() for w in raw_sens.split('\n') if w.strip()])
+                if st.button("🔄 Применить фильтр", type="primary", use_container_width=True):
+                    raw_input = st.session_state.get("sensitive_words_editor_final", "")
+                    current_sensitive_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
                     st.session_state.categorized_sensitive = sorted(list(current_sensitive_set))
                     
-                    def clean_category_list(original_list, sensitive_set):
-                        return [w for w in original_list if w.lower() not in sensitive_set]
+                    def restore_and_filter(orig_list_key, sensitive_set):
+                        original = st.session_state.get(orig_list_key, [])
+                        if not original: return []
+                        return [w for w in original if w.lower() not in sensitive_set]
 
-                    st.session_state.categorized_products = clean_category_list(st.session_state.categorized_products, current_sensitive_set)
-                    st.session_state.categorized_services = clean_category_list(st.session_state.categorized_services, current_sensitive_set)
-                    st.session_state.categorized_commercial = clean_category_list(st.session_state.categorized_commercial, current_sensitive_set)
-                    st.session_state.categorized_geo = clean_category_list(st.session_state.categorized_geo, current_sensitive_set)
-                    st.session_state.categorized_general = clean_category_list(st.session_state.categorized_general, current_sensitive_set)
+                    st.session_state.categorized_products = restore_and_filter('orig_products', current_sensitive_set)
+                    st.session_state.categorized_services = restore_and_filter('orig_services', current_sensitive_set)
+                    st.session_state.categorized_commercial = restore_and_filter('orig_commercial', current_sensitive_set)
+                    st.session_state.categorized_geo = restore_and_filter('orig_geo', current_sensitive_set)
+                    st.session_state.categorized_dimensions = restore_and_filter('orig_dimensions', current_sensitive_set)
+                    st.session_state.categorized_general = restore_and_filter('orig_general', current_sensitive_set)
                     
-                    # Обновляем для второй вкладки
                     all_prods = st.session_state.categorized_products
                     count_prods = len(all_prods)
                     if count_prods < 20:
@@ -1450,7 +1220,7 @@ with tab_seo_main:
                     st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
                     st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
 
-                    st.toast("✅ Списки очищены и обновлены!", icon="🧹")
+                    st.success("Списки обновлены!")
                     time.sleep(0.5)
                     st.rerun()
 
@@ -1470,9 +1240,6 @@ with tab_seo_main:
 with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
-    # ==========================================
-    # 0. СБОР И РАСПРЕДЕЛЕНИЕ СЕМАНТИКИ
-    # ==========================================
     cat_products = st.session_state.get('categorized_products', [])
     cat_services = st.session_state.get('categorized_services', [])
     structure_keywords = cat_products + cat_services
@@ -1515,9 +1282,6 @@ with tab_wholesale_main:
     text_context_list = cat_commercial + cat_general + cat_geo
     text_context_str = ", ".join(text_context_list)
 
-    # ==========================================
-    # 1. ВВОДНЫЕ ДАННЫЕ
-    # ==========================================
     with st.container(border=True):
         st.subheader("1. Источник и Доступы")
         col_top_1, col_top_2 = st.columns([3, 1])
@@ -1538,9 +1302,6 @@ with tab_wholesale_main:
         if count_struct > 0:
             st.info(f"📊 **SEO-данные:** Структура ({count_struct} сл.), Техничка ({len(cat_dimensions)} сл.), Текст ({len(text_context_list)} сл.).")
 
-    # ==========================================
-    # 2. ВЫБОР МОДУЛЕЙ
-    # ==========================================
     st.subheader("2. Какие блоки генерируем?")
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
     with col_ch1: use_text = st.checkbox("🤖 AI Тексты")
@@ -1549,9 +1310,6 @@ with tab_wholesale_main:
     with col_ch4: use_promo = st.checkbox("🔥 Промо")
     with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар")
 
-    # ==========================================
-    # 3. НАСТРОЙКИ МОДУЛЕЙ
-    # ==========================================
     global_tags_list = []
     global_promo_list = []
     global_sidebar_list = []
@@ -1646,9 +1404,6 @@ with tab_wholesale_main:
 
     st.markdown("---")
     
-# ==========================================
-    # 4. ЗАПУСК
-    # ==========================================
     ready_to_go = True
     if use_manual_html:
         if not manual_html_source: ready_to_go = False
