@@ -1132,9 +1132,6 @@ with tab_seo_main:
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-        # --- СТИЛИ ДЛЯ КОМПАКТНОСТИ И КРАСОТЫ ---
-# --- СТИЛИ ---
-# --- СТИЛИ (ОБНОВЛЕННЫЕ - КРУПНЫЙ РАЗМЕР) ---
 # --- СТИЛИ ---
     st.markdown("""
     <style>
@@ -1168,7 +1165,6 @@ with tab_seo_main:
     """, unsafe_allow_html=True)
 
     def render_clean_block(title, icon, words_list):
-        # Удаляем дубликаты для отображения
         unique_words = sorted(list(set(words_list))) if words_list else []
         count = len(unique_words)
         content_html = ", ".join(unique_words) if count > 0 else "<span class='cat-empty'>Нет данных</span>"
@@ -1204,8 +1200,13 @@ with tab_seo_main:
             # Блок стоп-слов
             cs1, cs2 = st.columns([1, 3])
             
-            # Берем значение напрямую из сессии, куда мы его записали при анализе
-            current_text_value = st.session_state.get('sensitive_words_input_final', "")
+            # 1. Инициализация ключа (чтобы не было ошибки при первом запуске)
+            if 'sensitive_words_input_final' not in st.session_state:
+                current_list = st.session_state.get('categorized_sensitive', [])
+                st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
+            
+            # Получаем актуальное значение для подсчета кол-ва (для отображения слева)
+            current_text_value = st.session_state['sensitive_words_input_final']
             
             with cs1:
                 count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
@@ -1214,28 +1215,26 @@ with tab_seo_main:
                 st.caption("Эти слова автоматически удалены. Удалите слово отсюда и нажмите 'Обновить', чтобы вернуть его.")
             
             with cs2:
+                # ВАЖНО: Убрали аргумент value=... , оставили только key
                 new_sens_str = st.text_area(
                     "hidden_label",
-                    value=current_text_value,
                     height=100,
-                    key="sensitive_words_input_final", # Этот ключ связывает поле с переменной
+                    key="sensitive_words_input_final", # Виджет сам возьмет значение из session_state
                     label_visibility="collapsed",
                     placeholder="Слова для исключения..."
                 )
 
                 if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                    # 1. Получаем список из поля ввода
+                    # 1. Получаем список из session_state (куда пишет виджет)
                     raw_input = st.session_state.get("sensitive_words_input_final", "")
                     new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
                     
                     # 2. Сохраняем список
                     st.session_state.categorized_sensitive = sorted(list(new_stop_set))
                     
-                    # 3. ФИЛЬТРАЦИЯ: Берем ОРИГИНАЛЫ (где есть все слова) и вычитаем СТОП-ЛИСТ
+                    # 3. ФИЛЬТРАЦИЯ
                     def apply_filter(orig_list_key, stop_set):
-                        # Получаем оригинал (в котором есть всё)
                         original = st.session_state.get(orig_list_key, [])
-                        # Оставляем только те, которых НЕТ в стоп-листе
                         return [w for w in original if w.lower() not in stop_set]
 
                     st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
@@ -1734,6 +1733,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
