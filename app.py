@@ -200,106 +200,73 @@ def render_clean_block(title, icon, words_list):
 # ==========================================
 @st.cache_data
 def load_lemmatized_dictionaries():
-    base_path = "data"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    base_path = os.path.join(script_dir, "data")
     
-    product_lemmas = set()
-    commercial_lemmas = set()
-    specs_lemmas = set()
-    geo_lemmas = set()
-    services_lemmas = set()
-    sensitive_lemmas = set()
+    # Создаем множества
+    sets = {
+        "products": set(),
+        "commercial": set(),
+        "specs": set(),
+        "geo": set(),
+        "services": set(),
+        "sensitive": set()
+    }
 
-    # 1. ТОВАРЫ
-    path_prod = os.path.join(base_path, "metal_products.json")
-    if os.path.exists(path_prod):
+    # Карта файлов
+    files_map = {
+        "metal_products.json": "products",
+        "commercial_triggers.json": "commercial",
+        "geo_locations.json": "geo",
+        "services_triggers.json": "services",
+        "tech_specs.json": "specs",
+        "SENSITIVE_STOPLIST.json": "sensitive"
+    }
+
+    for filename, set_key in files_map.items():
+        full_path = os.path.join(base_path, filename)
+        if not os.path.exists(full_path):
+            continue
+        
         try:
-            with open(path_prod, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                all_raw_words = []
+            with open(full_path, 'r', encoding='utf-8') as f:
+                data = json.load(f) 
+                
+                words_bucket = []
                 if isinstance(data, dict):
                     for cat_list in data.values():
-                        all_raw_words.extend(cat_list)
+                        words_bucket.extend(cat_list)
                 elif isinstance(data, list):
-                    all_raw_words = data
+                    words_bucket = data
                 
-                for phrase in all_raw_words:
-                    words = str(phrase).lower().split() 
-                    for w in words:
-                        clean_w = re.sub(r'[^a-zа-яё0-9-]', '', w)
-                        if not clean_w: continue
-                        product_lemmas.add(clean_w) 
-                        if morph: product_lemmas.add(morph.parse(clean_w)[0].normal_form)
+                for phrase in words_bucket:
+                    # 1. Чистим, переводим в нижний регистр, меняем Ё на Е
+                    w_clean = str(phrase).lower().strip().replace('ё', 'е')
+                    
+                    if not w_clean: continue
+
+                    sets[set_key].add(w_clean)
+                    
+                    # 2. Добавляем лемму (нормальную форму)
+                    if morph:
+                        normal_form = morph.parse(w_clean)[0].normal_form.replace('ё', 'е')
+                        sets[set_key].add(normal_form)
+                    
+                    # 3. Если фраза из нескольких слов, добавляем каждое слово отдельно
+                    if ' ' in w_clean:
+                        parts = w_clean.split()
+                        for p in parts:
+                            sets[set_key].add(p)
+                            if morph: 
+                                sets[set_key].add(morph.parse(p)[0].normal_form.replace('ё', 'е'))
+
+        except json.JSONDecodeError as e:
+            st.error(f"❌ ОШИБКА В ФАЙЛЕ {filename}!\nСкорее всего, лишняя запятая в конце списка или пропущенная кавычка.\nДетали: {e}")
         except Exception as e:
-            st.error(f"Ошибка в metal_products.json: {e}")
-
-    # 2. КОММЕРЦИЯ
-    path_comm = os.path.join(base_path, "commercial_triggers.json")
-    if os.path.exists(path_comm):
-        try:
-            with open(path_comm, 'r', encoding='utf-8') as f:
-                raw_comm = json.load(f)
-                if isinstance(raw_comm, list):
-                    for w in raw_comm:
-                        w_clean = str(w).lower().strip()
-                        commercial_lemmas.add(w_clean)
-                        if morph: commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
-        except: pass
-
-    # 3. ГЕО
-    path_geo = os.path.join(base_path, "geo_locations.json")
-    if os.path.exists(path_geo):
-        try:
-            with open(path_geo, 'r', encoding='utf-8') as f:
-                raw_geo = json.load(f)
-                for w in raw_geo:
-                    w_clean = str(w).lower().strip()
-                    geo_lemmas.add(w_clean)
-                    if morph: geo_lemmas.add(morph.parse(w_clean)[0].normal_form)
-        except Exception as e:
-            st.error(f"Ошибка в geo_locations.json: {e}")
-
-    # 4. УСЛУГИ
-    path_serv = os.path.join(base_path, "services_triggers.json")
-    if os.path.exists(path_serv):
-        try:
-            with open(path_serv, 'r', encoding='utf-8') as f:
-                raw_serv = json.load(f)
-                if isinstance(raw_serv, list):
-                    for w in raw_serv:
-                        parts = str(w).replace('-', ' ').lower().split()
-                        for part in parts:
-                            services_lemmas.add(part)
-                            if morph: services_lemmas.add(morph.parse(part)[0].normal_form)
-        except Exception as e:
-            st.error(f"Ошибка в services_triggers.json: {e}")
-
-    # 5. ХАРАКТЕРИСТИКИ
-    path_specs = os.path.join(base_path, "tech_specs.json")
-    if os.path.exists(path_specs):
-        try:
-            with open(path_specs, 'r', encoding='utf-8') as f:
-                raw_specs = json.load(f)
-                if isinstance(raw_specs, list):
-                    for w in raw_specs:
-                        w_clean = str(w).lower().strip()
-                        specs_lemmas.add(w_clean)
-                        if morph: specs_lemmas.add(morph.parse(w_clean)[0].normal_form)
-        except Exception as e:
-            st.error(f"Ошибка в tech_specs.json: {e}")
-
-    # 6. SENSITIVE (файл)
-    path_sens = os.path.join(base_path, "SENSITIVE_STOPLIST.json")
-    if os.path.exists(path_sens):
-        try:
-            with open(path_sens, 'r', encoding='utf-8') as f:
-                raw_sens = json.load(f)
-                if isinstance(raw_sens, list):
-                    for w in raw_sens:
-                        sensitive_lemmas.add(str(w).lower().strip())
-        except: pass
+            st.error(f"❌ Ошибка чтения {filename}: {e}")
 
     # Возвращаем 6 наборов
-    return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas, sensitive_lemmas
+    return sets["products"], sets["commercial"], sets["specs"], sets["geo"], sets["services"], sets["sensitive"]
 
 # ==========================================
 # КЛАССИФИКАТОР (УСИЛЕННЫЙ)
@@ -356,7 +323,9 @@ def classify_semantics_with_api(words_list, yandex_key):
         # Пробегаемся по словарю товаров. Если слово из словаря является частью проверяемого слова - ок.
         # Ограничение len > 3 нужно, чтобы не цеплять короткие корни типа "ал"
         for prod in PRODUCTS_SET:
-            if len(prod) > 3 and prod in word_lower:
+            # Если слово в словаре длинное, отрезаем последние буквы
+            check_root = prod[:-1] if len(prod) > 4 else prod
+            if len(check_root) > 3 and check_root in word_lower:
                 categories['products'].add(word_lower)
                 is_product_root = True
                 break
@@ -437,15 +406,14 @@ GARBAGE_LATIN_STOPLIST = {
 # ==========================================
 # STOP LISTS (SENSITIVE / GEO UA)
 # ==========================================
-SENSITIVE_STOPLIST = {
-    "украина", "украине", "украины", "украинский", "ukraine", "ua",
-    "киев", "киеве", "киева", "kyiv", "kiev",
-    "львов", "харьков", "одесса", "днепр", "днепропетровск", "запорожье",
-    "кривой рог", "мариуполь", "винница", "херсон", "полтава", "чернигов",
-    "черкассы", "сумы", "житомир", "ровно", "ивано-франковск", "тернополь",
-    "луцк", "ужгород", "хмельницкий", "черновцы",
-    "гривна", "грн", "uah", "всу", "зсу", "ато", "майдан"
+SENSITIVE_STOPLIST_RAW = {
+    "украина", "ukraine", "ua", "всу", "зсу", "ато",
+    "киев", "львов", "харьков", "одесса", "днепр", "мариуполь",
+    "донецк", "луганск", "днр", "лнр", "донбасс", 
+    "мелитополь", "бердянск", "бахмут", "запорожье", "херсон",
+    "крым", "севастополь", "симферополь"
 }
+SENSITIVE_STOPLIST = {w.lower() for w in SENSITIVE_STOPLIST_RAW}
 
 def check_password():
     if st.session_state.get("authenticated"):
@@ -1325,86 +1293,43 @@ with tab_seo_main:
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-        # --- НОВЫЕ СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
+        # --- СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
         st.markdown("""
         <style>
-            /* Убираем стандартный маркер треугольника у details */
-            details > summary {
-                list-style: none;
-            }
-            details > summary::-webkit-details-marker {
-                display: none;
-            }
-
+            details > summary { list-style: none; }
+            details > summary::-webkit-details-marker { display: none; }
             .details-card {
-                background-color: #f8f9fa;
-                border: 1px solid #e9ecef;
-                border-radius: 8px;
-                margin-bottom: 10px;
-                overflow: hidden; /* Чтобы углы не обрезались */
-                transition: all 0.2s ease;
+                background-color: #f8f9fa; border: 1px solid #e9ecef;
+                border-radius: 8px; margin-bottom: 10px;
+                overflow: hidden; transition: all 0.2s ease;
             }
-            
-            .details-card:hover {
-                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-                border-color: #d1d5db;
-            }
-
+            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
             .card-summary {
-                padding: 12px 15px;
-                cursor: pointer;
-                font-weight: 700;
-                font-size: 15px;
-                color: #111827;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
+                padding: 12px 15px; cursor: pointer; font-weight: 700;
+                font-size: 15px; color: #111827; display: flex;
+                justify-content: space-between; align-items: center;
                 background-color: #ffffff;
             }
-            
-            /* Эффект при наведении на заголовок */
-            .card-summary:hover {
-                background-color: #f3f4f6;
-            }
-
+            .card-summary:hover { background-color: #f3f4f6; }
             .card-content {
-                padding: 15px;
-                border-top: 1px solid #e9ecef;
-                font-size: 14px;
-                color: #374151;
-                line-height: 1.6;
+                padding: 15px; border-top: 1px solid #e9ecef;
+                font-size: 14px; color: #374151; line-height: 1.6;
                 background-color: #fcfcfc;
             }
-
             .count-tag { 
-                background: #e5e7eb; 
-                color: #374151; 
-                padding: 2px 8px; 
-                border-radius: 10px; 
-                font-size: 12px; 
-                font-weight: 600;
-                min-width: 25px;
-                text-align: center;
+                background: #e5e7eb; color: #374151; padding: 2px 8px; 
+                border-radius: 10px; font-size: 12px; font-weight: 600;
+                min-width: 25px; text-align: center;
             }
-            
-            .text-gray { color: #9ca3af; font-style: italic; font-weight: normal;}
-            
-            /* Стрелочка-индикатор */
             .arrow-icon {
-                font-size: 10px;
-                margin-right: 8px;
-                color: #9ca3af;
+                font-size: 10px; margin-right: 8px; color: #9ca3af;
                 transition: transform 0.2s;
             }
-            
-            details[open] .arrow-icon {
-                transform: rotate(90deg);
-                color: #277EFF;
-            }
+            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
         </style>
         """, unsafe_allow_html=True)
 
-        with st.expander("🛒 Семантическое ядро", expanded=True):
+        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
             if not st.session_state.get('orig_products'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
             else:
@@ -1425,39 +1350,33 @@ with tab_seo_main:
                 # Блок стоп-слов
                 cs1, cs2 = st.columns([1, 3])
                 
-                # 1. Инициализация ключа (чтобы не было ошибки при первом запуске)
+                # Инициализация ключа
                 if 'sensitive_words_input_final' not in st.session_state:
                     current_list = st.session_state.get('categorized_sensitive', [])
                     st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
                 
-                # Получаем актуальное значение для подсчета кол-ва (для отображения слева)
                 current_text_value = st.session_state['sensitive_words_input_final']
                 
                 with cs1:
                     count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
                     st.markdown(f"**⛔ Стоп-слова**")
                     st.markdown(f"Исключено: **{count_excluded}**")
-                    st.caption("Эти слова автоматически удалены. Удалите слово отсюда и нажмите 'Обновить', чтобы вернуть его.")
+                    st.caption("Эти слова автоматически удалены.")
                 
                 with cs2:
-                    # ВАЖНО: Убрали аргумент value=... , оставили только key
                     new_sens_str = st.text_area(
-                        "hidden_label",
-                        height=100,
-                        key="sensitive_words_input_final", # Виджет сам возьмет значение из session_state
+                        "hidden_label", height=100,
+                        key="sensitive_words_input_final",
                         label_visibility="collapsed",
                         placeholder="Слова для исключения..."
                     )
 
                     if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                        # 1. Получаем список из session_state (куда пишет виджет)
                         raw_input = st.session_state.get("sensitive_words_input_final", "")
                         new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
                         
-                        # 2. Сохраняем список
                         st.session_state.categorized_sensitive = sorted(list(new_stop_set))
                         
-                        # 3. ФИЛЬТРАЦИЯ
                         def apply_filter(orig_list_key, stop_set):
                             original = st.session_state.get(orig_list_key, [])
                             return [w for w in original if w.lower() not in stop_set]
@@ -1469,7 +1388,7 @@ with tab_seo_main:
                         st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
                         st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
 
-                        # 4. Обновляем вкладку генератора
+                        # Обновляем вкладку генератора
                         all_prods = st.session_state.categorized_products
                         count_prods = len(all_prods)
                         if count_prods < 20:
@@ -1487,18 +1406,18 @@ with tab_seo_main:
                         time.sleep(0.5)
                         st.rerun()
 
-    # --- УПУЩЕННАЯ СЕМАНТИКА (ВНЕ ЭКСПАНДЕРА) ---
-    high = results.get('missing_semantics_high', [])
-    low = results.get('missing_semantics_low', [])
-    if high or low:
-        with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-            if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-            if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+        # --- УПУЩЕННАЯ СЕМАНТИКА ---
+        high = results.get('missing_semantics_high', [])
+        low = results.get('missing_semantics_low', [])
+        if high or low:
+            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
+                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
+                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
-    # --- ТАБЛИЦЫ ---
-    render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-    render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-    render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+        # --- ТАБЛИЦЫ ---
+        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -1628,7 +1547,6 @@ with tab_wholesale_main:
                     key="ai_text_context_editable",
                     help="Эти слова нейросеть постарается внедрить в текст."
                 )
-                # Умное разделение (запятые или переносы)
                 text_context_final_list = [x.strip() for x in re.split(r'[,\n]+', ai_words_input) if x.strip()]
 
         if use_tags:
@@ -1640,7 +1558,6 @@ with tab_wholesale_main:
                     height=100, 
                     key="kws_tags_auto"
                 )
-                # Умное разделение: работает и с запятыми, и с Enter
                 global_tags_list = [x.strip() for x in re.split(r'[,\n]+', kws_input_tags) if x.strip()]
                 
                 if not global_tags_list: st.warning("⚠️ Список пуст!")
@@ -1676,7 +1593,7 @@ with tab_wholesale_main:
                     t_p = st.text_input(f"Тема {i+1}", value=val, key=f"tbl_topic_vert_{i}")
                     table_prompts.append(t_p)
 
-if use_promo:
+        if use_promo:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
                 kws_input_promo = st.text_area(
@@ -1685,7 +1602,6 @@ if use_promo:
                     height=100, 
                     key="kws_promo_auto"
                 )
-                # Умное разделение (Regex split по запятой ИЛИ переносу)
                 global_promo_list = [x.strip() for x in re.split(r'[,\n]+', kws_input_promo) if x.strip()]
 
                 if not global_promo_list: st.warning("⚠️ Список пуст!")
@@ -1703,10 +1619,8 @@ if use_promo:
                         "Возможно вас заинтересует"
                     ]
                     
-                    # 1. Сначала чекбокс (переключатель)
                     use_custom_header = st.checkbox("Ввести свой заголовок", key="cb_custom_header")
                     
-                    # 2. Условие: Если галочка стоит - показываем Input, иначе - Selectbox
                     if use_custom_header:
                         promo_title = st.text_input("Ваш заголовок", value="Смотрите также", key="pr_tit_vert")
                     else:
@@ -1726,7 +1640,7 @@ if use_promo:
                         if up_i: df_db_promo = pd.read_excel(up_i)
                     else: st.error("❌ База картинок не найдена!")
 
-if use_sidebar:
+        if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
                 kws_input_sidebar = st.text_area(
@@ -1752,7 +1666,7 @@ if use_sidebar:
                         if up_s: sidebar_content = up_s.getvalue().decode("utf-8")
                     else: st.error("❌ Файл меню не найден!")
 
-            st.markdown("---")
+    st.markdown("---")
     
     # ==========================================
     # 4. ЗАПУСК
@@ -2057,7 +1971,3 @@ if use_sidebar:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
-
-
-
