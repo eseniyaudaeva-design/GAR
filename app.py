@@ -1083,14 +1083,19 @@ with tab_seo_main:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 
-                # 1. Сохраняем ТЕКУЩИЕ списки
+# 1. Сохраняем ТЕКУЩИЕ (рабочие) списки
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
                 st.session_state.categorized_geo = categorized['geo']
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
+                
+                # Сохраняем список чувствительных слов
                 st.session_state.categorized_sensitive = categorized['sensitive']
+                
+                # !!! ВАЖНАЯ ДОБАВКА !!!
+                # Принудительно заполняем поле ввода найденными стоп-словами
                 st.session_state['sensitive_words_editor_final'] = "\n".join(categorized['sensitive'])
 
                 # 2. !!! ВАЖНО: Сохраняем ОРИГИНАЛЫ (для отката фильтра) !!!
@@ -1740,6 +1745,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
