@@ -1507,10 +1507,12 @@ with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
     # ==========================================
-    # 0. СБОР И РАСПРЕДЕЛЕНИЕ СЕМАНТИКИ
+    # 0. СБОР И РАСПРЕДЕЛЕНИЕ СЕМАНТИКИ (ПОДГОТОВКА ДЕФОЛТНЫХ ЗНАЧЕНИЙ)
     # ==========================================
     cat_products = st.session_state.get('categorized_products', [])
     cat_services = st.session_state.get('categorized_services', [])
+    
+    # 1. Для Тегов и Промо
     structure_keywords = cat_products + cat_services
     count_struct = len(structure_keywords)
 
@@ -1534,22 +1536,27 @@ with tab_wholesale_main:
              tags_list_source = []
              promo_list_source = []
     
+    # Дефолтный текст для сайдбара
     sidebar_default_text = ""
     if count_struct >= 30 and 'auto_tags_words' not in st.session_state:
          part = math.ceil(count_struct / 3)
          sidebar_default_text = "\n".join(structure_keywords[part*2:])
 
+    # Превращаем списки в строки для Text Area
     tags_default_text = "\n".join(tags_list_source)
     promo_default_text = "\n".join(promo_list_source)
 
+    # 2. Для Таблиц (Размеры/ГОСТ)
     cat_dimensions = st.session_state.get('categorized_dimensions', [])
-    tech_context_text = ", ".join(cat_dimensions) if cat_dimensions else ""
+    tech_context_default = ", ".join(cat_dimensions) if cat_dimensions else ""
 
+    # 3. Для AI Текста (Коммерция + Общие + Гео)
     cat_commercial = st.session_state.get('categorized_commercial', [])
     cat_general = st.session_state.get('categorized_general', [])
     cat_geo = st.session_state.get('categorized_geo', [])
-    text_context_list = cat_commercial + cat_general + cat_geo
-    text_context_str = ", ".join(text_context_list)
+    
+    text_context_list_raw = cat_commercial + cat_general + cat_geo
+    text_context_default = ", ".join(text_context_list_raw)
 
     # ==========================================
     # 1. ВВОДНЫЕ ДАННЫЕ
@@ -1613,16 +1620,26 @@ with tab_wholesale_main:
     promo_title = "Рекомендуем"
     sidebar_content = ""
     
+    # Переменные для финальных списков слов (из полей ввода)
+    text_context_final_list = []
+    tech_context_final_str = ""
+    
     if any([use_text, use_tags, use_tables, use_promo, use_sidebar]):
         st.subheader("3. Настройки модулей")
 
         if use_text:
             with st.container(border=True):
                 st.markdown("#### 🤖 1. AI Тексты")
-                if text_context_list:
-                    st.success(f"✅ В текст будут внедрены слова: {text_context_str[:60]}...")
-                else:
-                    st.warning("⚠️ Нет доп. слов для текста (Коммерция/Гео).")
+                # ИЗМЕНЕНИЕ: Текстовое поле вместо st.success
+                ai_words_input = st.text_area(
+                    "Слова для внедрения (Коммерция, Гео, Общие) - через запятую", 
+                    value=text_context_default, 
+                    height=100, 
+                    key="ai_text_context_editable",
+                    help="Эти слова нейросеть постарается внедрить в текст."
+                )
+                # Превращаем обратно в список для генератора
+                text_context_final_list = [x.strip() for x in ai_words_input.split(',') if x.strip()]
 
         if use_tags:
             with st.container(border=True):
@@ -1646,8 +1663,15 @@ with tab_wholesale_main:
         if use_tables:
             with st.container(border=True):
                 st.markdown("#### 🧩 3. Таблицы")
-                if tech_context_text:
-                    st.caption(f"Контекст (Марки/ГОСТ): {tech_context_text[:100]}...")
+                # ИЗМЕНЕНИЕ: Текстовое поле вместо st.caption
+                tech_context_final_str = st.text_area(
+                    "Контекст для таблиц (Марки, ГОСТ, Размеры)", 
+                    value=tech_context_default, 
+                    height=70, 
+                    key="table_context_editable",
+                    help="Эти данные помогут AI составить правильную таблицу."
+                )
+                
                 cnt = st.number_input("Кол-во таблиц", 1, 5, 2, key="num_tbl_vert")
                 defaults = ["Характеристики", "Размеры", "Хим. состав"]
                 for i in range(cnt):
@@ -1918,7 +1942,8 @@ with tab_wholesale_main:
             # --- AI TEXT ---
             if use_text and client:
                 try:
-                    blocks = generate_five_blocks(client, f"Контент для {page['name']}", page['name'], seo_words=text_context_list)
+                    # ИСПОЛЬЗУЕМ НОВЫЙ СПИСОК СЛОВ (text_context_final_list)
+                    blocks = generate_five_blocks(client, f"Контент для {page['name']}", page['name'], seo_words=text_context_final_list)
                     row_data['Text_Block_1'] = blocks[0]
                     row_data['Text_Block_2'] = blocks[1]
                     row_data['Text_Block_3'] = blocks[2]
@@ -1950,8 +1975,9 @@ with tab_wholesale_main:
                 for t_i, t_topic in enumerate(table_prompts):
                     sys_p = "Generate HTML table only. Inline CSS borders."
                     context_hint = ""
-                    if tech_context_text:
-                        context_hint = f" Use specs: {tech_context_text}."
+                    # ИСПОЛЬЗУЕМ НОВЫЙ КОНТЕКСТ ТАБЛИЦ (tech_context_final_str)
+                    if tech_context_final_str:
+                        context_hint = f" Use specs: {tech_context_final_str}."
                     usr_p = f"Product: {page['name']}. Topic: {t_topic}. Realistic table.{context_hint}"
                     try:
                         resp = client.chat.completions.create(model="sonar-pro", messages=[{"role":"system","content":sys_p},{"role":"user","content":usr_p}], temperature=0.5)
