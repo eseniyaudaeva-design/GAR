@@ -1676,7 +1676,7 @@ with tab_wholesale_main:
                     t_p = st.text_input(f"Тема {i+1}", value=val, key=f"tbl_topic_vert_{i}")
                     table_prompts.append(t_p)
 
-        if use_promo:
+if use_promo:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
                 kws_input_promo = st.text_area(
@@ -1693,7 +1693,6 @@ with tab_wholesale_main:
                 st.markdown("---")
                 col_p1, col_p2 = st.columns([1, 2])
                 with col_p1:
-                    # --- ВОССТАНОВЛЕННАЯ ЛОГИКА ЗАГОЛОВКОВ ---
                     promo_presets = [
                         "Смотрите также",
                         "Рекомендуем",
@@ -1703,13 +1702,15 @@ with tab_wholesale_main:
                         "Популярные категории",
                         "Возможно вас заинтересует"
                     ]
-                    selected_preset = st.selectbox("Варианты заголовка", promo_presets, key="promo_header_select")
+                    
+                    # 1. Сначала чекбокс (переключатель)
                     use_custom_header = st.checkbox("Ввести свой заголовок", key="cb_custom_header")
                     
+                    # 2. Условие: Если галочка стоит - показываем Input, иначе - Selectbox
                     if use_custom_header:
-                        promo_title = st.text_input("Ваш заголовок", value=selected_preset, key="pr_tit_vert")
+                        promo_title = st.text_input("Ваш заголовок", value="Смотрите также", key="pr_tit_vert")
                     else:
-                        promo_title = selected_preset
+                        promo_title = st.selectbox("Варианты заголовка", promo_presets, key="promo_header_select")
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     u_img_man = st.checkbox("Своя база картинок", key="cb_img_vert")
@@ -2056,3 +2057,4 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
