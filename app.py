@@ -1083,22 +1083,16 @@ with tab_seo_main:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 
-# 1. Сохраняем ТЕКУЩИЕ (рабочие) списки
+                # 1. Сохраняем ТЕКУЩИЕ (рабочие) списки
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
                 st.session_state.categorized_geo = categorized['geo']
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
-                
-                # Сохраняем список в память
                 st.session_state.categorized_sensitive = categorized['sensitive']
-                
-                # !!! ВАЖНО: Принудительно обновляем текст в поле ввода стоп-слов !!!
-                st.session_state['sensitive_words_editor_final'] = "\n".join(categorized['sensitive'])
 
-                # 2. !!! ВАЖНО: Сохраняем ОРИГИНАЛЫ (для отката фильтра) !!!
-                # Если этих строк нет, фильтр будет стирать данные
+                # 2. Сохраняем ОРИГИНАЛЫ (для восстановления)
                 st.session_state.orig_products = categorized['products']
                 st.session_state.orig_services = categorized['services']
                 st.session_state.orig_commercial = categorized['commercial']
@@ -1106,6 +1100,11 @@ with tab_seo_main:
                 st.session_state.orig_dimensions = categorized['dimensions']
                 st.session_state.orig_general = categorized['general']
 
+                # 3. !!! ИСПРАВЛЕНИЕ: Принудительно пишем в поле ввода !!!
+                # Это заставит слово появиться в текстовом поле сразу
+                st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
+
+            # Генерация данных для второй вкладки
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
             if count_prods < 20:
@@ -1744,6 +1743,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
