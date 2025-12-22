@@ -1414,53 +1414,124 @@ with tab_seo_main:
                 # Обновляем список в session_state при изменении (автоматически)
                 st.session_state.categorized_sensitive = [w.strip() for w in new_sens_str.split('\n') if w.strip()]
 
-        st.markdown("---")
+# ... (код выше без изменений) ...
+    
+    # --- СТИЛИ ДЛЯ КРАСИВЫХ ТЕГОВ ---
+    st.markdown("""
+    <style>
+        .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+        .tag-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            display: inline-block;
+            margin-bottom: 4px;
+        }
+        .tag-products { background-color: #E3F2FD; color: #1565C0; border: 1px solid #BBDEFB; }
+        .tag-services { background-color: #FFEBEE; color: #C62828; border: 1px solid #FFCDD2; }
+        .tag-commercial { background-color: #FFF8E1; color: #F57F17; border: 1px solid #FFECB3; }
+        .tag-geo { background-color: #E8F5E9; color: #2E7D32; border: 1px solid #C8E6C9; }
+        .tag-specs { background-color: #F3E5F5; color: #7B1FA2; border: 1px solid #E1BEE7; }
+        .tag-general { background-color: #F5F5F5; color: #616161; border: 1px solid #E0E0E0; }
+        .category-header { font-size: 14px; font-weight: 700; margin-bottom: 5px; color: #374151; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    def render_tags(label, words, css_class):
+        if not words: return
+        html = f"<div class='category-header'>{label} ({len(words)})</div><div class='tag-container'>"
+        for w in words:
+            html += f"<span class='tag-badge {css_class}'>{w}</span>"
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
+
+    # --- НОВЫЙ ИНТЕРФЕЙС ГРУППИРОВКИ ---
+    with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
         
-        # Кнопка для синхронизации изменений
-        if st.button("💾 Применить изменения и передать в Генератор", type="primary", use_container_width=True):
-            # 1. Получаем актуальный список стоп-слов из текстового поля
-            raw_sens = st.session_state.get("sensitive_words_area", "")
-            current_sensitive_set = set([w.strip().lower() for w in raw_sens.split('\n') if w.strip()])
+        # Делим на 2 основные колонки: Слева - контент, Справа - фильтр
+        col_content, col_filter = st.columns([3, 1], gap="medium")
+        
+        # --- ЛЕВАЯ КОЛОНКА: ХОРОШИЕ СЛОВА ---
+        with col_content:
+            st.caption("✅ Активная семантика (пойдет в генерацию)")
             
-            # Сохраняем его обратно в основной список
-            st.session_state.categorized_sensitive = sorted(list(current_sensitive_set))
+            # Отображаем только непустые категории
+            has_content = False
             
-            # 2. Функция очистки списка от стоп-слов
-            def clean_category_list(original_list, sensitive_set):
-                return [w for w in original_list if w.lower() not in sensitive_set]
-
-            # 3. Чистим все категории
-            st.session_state.categorized_products = clean_category_list(st.session_state.categorized_products, current_sensitive_set)
-            st.session_state.categorized_services = clean_category_list(st.session_state.categorized_services, current_sensitive_set)
-            st.session_state.categorized_commercial = clean_category_list(st.session_state.categorized_commercial, current_sensitive_set)
-            st.session_state.categorized_geo = clean_category_list(st.session_state.categorized_geo, current_sensitive_set)
-            st.session_state.categorized_general = clean_category_list(st.session_state.categorized_general, current_sensitive_set)
+            if st.session_state.categorized_products:
+                render_tags("🧱 Товары", st.session_state.categorized_products, "tag-products")
+                has_content = True
+                
+            if st.session_state.categorized_services:
+                render_tags("🛠️ Услуги", st.session_state.categorized_services, "tag-services")
+                has_content = True
             
-            # 4. Принудительно обновляем переменные для авто-заполнения второй вкладки
-            all_prods = st.session_state.categorized_products
-            count_prods = len(all_prods)
+            # Группируем мелкие категории в одну строку, если они есть
+            c_sub1, c_sub2 = st.columns(2)
+            with c_sub1:
+                render_tags("🌍 Гео", st.session_state.categorized_geo, "tag-geo")
+                render_tags("💰 Коммерция", st.session_state.categorized_commercial, "tag-commercial")
+            with c_sub2:
+                render_tags("📏 Размеры/ГОСТ", st.session_state.categorized_dimensions, "tag-specs")
+                render_tags("📂 Общие", st.session_state.categorized_general, "tag-general")
+                
+            if not has_content and not st.session_state.categorized_general:
+                st.info("Семантика не найдена или всё ушло в стоп-слова.")
+
+        # --- ПРАВАЯ КОЛОНКА: СТОП-СЛОВА (РЕДАКТОР) ---
+        with col_filter:
+            sens_words = st.session_state.get('categorized_sensitive', [])
+            sens_str = "\n".join(sens_words)
             
-            if count_prods < 20:
-                st.session_state.auto_tags_words = all_prods
-                st.session_state.auto_promo_words = []
-            else:
-                half_count = int(math.ceil(count_prods / 2))
-                st.session_state.auto_tags_words = all_prods[:half_count]
-                st.session_state.auto_promo_words = all_prods[half_count:]
+            st.markdown(f"**⛔ Стоп-слова ({len(sens_words)})**", help="Слова здесь исключаются отовсюду")
+            
+            # Поле ввода стало компактным "мусорным ведром"
+            new_sens_str = st.text_area(
+                "Редактор фильтра",
+                value=sens_str,
+                height=300, # Высокое поле, удобно редактировать список
+                key="sensitive_words_area",
+                label_visibility="collapsed",
+                placeholder="Вставьте слова для исключения..."
+            )
+            
+            # Кнопка действия прямо под полем ввода
+            if st.button("♻️ Очистить и обновить", type="primary", use_container_width=True):
+                # 1. Получаем список
+                raw_sens = st.session_state.get("sensitive_words_area", "")
+                current_sensitive_set = set([w.strip().lower() for w in raw_sens.split('\n') if w.strip()])
+                st.session_state.categorized_sensitive = sorted(list(current_sensitive_set))
+                
+                # 2. Функция очистки
+                def clean_category_list(original_list, sensitive_set):
+                    return [w for w in original_list if w.lower() not in sensitive_set]
 
-            st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
-            st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
+                # 3. Чистим списки
+                st.session_state.categorized_products = clean_category_list(st.session_state.categorized_products, current_sensitive_set)
+                st.session_state.categorized_services = clean_category_list(st.session_state.categorized_services, current_sensitive_set)
+                st.session_state.categorized_commercial = clean_category_list(st.session_state.categorized_commercial, current_sensitive_set)
+                st.session_state.categorized_geo = clean_category_list(st.session_state.categorized_geo, current_sensitive_set)
+                st.session_state.categorized_general = clean_category_list(st.session_state.categorized_general, current_sensitive_set)
+                
+                # 4. Обновляем для второй вкладки
+                all_prods = st.session_state.categorized_products
+                count_prods = len(all_prods)
+                if count_prods < 20:
+                    st.session_state.auto_tags_words = all_prods
+                    st.session_state.auto_promo_words = []
+                else:
+                    half_count = int(math.ceil(count_prods / 2))
+                    st.session_state.auto_tags_words = all_prods[:half_count]
+                    st.session_state.auto_promo_words = all_prods[half_count:]
 
-            st.success(f"✅ Готово! Удалено совпадений со стоп-листом. Данные обновлены для вкладки 'Оптовый генератор'.")
-            time.sleep(1) 
-            st.rerun()
+                st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
+                st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
 
-        high = results.get('missing_semantics_high', [])
-        low = results.get('missing_semantics_low', [])
-        if high or low:
-            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+                st.toast("✅ Списки очищены и обновлены!", icon="🧹")
+                time.sleep(0.5)
+                st.rerun()
+
         render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
@@ -1991,3 +2062,4 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
