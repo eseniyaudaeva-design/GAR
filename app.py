@@ -1083,7 +1083,7 @@ with tab_seo_main:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 
-                # 1. Сохраняем ТЕКУЩИЕ (рабочие) списки
+                # 1. Сохраняем списки (SENSITIVE - это то, что скрипт нашел сам)
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
@@ -1092,19 +1092,26 @@ with tab_seo_main:
                 st.session_state.categorized_general = categorized['general']
                 st.session_state.categorized_sensitive = categorized['sensitive']
 
-                # 2. Сохраняем ОРИГИНАЛЫ (для восстановления)
-                st.session_state.orig_products = categorized['products']
-                st.session_state.orig_services = categorized['services']
-                st.session_state.orig_commercial = categorized['commercial']
-                st.session_state.orig_geo = categorized['geo']
-                st.session_state.orig_dimensions = categorized['dimensions']
-                st.session_state.orig_general = categorized['general']
+                # 2. Сохраняем ОРИГИНАЛЫ (В них есть ВСЁ, кроме глобального SENSITIVE_STOPLIST из файла)
+                # Важно: classify_semantics_with_api уже выкинул слова из файла SENSITIVE_STOPLIST.
+                # Но слова, попавшие в categorized['sensitive'] по частичному совпадению, мы хотим видеть.
+                
+                # Для корректной работы "вернуть слово обратно" нам нужно, чтобы в ORIG
+                # были включены и те слова, которые скрипт посчитал sensitive.
+                # Поэтому мы объединяем их при сохранении оригиналов.
+                
+                st.session_state.orig_products = categorized['products'] + categorized['sensitive'] 
+                st.session_state.orig_services = categorized['services'] + categorized['sensitive']
+                st.session_state.orig_commercial = categorized['commercial'] + categorized['sensitive']
+                st.session_state.orig_geo = categorized['geo'] + categorized['sensitive']
+                st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
+                st.session_state.orig_general = categorized['general'] + categorized['sensitive']
 
-                # 3. !!! ИСПРАВЛЕНИЕ: Принудительно пишем в поле ввода !!!
-                # Это заставит слово появиться в текстовом поле сразу
+                # 3. !!! ГЛАВНОЕ ИСПРАВЛЕНИЕ !!!
+                # Принудительно записываем найденные стоп-слова в переменную, привязанную к текстовому полю
                 st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
 
-            # Генерация данных для второй вкладки
+            # Генерация для 2 вкладки
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
             if count_prods < 20:
@@ -1128,52 +1135,43 @@ with tab_seo_main:
         # --- СТИЛИ ДЛЯ КОМПАКТНОСТИ И КРАСОТЫ ---
 # --- СТИЛИ ---
 # --- СТИЛИ (ОБНОВЛЕННЫЕ - КРУПНЫЙ РАЗМЕР) ---
+# --- СТИЛИ ---
     st.markdown("""
     <style>
         .cat-box {
             background-color: #f8f9fa;
-            border-radius: 10px;
-            padding: 15px; /* Больше отступ внутри */
-            margin-bottom: 15px;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
             border: 1px solid #e9ecef;
             height: 100%;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         .cat-title {
             font-weight: 700;
-            font-size: 18px; /* Увеличили заголовок */
-            margin-bottom: 10px;
-            color: #111827;
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: #1f2937;
             display: flex;
-            align-items: center;
             justify-content: space-between;
+            align-items: center;
         }
         .cat-content {
-            font-size: 16px; /* Увеличили основной текст */
-            color: #374151;
-            line-height: 1.6; /* Больше расстояние между строками */
-            font-weight: 400;
-        }
-        .cat-empty {
-            color: #9ca3af;
-            font-style: italic;
             font-size: 14px;
+            color: #374151;
+            line-height: 1.5;
         }
+        .cat-empty { color: #9ca3af; font-style: italic; }
         .count-badge {
-            background: #e0e7ff;
-            color: #3730a3;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 14px; /* Увеличили цифру счетчика */
-            font-weight: 600;
+            background: #e5e7eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #374151;
         }
     </style>
     """, unsafe_allow_html=True)
 
     def render_clean_block(title, icon, words_list):
-        count = len(words_list) if words_list else 0
-        # Если слов нет - пишем "Нет данных"
-        content_html = ", ".join(words_list) if count > 0 else "<span class='cat-empty'>Нет данных</span>"
+        # Удаляем дубликаты для отображения
+        unique_words = sorted(list(set(words_list))) if words_list else []
+        count = len(unique_words)
+        content_html = ", ".join(unique_words) if count > 0 else "<span class='cat-empty'>Нет данных</span>"
         
         st.markdown(f"""
         <div class="cat-box">
@@ -1185,76 +1183,69 @@ with tab_seo_main:
         </div>
         """, unsafe_allow_html=True)
 
-# ... (Стили CSS и функция render_clean_block остаются выше без изменений) ...
-
-    # 1. ОТКРЫВАЕМ ЭКСПАНДЕР
     with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
-        
-        # Проверка на наличие данных
         if not st.session_state.get('orig_products'):
-            st.info("⚠️ Данные отсутствуют. Пожалуйста, запустите анализ.")
+            st.info("⚠️ Данные отсутствуют. Запустите анализ.")
         else:
-            # РЯД 1
+            # Ряд 1
             c1, c2, c3 = st.columns(3)
             with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
             with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
             with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
             
-            # РЯД 2
+            # Ряд 2
             c4, c5, c6 = st.columns(3)
             with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
             with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
             with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
 
-            st.markdown("---")
+            st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
 
-            # БЛОК СТОП-СЛОВ
+            # Блок стоп-слов
             cs1, cs2 = st.columns([1, 3])
             
+            # Берем значение напрямую из сессии, куда мы его записали при анализе
+            current_text_value = st.session_state.get('sensitive_words_input_final', "")
+            
             with cs1:
-                sens_count = len(st.session_state.get('categorized_sensitive', []))
+                count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
                 st.markdown(f"**⛔ Стоп-слова**")
-                st.markdown(f"Исключено: **{sens_count}**")
-                st.caption("Слова удаляются из всех категорий.")
+                st.markdown(f"Исключено: **{count_excluded}**")
+                st.caption("Эти слова автоматически удалены. Удалите слово отсюда и нажмите 'Обновить', чтобы вернуть его.")
             
             with cs2:
-                # Получаем текущий список
-                current_sens_list = st.session_state.get('categorized_sensitive', [])
-                sens_text_area_val = "\n".join(current_sens_list)
-
                 new_sens_str = st.text_area(
-                    "input_hidden_label",
-                    value=sens_text_area_val,
+                    "hidden_label",
+                    value=current_text_value,
                     height=100,
-                    key="sensitive_words_input_final",
+                    key="sensitive_words_input_final", # Этот ключ связывает поле с переменной
                     label_visibility="collapsed",
-                    placeholder="Вставьте слова для исключения..."
+                    placeholder="Слова для исключения..."
                 )
 
                 if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                    # 1. Берем данные из поля
+                    # 1. Получаем список из поля ввода
                     raw_input = st.session_state.get("sensitive_words_input_final", "")
-                    new_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
+                    new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
                     
-                    # 2. Сохраняем в state (чтобы не пропали)
-                    st.session_state.categorized_sensitive = sorted(list(new_set))
+                    # 2. Сохраняем список
+                    st.session_state.categorized_sensitive = sorted(list(new_stop_set))
                     
-                    # 3. Восстанавливаем из ORIG и фильтруем
-                    def apply_filter(orig_key, sensitive_set):
-                        original = st.session_state.get(orig_key, [])
-                        # Если оригиналов нет (старая сессия), пробуем взять текущие
-                        if not original: 
-                            original = st.session_state.get(orig_key.replace('orig_', 'categorized_'), [])
-                        return [w for w in original if w.lower() not in sensitive_set]
+                    # 3. ФИЛЬТРАЦИЯ: Берем ОРИГИНАЛЫ (где есть все слова) и вычитаем СТОП-ЛИСТ
+                    def apply_filter(orig_list_key, stop_set):
+                        # Получаем оригинал (в котором есть всё)
+                        original = st.session_state.get(orig_list_key, [])
+                        # Оставляем только те, которых НЕТ в стоп-листе
+                        return [w for w in original if w.lower() not in stop_set]
 
-                    st.session_state.categorized_products = apply_filter('orig_products', new_set)
-                    st.session_state.categorized_services = apply_filter('orig_services', new_set)
-                    st.session_state.categorized_commercial = apply_filter('orig_commercial', new_set)
-                    st.session_state.categorized_geo = apply_filter('orig_geo', new_set)
-                    st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_set)
-                    st.session_state.categorized_general = apply_filter('orig_general', new_set)
+                    st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
+                    st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
+                    st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
+                    st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
+                    st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
+                    st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
 
-                    # 4. Обновляем для генератора
+                    # 4. Обновляем вкладку генератора
                     all_prods = st.session_state.categorized_products
                     count_prods = len(all_prods)
                     if count_prods < 20:
@@ -1743,6 +1734,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
