@@ -399,6 +399,9 @@ GARBAGE_LATIN_STOPLIST = {
     'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
 }
 
+# ==========================================
+# STOP LISTS (SENSITIVE / GEO UA)
+# ==========================================
 SENSITIVE_STOPLIST = {
     "украина", "украине", "украины", "украинский", "ukraine", "ua",
     "киев", "киеве", "киева", "kyiv", "kiev",
@@ -928,6 +931,133 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     st.markdown("---")
 
 # ==========================================
+# PERPLEXITY GEN
+# ==========================================
+STATIC_DATA_GEN = {
+    'IP_PROP4817': "Условия поставки",
+    'IP_PROP4818': "Оперативные отгрузки в регионы точно в срок",
+    'IP_PROP4819': """<p>Надежная и быстрая доставка заказа в любую точку страны: "Стальметурал" отгружает товар 24 часа в сутки, 7 дней в неделю. Более 4 000 отгрузок в год. При оформлении заказа менеджер предложит вам оптимальный логистический маршрут.</p>""",
+    'IP_PROP4820': """<p>Наши изделия успешно применяются на некоторых предприятиях Урала, центрального региона, Поволжья, Сибири. Партнеры по логистике предложат доставить заказ самым удобным способом – автомобильным, железнодорожным, даже авиационным транспортом. Для вас разработают транспортную схему под удобный способ получения. Погрузка выполняется полностью с соблюдением особенностей техники безопасности.</p><div class="h4"><h4>Самовывоз</h4></div><p>Если обычно соглашаетесь самостоятельно забрать товар или даете это право уполномоченным, адрес и время работы склада в своем городе уточняйте у менеджера.</p><div class="h4"><h4>Грузовой транспорт компании</h4></div><p>Отправим прокат на ваш объект собственным автопарком. Получение в упаковке для безопасной транспортировки, а именно на деревянном поддоне.</p><div class="h4"><h4>Сотрудничаем с ТК</h4></div><p>Доставка с помощью транспортной компании по России и СНГ. Окончательная цена может измениться, так как ссылается на прайс-лист, который предоставляет контрагент, однако, сравним стоимость логистических служб и выберем лучшую.</p>""",
+    'IP_PROP4821': "Оплата и реквизиты для постоянных клиентов:",
+    'IP_PROP4822': """<p>Наша компания готова принять любые комфортные виды оплаты для юридических и физических лиц: по счету, наличная и безналичная, наложенный платеж, также возможны предоплата и отсрочка платежа.</p>""",
+    'IP_PROP4823': """<div class="h4"><h3>Примеры возможной оплаты</h3></div><div class="an-col-12"><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">С помощью менеджера в центрах продаж</span></p></li></ul><p>Важно! Цена не является публичной офертой. Приходите в наш офис, чтобы уточнить поступление, получить ответы на почти любой вопрос, согласовать возврат, счет, рассчитать логистику.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">На расчетный счет</span></p></li></ul><p>По внутреннему счету в отделении банка или путем перечисления средств через личный кабинет (транзакции защищены, скорость зависит от отделения). Для права подтверждения нужно показать согласие на платежное поручение с отметкой банка.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">Наличными или банковской картой при получении</span></p></li></ul><p><span style="font-weight: 400;">Поможем с оплатой: объем имеет значение. Крупным покупателям – деньги можно перевести после приемки товара.</span></p><p>Менеджеры предоставят необходимую информацию.</p><p>Заказывайте через прайс-лист:</p><p><a class="btn btn-blue" href="/catalog/">Каталог (магазин-меню):</a></p></div></div><br>""",
+    'IP_PROP4824': "Описание, статьи, поиск, отзывы, новости, акции, журнал, info:",
+    'IP_PROP4825': "Можем металлизировать, оцинковать, никелировать, проволочь",
+    'IP_PROP4826': "Современный практический подход",
+    'IP_PROP4834': "Надежность без примесей",
+    'IP_PROP4835': "Популярный поставщик",
+    'IP_PROP4836': "Качество и характер",
+    'IP_PROP4837': "Порядок в ГОСТах"
+}
+
+def get_page_data_for_gen(url):
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.encoding = 'utf-8'
+    except Exception as e: return None, None, f"Ошибка соединения: {e}"
+    if response.status_code != 200: return None, None, f"Ошибка статуса: {response.status_code}"
+    soup = BeautifulSoup(response.text, 'html.parser')
+    description_div = soup.find('div', class_='description-container')
+    base_text = description_div.get_text(separator="\n", strip=True) if description_div else soup.body.get_text(separator="\n", strip=True)[:5000]
+    tags_container = soup.find(class_='popular-tags-inner')
+    tags_data = []
+    if tags_container:
+        links = tags_container.find_all('a')
+        for link in links:
+            tag_url = urljoin(url, link.get('href')) if link.get('href') else None
+            if tag_url: tags_data.append({'name': link.get_text(strip=True), 'url': tag_url})
+    return base_text, tags_data, None
+
+def generate_five_blocks(client, base_text, tag_name, seo_words=None):
+    if not base_text: return ["Error: No base text"] * 5
+    
+    # 1. Формируем ГЛОБАЛЬНУЮ инструкцию по SEO (для всех блоков)
+    seo_instruction_block = ""
+    if seo_words and len(seo_words) > 0:
+        keywords_str = ", ".join(seo_words)
+        seo_instruction_block = f"""
+    --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
+    Тебе нужно внедрить в текст следующие слова: {keywords_str}
+    
+    ПРАВИЛА ВНЕДРЕНИЯ:
+    1. РАСПРЕДЕЛЕНИЕ: Не пихай все слова в один блок! Раскидай их по всем 5 блокам там, где они подходят по смыслу (коммерческие слова — в 1 блок, технические — в 2-5 блоки).
+    2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b> осуществляется..."
+    3. ЕСТЕСТВЕННОСТЬ (ОЧЕНЬ ВАЖНО): 
+       - Склоняй слова как угодно. Меняй окончания, числа, падежи.
+       - Текст должен быть связным и грамотным. Не вставляй слова просто списком.
+    4. КОНТЕКСТ И ГЕОГРАФИЯ:
+       - Если слово выглядит как часть названия (например, "Дон"), восстанови полное название (пиши "Ростов-на-Дону", а не просто "Дон").
+       - Если слово "СПБ" — пиши "Санкт-Петербург".
+       - Внедряй слова так, чтобы читатель не заметил подвоха.
+    -------------------------------------------
+        """
+
+    # 2. Системная роль
+    system_instruction = (
+        "Ты — профессиональный технический копирайтер и верстальщик. "
+        "Твоя цель — писать полезный, естественный текст для людей, но с соблюдением требований SEO. "
+        "Ты выдаешь ТОЛЬКО HTML-код. "
+        "СТРОГИЙ ЗАПРЕТ: Не используй упоминания Украины, украинских городов (Киев, Львов и др.), "
+        "политические темы, валюту гривну. Контент должен быть ориентирован строго на рынок РФ/СНГ (без UA)."
+    )
+
+    # 3. Пользовательский промт
+    user_prompt = f"""
+    ИСХОДНЫЕ ДАННЫЕ:
+    Название товара: "{tag_name}"
+    Базовый текст (фактура): \"\"\"{base_text[:3500]}\"\"\"
+    
+    {seo_instruction_block}
+    
+    ЗАДАЧА:
+    Напиши 5 (пять) HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||
+    
+    ТРЕБОВАНИЯ К БЛОКАМ:
+    
+    --- БЛОК 1 (Вводный) ---
+    - Заголовок строго: <h2>{tag_name}</h2>
+    - Описание товара, назначение, кратко условия покупки.
+    
+    --- БЛОКИ 2, 3, 4, 5 (Технические детали) ---
+    - Заголовки уровня <h3> (Примеры: Характеристики, Сферы применения, Производство, Состав).
+    - Используй данные из "Базового текста". Если данных мало — пиши общие характеристики для этого типа металла.
+    - Используй списки <ul> и абзацы <p>.
+    
+    ФИНАЛЬНЫЕ УСЛОВИЯ:
+    - Никаких вводных слов типа "Вот ваш код".
+    - Никакого Markdown (```).
+    - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
+    """
+
+    # Цикл повторных попыток
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model="sonar-pro", 
+                messages=[
+                    {"role": "system", "content": system_instruction}, 
+                    {"role": "user", "content": user_prompt}
+                ], 
+                temperature=0.7 # Чуть повысили температуру для большей "человечности" языка
+            )
+            content = response.choices[0].message.content
+            
+            # Пост-обработка
+            content = re.sub(r'\[\d+\]', '', content)
+            content = content.replace("```html", "").replace("```", "").strip()
+            
+            blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
+            
+            while len(blocks) < 5: 
+                blocks.append("")
+                
+            return blocks[:5]
+        except Exception as e:
+            if attempt == 2: return [f"API Error: {str(e)}"] * 5
+            time.sleep(2)
+
+# ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
 tab_seo_main, tab_wholesale_main = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор"])
@@ -1078,12 +1208,11 @@ with tab_seo_main:
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             if not words_to_check:
                 st.session_state.categorized_products = []; st.session_state.categorized_services = []; st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
-# ... (внутри else после проверки words_to_check)
             else:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 
-                # 1. Сохраняем списки (SENSITIVE - это то, что скрипт нашел сам)
+                # 1. Сохраняем ТЕКУЩИЕ (рабочие) списки
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
@@ -1092,26 +1221,17 @@ with tab_seo_main:
                 st.session_state.categorized_general = categorized['general']
                 st.session_state.categorized_sensitive = categorized['sensitive']
 
-                # 2. Сохраняем ОРИГИНАЛЫ (В них есть ВСЁ, кроме глобального SENSITIVE_STOPLIST из файла)
-                # Важно: classify_semantics_with_api уже выкинул слова из файла SENSITIVE_STOPLIST.
-                # Но слова, попавшие в categorized['sensitive'] по частичному совпадению, мы хотим видеть.
-                
-                # Для корректной работы "вернуть слово обратно" нам нужно, чтобы в ORIG
-                # были включены и те слова, которые скрипт посчитал sensitive.
-                # Поэтому мы объединяем их при сохранении оригиналов.
-                
-                st.session_state.orig_products = categorized['products'] + categorized['sensitive'] 
+                # 2. !!! ВАЖНО: Сохраняем ОРИГИНАЛЫ (для восстановления при очистке стоп-листа)
+                st.session_state.orig_products = categorized['products'] + categorized['sensitive']
                 st.session_state.orig_services = categorized['services'] + categorized['sensitive']
                 st.session_state.orig_commercial = categorized['commercial'] + categorized['sensitive']
                 st.session_state.orig_geo = categorized['geo'] + categorized['sensitive']
                 st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
                 st.session_state.orig_general = categorized['general'] + categorized['sensitive']
 
-                # 3. !!! ГЛАВНОЕ ИСПРАВЛЕНИЕ !!!
-                # Принудительно записываем найденные стоп-слова в переменную, привязанную к текстовому полю
+                # 3. Принудительно пишем в поле ввода
                 st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
 
-            # Генерация для 2 вкладки
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
             if count_prods < 20:
@@ -1132,150 +1252,162 @@ with tab_seo_main:
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-# --- СТИЛИ ---
-    st.markdown("""
-    <style>
-        .cat-box {
-            background-color: #f8f9fa;
-            border-radius: 6px;
-            padding: 10px;
-            margin-bottom: 10px;
-            border: 1px solid #e9ecef;
-            height: 100%;
-        }
-        .cat-title {
-            font-weight: 700;
-            font-size: 16px;
-            margin-bottom: 8px;
-            color: #1f2937;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .cat-content {
-            font-size: 14px;
-            color: #374151;
-            line-height: 1.5;
-        }
-        .cat-empty { color: #9ca3af; font-style: italic; }
-        .count-badge {
-            background: #e5e7eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #374151;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
-    def render_clean_block(title, icon, words_list):
-        unique_words = sorted(list(set(words_list))) if words_list else []
-        count = len(unique_words)
-        content_html = ", ".join(unique_words) if count > 0 else "<span class='cat-empty'>Нет данных</span>"
-        
-        st.markdown(f"""
-        <div class="cat-box">
-            <div class="cat-title">
-                <span>{icon} {title}</span>
-                <span class="count-badge">{count}</span>
-            </div>
-            <div class="cat-content">{content_html}</div>
-        </div>
+        # --- СТИЛИ (ФИКСИРОВАННАЯ ВЫСОТА + СКРОЛЛ) ---
+        st.markdown("""
+        <style>
+            .cat-box {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                padding: 12px;
+                margin-bottom: 10px;
+                border: 1px solid #e9ecef;
+                /* Фиксированная высота блока */
+                height: 110px; 
+                display: flex;
+                flex-direction: column;
+            }
+            .cat-header {
+                font-weight: 700;
+                font-size: 15px;
+                margin-bottom: 8px;
+                color: #111827;
+                border-bottom: 1px solid #e5e7eb;
+                padding-bottom: 6px;
+                display: flex;
+                justify-content: space-between;
+                flex-shrink: 0; /* Заголовок не сжимается */
+            }
+            .cat-body {
+                font-size: 14px;
+                color: #374151;
+                line-height: 1.5;
+                /* Логика скролла */
+                overflow-y: auto; 
+                flex-grow: 1;
+                padding-right: 5px; /* Отступ для скроллбара */
+            }
+            /* Стилизация скроллбара (тонкий и аккуратный) */
+            .cat-body::-webkit-scrollbar {
+                width: 4px;
+            }
+            .cat-body::-webkit-scrollbar-thumb {
+                background-color: #d1d5db;
+                border-radius: 4px;
+            }
+            .cat-body::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            
+            .text-gray { color: #9ca3af; font-style: italic; }
+            .count-tag { 
+                background: #e5e7eb; color: #374151; 
+                padding: 1px 7px; border-radius: 6px; font-size: 12px; font-weight: 600;
+            }
+        </style>
         """, unsafe_allow_html=True)
 
-    with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
-        if not st.session_state.get('orig_products'):
-            st.info("⚠️ Данные отсутствуют. Запустите анализ.")
-        else:
-            # Ряд 1
-            c1, c2, c3 = st.columns(3)
-            with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
-            with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
-            with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
+        def render_clean_block(title, icon, words_list):
+            unique_words = sorted(list(set(words_list))) if words_list else []
+            count = len(unique_words)
+            content_html = ", ".join(unique_words) if count > 0 else "<span class='text-gray'>Нет данных</span>"
             
-            # Ряд 2
-            c4, c5, c6 = st.columns(3)
-            with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
-            with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
-            with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
+            st.markdown(f"""
+            <div class="cat-box">
+                <div class="cat-header">
+                    <span>{icon} {title}</span>
+                    <span class="count-tag">{count}</span>
+                </div>
+                <div class="cat-body">{content_html}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
+            if not st.session_state.get('orig_products'):
+                st.info("⚠️ Данные отсутствуют. Запустите анализ.")
+            else:
+                # Ряд 1
+                c1, c2, c3 = st.columns(3)
+                with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
+                with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
+                with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
+                
+                # Ряд 2
+                c4, c5, c6 = st.columns(3)
+                with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
+                with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
+                with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
 
-            # Блок стоп-слов
-            cs1, cs2 = st.columns([1, 3])
-            
-            # 1. Инициализация ключа (чтобы не было ошибки при первом запуске)
-            if 'sensitive_words_input_final' not in st.session_state:
-                current_list = st.session_state.get('categorized_sensitive', [])
-                st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
-            
-            # Получаем актуальное значение для подсчета кол-ва (для отображения слева)
-            current_text_value = st.session_state['sensitive_words_input_final']
-            
-            with cs1:
-                count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
-                st.markdown(f"**⛔ Стоп-слова**")
-                st.markdown(f"Исключено: **{count_excluded}**")
-                st.caption("Эти слова автоматически удалены. Удалите слово отсюда и нажмите 'Обновить', чтобы вернуть его.")
-            
-            with cs2:
-                # ВАЖНО: Убрали аргумент value=... , оставили только key
-                new_sens_str = st.text_area(
-                    "hidden_label",
-                    height=100,
-                    key="sensitive_words_input_final", # Виджет сам возьмет значение из session_state
-                    label_visibility="collapsed",
-                    placeholder="Слова для исключения..."
-                )
+                st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
 
-                if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                    # 1. Получаем список из session_state (куда пишет виджет)
-                    raw_input = st.session_state.get("sensitive_words_input_final", "")
-                    new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
-                    
-                    # 2. Сохраняем список
-                    st.session_state.categorized_sensitive = sorted(list(new_stop_set))
-                    
-                    # 3. ФИЛЬТРАЦИЯ
-                    def apply_filter(orig_list_key, stop_set):
-                        original = st.session_state.get(orig_list_key, [])
-                        return [w for w in original if w.lower() not in stop_set]
+                # Блок стоп-слов
+                cs1, cs2 = st.columns([1, 3])
+                
+                # 1. Инициализация ключа (чтобы не было ошибки при первом запуске)
+                if 'sensitive_words_input_final' not in st.session_state:
+                    current_list = st.session_state.get('categorized_sensitive', [])
+                    st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
+                
+                # Получаем актуальное значение для подсчета кол-ва (для отображения слева)
+                current_text_value = st.session_state['sensitive_words_input_final']
+                
+                with cs1:
+                    count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
+                    st.markdown(f"**⛔ Стоп-слова**")
+                    st.markdown(f"Исключено: **{count_excluded}**")
+                    st.caption("Эти слова автоматически удалены. Удалите слово отсюда и нажмите 'Обновить', чтобы вернуть его.")
+                
+                with cs2:
+                    new_sens_str = st.text_area(
+                        "hidden_label",
+                        height=100,
+                        key="sensitive_words_input_final", 
+                        label_visibility="collapsed",
+                        placeholder="Слова для исключения..."
+                    )
 
-                    st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
-                    st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
-                    st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
-                    st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
-                    st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
-                    st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
+                    if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
+                        raw_input = st.session_state.get("sensitive_words_input_final", "")
+                        new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
+                        
+                        st.session_state.categorized_sensitive = sorted(list(new_stop_set))
+                        
+                        def apply_filter(orig_list_key, stop_set):
+                            original = st.session_state.get(orig_list_key, [])
+                            return [w for w in original if w.lower() not in stop_set]
 
-                    # 4. Обновляем вкладку генератора
-                    all_prods = st.session_state.categorized_products
-                    count_prods = len(all_prods)
-                    if count_prods < 20:
-                        st.session_state.auto_tags_words = all_prods
-                        st.session_state.auto_promo_words = []
-                    else:
-                        half = int(math.ceil(count_prods / 2))
-                        st.session_state.auto_tags_words = all_prods[:half]
-                        st.session_state.auto_promo_words = all_prods[half:]
+                        st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
+                        st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
+                        st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
+                        st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
+                        st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
+                        st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
 
-                    st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
-                    st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
+                        all_prods = st.session_state.categorized_products
+                        count_prods = len(all_prods)
+                        if count_prods < 20:
+                            st.session_state.auto_tags_words = all_prods
+                            st.session_state.auto_promo_words = []
+                        else:
+                            half = int(math.ceil(count_prods / 2))
+                            st.session_state.auto_tags_words = all_prods[:half]
+                            st.session_state.auto_promo_words = all_prods[half:]
 
-                    st.toast("Фильтр обновлен!", icon="✅")
-                    time.sleep(0.5)
-                    st.rerun()
+                        st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
+                        st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
 
-    # --- УПУЩЕННАЯ СЕМАНТИКА (ВНЕ ЭКСПАНДЕРА) ---
-    # Обратите внимание: этот блок на одном уровне с 'with st.expander', а не внутри него
-    high = results.get('missing_semantics_high', [])
-    low = results.get('missing_semantics_low', [])
-    if high or low:
-        with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-            if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-            if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+                        st.toast("Фильтр обновлен!", icon="✅")
+                        time.sleep(0.5)
+                        st.rerun()
 
-    # --- ТАБЛИЦЫ (ВНЕ ЭКСПАНДЕРА) ---
-    # Они тоже сдвинуты влево (убран один отступ)
-    render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-    render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-    render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+        high = results.get('missing_semantics_high', [])
+        low = results.get('missing_semantics_low', [])
+        if high or low:
+            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
+                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
+                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -1283,6 +1415,9 @@ with tab_seo_main:
 with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
+    # ==========================================
+    # 0. СБОР И РАСПРЕДЕЛЕНИЕ СЕМАНТИКИ
+    # ==========================================
     cat_products = st.session_state.get('categorized_products', [])
     cat_services = st.session_state.get('categorized_services', [])
     structure_keywords = cat_products + cat_services
@@ -1325,32 +1460,26 @@ with tab_wholesale_main:
     text_context_list = cat_commercial + cat_general + cat_geo
     text_context_str = ", ".join(text_context_list)
 
-# ==========================================
+    # ==========================================
     # 1. ВВОДНЫЕ ДАННЫЕ
     # ==========================================
     with st.container(border=True):
         st.subheader("1. Источник и Доступы")
         
-        # 1. Сначала выбираем режим (Чекбокс)
         use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode")
         
-        # 2. Создаем колонки для полей ввода
         col_source, col_key = st.columns([3, 1])
         
-        # Левая колонка меняется в зависимости от чекбокса
         with col_source:
             if use_manual_html:
-                # Показываем поле для HTML
                 manual_html_source = st.text_area(
                     "Исходный код страницы (HTML)", 
                     height=200, 
                     placeholder="<html>...</html>", 
                     help="Скопируйте сюда исходный код страницы."
                 )
-                # URL обнуляем, чтобы не было конфликтов, но переменную создаем
                 main_category_url = None
             else:
-                # Показываем поле для URL
                 main_category_url = st.text_input(
                     "URL Категории", 
                     placeholder="https://site.ru/catalog/...", 
@@ -1358,12 +1487,14 @@ with tab_wholesale_main:
                 )
                 manual_html_source = None
 
-        # Правая колонка всегда содержит API Key (он нужен в обоих случаях)
         with col_key:
             default_key = st.session_state.get('pplx_key_cache', "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")
             pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
 
+    # ==========================================
+    # 2. ВЫБОР МОДУЛЕЙ
+    # ==========================================
     st.subheader("2. Какие блоки генерируем?")
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
     with col_ch1: use_text = st.checkbox("🤖 AI Тексты")
@@ -1372,6 +1503,9 @@ with tab_wholesale_main:
     with col_ch4: use_promo = st.checkbox("🔥 Промо")
     with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар")
 
+    # ==========================================
+    # 3. НАСТРОЙКИ МОДУЛЕЙ
+    # ==========================================
     global_tags_list = []
     global_promo_list = []
     global_sidebar_list = []
@@ -1466,7 +1600,12 @@ with tab_wholesale_main:
 
     st.markdown("---")
     
+    # ==========================================
+    # 4. ЗАПУСК
+    # ==========================================
+    
     ready_to_go = True
+    
     if use_manual_html:
         if not manual_html_source: ready_to_go = False
     else:
@@ -1480,6 +1619,7 @@ with tab_wholesale_main:
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
         final_data = [] 
+        
         target_pages = []
         soup = None
         current_base_url = main_category_url if main_category_url else "http://localhost"
@@ -1495,8 +1635,10 @@ with tab_wholesale_main:
                 adapter = HTTPAdapter(max_retries=retry)
                 session.mount('http://', adapter)
                 session.mount('https://', adapter)
+                
                 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
                 r = session.get(main_category_url, headers=headers, timeout=30, verify=False)
+                
                 if r.status_code == 200:
                     soup = BeautifulSoup(r.text, 'html.parser')
                 else: 
@@ -1512,11 +1654,13 @@ with tab_wholesale_main:
                         if href and name:
                             full_url = urljoin(current_base_url, href)
                             target_pages.append({'url': full_url, 'name': name})
+                
                 if not target_pages:
                     status_box.warning("Теги (товары) не найдены в классе .popular-tags-inner.")
                     h1 = soup.find('h1')
                     name = h1.get_text(strip=True) if h1 else "Товар"
                     target_pages.append({'url': current_base_url, 'name': name})
+                    
         except Exception as e: 
             status_box.error(f"Критическая ошибка: {e}")
             st.stop()
@@ -1542,6 +1686,7 @@ with tab_wholesale_main:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
+            
             used_urls = set()
             for kw in global_promo_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
@@ -1557,6 +1702,7 @@ with tab_wholesale_main:
         if use_sidebar:
             s_io = io.StringIO(sidebar_content)
             all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
+            
             if global_sidebar_list:
                 for kw in global_sidebar_list:
                     tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
@@ -1566,13 +1712,16 @@ with tab_wholesale_main:
                 sidebar_matched_urls = list(set(sidebar_matched_urls))
             else:
                 sidebar_matched_urls = all_menu_urls
+            
             urls_to_fetch_names.update(sidebar_matched_urls)
 
         url_name_cache = {}
         if urls_to_fetch_names:
             status_box.write(f"🌍 Получаем реальные названия для {len(urls_to_fetch_names)} ссылок...")
+            
             def fetch_name_worker(u): 
                 return u, get_breadcrumb_only(u) 
+            
             with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                 future_to_url = {executor.submit(fetch_name_worker, u): u for u in urls_to_fetch_names}
                 done_cnt = 0
@@ -1580,12 +1729,16 @@ with tab_wholesale_main:
                 for future in concurrent.futures.as_completed(future_to_url):
                     u_res, name_res = future.result()
                     norm_key = u_res.rstrip('/')
-                    if name_res: url_name_cache[norm_key] = name_res
+                    
+                    if name_res:
+                        url_name_cache[norm_key] = name_res
                     else:
                         slug = norm_key.split('/')[-1]
                         url_name_cache[norm_key] = force_cyrillic_name_global(slug)
+                    
                     done_cnt += 1
                     prog_fetch.progress(done_cnt / len(urls_to_fetch_names))
+            
             status_box.write("✅ Названия собраны!")
 
         full_sidebar_code = ""
@@ -1598,6 +1751,7 @@ with tab_wholesale_main:
                 idx_start = 0
                 if 'catalog' in parts: idx_start = parts.index('catalog') + 1
                 rel_parts = parts[idx_start:] if parts[idx_start:] else parts
+                
                 curr = tree
                 for i, part in enumerate(rel_parts):
                     if part not in curr: curr[part] = {}
@@ -1615,6 +1769,7 @@ with tab_wholesale_main:
                     name = child.get('__name__', force_cyrillic_name_global(key))
                     url = child.get('__url__')
                     has_children = any(k for k in child.keys() if not k.startswith('__'))
+                    
                     if level == 1:
                         html += '<li class="level-1-header">\n'
                         if has_children:
@@ -1642,7 +1797,7 @@ with tab_wholesale_main:
                 return html
 
             inner_html = render_tree_internal(tree, level=1)
-            full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>"""
+            full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>{SIDEBAR_ASSETS}"""
 
         client = None
         if openai and (use_text or use_tables):
@@ -1733,16 +1888,3 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
