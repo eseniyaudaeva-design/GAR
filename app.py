@@ -1091,11 +1091,10 @@ with tab_seo_main:
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
                 
-                # Сохраняем список чувствительных слов
+                # Сохраняем список в память
                 st.session_state.categorized_sensitive = categorized['sensitive']
                 
-                # !!! ВАЖНАЯ ДОБАВКА !!!
-                # Принудительно заполняем поле ввода найденными стоп-словами
+                # !!! ВАЖНО: Принудительно обновляем текст в поле ввода стоп-слов !!!
                 st.session_state['sensitive_words_editor_final'] = "\n".join(categorized['sensitive'])
 
                 # 2. !!! ВАЖНО: Сохраняем ОРИГИНАЛЫ (для отката фильтра) !!!
@@ -1745,6 +1744,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
