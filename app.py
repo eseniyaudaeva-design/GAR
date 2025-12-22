@@ -1364,9 +1364,6 @@ with tab_wholesale_main:
             )
         else:
             manual_html_source = None
-        
-        if count_struct > 0:
-            st.info(f"📊 **SEO-данные:** Структура ({count_struct} сл.), Техничка ({len(cat_dimensions)} сл.), Текст ({len(text_context_list)} сл.).")
 
     st.subheader("2. Какие блоки генерируем?")
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
@@ -1737,6 +1734,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
