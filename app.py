@@ -1726,7 +1726,7 @@ if use_promo:
                         if up_i: df_db_promo = pd.read_excel(up_i)
                     else: st.error("❌ База картинок не найдена!")
 
-        if use_sidebar:
+if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
                 kws_input_sidebar = st.text_area(
@@ -2057,4 +2057,5 @@ if use_promo:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
