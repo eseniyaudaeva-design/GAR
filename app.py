@@ -1181,18 +1181,22 @@ with tab_seo_main:
         </div>
         """, unsafe_allow_html=True)
 
+# ... (Стили CSS и функция render_clean_block остаются выше без изменений) ...
+
+    # 1. ОТКРЫВАЕМ ЭКСПАНДЕР
     with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
-        # Проверка, был ли анализ (проверяем по наличию оригиналов)
+        
+        # Проверка на наличие данных
         if not st.session_state.get('orig_products'):
-            st.info("⚠️ Данные отсутствуют. Пожалуйста, запустите анализ (кнопка выше).")
+            st.info("⚠️ Данные отсутствуют. Пожалуйста, запустите анализ.")
         else:
-            # --- РЯД 1 ---
+            # РЯД 1
             c1, c2, c3 = st.columns(3)
             with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
             with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
             with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
             
-            # --- РЯД 2 ---
+            # РЯД 2
             c4, c5, c6 = st.columns(3)
             with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
             with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
@@ -1200,39 +1204,43 @@ with tab_seo_main:
 
             st.markdown("---")
 
-            # --- БЛОК СТОП-СЛОВ ---
+            # БЛОК СТОП-СЛОВ
             cs1, cs2 = st.columns([1, 3])
             
             with cs1:
                 sens_count = len(st.session_state.get('categorized_sensitive', []))
-                st.markdown(f"### ⛔ Стоп-слова")
-                st.markdown(f"Исключено слов: **{sens_count}**")
-                st.caption("Слова из этого списка удаляются из всех категорий выше.")
+                st.markdown(f"**⛔ Стоп-слова**")
+                st.markdown(f"Исключено: **{sens_count}**")
+                st.caption("Слова удаляются из всех категорий.")
             
             with cs2:
+                # Получаем текущий список
                 current_sens_list = st.session_state.get('categorized_sensitive', [])
                 sens_text_area_val = "\n".join(current_sens_list)
 
                 new_sens_str = st.text_area(
-                    "Введите стоп-слова (каждое с новой строки)",
+                    "input_hidden_label",
                     value=sens_text_area_val,
-                    height=150,
+                    height=100,
                     key="sensitive_words_input_final",
                     label_visibility="collapsed",
-                    placeholder="Вставьте слова для исключения (каждое с новой строки)..."
+                    placeholder="Вставьте слова для исключения..."
                 )
 
                 if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                    # 1. Читаем новое состояние
+                    # 1. Берем данные из поля
                     raw_input = st.session_state.get("sensitive_words_input_final", "")
                     new_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
                     
-                    # 2. Обновляем список (чтобы он остался в поле)
+                    # 2. Сохраняем в state (чтобы не пропали)
                     st.session_state.categorized_sensitive = sorted(list(new_set))
                     
-                    # 3. ФУНКЦИЯ ВОССТАНОВЛЕНИЯ (Берем ORIG и вычитаем NEW_SET)
+                    # 3. Восстанавливаем из ORIG и фильтруем
                     def apply_filter(orig_key, sensitive_set):
                         original = st.session_state.get(orig_key, [])
+                        # Если оригиналов нет (старая сессия), пробуем взять текущие
+                        if not original: 
+                            original = st.session_state.get(orig_key.replace('orig_', 'categorized_'), [])
                         return [w for w in original if w.lower() not in sensitive_set]
 
                     st.session_state.categorized_products = apply_filter('orig_products', new_set)
@@ -1242,33 +1250,38 @@ with tab_seo_main:
                     st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_set)
                     st.session_state.categorized_general = apply_filter('orig_general', new_set)
 
-                    # 4. Обновляем данные для второй вкладки
+                    # 4. Обновляем для генератора
                     all_prods = st.session_state.categorized_products
                     count_prods = len(all_prods)
                     if count_prods < 20:
                         st.session_state.auto_tags_words = all_prods
                         st.session_state.auto_promo_words = []
                     else:
-                        half_count = int(math.ceil(count_prods / 2))
-                        st.session_state.auto_tags_words = all_prods[:half_count]
-                        st.session_state.auto_promo_words = all_prods[half_count:]
+                        half = int(math.ceil(count_prods / 2))
+                        st.session_state.auto_tags_words = all_prods[:half]
+                        st.session_state.auto_promo_words = all_prods[half:]
 
                     st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
                     st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
 
-                    st.toast("Списки пересчитаны!", icon="✅")
+                    st.toast("Фильтр обновлен!", icon="✅")
                     time.sleep(0.5)
                     st.rerun()
 
-        high = results.get('missing_semantics_high', [])
-        low = results.get('missing_semantics_low', [])
-        if high or low:
-            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
-        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+    # --- УПУЩЕННАЯ СЕМАНТИКА (ВНЕ ЭКСПАНДЕРА) ---
+    # Обратите внимание: этот блок на одном уровне с 'with st.expander', а не внутри него
+    high = results.get('missing_semantics_high', [])
+    low = results.get('missing_semantics_low', [])
+    if high or low:
+        with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
+            if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
+            if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+
+    # --- ТАБЛИЦЫ (ВНЕ ЭКСПАНДЕРА) ---
+    # Они тоже сдвинуты влево (убран один отступ)
+    render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+    render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+    render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -1707,6 +1720,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
