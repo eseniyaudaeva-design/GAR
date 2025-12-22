@@ -1337,33 +1337,38 @@ with tab_wholesale_main:
     with st.container(border=True):
         st.subheader("1. Источник и Доступы")
         
-        # 1. Верхний ряд: URL и API Key
-        col_url, col_key = st.columns([3, 1])
+        # 1. Сначала выбираем режим (Чекбокс)
+        use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode")
         
-        with col_url:
-            main_category_url = st.text_input(
-                "URL Категории", 
-                placeholder="https://site.ru/catalog/...", 
-                help="Скрипт соберет товары с этой страницы (или используйте этот URL как базу для относительных ссылок при ручном HTML)"
-            )
+        # 2. Создаем колонки для полей ввода
+        col_source, col_key = st.columns([3, 1])
+        
+        # Левая колонка меняется в зависимости от чекбокса
+        with col_source:
+            if use_manual_html:
+                # Показываем поле для HTML
+                manual_html_source = st.text_area(
+                    "Исходный код страницы (HTML)", 
+                    height=200, 
+                    placeholder="<html>...</html>", 
+                    help="Скопируйте сюда исходный код страницы."
+                )
+                # URL обнуляем, чтобы не было конфликтов, но переменную создаем
+                main_category_url = None
+            else:
+                # Показываем поле для URL
+                main_category_url = st.text_input(
+                    "URL Категории", 
+                    placeholder="https://site.ru/catalog/...", 
+                    help="Скрипт соберет товары с этой страницы"
+                )
+                manual_html_source = None
 
+        # Правая колонка всегда содержит API Key (он нужен в обоих случаях)
         with col_key:
             default_key = st.session_state.get('pplx_key_cache', "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")
             pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
-
-        # 2. Чекбокс и поле HTML (снизу)
-        use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode")
-        
-        if use_manual_html:
-            manual_html_source = st.text_area(
-                "Исходный код страницы (HTML)", 
-                height=200, 
-                placeholder="<html>...</html>", 
-                help="Скопируйте сюда исходный код страницы, если парсер не может к ней подключиться."
-            )
-        else:
-            manual_html_source = None
 
     st.subheader("2. Какие блоки генерируем?")
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
@@ -1734,6 +1739,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
