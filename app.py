@@ -509,7 +509,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
 
     status = "process"
     attempts = 0
-    while status == "process" and attempts < 40:
+    while status == "process" and attempts < 120:
         time.sleep(5); attempts += 1
         try:
             r_check = requests.post(url_check, headers=headers, json={"task_id": task_id})
@@ -1193,7 +1193,7 @@ with tab_seo_main:
         if "API" in current_source_val:
             if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
             # ЗАПРАШИВАЕМ 30 (Максимум Арсенкина)
-            with st.spinner(f"API Arsenkin (Запрос Топ-30)..."):
+            with st.spinner(f"Парсинг..."):
                 raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
                 
                 if not raw_top: st.stop()
@@ -1843,6 +1843,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
