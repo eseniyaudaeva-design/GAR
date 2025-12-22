@@ -1520,7 +1520,6 @@ with tab_wholesale_main:
          tags_list_source = st.session_state.auto_tags_words
          promo_list_source = st.session_state.auto_promo_words
     else:
-         # Простая логика распределения: если слов мало - все в теги, если много - делим
          if count_struct > 0:
             if count_struct < 10:
                 tags_list_source = structure_keywords
@@ -1537,13 +1536,12 @@ with tab_wholesale_main:
              tags_list_source = []
              promo_list_source = []
     
-    # Дефолтный текст для сайдбара (оставляем через \n для списка меню, но можно и поменять при желании)
+    # Дефолтный текст для сайдбара
     sidebar_default_text = ""
     if count_struct >= 30 and 'auto_tags_words' not in st.session_state:
          part = math.ceil(count_struct / 3)
          sidebar_default_text = "\n".join(structure_keywords[part*2:])
 
-    # ИЗМЕНЕНИЕ: Теперь объединяем через запятую
     tags_default_text = ", ".join(tags_list_source)
     promo_default_text = ", ".join(promo_list_source)
 
@@ -1567,7 +1565,6 @@ with tab_wholesale_main:
         
         col_source, col_key = st.columns([3, 1])
         
-        # Режим ввода
         use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode")
         
         with col_source:
@@ -1615,7 +1612,6 @@ with tab_wholesale_main:
     promo_title = "Рекомендуем"
     sidebar_content = ""
     
-    # Переменные для финальных списков слов (из полей ввода)
     text_context_final_list = []
     tech_context_final_str = ""
     
@@ -1632,20 +1628,20 @@ with tab_wholesale_main:
                     key="ai_text_context_editable",
                     help="Эти слова нейросеть постарается внедрить в текст."
                 )
-                text_context_final_list = [x.strip() for x in ai_words_input.split(',') if x.strip()]
+                # Умное разделение (запятые или переносы)
+                text_context_final_list = [x.strip() for x in re.split(r'[,\n]+', ai_words_input) if x.strip()]
 
         if use_tags:
             with st.container(border=True):
                 st.markdown("#### 🏷️ 2. Теги")
-                # ИЗМЕНЕНИЕ: Текст теперь через запятую + универсальная обработка (replace \n -> ,)
                 kws_input_tags = st.text_area(
-                    "Список (Товары + Услуги) - через запятую", 
+                    "Список (Товары + Услуги) - через запятую или с новой строки", 
                     value=tags_default_text, 
                     height=100, 
                     key="kws_tags_auto"
                 )
-                # Универсальный парсер: меняем переносы на запятые, потом делим по запятым
-                global_tags_list = [x.strip() for x in kws_input_tags.replace('\n', ',').split(',') if x.strip()]
+                # Умное разделение: работает и с запятыми, и с Enter
+                global_tags_list = [x.strip() for x in re.split(r'[,\n]+', kws_input_tags) if x.strip()]
                 
                 if not global_tags_list: st.warning("⚠️ Список пуст!")
                 
@@ -1683,23 +1679,41 @@ with tab_wholesale_main:
         if use_promo:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
-                # ИЗМЕНЕНИЕ: Текст теперь через запятую
                 kws_input_promo = st.text_area(
-                    "Список (Товары + Услуги) - через запятую", 
+                    "Список (Товары + Услуги) - через запятую или с новой строки", 
                     value=promo_default_text, 
                     height=100, 
                     key="kws_promo_auto"
                 )
-                # Универсальный парсер: меняем переносы на запятые, потом делим по запятым
-                global_promo_list = [x.strip() for x in kws_input_promo.replace('\n', ',').split(',') if x.strip()]
+                # Умное разделение (Regex split по запятой ИЛИ переносу)
+                global_promo_list = [x.strip() for x in re.split(r'[,\n]+', kws_input_promo) if x.strip()]
 
                 if not global_promo_list: st.warning("⚠️ Список пуст!")
                 
                 st.markdown("---")
                 col_p1, col_p2 = st.columns([1, 2])
                 with col_p1:
-                    promo_title = st.text_input("Заголовок", "Смотрите также", key="pr_tit_vert")
+                    # --- ВОССТАНОВЛЕННАЯ ЛОГИКА ЗАГОЛОВКОВ ---
+                    promo_presets = [
+                        "Смотрите также",
+                        "Рекомендуем",
+                        "Похожие товары",
+                        "С этим товаром покупают",
+                        "Лидеры продаж",
+                        "Популярные категории",
+                        "Возможно вас заинтересует"
+                    ]
+                    selected_preset = st.selectbox("Варианты заголовка", promo_presets, key="promo_header_select")
+                    use_custom_header = st.checkbox("Ввести свой заголовок", key="cb_custom_header")
+                    
+                    if use_custom_header:
+                        promo_title = st.text_input("Ваш заголовок", value=selected_preset, key="pr_tit_vert")
+                    else:
+                        promo_title = selected_preset
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
                     u_img_man = st.checkbox("Своя база картинок", key="cb_img_vert")
+
                 with col_p2:
                     default_img_db = "data/images_db.xlsx"
                     if not u_img_man and os.path.exists(default_img_db):
@@ -1714,7 +1728,6 @@ with tab_wholesale_main:
         if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
-                # Сайдбар лучше оставить списком (каждая строка - пункт меню)
                 kws_input_sidebar = st.text_area(
                     "Список (Товары + Услуги) - с новой строки", 
                     value=sidebar_default_text, 
