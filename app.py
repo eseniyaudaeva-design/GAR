@@ -200,73 +200,106 @@ def render_clean_block(title, icon, words_list):
 # ==========================================
 @st.cache_data
 def load_lemmatized_dictionaries():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    base_path = os.path.join(script_dir, "data")
+    base_path = "data"
     
-    # Создаем множества
-    sets = {
-        "products": set(),
-        "commercial": set(),
-        "specs": set(),
-        "geo": set(),
-        "services": set(),
-        "sensitive": set()
-    }
+    product_lemmas = set()
+    commercial_lemmas = set()
+    specs_lemmas = set()
+    geo_lemmas = set()
+    services_lemmas = set()
+    sensitive_lemmas = set()
 
-    # Карта файлов
-    files_map = {
-        "metal_products.json": "products",
-        "commercial_triggers.json": "commercial",
-        "geo_locations.json": "geo",
-        "services_triggers.json": "services",
-        "tech_specs.json": "specs",
-        "SENSITIVE_STOPLIST.json": "sensitive"
-    }
-
-    for filename, set_key in files_map.items():
-        full_path = os.path.join(base_path, filename)
-        if not os.path.exists(full_path):
-            continue
-        
+    # 1. ТОВАРЫ
+    path_prod = os.path.join(base_path, "metal_products.json")
+    if os.path.exists(path_prod):
         try:
-            with open(full_path, 'r', encoding='utf-8') as f:
-                data = json.load(f) 
-                
-                words_bucket = []
+            with open(path_prod, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                all_raw_words = []
                 if isinstance(data, dict):
                     for cat_list in data.values():
-                        words_bucket.extend(cat_list)
+                        all_raw_words.extend(cat_list)
                 elif isinstance(data, list):
-                    words_bucket = data
+                    all_raw_words = data
                 
-                for phrase in words_bucket:
-                    # 1. Чистим, переводим в нижний регистр, меняем Ё на Е
-                    w_clean = str(phrase).lower().strip().replace('ё', 'е')
-                    
-                    if not w_clean: continue
-
-                    sets[set_key].add(w_clean)
-                    
-                    # 2. Добавляем лемму (нормальную форму)
-                    if morph:
-                        normal_form = morph.parse(w_clean)[0].normal_form.replace('ё', 'е')
-                        sets[set_key].add(normal_form)
-                    
-                    # 3. Если фраза из нескольких слов, добавляем каждое слово отдельно
-                    if ' ' in w_clean:
-                        parts = w_clean.split()
-                        for p in parts:
-                            sets[set_key].add(p)
-                            if morph: 
-                                sets[set_key].add(morph.parse(p)[0].normal_form.replace('ё', 'е'))
-
-        except json.JSONDecodeError as e:
-            st.error(f"❌ ОШИБКА В ФАЙЛЕ {filename}!\nСкорее всего, лишняя запятая в конце списка или пропущенная кавычка.\nДетали: {e}")
+                for phrase in all_raw_words:
+                    words = str(phrase).lower().split() 
+                    for w in words:
+                        clean_w = re.sub(r'[^a-zа-яё0-9-]', '', w)
+                        if not clean_w: continue
+                        product_lemmas.add(clean_w) 
+                        if morph: product_lemmas.add(morph.parse(clean_w)[0].normal_form)
         except Exception as e:
-            st.error(f"❌ Ошибка чтения {filename}: {e}")
+            st.error(f"Ошибка в metal_products.json: {e}")
+
+    # 2. КОММЕРЦИЯ
+    path_comm = os.path.join(base_path, "commercial_triggers.json")
+    if os.path.exists(path_comm):
+        try:
+            with open(path_comm, 'r', encoding='utf-8') as f:
+                raw_comm = json.load(f)
+                if isinstance(raw_comm, list):
+                    for w in raw_comm:
+                        w_clean = str(w).lower().strip()
+                        commercial_lemmas.add(w_clean)
+                        if morph: commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
+        except: pass
+
+    # 3. ГЕО
+    path_geo = os.path.join(base_path, "geo_locations.json")
+    if os.path.exists(path_geo):
+        try:
+            with open(path_geo, 'r', encoding='utf-8') as f:
+                raw_geo = json.load(f)
+                for w in raw_geo:
+                    w_clean = str(w).lower().strip()
+                    geo_lemmas.add(w_clean)
+                    if morph: geo_lemmas.add(morph.parse(w_clean)[0].normal_form)
+        except Exception as e:
+            st.error(f"Ошибка в geo_locations.json: {e}")
+
+    # 4. УСЛУГИ
+    path_serv = os.path.join(base_path, "services_triggers.json")
+    if os.path.exists(path_serv):
+        try:
+            with open(path_serv, 'r', encoding='utf-8') as f:
+                raw_serv = json.load(f)
+                if isinstance(raw_serv, list):
+                    for w in raw_serv:
+                        parts = str(w).replace('-', ' ').lower().split()
+                        for part in parts:
+                            services_lemmas.add(part)
+                            if morph: services_lemmas.add(morph.parse(part)[0].normal_form)
+        except Exception as e:
+            st.error(f"Ошибка в services_triggers.json: {e}")
+
+    # 5. ХАРАКТЕРИСТИКИ
+    path_specs = os.path.join(base_path, "tech_specs.json")
+    if os.path.exists(path_specs):
+        try:
+            with open(path_specs, 'r', encoding='utf-8') as f:
+                raw_specs = json.load(f)
+                if isinstance(raw_specs, list):
+                    for w in raw_specs:
+                        w_clean = str(w).lower().strip()
+                        specs_lemmas.add(w_clean)
+                        if morph: specs_lemmas.add(morph.parse(w_clean)[0].normal_form)
+        except Exception as e:
+            st.error(f"Ошибка в tech_specs.json: {e}")
+
+    # 6. SENSITIVE (файл)
+    path_sens = os.path.join(base_path, "SENSITIVE_STOPLIST.json")
+    if os.path.exists(path_sens):
+        try:
+            with open(path_sens, 'r', encoding='utf-8') as f:
+                raw_sens = json.load(f)
+                if isinstance(raw_sens, list):
+                    for w in raw_sens:
+                        sensitive_lemmas.add(str(w).lower().strip())
+        except: pass
 
     # Возвращаем 6 наборов
-    return sets["products"], sets["commercial"], sets["specs"], sets["geo"], sets["services"], sets["sensitive"]
+    return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas, sensitive_lemmas
 
 # ==========================================
 # КЛАССИФИКАТОР (УСИЛЕННЫЙ)
@@ -293,15 +326,19 @@ def classify_semantics_with_api(words_list, yandex_key):
     for word in words_list:
         word_lower = word.lower()
         
+        # 1. СТОП-СЛОВА
+        is_sensitive = False
+        if word_lower in FULL_SENSITIVE: is_sensitive = True
+        else:
+            for stop_w in FULL_SENSITIVE:
+                if len(stop_w) > 3 and stop_w in word_lower: is_sensitive = True; break
+        if is_sensitive: categories['sensitive'].add(word_lower); continue
+        
         # Лемматизация
         lemma = word_lower
         if morph:
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
-
-        # 1. СТОП-СЛОВА
-        if word_lower in FULL_SENSITIVE or lemma in FULL_SENSITIVE:
-            categories['sensitive'].add(word_lower); continue
 
         # 2. РАЗМЕРЫ / ГОСТ
         if word_lower in SPECS_SET or lemma in SPECS_SET:
@@ -309,16 +346,17 @@ def classify_semantics_with_api(words_list, yandex_key):
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower); continue
 
-        # 3. ТОВАРЫ (Улучшенная логика)
+        # 3. ТОВАРЫ
+        # Проверяем точное вхождение или лемму
         if word_lower in PRODUCTS_SET or lemma in PRODUCTS_SET:
             categories['products'].add(word_lower); continue
         
-        # Проверка вхождения корня
+        # Проверяем вхождение корня (если в словаре "алюминий", а слово "алюминиевый")
         is_product_root = False
+        # Пробегаемся по словарю товаров. Если слово из словаря является частью проверяемого слова - ок.
+        # Ограничение len > 3 нужно, чтобы не цеплять короткие корни типа "ал"
         for prod in PRODUCTS_SET:
-            # Если слово в словаре длинное, отрезаем последние буквы
-            check_root = prod[:-1] if len(prod) > 4 else prod
-            if len(check_root) > 3 and check_root in word_lower:
+            if len(prod) > 3 and prod in word_lower:
                 categories['products'].add(word_lower)
                 is_product_root = True
                 break
@@ -331,7 +369,7 @@ def classify_semantics_with_api(words_list, yandex_key):
         # 5. УСЛУГИ
         if lemma in SERVICES_SET or word_lower in SERVICES_SET:
              categories['services'].add(word_lower); continue
-        if "резка" in word_lower or "обработка" in word_lower or "изготовление" in word_lower:
+        if lemma.endswith('обработка') or lemma.endswith('изготовление') or lemma == "резка":
             categories['services'].add(word_lower); continue
 
         # 6. КОММЕРЦИЯ
@@ -399,15 +437,15 @@ GARBAGE_LATIN_STOPLIST = {
 # ==========================================
 # STOP LISTS (SENSITIVE / GEO UA)
 # ==========================================
-# Пишите здесь хоть КАПСОМ, хоть с Большой - код сам исправит
-SENSITIVE_STOPLIST_RAW = {
-    "украина", "ukraine", "ua", "всу", "зсу", "ато",
-    "киев", "львов", "харьков", "одесса", "днепр", "мариуполь",
-    "донецк", "луганск", "днр", "лнр", "донбасс", 
-    "мелитополь", "бердянск", "бахмут", "запорожье", "херсон",
-    "крым", "севастополь", "симферополь"
+SENSITIVE_STOPLIST = {
+    "украина", "украине", "украины", "украинский", "ukraine", "ua",
+    "киев", "киеве", "киева", "kyiv", "kiev",
+    "львов", "харьков", "одесса", "днепр", "днепропетровск", "запорожье",
+    "кривой рог", "мариуполь", "винница", "херсон", "полтава", "чернигов",
+    "черкассы", "сумы", "житомир", "ровно", "ивано-франковск", "тернополь",
+    "луцк", "ужгород", "хмельницкий", "черновцы",
+    "гривна", "грн", "uah", "всу", "зсу", "ато", "майдан"
 }
-SENSITIVE_STOPLIST = {w.lower() for w in SENSITIVE_STOPLIST_RAW}
 
 def check_password():
     if st.session_state.get("authenticated"):
@@ -499,6 +537,433 @@ st.markdown(f"""
         div[data-testid="stAppViewContainer"] {{ filter: none !important; opacity: 1 !important; transition: none !important; }}
     </style>
 """, unsafe_allow_html=True)
+
+# ==========================================
+# PARSING & METRICS
+# ==========================================
+
+def get_yandex_dict_info(text, api_key):
+    if not api_key: return {'lemma': text, 'pos': 'unknown'}
+    url = "https://dictionary.yandex.net/api/v1/dicservice.json/lookup"
+    params = {'key': api_key, 'lang': 'ru-ru', 'text': text, 'ui': 'ru'}
+    try:
+        r = requests.get(url, params=params, timeout=2)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get('def'):
+                first_def = data['def'][0]
+                return {'lemma': first_def.get('text', text), 'pos': first_def.get('pos', 'unknown')}
+    except: pass
+    return {'lemma': text, 'pos': 'unknown'}
+
+def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
+    url_set = "https://arsenkin.ru/api/tools/set"
+    url_check = "https://arsenkin.ru/api/tools/check"
+    url_get = "https://arsenkin.ru/api/tools/get"
+    headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
+    reg_ids = REGION_MAP.get(region_name, {"ya": 213, "go": 1011969})
+    se_params = []
+    if "Яндекс" in engine_type: se_params.append({"type": 2, "region": reg_ids['ya']})
+    if "Google" in engine_type: se_params.append({"type": 11, "region": reg_ids['go']})
+
+    payload = {"tools_name": "check-top", "data": {"queries": [query], "is_snippet": False, "noreask": True, "se": se_params, "depth": depth_val}}
+    try:
+        r = requests.post(url_set, headers=headers, json=payload, timeout=15)
+        resp_json = r.json()
+        if "error" in resp_json or "task_id" not in resp_json: st.error(f"❌ Ошибка API: {resp_json}"); return []
+        task_id = resp_json["task_id"]
+        st.toast(f"Задача ID {task_id} запущена")
+    except Exception as e: st.error(f"❌ Ошибка сети: {e}"); return []
+
+    status = "process"
+    attempts = 0
+    # Timeout increased to 10 minutes (120 * 5s)
+    while status == "process" and attempts < 120:
+        time.sleep(5); attempts += 1
+        try:
+            r_check = requests.post(url_check, headers=headers, json={"task_id": task_id})
+            res_check_data = r_check.json()
+            if res_check_data.get("status") == "finish": status = "done"; break
+        except: pass
+
+    if status != "done": st.error(f"⏳ Тайм-аут API"); return []
+
+    try:
+        r_final = requests.post(url_get, headers=headers, json={"task_id": task_id}, timeout=30)
+        res_data = r_final.json()
+    except Exception as e: st.error(f"❌ Ошибка получения результата: {e}"); return []
+
+    results_list = []
+    try:
+        collect = res_data.get('result', {}).get('result', {}).get('collect')
+        if not collect: return []
+        final_url_list = []
+        if isinstance(collect, list) and len(collect) > 0 and isinstance(collect[0], list): final_url_list = collect[0][0]
+        else:
+             unique_urls = set()
+             for engine_data in collect:
+                 if isinstance(engine_data, dict):
+                     for _, serps in engine_data.items():
+                         for item in serps:
+                             if item.get('url') and item.get('url') not in unique_urls:
+                                 results_list.append({'url': item['url'], 'pos': item['pos']})
+                                 unique_urls.add(item['url'])
+             return results_list
+
+        if final_url_list:
+            for index, url in enumerate(final_url_list): results_list.append({'url': url, 'pos': index + 1})
+    except Exception as e: st.error(f"❌ Ошибка парсинга JSON: {e}"); return []
+    return results_list
+
+def process_text_detailed(text, settings, n_gram=1):
+    text = text.lower().replace('ё', 'е')
+    words = re.findall(r'[а-яА-ЯёЁ0-9a-zA-Z]+', text)
+    stops = set(w.lower().replace('ё', 'е') for w in settings['custom_stops'])
+    lemmas = []
+    forms_map = defaultdict(set)
+    for w in words:
+        if len(w) < 2: continue
+        if not settings['numbers'] and w.isdigit(): continue
+        if w in stops: continue
+        lemma = w
+        if USE_NLP and n_gram == 1:
+            p = morph.parse(w)[0]
+            if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
+            lemma = p.normal_form.replace('ё', 'е')
+        lemmas.append(lemma)
+        forms_map[lemma].add(w)
+    return lemmas, forms_map
+
+def parse_page(url, settings):
+    import streamlit as st
+    try:
+        from curl_cffi import requests as cffi_requests
+        headers = {
+            'User-Agent': settings['ua'],
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        }
+        r = cffi_requests.get(url, headers=headers, timeout=20, impersonate="chrome110")
+        if r.status_code == 403: raise Exception("CURL_CFFI получил 403 Forbidden")
+        if r.status_code != 200:
+            st.warning(f"⚠️ Статус ответа (curl_cffi): {r.status_code}")
+            return None
+        content = r.content
+        encoding = r.encoding if r.encoding else 'utf-8'
+    except Exception as e_cffi:
+        try:
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            session = requests.Session()
+            retry = Retry(connect=3, read=3, redirect=5, backoff_factor=0.5)
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+            headers = {'User-Agent': settings['ua']}
+            r = session.get(url, headers=headers, timeout=20, verify=False)
+            if r.status_code != 200:
+                st.error(f"❌ Ошибка (Standard): Сервер вернул код {r.status_code}")
+                return None
+            content = r.content
+            encoding = r.apparent_encoding
+        except Exception as e_final:
+            st.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА СКАЧИВАНИЯ:\n{e_final}")
+            return None
+
+    try:
+        soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
+        tags_to_remove = []
+        if settings['noindex']: tags_to_remove.append('noindex')
+        for c in soup.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
+        if tags_to_remove:
+            for t in soup.find_all(tags_to_remove): t.decompose()
+        for script in soup(["script", "style", "svg", "path", "noscript"]):
+            script.decompose()
+        anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
+        anchor_text = " ".join(anchors_list)
+        extra_text = []
+        meta_desc = soup.find('meta', attrs={'name': 'description'})
+        if meta_desc and meta_desc.get('content'): extra_text.append(meta_desc['content'])
+        if settings['alt_title']:
+            for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
+            for t in soup.find_all(title=True): extra_text.append(t['title'])
+        body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
+        body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
+        if not body_text: 
+            st.warning("⚠️ Страница скачалась, но текст не найден (пустой body).")
+            return None
+        return {'url': url, 'domain': urlparse(url).netloc, 'body_text': body_text, 'anchor_text': anchor_text}
+    except Exception as e_parse:
+        st.error(f"❌ Ошибка при обработке HTML: {e_parse}")
+        return None
+
+def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
+    all_forms_map = defaultdict(set)
+    if not my_data or not my_data.get('body_text'): 
+        my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
+        my_clean_domain = "local"
+    else:
+        my_lemmas, my_forms = process_text_detailed(my_data['body_text'], settings)
+        my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
+        my_len = len(my_lemmas)
+        for k, v in my_forms.items(): all_forms_map[k].update(v)
+        my_clean_domain = my_data['domain'].lower().replace('www.', '').split(':')[0]
+
+    comp_docs = []
+    for p in comp_data_full:
+        if not p.get('body_text'): continue
+        body, c_forms = process_text_detailed(p['body_text'], settings)
+        anchor, _ = process_text_detailed(p['anchor_text'], settings)
+        comp_docs.append({'body': body, 'anchor': anchor, 'url': p['url'], 'domain': p['domain']})
+        for k, v in c_forms.items(): all_forms_map[k].update(v)
+
+    if not comp_docs:
+        return { "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}, "missing_semantics_high": [], "missing_semantics_low": [] }
+
+    c_lens = [len(d['body']) for d in comp_docs]
+    avg_dl = np.mean(c_lens) if c_lens else 1
+    median_len = np.median(c_lens) if c_lens else 0
+    norm_k_recs = (my_len / median_len) if (median_len > 0 and my_len > 0 and settings['norm']) else 1.0
+
+    vocab = set(my_lemmas)
+    for d in comp_docs: vocab.update(d['body'])
+    vocab = sorted(list(vocab))
+    N = len(comp_docs)
+    doc_freqs = Counter()
+    for d in comp_docs:
+        for w in set(d['body']): doc_freqs[w] += 1
+    word_counts_per_doc = [Counter(d['body']) for d in comp_docs]
+
+    word_idf_map = {}
+    for lemma in vocab:
+        df = doc_freqs[lemma]
+        if df == 0: continue
+        idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
+        word_idf_map[lemma] = max(idf, 0.01)
+
+    S_WIDTH_CORE = set()
+    missing_semantics_high = []
+    missing_semantics_low = []
+    my_full_lemmas_set = set(my_lemmas) | set(my_anchors)
+    lsi_candidates_weighted = []
+
+    for lemma in vocab:
+        if lemma in GARBAGE_LATIN_STOPLIST: continue
+        c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
+        med_val = np.median(c_counts)
+        percent = int((doc_freqs[lemma] / N) * 100)
+        weight_simple = word_idf_map.get(lemma, 0) * med_val
+        if med_val > 0: lsi_candidates_weighted.append((lemma, weight_simple))
+        is_width_word = False
+        if med_val >= 1: S_WIDTH_CORE.add(lemma); is_width_word = True
+
+        if lemma not in my_full_lemmas_set:
+            if len(lemma) < 2 or lemma.isdigit(): continue
+            item = {'word': lemma, 'percent': percent, 'weight': weight_simple}
+            if is_width_word: missing_semantics_high.append(item)
+            elif percent >= 30: missing_semantics_low.append(item)
+
+    missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
+    missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
+    lsi_candidates_weighted.sort(key=lambda x: x[1], reverse=True)
+    S_DEPTH_TOP70 = set([x[0] for x in lsi_candidates_weighted[:70]])
+    total_width_core_count = len(S_WIDTH_CORE)
+
+    def calculate_bm25_okapi(doc_tokens, doc_len):
+        if avg_dl == 0 or doc_len == 0: return 0
+        score = 0
+        counts = Counter(doc_tokens)
+        k1 = 1.2; b = 0.75
+        target_words = S_WIDTH_CORE if S_WIDTH_CORE else S_DEPTH_TOP70
+        for word in target_words:
+            if word not in counts: continue
+            tf = counts[word]
+            idf = word_idf_map.get(word, 0)
+            score += idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (doc_len / avg_dl)))
+        return score
+
+    def calculate_width_score_val(lemmas_set):
+        if total_width_core_count == 0: return 0
+        ratio = len(lemmas_set.intersection(S_WIDTH_CORE)) / total_width_core_count
+        return 100 if ratio >= 0.9 else int(round((ratio / 0.9) * 100))
+
+    competitor_scores_map = {}
+    comp_bm25_list = []
+    for i, doc in enumerate(comp_docs):
+        raw_bm25 = calculate_bm25_okapi(doc['body'], c_lens[i])
+        comp_bm25_list.append(raw_bm25)
+        width_val = calculate_width_score_val(set(doc['body']))
+        competitor_scores_map[doc['url']] = {'width_final': min(100, width_val), 'bm25_val': raw_bm25}
+
+    median_bm25_top = np.median(comp_bm25_list) if comp_bm25_list else 0
+    spam_limit = median_bm25_top * 1.25 if median_bm25_top > 0 else 1
+
+    for url, scores in competitor_scores_map.items():
+        depth_val = int(round((scores['bm25_val'] / spam_limit) * 100))
+        scores['depth_final'] = min(100, depth_val)
+
+    my_bm25 = calculate_bm25_okapi(my_lemmas, my_len)
+    my_depth_score_final = min(100, int(round((my_bm25 / spam_limit) * 100)))
+    my_width_score_final = min(100, calculate_width_score_val(my_full_lemmas_set))
+
+    table_depth, table_hybrid = [], []
+    for lemma in vocab:
+        if lemma in GARBAGE_LATIN_STOPLIST: continue
+        df = doc_freqs[lemma]
+        if df < 2 and lemma not in my_lemmas: continue
+        my_tf_count = my_lemmas.count(lemma)
+        forms_str = ", ".join(sorted(list(all_forms_map.get(lemma, set())))) if all_forms_map.get(lemma) else lemma
+        c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
+        med_total = np.median(c_counts); max_total = np.max(c_counts)
+        base_min = min(np.mean(c_counts), med_total)
+        rec_min = int(math.ceil(base_min * norm_k_recs))
+        rec_max = int(round(max_total * norm_k_recs))
+        if rec_max < rec_min: rec_max = rec_min
+        rec_median = med_total * norm_k_recs
+        
+        status = "Норма"; action_diff = 0; action_text = "✅"
+        if my_tf_count < rec_min:
+            status = "Недоспам"; action_diff = int(round(rec_min - my_tf_count))
+            if action_diff == 0: action_diff = 1
+            action_text = f"+{action_diff}"
+        elif my_tf_count > rec_max:
+            status = "Переспам"; action_diff = int(round(my_tf_count - rec_max))
+            if action_diff == 0: action_diff = 1
+            action_text = f"-{action_diff}"
+
+        depth_percent = int(round((my_tf_count / rec_median) * 100)) if rec_median > 0.1 else (0 if my_tf_count == 0 else 100)
+        weight_hybrid = word_idf_map.get(lemma, 0) * (my_tf_count / my_len if my_len > 0 else 0)
+        table_depth.append({
+            "Слово": lemma, "Словоформы": forms_str, "Вхождений у вас": my_tf_count,
+            "Медиана": round(med_total, 1), "Минимум (рек)": rec_min, "Максимум (рек)": rec_max,
+            "Глубина %": min(100, depth_percent), "Статус": status, "Рекомендация": action_text,
+            "is_missing": (status == "Недоспам" and my_tf_count == 0), "sort_val": abs(action_diff) if status != "Норма" else 0
+        })
+        table_hybrid.append({
+            "Слово": lemma, "TF-IDF ТОП": round(word_idf_map.get(lemma, 0) * (med_total / avg_dl if avg_dl > 0 else 0), 4),
+            "TF-IDF у вас": round(weight_hybrid, 4), "Сайтов": df, "Переспам": max_total
+        })
+
+    table_rel = []
+    my_site_found_in_selection = False
+    for item in original_results:
+        url = item['url']
+        if url not in competitor_scores_map: continue
+        row_domain = urlparse(url).netloc.lower().replace('www.', '')
+        is_my_site = False
+        if my_clean_domain and my_clean_domain != "local" and my_clean_domain in row_domain:
+            is_my_site = True
+            my_site_found_in_selection = True
+            display_name = f"{urlparse(url).netloc} (Вы)"
+        else:
+            display_name = urlparse(url).netloc
+        scores = competitor_scores_map[url]
+        table_rel.append({ "Домен": display_name, "Позиция": item['pos'], "Ширина (балл)": scores['width_final'], "Глубина (балл)": scores['depth_final'] })
+        
+    if not my_site_found_in_selection:
+        pos_to_show = my_serp_pos if my_serp_pos > 0 else 0
+        my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
+        table_rel.append({ "Домен": my_label, "Позиция": pos_to_show, "Ширина (балл)": my_width_score_final, "Глубина (балл)": my_depth_score_final })
+
+    return { 
+        "depth": pd.DataFrame(table_depth), 
+        "hybrid": pd.DataFrame(table_hybrid), 
+        "relevance_top": pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True), 
+        "my_score": {"width": my_width_score_final, "depth": my_depth_score_final}, 
+        "missing_semantics_high": missing_semantics_high, 
+        "missing_semantics_low": missing_semantics_low 
+    }
+
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
+    if df.empty: st.info(f"{title_text}: Нет данных."); return
+    col_t1, col_t2 = st.columns([7, 3])
+    with col_t1: st.markdown(f"### {title_text}")
+    if f'{key_prefix}_sort_col' not in st.session_state: st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if (default_sort_col and default_sort_col in df.columns) else df.columns[0]
+    if f'{key_prefix}_sort_order' not in st.session_state: st.session_state[f'{key_prefix}_sort_order'] = "Убывание"
+
+    search_query = st.text_input(f"🔍 Поиск ({title_text})", key=f"{key_prefix}_search")
+    if search_query:
+        mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
+        df_filtered = df[mask].copy()
+    else: df_filtered = df.copy()
+
+    if df_filtered.empty: st.warning("Ничего не найдено."); return
+
+    with st.container():
+        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
+        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
+        with col_s1:
+            current_sort = st.session_state[f'{key_prefix}_sort_col']
+            if current_sort not in df_filtered.columns: current_sort = df_filtered.columns[0]
+            sort_col = st.selectbox("🗂 Сортировать по:", df_filtered.columns, key=f"{key_prefix}_sort_box", index=list(df_filtered.columns).index(current_sort))
+            st.session_state[f'{key_prefix}_sort_col'] = sort_col
+        with col_s2:
+            sort_order = st.radio("Порядок:", ["Убывание", "Возрастание"], horizontal=True, key=f"{key_prefix}_order_box", index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1)
+            st.session_state[f'{key_prefix}_sort_order'] = sort_order
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    ascending = (sort_order == "Возрастание")
+    if use_abs_sort_default and sort_col == "Рекомендация" and "sort_val" in df_filtered.columns: df_filtered = df_filtered.sort_values(by="sort_val", ascending=ascending)
+    elif ("Добавить" in sort_col or "+/-" in sort_col) and df_filtered[sort_col].dtype == object:
+        try:
+            df_filtered['_temp_sort'] = df_filtered[sort_col].astype(str).str.replace(r'[^\d]', '', regex=True)
+            df_filtered['_temp_sort'] = pd.to_numeric(df_filtered['_temp_sort'], errors='coerce').fillna(0)
+            df_filtered = df_filtered.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
+        except: df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
+    else: df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
+
+    df_filtered = df_filtered.reset_index(drop=True); df_filtered.index = df_filtered.index + 1
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        export_df = df_filtered.copy()
+        if "is_missing" in export_df.columns: del export_df["is_missing"]
+        if "sort_val" in export_df.columns: del export_df["sort_val"]
+        export_df.to_excel(writer, index=False, sheet_name='Data')
+    excel_data = buffer.getvalue()
+    with col_t2: st.download_button(label="📥 Скачать Excel", data=excel_data, file_name=f"{key_prefix}_export.xlsx", mime="application/vnd.ms-excel", key=f"{key_prefix}_down")
+
+    ROWS_PER_PAGE = 20
+    if f'{key_prefix}_page' not in st.session_state: st.session_state[f'{key_prefix}_page'] = 1
+    total_rows = len(df_filtered); total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
+    if total_pages == 0: total_pages = 1
+    current_page = st.session_state[f'{key_prefix}_page']
+    if current_page > total_pages: current_page = total_pages
+    if current_page < 1: current_page = 1
+    st.session_state[f'{key_prefix}_page'] = current_page
+    start_idx = (current_page - 1) * ROWS_PER_PAGE
+    end_idx = start_idx + ROWS_PER_PAGE
+    df_view = df_filtered.iloc[start_idx:end_idx]
+
+    def highlight_rows(row):
+        base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
+        styles = []
+        status = row.get("Статус", "")
+        for col_name in row.index:
+            cell_style = base_style
+            if col_name == "Статус":
+                if status == "Недоспам": cell_style += "color: #D32F2F; font-weight: bold;"
+                elif status == "Переспам": cell_style += "color: #E65100; font-weight: bold;"
+                elif status == "Норма": cell_style += "color: #2E7D32; font-weight: bold;"
+            styles.append(cell_style)
+        return styles
+
+    cols_to_hide = [c for c in ["is_missing", "sort_val"] if c in df_view.columns]
+    try: styled_df = df_view.style.apply(highlight_rows, axis=1)
+    except: styled_df = df_view
+    st.dataframe(styled_df, use_container_width=True, height=(len(df_view) * 35) + 40, column_config={c: None for c in cols_to_hide})
+    c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
+    with c_btn_prev:
+        if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] -= 1
+            st.rerun()
+    with c_info: st.markdown(f"<div style='text-align: center; margin-top: 10px;'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
+    with c_btn_next:
+        if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] += 1
+            st.rerun()
+    st.markdown("---")
 
 # ==========================================
 # PERPLEXITY GEN
@@ -855,48 +1320,91 @@ with tab_seo_main:
 
             st.rerun()
 
-if st.session_state.analysis_done and st.session_state.analysis_results:
+    if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-        # --- СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
+        # --- НОВЫЕ СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
         st.markdown("""
         <style>
-            details > summary { list-style: none; }
-            details > summary::-webkit-details-marker { display: none; }
-            .details-card {
-                background-color: #f8f9fa; border: 1px solid #e9ecef;
-                border-radius: 8px; margin-bottom: 10px;
-                overflow: hidden; transition: all 0.2s ease;
+            /* Убираем стандартный маркер треугольника у details */
+            details > summary {
+                list-style: none;
             }
-            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
+            details > summary::-webkit-details-marker {
+                display: none;
+            }
+
+            .details-card {
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 8px;
+                margin-bottom: 10px;
+                overflow: hidden; /* Чтобы углы не обрезались */
+                transition: all 0.2s ease;
+            }
+            
+            .details-card:hover {
+                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                border-color: #d1d5db;
+            }
+
             .card-summary {
-                padding: 12px 15px; cursor: pointer; font-weight: 700;
-                font-size: 15px; color: #111827; display: flex;
-                justify-content: space-between; align-items: center;
+                padding: 12px 15px;
+                cursor: pointer;
+                font-weight: 700;
+                font-size: 15px;
+                color: #111827;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
                 background-color: #ffffff;
             }
-            .card-summary:hover { background-color: #f3f4f6; }
+            
+            /* Эффект при наведении на заголовок */
+            .card-summary:hover {
+                background-color: #f3f4f6;
+            }
+
             .card-content {
-                padding: 15px; border-top: 1px solid #e9ecef;
-                font-size: 14px; color: #374151; line-height: 1.6;
+                padding: 15px;
+                border-top: 1px solid #e9ecef;
+                font-size: 14px;
+                color: #374151;
+                line-height: 1.6;
                 background-color: #fcfcfc;
             }
+
             .count-tag { 
-                background: #e5e7eb; color: #374151; padding: 2px 8px; 
-                border-radius: 10px; font-size: 12px; font-weight: 600;
-                min-width: 25px; text-align: center;
+                background: #e5e7eb; 
+                color: #374151; 
+                padding: 2px 8px; 
+                border-radius: 10px; 
+                font-size: 12px; 
+                font-weight: 600;
+                min-width: 25px;
+                text-align: center;
             }
+            
+            .text-gray { color: #9ca3af; font-style: italic; font-weight: normal;}
+            
+            /* Стрелочка-индикатор */
             .arrow-icon {
-                font-size: 10px; margin-right: 8px; color: #9ca3af;
+                font-size: 10px;
+                margin-right: 8px;
+                color: #9ca3af;
                 transition: transform 0.2s;
             }
-            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
+            
+            details[open] .arrow-icon {
+                transform: rotate(90deg);
+                color: #277EFF;
+            }
         </style>
         """, unsafe_allow_html=True)
 
-        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
+        with st.expander("🛒 Семантическое ядро", expanded=True):
             if not st.session_state.get('orig_products'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
             else:
@@ -917,33 +1425,39 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
                 # Блок стоп-слов
                 cs1, cs2 = st.columns([1, 3])
                 
-                # Инициализация ключа
+                # 1. Инициализация ключа (чтобы не было ошибки при первом запуске)
                 if 'sensitive_words_input_final' not in st.session_state:
                     current_list = st.session_state.get('categorized_sensitive', [])
                     st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
                 
+                # Получаем актуальное значение для подсчета кол-ва (для отображения слева)
                 current_text_value = st.session_state['sensitive_words_input_final']
                 
                 with cs1:
                     count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
                     st.markdown(f"**⛔ Стоп-слова**")
                     st.markdown(f"Исключено: **{count_excluded}**")
-                    st.caption("Эти слова автоматически удалены.")
+                    st.caption("Эти слова автоматически удалены. Удалите слово отсюда и нажмите 'Обновить', чтобы вернуть его.")
                 
                 with cs2:
+                    # ВАЖНО: Убрали аргумент value=... , оставили только key
                     new_sens_str = st.text_area(
-                        "hidden_label", height=100,
-                        key="sensitive_words_input_final",
+                        "hidden_label",
+                        height=100,
+                        key="sensitive_words_input_final", # Виджет сам возьмет значение из session_state
                         label_visibility="collapsed",
                         placeholder="Слова для исключения..."
                     )
 
                     if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
+                        # 1. Получаем список из session_state (куда пишет виджет)
                         raw_input = st.session_state.get("sensitive_words_input_final", "")
                         new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
                         
+                        # 2. Сохраняем список
                         st.session_state.categorized_sensitive = sorted(list(new_stop_set))
                         
+                        # 3. ФИЛЬТРАЦИЯ
                         def apply_filter(orig_list_key, stop_set):
                             original = st.session_state.get(orig_list_key, [])
                             return [w for w in original if w.lower() not in stop_set]
@@ -955,7 +1469,7 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
                         st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
                         st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
 
-                        # Обновляем вкладку генератора
+                        # 4. Обновляем вкладку генератора
                         all_prods = st.session_state.categorized_products
                         count_prods = len(all_prods)
                         if count_prods < 20:
@@ -973,18 +1487,18 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
                         time.sleep(0.5)
                         st.rerun()
 
-        # --- УПУЩЕННАЯ СЕМАНТИКА (ВНЕ ЭКСПАНДЕРА) ---
-        high = results.get('missing_semantics_high', [])
-        low = results.get('missing_semantics_low', [])
-        if high or low:
-            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+    # --- УПУЩЕННАЯ СЕМАНТИКА (ВНЕ ЭКСПАНДЕРА) ---
+    high = results.get('missing_semantics_high', [])
+    low = results.get('missing_semantics_low', [])
+    if high or low:
+        with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
+            if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
+            if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
-        # --- ТАБЛИЦЫ (ТЕПЕРЬ С ПРАВИЛЬНЫМ ОТСТУПОМ) ---
-        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+    # --- ТАБЛИЦЫ ---
+    render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+    render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+    render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -1162,7 +1676,7 @@ with tab_wholesale_main:
                     t_p = st.text_input(f"Тема {i+1}", value=val, key=f"tbl_topic_vert_{i}")
                     table_prompts.append(t_p)
 
-        if use_promo:
+if use_promo:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
                 kws_input_promo = st.text_area(
@@ -1212,7 +1726,7 @@ with tab_wholesale_main:
                         if up_i: df_db_promo = pd.read_excel(up_i)
                     else: st.error("❌ База картинок не найдена!")
 
-        if use_sidebar:
+if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
                 kws_input_sidebar = st.text_area(
@@ -1238,7 +1752,7 @@ with tab_wholesale_main:
                         if up_s: sidebar_content = up_s.getvalue().decode("utf-8")
                     else: st.error("❌ Файл меню не найден!")
 
-    st.markdown("---")
+            st.markdown("---")
     
     # ==========================================
     # 4. ЗАПУСК
@@ -1543,4 +2057,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
+
+
 
