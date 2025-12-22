@@ -179,6 +179,8 @@ def load_lemmatized_dictionaries():
     specs_lemmas = set()
     geo_lemmas = set()
     services_lemmas = set()
+    # 6. Чтение запрещенных слов из файла (если есть)
+    sensitive_lemmas = set()
 
     # 1. ТОВАРЫ
     path_prod = os.path.join(base_path, "metal_products.json")
@@ -259,18 +261,33 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в tech_specs.json: {e}")
 
-    return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas
+    # 6. SENSITIVE (файл)
+    path_sens = os.path.join(base_path, "SENSITIVE_STOPLIST.json")
+    if os.path.exists(path_sens):
+        try:
+            with open(path_sens, 'r', encoding='utf-8') as f:
+                raw_sens = json.load(f)
+                if isinstance(raw_sens, list):
+                    for w in raw_sens:
+                        sensitive_lemmas.add(str(w).lower().strip())
+        except: pass
+
+    return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas, sensitive_lemmas
 
 # ==========================================
 # КЛАССИФИКАТОР
 # ==========================================
 def classify_semantics_with_api(words_list, yandex_key):
-    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET = load_lemmatized_dictionaries()
+    # Распаковываем 6 значений
+    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = load_lemmatized_dictionaries()
     
+    # Объединяем глобальный список (хардкод) и загруженный из файла
+    FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
+
     if 'debug_geo_count' not in st.session_state:
         st.session_state.debug_geo_count = len(GEO_SET)
     
-    st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n⚙️ Марки/ГОСТ: {len(SPECS_SET)}\n🌍 Города: {len(GEO_SET)}")
+    st.sidebar.info(f"Статус баз:\n📦 Товары: {len(PRODUCTS_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n⚙️ Марки/ГОСТ: {len(SPECS_SET)}\n🌍 Города: {len(GEO_SET)}\n⛔ Stop-list: {len(FULL_SENSITIVE)}")
 
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
@@ -279,10 +296,27 @@ def classify_semantics_with_api(words_list, yandex_key):
                           'магазин', 'акция', 'скидка', 'опт', 'розница', 'каталог', 'телефон', 
                           'менеджер', 'сайт', 'главная', 'вход', 'регистрация', 'отзыв', 'гарантия'}
 
-    categories = {'products': set(), 'services': set(), 'commercial': set(), 'dimensions': set(), 'geo': set(), 'general': set()}
+    categories = {'products': set(), 'services': set(), 'commercial': set(), 
+                  'dimensions': set(), 'geo': set(), 'general': set(), 'sensitive': set()}
     
     for word in words_list:
         word_lower = word.lower()
+        
+        # --- 1. ПРОВЕРКА НА ЗАПРЕЩЕНКУ (SENSITIVE) ---
+        is_sensitive = False
+        if word_lower in FULL_SENSITIVE:
+            is_sensitive = True
+        else:
+            # Частичное совпадение
+            for stop_w in FULL_SENSITIVE:
+                if len(stop_w) > 3 and stop_w in word_lower:
+                    is_sensitive = True
+                    break
+        
+        if is_sensitive:
+            categories['sensitive'].add(word_lower)
+            continue
+        # ---------------------------------------------
         
         # 1. Сначала проверяем на технические параметры
         if word_lower in SPECS_SET:
@@ -357,12 +391,15 @@ if 'categorized_commercial' not in st.session_state: st.session_state.categorize
 if 'categorized_dimensions' not in st.session_state: st.session_state.categorized_dimensions = []
 if 'categorized_geo' not in st.session_state: st.session_state.categorized_geo = []
 if 'categorized_general' not in st.session_state: st.session_state.categorized_general = []
+# Новое состояние для sensitive
+if 'categorized_sensitive' not in st.session_state: st.session_state.categorized_sensitive = []
+
 if 'auto_tags_words' not in st.session_state: st.session_state.auto_tags_words = []
 if 'auto_promo_words' not in st.session_state: st.session_state.auto_promo_words = []
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
 
 # ==========================================
-# CONFIG
+# CONFIG & CONSTANTS
 # ==========================================
 st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
 
@@ -377,6 +414,19 @@ GARBAGE_LATIN_STOPLIST = {
     'ru', 'en', 'com', 'net', 'org', 'biz', 'shop', 'store',
     'phone', 'email', 'tel', 'fax', 'mob', 'address', 'copyright', 'all', 'rights', 'reserved',
     'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
+}
+
+# ==========================================
+# STOP LISTS (SENSITIVE / GEO UA)
+# ==========================================
+SENSITIVE_STOPLIST = {
+    "украина", "украине", "украины", "украинский", "ukraine", "ua",
+    "киев", "киеве", "киева", "kyiv", "kiev",
+    "львов", "харьков", "одесса", "днепр", "днепропетровск", "запорожье",
+    "кривой рог", "мариуполь", "винница", "херсон", "полтава", "чернигов",
+    "черкассы", "сумы", "житомир", "ровно", "ивано-франковск", "тернополь",
+    "луцк", "ужгород", "хмельницкий", "черновцы",
+    "гривна", "грн", "uah", "всу", "зсу", "ато", "майдан"
 }
 
 def check_password():
@@ -509,6 +559,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
 
     status = "process"
     attempts = 0
+    # FIX: Увеличиваем время ожидания до 10 минут (120 попыток по 5 сек)
     while status == "process" and attempts < 120:
         time.sleep(5); attempts += 1
         try:
@@ -1031,7 +1082,9 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
         "Твоя цель — писать полезный, естественный текст для людей, но с соблюдением требований SEO. "
-        "Ты выдаешь ТОЛЬКО HTML-код."
+        "Ты выдаешь ТОЛЬКО HTML-код. "
+        "СТРОГИЙ ЗАПРЕТ: Не используй упоминания Украины, украинских городов (Киев, Львов и др.), "
+        "политические темы, валюту гривну. Контент должен быть ориентирован строго на рынок РФ/СНГ (без UA)."
     )
 
     # 3. Пользовательский промт
@@ -1287,6 +1340,8 @@ with tab_seo_main:
                 st.session_state.categorized_geo = categorized['geo']
                 st.session_state.categorized_dimensions = categorized['dimensions']
                 st.session_state.categorized_general = categorized['general']
+                # FIX: Сохраняем Sensitive
+                st.session_state.categorized_sensitive = categorized['sensitive']
 
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
@@ -1307,14 +1362,99 @@ with tab_seo_main:
         results = st.session_state.analysis_results
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
-        with st.expander("🛒 Результат группировки слов", expanded=True):
-            c1, c2, c3, c4, c5, c6 = st.columns(6)
-            with c1: st.info(f"🧱 Товары ({len(st.session_state.categorized_products)})"); st.caption(", ".join(st.session_state.categorized_products))
-            with c2: st.error(f"🛠️ Услуги ({len(st.session_state.categorized_services)})"); st.caption(", ".join(st.session_state.categorized_services))
-            with c3: st.warning(f"💰 Коммерц ({len(st.session_state.categorized_commercial)})"); st.caption(", ".join(st.session_state.categorized_commercial))
-            with c4: st.markdown(f"**🌍 Гео ({len(st.session_state.categorized_geo)})**"); st.caption(", ".join(st.session_state.categorized_geo))
-            with c5: dims = st.session_state.get('categorized_dimensions', []); st.success(f"📏 Размеры, марки, ГОСТ ({len(dims)})"); st.caption(", ".join(dims))
-            with c6: gen_words = st.session_state.get('categorized_general', []); st.markdown(f"**📂 Общие ({len(gen_words)})**"); st.caption(", ".join(gen_words))
+        
+        # --- NEW UI: RESULT GROUPING WITH EDITABLE SENSITIVE ---
+        with st.expander("🛒 Результат группировки слов (Редактирование)", expanded=True):
+            # Верхний ряд - основные категории
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: 
+                st.info(f"🧱 Товары ({len(st.session_state.categorized_products)})")
+                st.caption(", ".join(st.session_state.categorized_products))
+            with c2: 
+                st.error(f"🛠️ Услуги ({len(st.session_state.categorized_services)})")
+                st.caption(", ".join(st.session_state.categorized_services))
+            with c3: 
+                st.warning(f"💰 Коммерц ({len(st.session_state.categorized_commercial)})")
+                st.caption(", ".join(st.session_state.categorized_commercial))
+            with c4: 
+                st.markdown(f"**🌍 Гео ({len(st.session_state.categorized_geo)})**")
+                st.caption(", ".join(st.session_state.categorized_geo))
+            
+            st.markdown("---")
+            
+            # Нижний ряд - Техничка, Общие и СТОП-СЛОВА
+            c5, c6, c7 = st.columns([1, 1, 2]) # Третья колонка пошире для редактирования
+            
+            with c5: 
+                dims = st.session_state.get('categorized_dimensions', [])
+                st.success(f"📏 Размеры/ГОСТ ({len(dims)})")
+                st.caption(", ".join(dims))
+                
+            with c6: 
+                gen_words = st.session_state.get('categorized_general', [])
+                st.markdown(f"**📂 Общие ({len(gen_words)})**")
+                st.caption(", ".join(gen_words))
+            
+            # --- РЕДАКТИРУЕМОЕ ПОЛЕ ДЛЯ СТОП-СЛОВ ---
+            with c7:
+                sens_words = st.session_state.get('categorized_sensitive', [])
+                sens_str = "\n".join(sens_words)
+                
+                st.markdown(f"<span style='color:red; font-weight:bold;'>⛔ Стоп-слова / Sensitive ({len(sens_words)})</span>", unsafe_allow_html=True)
+                
+                # Текстовое поле, где можно удалить или добавить слова
+                new_sens_str = st.text_area(
+                    "Можно редактировать список вручную:", 
+                    value=sens_str, 
+                    height=100, 
+                    key="sensitive_words_area",
+                    help="Слова из этого списка будут ПРИНУДИТЕЛЬНО исключены из генерации, даже если они есть в других списках."
+                )
+                
+                # Обновляем список в session_state при изменении (автоматически)
+                st.session_state.categorized_sensitive = [w.strip() for w in new_sens_str.split('\n') if w.strip()]
+
+        st.markdown("---")
+        
+        # Кнопка для синхронизации изменений
+        if st.button("💾 Применить изменения и передать в Генератор", type="primary", use_container_width=True):
+            # 1. Получаем актуальный список стоп-слов из текстового поля
+            raw_sens = st.session_state.get("sensitive_words_area", "")
+            current_sensitive_set = set([w.strip().lower() for w in raw_sens.split('\n') if w.strip()])
+            
+            # Сохраняем его обратно в основной список
+            st.session_state.categorized_sensitive = sorted(list(current_sensitive_set))
+            
+            # 2. Функция очистки списка от стоп-слов
+            def clean_category_list(original_list, sensitive_set):
+                return [w for w in original_list if w.lower() not in sensitive_set]
+
+            # 3. Чистим все категории
+            st.session_state.categorized_products = clean_category_list(st.session_state.categorized_products, current_sensitive_set)
+            st.session_state.categorized_services = clean_category_list(st.session_state.categorized_services, current_sensitive_set)
+            st.session_state.categorized_commercial = clean_category_list(st.session_state.categorized_commercial, current_sensitive_set)
+            st.session_state.categorized_geo = clean_category_list(st.session_state.categorized_geo, current_sensitive_set)
+            st.session_state.categorized_general = clean_category_list(st.session_state.categorized_general, current_sensitive_set)
+            
+            # 4. Принудительно обновляем переменные для авто-заполнения второй вкладки
+            all_prods = st.session_state.categorized_products
+            count_prods = len(all_prods)
+            
+            if count_prods < 20:
+                st.session_state.auto_tags_words = all_prods
+                st.session_state.auto_promo_words = []
+            else:
+                half_count = int(math.ceil(count_prods / 2))
+                st.session_state.auto_tags_words = all_prods[:half_count]
+                st.session_state.auto_promo_words = all_prods[half_count:]
+
+            st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
+            st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
+
+            st.success(f"✅ Готово! Удалено совпадений со стоп-листом. Данные обновлены для вкладки 'Оптовый генератор'.")
+            time.sleep(1) 
+            st.rerun()
+
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         if high or low:
@@ -1340,26 +1480,37 @@ with tab_wholesale_main:
     structure_keywords = cat_products + cat_services
     count_struct = len(structure_keywords)
 
-    tags_default_text = ""
-    promo_default_text = ""
+    # Используем данные из session_state, если они были обновлены кнопкой
+    if 'auto_tags_words' in st.session_state and st.session_state.auto_tags_words:
+         tags_list_source = st.session_state.auto_tags_words
+         promo_list_source = st.session_state.auto_promo_words
+    else:
+         # Фолбэк на деление "на лету", если кнопка еще не нажималась
+         if count_struct > 0:
+            if count_struct < 10:
+                tags_list_source = structure_keywords
+                promo_list_source = []
+            elif count_struct < 30:
+                mid = math.ceil(count_struct / 2)
+                tags_list_source = structure_keywords[:mid]
+                promo_list_source = structure_keywords[mid:]
+            else:
+                part = math.ceil(count_struct / 3)
+                tags_list_source = structure_keywords[:part]
+                promo_list_source = structure_keywords[part:part*2]
+                # Сайдбар тут не учитываем для дефолта, он отдельно
+         else:
+             tags_list_source = []
+             promo_list_source = []
+    
+    # Сайдбар логика (остаток, если был расчет "на лету")
     sidebar_default_text = ""
+    if count_struct >= 30 and 'auto_tags_words' not in st.session_state:
+         part = math.ceil(count_struct / 3)
+         sidebar_default_text = "\n".join(structure_keywords[part*2:])
 
-    # Логика деления слов
-    if count_struct > 0:
-        if count_struct < 10:
-            # Мало слов -> Всё в теги
-            tags_default_text = "\n".join(structure_keywords)
-        elif count_struct < 30:
-            # Средне -> 50/50 Теги и Промо
-            mid = math.ceil(count_struct / 2)
-            tags_default_text = "\n".join(structure_keywords[:mid])
-            promo_default_text = "\n".join(structure_keywords[mid:])
-        else:
-            # Много -> 33/33/33 Теги, Промо, Сайдбар
-            part = math.ceil(count_struct / 3)
-            tags_default_text = "\n".join(structure_keywords[:part])
-            promo_default_text = "\n".join(structure_keywords[part:part*2])
-            sidebar_default_text = "\n".join(structure_keywords[part*2:])
+    tags_default_text = "\n".join(tags_list_source)
+    promo_default_text = "\n".join(promo_list_source)
 
     # 2. Группа ТЕХНИЧКА (Размеры, Марки, ГОСТ) -> Таблицы
     cat_dimensions = st.session_state.get('categorized_dimensions', [])
@@ -1373,9 +1524,6 @@ with tab_wholesale_main:
     text_context_str = ", ".join(text_context_list)
 
     # ==========================================
-    # 1. ВВОДНЫЕ ДАННЫЕ
-    # ==========================================
-# ==========================================
     # 1. ВВОДНЫЕ ДАННЫЕ
     # ==========================================
     with st.container(border=True):
@@ -1843,10 +1991,3 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
-
-
-
-
-
-
