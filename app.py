@@ -1291,74 +1291,118 @@ with tab_seo_main:
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-        # --- СТИЛИ (ФИКСИРОВАННАЯ ВЫСОТА + СКРОЛЛ) ---
+# --- НОВЫЕ СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
         st.markdown("""
         <style>
-            .cat-box {
+            /* Убираем стандартный маркер треугольника у details */
+            details > summary {
+                list-style: none;
+            }
+            details > summary::-webkit-details-marker {
+                display: none;
+            }
+
+            .details-card {
                 background-color: #f8f9fa;
-                border-radius: 8px;
-                padding: 12px;
-                margin-bottom: 10px;
                 border: 1px solid #e9ecef;
-                /* Фиксированная высота блока */
-                height: 110px; 
-                display: flex;
-                flex-direction: column;
-            }
-            .cat-header {
-                font-weight: 700;
-                font-size: 15px;
-                margin-bottom: 8px;
-                color: #111827;
-                border-bottom: 1px solid #e5e7eb;
-                padding-bottom: 6px;
-                display: flex;
-                justify-content: space-between;
-                flex-shrink: 0; /* Заголовок не сжимается */
-            }
-            .cat-body {
-                font-size: 14px;
-                color: #374151;
-                line-height: 1.5;
-                /* Логика скролла */
-                overflow-y: auto; 
-                flex-grow: 1;
-                padding-right: 5px; /* Отступ для скроллбара */
-            }
-            /* Стилизация скроллбара (тонкий и аккуратный) */
-            .cat-body::-webkit-scrollbar {
-                width: 4px;
-            }
-            .cat-body::-webkit-scrollbar-thumb {
-                background-color: #d1d5db;
-                border-radius: 4px;
-            }
-            .cat-body::-webkit-scrollbar-track {
-                background: transparent;
+                border-radius: 8px;
+                margin-bottom: 10px;
+                overflow: hidden; /* Чтобы углы не обрезались */
+                transition: all 0.2s ease;
             }
             
-            .text-gray { color: #9ca3af; font-style: italic; }
+            .details-card:hover {
+                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                border-color: #d1d5db;
+            }
+
+            .card-summary {
+                padding: 12px 15px;
+                cursor: pointer;
+                font-weight: 700;
+                font-size: 15px;
+                color: #111827;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                background-color: #ffffff;
+            }
+            
+            /* Эффект при наведении на заголовок */
+            .card-summary:hover {
+                background-color: #f3f4f6;
+            }
+
+            .card-content {
+                padding: 15px;
+                border-top: 1px solid #e9ecef;
+                font-size: 14px;
+                color: #374151;
+                line-height: 1.6;
+                background-color: #fcfcfc;
+            }
+
             .count-tag { 
-                background: #e5e7eb; color: #374151; 
-                padding: 1px 7px; border-radius: 6px; font-size: 12px; font-weight: 600;
+                background: #e5e7eb; 
+                color: #374151; 
+                padding: 2px 8px; 
+                border-radius: 10px; 
+                font-size: 12px; 
+                font-weight: 600;
+                min-width: 25px;
+                text-align: center;
+            }
+            
+            .text-gray { color: #9ca3af; font-style: italic; font-weight: normal;}
+            
+            /* Стрелочка-индикатор */
+            .arrow-icon {
+                font-size: 10px;
+                margin-right: 8px;
+                color: #9ca3af;
+                transition: transform 0.2s;
+            }
+            
+            details[open] .arrow-icon {
+                transform: rotate(90deg);
+                color: #277EFF;
             }
         </style>
         """, unsafe_allow_html=True)
 
-        def render_clean_block(title, icon, words_list):
+def render_clean_block(title, icon, words_list):
             unique_words = sorted(list(set(words_list))) if words_list else []
             count = len(unique_words)
-            content_html = ", ".join(unique_words) if count > 0 else "<span class='text-gray'>Нет данных</span>"
             
-            st.markdown(f"""
-            <div class="cat-box">
-                <div class="cat-header">
-                    <span>{icon} {title}</span>
-                    <span class="count-tag">{count}</span>
+            if count > 0:
+                content_html = ", ".join(unique_words)
+                # Карточка раскрывается
+                html_code = f"""
+                <details class="details-card">
+                    <summary class="card-summary">
+                        <div>
+                            <span class="arrow-icon">▶</span>
+                            {icon} {title}
+                        </div>
+                        <span class="count-tag">{count}</span>
+                    </summary>
+                    <div class="card-content">
+                        {content_html}
+                    </div>
+                </details>
+                """
+            else:
+                # Если пусто - карточка неактивна (без контента)
+                html_code = f"""
+                <div class="details-card">
+                    <div class="card-summary" style="cursor: default; color: #9ca3af;">
+                        <div>{icon} {title}</div>
+                        <span class="count-tag">0</span>
+                    </div>
                 </div>
-                <div class="cat-body">{content_html}</div>
-            </div>
-            """, unsafe_allow_html=True)
+                """
+            
+            st.markdown(html_code, unsafe_allow_html=True)
 
         with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
             if not st.session_state.get('orig_products'):
@@ -1957,5 +2001,6 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
