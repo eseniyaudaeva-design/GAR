@@ -175,7 +175,7 @@ def load_lemmatized_dictionaries():
     services_lemmas = set()
     sensitive_lemmas = set()
 
-    # 1. ТОВАРЫ (metal_products.json)
+    # 1. ТОВАРЫ
     path_prod = os.path.join(base_path, "metal_products.json")
     if os.path.exists(path_prod):
         try:
@@ -193,13 +193,12 @@ def load_lemmatized_dictionaries():
                     for w in words:
                         clean_w = re.sub(r'[^a-zа-яё0-9-]', '', w)
                         if not clean_w: continue
-                        # Добавляем и точную форму, и лемму
                         product_lemmas.add(clean_w) 
                         if morph: product_lemmas.add(morph.parse(clean_w)[0].normal_form)
         except Exception as e:
             st.error(f"Ошибка в metal_products.json: {e}")
 
-    # 2. КОММЕРЦИЯ (commercial_triggers.json)
+    # 2. КОММЕРЦИЯ
     path_comm = os.path.join(base_path, "commercial_triggers.json")
     if os.path.exists(path_comm):
         try:
@@ -209,11 +208,10 @@ def load_lemmatized_dictionaries():
                     for w in raw_comm:
                         w_clean = str(w).lower().strip()
                         commercial_lemmas.add(w_clean)
-                        if morph: 
-                            commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
+                        if morph: commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
         except: pass
 
-    # 3. ГЕО (geo_locations.json)
+    # 3. ГЕО
     path_geo = os.path.join(base_path, "geo_locations.json")
     if os.path.exists(path_geo):
         try:
@@ -226,7 +224,7 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в geo_locations.json: {e}")
 
-    # 4. УСЛУГИ (services_triggers.json)
+    # 4. УСЛУГИ
     path_serv = os.path.join(base_path, "services_triggers.json")
     if os.path.exists(path_serv):
         try:
@@ -241,7 +239,7 @@ def load_lemmatized_dictionaries():
         except Exception as e:
             st.error(f"Ошибка в services_triggers.json: {e}")
 
-    # 5. ХАРАКТЕРИСТИКИ (tech_specs.json)
+    # 5. ХАРАКТЕРИСТИКИ
     path_specs = os.path.join(base_path, "tech_specs.json")
     if os.path.exists(path_specs):
         try:
@@ -266,19 +264,24 @@ def load_lemmatized_dictionaries():
                         sensitive_lemmas.add(str(w).lower().strip())
         except: pass
 
+    # Возвращаем 6 наборов
     return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas, sensitive_lemmas
 
 # ==========================================
 # КЛАССИФИКАТОР (УСИЛЕННЫЙ)
 # ==========================================
 def classify_semantics_with_api(words_list, yandex_key):
+    # Распаковываем 6 словарей, которые вернула функция загрузки
     PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = load_lemmatized_dictionaries()
+    
+    # Объединяем стоп-слова из файла и из глобального списка в коде
     FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
 
     if 'debug_geo_count' not in st.session_state:
         st.session_state.debug_geo_count = len(GEO_SET)
     
-    st.sidebar.info(f"Словари загружены:\n📦 Товары: {len(PRODUCTS_SET)}\n💰 Коммерция: {len(COMM_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n🌍 Города: {len(GEO_SET)}")
+    # Отладка в сайдбаре: показывает, сколько слов реально загрузилось
+    st.sidebar.info(f"Словари (из файлов):\n📦 Товары: {len(PRODUCTS_SET)}\n💰 Коммерция: {len(COMM_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n🌍 Города: {len(GEO_SET)}")
 
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
@@ -289,7 +292,7 @@ def classify_semantics_with_api(words_list, yandex_key):
     for word in words_list:
         word_lower = word.lower()
         
-        # 1. ЗАПРЕЩЕНКА
+        # 1. СТОП-СЛОВА
         is_sensitive = False
         if word_lower in FULL_SENSITIVE: is_sensitive = True
         else:
@@ -303,41 +306,43 @@ def classify_semantics_with_api(words_list, yandex_key):
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
 
-        # 2. РАЗМЕРЫ / ГОСТ (Приоритет 1)
+        # 2. РАЗМЕРЫ / ГОСТ
         if word_lower in SPECS_SET or lemma in SPECS_SET:
             categories['dimensions'].add(word_lower); continue
         if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower); continue
 
-        # 3. ТОВАРЫ (Приоритет 2) - УСИЛЕННАЯ ПРОВЕРКА
-        # Проверяем: точное слово, лемму, или вхождение (например "алюминиевый" содержит "алюмини")
+        # 3. ТОВАРЫ
+        # Проверяем точное вхождение или лемму
         if word_lower in PRODUCTS_SET or lemma in PRODUCTS_SET:
             categories['products'].add(word_lower); continue
         
-        # Доп. проверка: если корень известного товара есть в слове
-        is_prod_root = False
+        # Проверяем вхождение корня (если в словаре "алюминий", а слово "алюминиевый")
+        is_product_root = False
+        # Пробегаемся по словарю товаров. Если слово из словаря является частью проверяемого слова - ок.
+        # Ограничение len > 3 нужно, чтобы не цеплять короткие корни типа "ал"
         for prod in PRODUCTS_SET:
-            # Если товар из словаря длиннее 3 букв и он входит в проверяемое слово
-            # (например, prod="балк", word="балка")
             if len(prod) > 3 and prod in word_lower:
                 categories['products'].add(word_lower)
-                is_prod_root = True
+                is_product_root = True
                 break
-        if is_prod_root: continue
+        if is_product_root: continue
 
         # 4. ГЕО
         if lemma in GEO_SET or word_lower in GEO_SET:
             categories['geo'].add(word_lower); continue
         
         # 5. УСЛУГИ
-        if lemma in SERVICES_SET or lemma.endswith('обработка') or lemma.endswith('изготовление') or lemma == "резка":
+        if lemma in SERVICES_SET or word_lower in SERVICES_SET:
+             categories['services'].add(word_lower); continue
+        if lemma.endswith('обработка') or lemma.endswith('изготовление') or lemma == "резка":
             categories['services'].add(word_lower); continue
 
         # 6. КОММЕРЦИЯ
         if lemma in COMM_SET or word_lower in COMM_SET:
             categories['commercial'].add(word_lower); continue
             
-        # 7. ОБЩИЕ (Всё остальное)
+        # 7. ОБЩИЕ
         categories['general'].add(word_lower)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -1952,3 +1957,4 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
