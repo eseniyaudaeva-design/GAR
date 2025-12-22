@@ -1202,7 +1202,7 @@ with tab_seo_main:
                 sens_count = len(st.session_state.get('categorized_sensitive', []))
                 st.markdown(f"**⛔ Стоп-слова**")
                 st.markdown(f"Всего исключено: **{sens_count}**")
-                st.caption("Слова, добавленные сюда, удаляются из всех категорий выше и не попадают в генерацию.")
+                st.caption("Слова, добавленные сюда, удаляются из всех категорий выше и не попадают в генерацию. Вставляйте каждое слово с новой строчки.")
             
             with cs2:
                 # Получаем текущий список для отображения
@@ -1705,4 +1705,5 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
