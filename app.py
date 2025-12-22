@@ -1426,7 +1426,7 @@ with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
     # ==========================================
-    # 0. СБОР И РАСПРЕДЕЛЕНИЕ СЕМАНТИКИ (ПОДГОТОВКА ДЕФОЛТНЫХ ЗНАЧЕНИЙ)
+    # 0. ПОДГОТОВКА ДАННЫХ (ИЗ ТЕКУЩЕГО СОСТОЯНИЯ)
     # ==========================================
     cat_products = st.session_state.get('categorized_products', [])
     cat_services = st.session_state.get('categorized_services', [])
@@ -1484,7 +1484,7 @@ with tab_wholesale_main:
         
         col_source, col_key = st.columns([3, 1])
         
-        use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode")
+        use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode", value=False)
         
         with col_source:
             if use_manual_html:
@@ -1513,15 +1513,18 @@ with tab_wholesale_main:
     # ==========================================
     st.subheader("2. Какие блоки генерируем?")
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
-    with col_ch1: use_text = st.checkbox("🤖 AI Тексты")
-    with col_ch2: use_tags = st.checkbox("🏷️ Теги")
-    with col_ch3: use_tables = st.checkbox("🧩 Таблицы")
-    with col_ch4: use_promo = st.checkbox("🔥 Промо")
-    with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар")
+    
+    # ВАЖНО: value=False гарантирует, что при перезагрузке они будут выключены
+    with col_ch1: use_text = st.checkbox("🤖 AI Тексты", value=False)
+    with col_ch2: use_tags = st.checkbox("🏷️ Теги", value=False)
+    with col_ch3: use_tables = st.checkbox("🧩 Таблицы", value=False)
+    with col_ch4: use_promo = st.checkbox("🔥 Промо", value=False)
+    with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар", value=False)
 
     # ==========================================
     # 3. НАСТРОЙКИ МОДУЛЕЙ
     # ==========================================
+    # Инициализируем переменные, чтобы не было ошибки NameError, если блоки скрыты
     global_tags_list = []
     global_promo_list = []
     global_sidebar_list = []
@@ -1530,13 +1533,14 @@ with tab_wholesale_main:
     df_db_promo = None
     promo_title = "Рекомендуем"
     sidebar_content = ""
-    
     text_context_final_list = []
     tech_context_final_str = ""
     
+    # Показываем заголовок настроек только если хоть что-то выбрано
     if any([use_text, use_tags, use_tables, use_promo, use_sidebar]):
         st.subheader("3. Настройки модулей")
 
+        # --- НАСТРОЙКИ ТЕКСТА ---
         if use_text:
             with st.container(border=True):
                 st.markdown("#### 🤖 1. AI Тексты")
@@ -1549,6 +1553,7 @@ with tab_wholesale_main:
                 )
                 text_context_final_list = [x.strip() for x in re.split(r'[,\n]+', ai_words_input) if x.strip()]
 
+        # --- НАСТРОЙКИ ТЕГОВ ---
         if use_tags:
             with st.container(border=True):
                 st.markdown("#### 🏷️ 2. Теги")
@@ -1575,6 +1580,7 @@ with tab_wholesale_main:
                         if up_t: tags_file_content = up_t.getvalue().decode("utf-8")
                     else: st.error("❌ Файл базы не найден!")
 
+        # --- НАСТРОЙКИ ТАБЛИЦ ---
         if use_tables:
             with st.container(border=True):
                 st.markdown("#### 🧩 3. Таблицы")
@@ -1593,6 +1599,7 @@ with tab_wholesale_main:
                     t_p = st.text_input(f"Тема {i+1}", value=val, key=f"tbl_topic_vert_{i}")
                     table_prompts.append(t_p)
 
+        # --- НАСТРОЙКИ ПРОМО ---
         if use_promo:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
@@ -1640,6 +1647,7 @@ with tab_wholesale_main:
                         if up_i: df_db_promo = pd.read_excel(up_i)
                     else: st.error("❌ База картинок не найдена!")
 
+        # --- НАСТРОЙКИ САЙДБАРА ---
         if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
@@ -1684,6 +1692,7 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
     
+    # Кнопка запуска (выводится всегда)
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
         final_data = [] 
