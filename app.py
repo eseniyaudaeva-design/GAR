@@ -855,87 +855,44 @@ with tab_seo_main:
 
             st.rerun()
 
-    if st.session_state.analysis_done and st.session_state.analysis_results:
+if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
         st.success("Анализ готов!")
         st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-        # --- НОВЫЕ СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
+        # --- СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
         st.markdown("""
         <style>
-            /* Убираем стандартный маркер треугольника у details */
-            details > summary {
-                list-style: none;
-            }
-            details > summary::-webkit-details-marker {
-                display: none;
-            }
-
+            details > summary { list-style: none; }
+            details > summary::-webkit-details-marker { display: none; }
             .details-card {
-                background-color: #f8f9fa;
-                border: 1px solid #e9ecef;
-                border-radius: 8px;
-                margin-bottom: 10px;
-                overflow: hidden; /* Чтобы углы не обрезались */
-                transition: all 0.2s ease;
+                background-color: #f8f9fa; border: 1px solid #e9ecef;
+                border-radius: 8px; margin-bottom: 10px;
+                overflow: hidden; transition: all 0.2s ease;
             }
-            
-            .details-card:hover {
-                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-                border-color: #d1d5db;
-            }
-
+            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
             .card-summary {
-                padding: 12px 15px;
-                cursor: pointer;
-                font-weight: 700;
-                font-size: 15px;
-                color: #111827;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
+                padding: 12px 15px; cursor: pointer; font-weight: 700;
+                font-size: 15px; color: #111827; display: flex;
+                justify-content: space-between; align-items: center;
                 background-color: #ffffff;
             }
-            
-            /* Эффект при наведении на заголовок */
-            .card-summary:hover {
-                background-color: #f3f4f6;
-            }
-
+            .card-summary:hover { background-color: #f3f4f6; }
             .card-content {
-                padding: 15px;
-                border-top: 1px solid #e9ecef;
-                font-size: 14px;
-                color: #374151;
-                line-height: 1.6;
+                padding: 15px; border-top: 1px solid #e9ecef;
+                font-size: 14px; color: #374151; line-height: 1.6;
                 background-color: #fcfcfc;
             }
-
             .count-tag { 
-                background: #e5e7eb; 
-                color: #374151; 
-                padding: 2px 8px; 
-                border-radius: 10px; 
-                font-size: 12px; 
-                font-weight: 600;
-                min-width: 25px;
-                text-align: center;
+                background: #e5e7eb; color: #374151; padding: 2px 8px; 
+                border-radius: 10px; font-size: 12px; font-weight: 600;
+                min-width: 25px; text-align: center;
             }
-            
-            .text-gray { color: #9ca3af; font-style: italic; font-weight: normal;}
-            
-            /* Стрелочка-индикатор */
             .arrow-icon {
-                font-size: 10px;
-                margin-right: 8px;
-                color: #9ca3af;
+                font-size: 10px; margin-right: 8px; color: #9ca3af;
                 transition: transform 0.2s;
             }
-            
-            details[open] .arrow-icon {
-                transform: rotate(90deg);
-                color: #277EFF;
-            }
+            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -960,39 +917,33 @@ with tab_seo_main:
                 # Блок стоп-слов
                 cs1, cs2 = st.columns([1, 3])
                 
-                # 1. Инициализация ключа (чтобы не было ошибки при первом запуске)
+                # Инициализация ключа
                 if 'sensitive_words_input_final' not in st.session_state:
                     current_list = st.session_state.get('categorized_sensitive', [])
                     st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
                 
-                # Получаем актуальное значение для подсчета кол-ва (для отображения слева)
                 current_text_value = st.session_state['sensitive_words_input_final']
                 
                 with cs1:
                     count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
                     st.markdown(f"**⛔ Стоп-слова**")
                     st.markdown(f"Исключено: **{count_excluded}**")
-                    st.caption("Эти слова автоматически удалены. Удалите слово отсюда и нажмите 'Обновить', чтобы вернуть его.")
+                    st.caption("Эти слова автоматически удалены.")
                 
                 with cs2:
-                    # ВАЖНО: Убрали аргумент value=... , оставили только key
                     new_sens_str = st.text_area(
-                        "hidden_label",
-                        height=100,
-                        key="sensitive_words_input_final", # Виджет сам возьмет значение из session_state
+                        "hidden_label", height=100,
+                        key="sensitive_words_input_final",
                         label_visibility="collapsed",
                         placeholder="Слова для исключения..."
                     )
 
                     if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                        # 1. Получаем список из session_state (куда пишет виджет)
                         raw_input = st.session_state.get("sensitive_words_input_final", "")
                         new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
                         
-                        # 2. Сохраняем список
                         st.session_state.categorized_sensitive = sorted(list(new_stop_set))
                         
-                        # 3. ФИЛЬТРАЦИЯ
                         def apply_filter(orig_list_key, stop_set):
                             original = st.session_state.get(orig_list_key, [])
                             return [w for w in original if w.lower() not in stop_set]
@@ -1004,7 +955,7 @@ with tab_seo_main:
                         st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
                         st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
 
-                        # 4. Обновляем вкладку генератора
+                        # Обновляем вкладку генератора
                         all_prods = st.session_state.categorized_products
                         count_prods = len(all_prods)
                         if count_prods < 20:
@@ -1022,18 +973,18 @@ with tab_seo_main:
                         time.sleep(0.5)
                         st.rerun()
 
-    # --- УПУЩЕННАЯ СЕМАНТИКА (ВНЕ ЭКСПАНДЕРА) ---
-    high = results.get('missing_semantics_high', [])
-    low = results.get('missing_semantics_low', [])
-    if high or low:
-        with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-            if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-            if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+        # --- УПУЩЕННАЯ СЕМАНТИКА (ВНЕ ЭКСПАНДЕРА) ---
+        high = results.get('missing_semantics_high', [])
+        low = results.get('missing_semantics_low', [])
+        if high or low:
+            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
+                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
+                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
-    # --- ТАБЛИЦЫ ---
-    render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-    render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-    render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+        # --- ТАБЛИЦЫ (ТЕПЕРЬ С ПРАВИЛЬНЫМ ОТСТУПОМ) ---
+        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -1592,3 +1543,4 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
