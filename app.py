@@ -1404,7 +1404,7 @@ def render_clean_block(title, icon, words_list):
             
             st.markdown(html_code, unsafe_allow_html=True)
 
-        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
+            with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
             if not st.session_state.get('orig_products'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
             else:
@@ -2001,6 +2001,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
