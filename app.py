@@ -164,9 +164,14 @@ def get_breadcrumb_only(url, ua_settings="Mozilla/5.0"):
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ (ИСПРАВЛЕНО)
 # ==========================================
+# ==========================================
+# ЗАГРУЗКА СЛОВАРЕЙ (ИСПРАВЛЕНО)
+# ==========================================
 @st.cache_data
 def load_lemmatized_dictionaries():
-    base_path = "data"
+    # Получаем абсолютный путь к папке, где лежит сам скрипт
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    base_path = os.path.join(script_dir, "data")
     
     product_lemmas = set()
     commercial_lemmas = set()
@@ -175,97 +180,128 @@ def load_lemmatized_dictionaries():
     services_lemmas = set()
     sensitive_lemmas = set()
 
-    # 1. ТОВАРЫ
-    path_prod = os.path.join(base_path, "metal_products.json")
-    if os.path.exists(path_prod):
+    def load_json_safe(filename, target_set):
+        full_path = os.path.join(base_path, filename)
+        if not os.path.exists(full_path):
+            st.warning(f"⚠️ Файл не найден: {filename} (Ожидался здесь: {full_path})")
+            return
+        
         try:
-            with open(path_prod, 'r', encoding='utf-8') as f:
+            with open(full_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                all_raw_words = []
+                words_bucket = []
                 if isinstance(data, dict):
                     for cat_list in data.values():
-                        all_raw_words.extend(cat_list)
+                        words_bucket.extend(cat_list)
                 elif isinstance(data, list):
-                    all_raw_words = data
+                    words_bucket = data
                 
-                for phrase in all_raw_words:
-                    words = str(phrase).lower().split() 
-                    for w in words:
-                        clean_w = re.sub(r'[^a-zа-яё0-9-]', '', w)
-                        if not clean_w: continue
-                        product_lemmas.add(clean_w) 
-                        if morph: product_lemmas.add(morph.parse(clean_w)[0].normal_form)
+                for phrase in words_bucket:
+                    # Чистим и добавляем само слово
+                    w_clean = str(phrase).lower().strip()
+                    target_set.add(w_clean)
+                    
+                    # Если есть Pymorphy, добавляем нормальную форму
+                    if morph:
+                        target_set.add(morph.parse(w_clean)[0].normal_form)
+                        
+                    # Разбираем фразы на отдельные слова (например "труба стальная" -> "труба", "стальная")
+                    if ' ' in w_clean:
+                        parts = w_clean.split()
+                        for p in parts:
+                            target_set.add(p)
+                            if morph: target_set.add(morph.parse(p)[0].normal_form)
+                            
         except Exception as e:
-            st.error(f"Ошибка в metal_products.json: {e}")
+            st.error(f"❌ Ошибка чтения JSON {filename}: {e}")
 
-    # 2. КОММЕРЦИЯ
-    path_comm = os.path.join(base_path, "commercial_triggers.json")
-    if os.path.exists(path_comm):
-        try:
-            with open(path_comm, 'r', encoding='utf-8') as f:
-                raw_comm = json.load(f)
-                if isinstance(raw_comm, list):
-                    for w in raw_comm:
-                        w_clean = str(w).lower().strip()
-                        commercial_lemmas.add(w_clean)
-                        if morph: commercial_lemmas.add(morph.parse(w_clean)[0].normal_form)
-        except: pass
+    # Загружаем
+    load_json_safe("metal_products.json", product_lemmas)
+    load_json_safe("commercial_triggers.json", commercial_lemmas)
+    load_json_safe("geo_locations.json", geo_lemmas)
+    load_json_safe("services_triggers.json", services_lemmas)
+    load_json_safe("tech_specs.json", specs_lemmas)
+    load_json_safe("SENSITIVE_STOPLIST.json", sensitive_lemmas)
 
-    # 3. ГЕО
-    path_geo = os.path.join(base_path, "geo_locations.json")
-    if os.path.exists(path_geo):
-        try:
-            with open(path_geo, 'r', encoding='utf-8') as f:
-                raw_geo = json.load(f)
-                for w in raw_geo:
-                    w_clean = str(w).lower().strip()
-                    geo_lemmas.add(w_clean)
-                    if morph: geo_lemmas.add(morph.parse(w_clean)[0].normal_form)
-        except Exception as e:
-            st.error(f"Ошибка в geo_locations.json: {e}")
-
-    # 4. УСЛУГИ
-    path_serv = os.path.join(base_path, "services_triggers.json")
-    if os.path.exists(path_serv):
-        try:
-            with open(path_serv, 'r', encoding='utf-8') as f:
-                raw_serv = json.load(f)
-                if isinstance(raw_serv, list):
-                    for w in raw_serv:
-                        parts = str(w).replace('-', ' ').lower().split()
-                        for part in parts:
-                            services_lemmas.add(part)
-                            if morph: services_lemmas.add(morph.parse(part)[0].normal_form)
-        except Exception as e:
-            st.error(f"Ошибка в services_triggers.json: {e}")
-
-    # 5. ХАРАКТЕРИСТИКИ
-    path_specs = os.path.join(base_path, "tech_specs.json")
-    if os.path.exists(path_specs):
-        try:
-            with open(path_specs, 'r', encoding='utf-8') as f:
-                raw_specs = json.load(f)
-                if isinstance(raw_specs, list):
-                    for w in raw_specs:
-                        w_clean = str(w).lower().strip()
-                        specs_lemmas.add(w_clean)
-                        if morph: specs_lemmas.add(morph.parse(w_clean)[0].normal_form)
-        except Exception as e:
-            st.error(f"Ошибка в tech_specs.json: {e}")
-
-    # 6. SENSITIVE (файл)
-    path_sens = os.path.join(base_path, "SENSITIVE_STOPLIST.json")
-    if os.path.exists(path_sens):
-        try:
-            with open(path_sens, 'r', encoding='utf-8') as f:
-                raw_sens = json.load(f)
-                if isinstance(raw_sens, list):
-                    for w in raw_sens:
-                        sensitive_lemmas.add(str(w).lower().strip())
-        except: pass
-
-    # Возвращаем 6 наборов
     return product_lemmas, commercial_lemmas, specs_lemmas, geo_lemmas, services_lemmas, sensitive_lemmas
+
+# ==========================================
+# КЛАССИФИКАТОР (С УЛУЧШЕННЫМ ПОИСКОМ КОРНЕЙ)
+# ==========================================
+def classify_semantics_with_api(words_list, yandex_key):
+    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = load_lemmatized_dictionaries()
+    FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
+
+    # ОТЛАДКА: Показываем пользователю, загрузились ли словари
+    # Если здесь нули — значит проблема в файлах json
+    st.sidebar.info(f"""
+    📚 Состояние словарей:
+    📦 Товары: {len(PRODUCTS_SET)}
+    💰 Коммерция: {len(COMM_SET)}
+    🌍 Гео: {len(GEO_SET)}
+    🛠️ Услуги: {len(SERVICES_SET)}
+    """)
+
+    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
+    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
+    
+    categories = {'products': set(), 'services': set(), 'commercial': set(), 
+                  'dimensions': set(), 'geo': set(), 'general': set(), 'sensitive': set()}
+    
+    for word in words_list:
+        word_lower = word.lower()
+        
+        # Лемма через Pymorphy
+        lemma = word_lower
+        if morph:
+            p = morph.parse(word_lower)[0]
+            lemma = p.normal_form
+
+        # 1. СТОП-СЛОВА
+        if word_lower in FULL_SENSITIVE or lemma in FULL_SENSITIVE:
+            categories['sensitive'].add(word_lower); continue
+        
+        # 2. РАЗМЕРЫ / ГОСТ
+        if word_lower in SPECS_SET or lemma in SPECS_SET:
+            categories['dimensions'].add(word_lower); continue
+        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
+            categories['dimensions'].add(word_lower); continue
+
+        # 3. ТОВАРЫ (Улучшенная логика)
+        if word_lower in PRODUCTS_SET or lemma in PRODUCTS_SET:
+            categories['products'].add(word_lower); continue
+        
+        # Проверка вхождения корня (FIX: обрезаем окончания для проверки)
+        is_product_root = False
+        for prod in PRODUCTS_SET:
+            # Если слово в словаре длинное, отрезаем последние 1-2 буквы для поиска корня
+            # Например "алюминий" -> "алюмини". "Алюминиевый" содержит "алюмини".
+            check_root = prod[:-1] if len(prod) > 4 else prod
+            
+            if len(check_root) > 3 and check_root in word_lower:
+                categories['products'].add(word_lower)
+                is_product_root = True
+                break
+        if is_product_root: continue
+
+        # 4. ГЕО
+        if lemma in GEO_SET or word_lower in GEO_SET:
+            categories['geo'].add(word_lower); continue
+        
+        # 5. УСЛУГИ
+        if lemma in SERVICES_SET or word_lower in SERVICES_SET:
+             categories['services'].add(word_lower); continue
+        if "резка" in word_lower or "обработка" in word_lower or "изготовление" in word_lower:
+             categories['services'].add(word_lower); continue
+
+        # 6. КОММЕРЦИЯ
+        if lemma in COMM_SET or word_lower in COMM_SET:
+            categories['commercial'].add(word_lower); continue
+            
+        # 7. ОБЩИЕ
+        categories['general'].add(word_lower)
+
+    return {k: sorted(list(v)) for k, v in categories.items()}
 
 # ==========================================
 # КЛАССИФИКАТОР (УСИЛЕННЫЙ)
@@ -1957,4 +1993,5 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
