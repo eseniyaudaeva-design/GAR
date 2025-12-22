@@ -1520,6 +1520,7 @@ with tab_wholesale_main:
          tags_list_source = st.session_state.auto_tags_words
          promo_list_source = st.session_state.auto_promo_words
     else:
+         # Простая логика распределения: если слов мало - все в теги, если много - делим
          if count_struct > 0:
             if count_struct < 10:
                 tags_list_source = structure_keywords
@@ -1536,15 +1537,15 @@ with tab_wholesale_main:
              tags_list_source = []
              promo_list_source = []
     
-    # Дефолтный текст для сайдбара
+    # Дефолтный текст для сайдбара (оставляем через \n для списка меню, но можно и поменять при желании)
     sidebar_default_text = ""
     if count_struct >= 30 and 'auto_tags_words' not in st.session_state:
          part = math.ceil(count_struct / 3)
          sidebar_default_text = "\n".join(structure_keywords[part*2:])
 
-    # Превращаем списки в строки для Text Area
-    tags_default_text = "\n".join(tags_list_source)
-    promo_default_text = "\n".join(promo_list_source)
+    # ИЗМЕНЕНИЕ: Теперь объединяем через запятую
+    tags_default_text = ", ".join(tags_list_source)
+    promo_default_text = ", ".join(promo_list_source)
 
     # 2. Для Таблиц (Размеры/ГОСТ)
     cat_dimensions = st.session_state.get('categorized_dimensions', [])
@@ -1564,26 +1565,21 @@ with tab_wholesale_main:
     with st.container(border=True):
         st.subheader("1. Источник и Доступы")
         
-        # 1. Сначала выбираем режим (Чекбокс)
-        use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode")
-        
-        # 2. Создаем колонки для полей ввода
         col_source, col_key = st.columns([3, 1])
         
-        # Левая колонка меняется в зависимости от чекбокса
+        # Режим ввода
+        use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode")
+        
         with col_source:
             if use_manual_html:
-                # Показываем поле для HTML
                 manual_html_source = st.text_area(
                     "Исходный код страницы (HTML)", 
                     height=200, 
                     placeholder="<html>...</html>", 
                     help="Скопируйте сюда исходный код страницы."
                 )
-                # URL обнуляем, чтобы не было конфликтов, но переменную создаем
                 main_category_url = None
             else:
-                # Показываем поле для URL
                 main_category_url = st.text_input(
                     "URL Категории", 
                     placeholder="https://site.ru/catalog/...", 
@@ -1591,7 +1587,6 @@ with tab_wholesale_main:
                 )
                 manual_html_source = None
 
-        # Правая колонка всегда содержит API Key (он нужен в обоих случаях)
         with col_key:
             default_key = st.session_state.get('pplx_key_cache', "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")
             pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
@@ -1630,7 +1625,6 @@ with tab_wholesale_main:
         if use_text:
             with st.container(border=True):
                 st.markdown("#### 🤖 1. AI Тексты")
-                # ИЗМЕНЕНИЕ: Текстовое поле вместо st.success
                 ai_words_input = st.text_area(
                     "Слова для внедрения (Коммерция, Гео, Общие) - через запятую", 
                     value=text_context_default, 
@@ -1638,15 +1632,23 @@ with tab_wholesale_main:
                     key="ai_text_context_editable",
                     help="Эти слова нейросеть постарается внедрить в текст."
                 )
-                # Превращаем обратно в список для генератора
                 text_context_final_list = [x.strip() for x in ai_words_input.split(',') if x.strip()]
 
         if use_tags:
             with st.container(border=True):
                 st.markdown("#### 🏷️ 2. Теги")
-                kws_input_tags = st.text_area("Список (Товары + Услуги)", value=tags_default_text, height=100, key="kws_tags_auto")
-                global_tags_list = [x.strip() for x in kws_input_tags.split('\n') if x.strip()]
+                # ИЗМЕНЕНИЕ: Текст теперь через запятую + универсальная обработка (replace \n -> ,)
+                kws_input_tags = st.text_area(
+                    "Список (Товары + Услуги) - через запятую", 
+                    value=tags_default_text, 
+                    height=100, 
+                    key="kws_tags_auto"
+                )
+                # Универсальный парсер: меняем переносы на запятые, потом делим по запятым
+                global_tags_list = [x.strip() for x in kws_input_tags.replace('\n', ',').split(',') if x.strip()]
+                
                 if not global_tags_list: st.warning("⚠️ Список пуст!")
+                
                 st.markdown("---")
                 col_t1, col_t2 = st.columns([1, 2])
                 with col_t1: u_manual = st.checkbox("Своя база ссылок (.txt)", key="cb_tags_vert")
@@ -1663,7 +1665,6 @@ with tab_wholesale_main:
         if use_tables:
             with st.container(border=True):
                 st.markdown("#### 🧩 3. Таблицы")
-                # ИЗМЕНЕНИЕ: Текстовое поле вместо st.caption
                 tech_context_final_str = st.text_area(
                     "Контекст для таблиц (Марки, ГОСТ, Размеры)", 
                     value=tech_context_default, 
@@ -1682,9 +1683,18 @@ with tab_wholesale_main:
         if use_promo:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
-                kws_input_promo = st.text_area("Список (Товары + Услуги)", value=promo_default_text, height=100, key="kws_promo_auto")
-                global_promo_list = [x.strip() for x in kws_input_promo.split('\n') if x.strip()]
+                # ИЗМЕНЕНИЕ: Текст теперь через запятую
+                kws_input_promo = st.text_area(
+                    "Список (Товары + Услуги) - через запятую", 
+                    value=promo_default_text, 
+                    height=100, 
+                    key="kws_promo_auto"
+                )
+                # Универсальный парсер: меняем переносы на запятые, потом делим по запятым
+                global_promo_list = [x.strip() for x in kws_input_promo.replace('\n', ',').split(',') if x.strip()]
+
                 if not global_promo_list: st.warning("⚠️ Список пуст!")
+                
                 st.markdown("---")
                 col_p1, col_p2 = st.columns([1, 2])
                 with col_p1:
@@ -1704,9 +1714,17 @@ with tab_wholesale_main:
         if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
-                kws_input_sidebar = st.text_area("Список (Товары + Услуги)", value=sidebar_default_text, height=100, key="kws_sidebar_auto")
+                # Сайдбар лучше оставить списком (каждая строка - пункт меню)
+                kws_input_sidebar = st.text_area(
+                    "Список (Товары + Услуги) - с новой строки", 
+                    value=sidebar_default_text, 
+                    height=100, 
+                    key="kws_sidebar_auto"
+                )
                 global_sidebar_list = [x.strip() for x in kws_input_sidebar.split('\n') if x.strip()]
+                
                 if not global_sidebar_list: st.warning("⚠️ Список пуст!")
+                
                 st.markdown("---")
                 col_s1, col_s2 = st.columns([1, 2])
                 with col_s1: u_sb_man = st.checkbox("Свой файл меню (.txt)", key="cb_sb_vert")
@@ -2025,4 +2043,3 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
