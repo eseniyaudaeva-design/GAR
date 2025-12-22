@@ -1752,7 +1752,7 @@ if use_sidebar:
                         if up_s: sidebar_content = up_s.getvalue().decode("utf-8")
                     else: st.error("❌ Файл меню не найден!")
 
-    st.markdown("---")
+            st.markdown("---")
     
     # ==========================================
     # 4. ЗАПУСК
@@ -2057,5 +2057,6 @@ if use_sidebar:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
