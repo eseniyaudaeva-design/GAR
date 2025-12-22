@@ -1123,46 +1123,52 @@ with tab_seo_main:
         
         # --- СТИЛИ ДЛЯ КОМПАКТНОСТИ И КРАСОТЫ ---
 # --- СТИЛИ ---
+# --- СТИЛИ (ОБНОВЛЕННЫЕ - КРУПНЫЙ РАЗМЕР) ---
     st.markdown("""
     <style>
         .cat-box {
             background-color: #f8f9fa;
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 10px;
+            border-radius: 10px;
+            padding: 15px; /* Больше отступ внутри */
+            margin-bottom: 15px;
             border: 1px solid #e9ecef;
             height: 100%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         .cat-title {
             font-weight: 700;
-            font-size: 14px;
-            margin-bottom: 5px;
-            color: #1f2937;
+            font-size: 18px; /* Увеличили заголовок */
+            margin-bottom: 10px;
+            color: #111827;
             display: flex;
             align-items: center;
-            gap: 5px;
+            justify-content: space-between;
         }
         .cat-content {
-            font-size: 13px;
-            color: #4b5563;
-            line-height: 1.4;
+            font-size: 16px; /* Увеличили основной текст */
+            color: #374151;
+            line-height: 1.6; /* Больше расстояние между строками */
+            font-weight: 400;
         }
         .cat-empty {
             color: #9ca3af;
             font-style: italic;
+            font-size: 14px;
         }
         .count-badge {
-            background: #e5e7eb;
-            padding: 1px 6px;
-            border-radius: 10px;
-            font-size: 11px;
-            color: #374151;
+            background: #e0e7ff;
+            color: #3730a3;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 14px; /* Увеличили цифру счетчика */
+            font-weight: 600;
         }
     </style>
     """, unsafe_allow_html=True)
 
     def render_clean_block(title, icon, words_list):
         count = len(words_list) if words_list else 0
+        # Если слов нет - пишем "Нет данных"
         content_html = ", ".join(words_list) if count > 0 else "<span class='cat-empty'>Нет данных</span>"
         
         st.markdown(f"""
@@ -1176,17 +1182,17 @@ with tab_seo_main:
         """, unsafe_allow_html=True)
 
     with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
-        # Проверка, был ли анализ
+        # Проверка, был ли анализ (проверяем по наличию оригиналов)
         if not st.session_state.get('orig_products'):
             st.info("⚠️ Данные отсутствуют. Пожалуйста, запустите анализ (кнопка выше).")
         else:
-            # --- РЯД 1: Товары, Гео, Коммерция ---
+            # --- РЯД 1 ---
             c1, c2, c3 = st.columns(3)
             with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
             with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
             with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
             
-            # --- РЯД 2: Услуги, Характеристики, Общие ---
+            # --- РЯД 2 ---
             c4, c5, c6 = st.columns(3)
             with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
             with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
@@ -1194,45 +1200,41 @@ with tab_seo_main:
 
             st.markdown("---")
 
-            # --- БЛОК УПРАВЛЕНИЯ СТОП-СЛОВАМИ ---
-            # Используем две колонки: слева пояснение/статус, справа поле ввода
+            # --- БЛОК СТОП-СЛОВ ---
             cs1, cs2 = st.columns([1, 3])
             
             with cs1:
                 sens_count = len(st.session_state.get('categorized_sensitive', []))
-                st.markdown(f"**⛔ Стоп-слова**")
-                st.markdown(f"Всего исключено: **{sens_count}**")
-                st.caption("Слова, добавленные сюда, удаляются из всех категорий выше и не попадают в генерацию. Вставляйте каждое слово с новой строчки.")
+                st.markdown(f"### ⛔ Стоп-слова")
+                st.markdown(f"Исключено слов: **{sens_count}**")
+                st.caption("Слова из этого списка удаляются из всех категорий выше.")
             
             with cs2:
-                # Получаем текущий список для отображения
                 current_sens_list = st.session_state.get('categorized_sensitive', [])
                 sens_text_area_val = "\n".join(current_sens_list)
 
                 new_sens_str = st.text_area(
                     "Введите стоп-слова (каждое с новой строки)",
                     value=sens_text_area_val,
-                    height=100,
+                    height=150,
                     key="sensitive_words_input_final",
                     label_visibility="collapsed",
                     placeholder="Вставьте слова для исключения (каждое с новой строки)..."
                 )
 
                 if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                    # 1. Читаем новое состояние из поля
+                    # 1. Читаем новое состояние
                     raw_input = st.session_state.get("sensitive_words_input_final", "")
                     new_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
                     
-                    # 2. Обновляем список sensitive (чтобы он остался в поле ввода)
+                    # 2. Обновляем список (чтобы он остался в поле)
                     st.session_state.categorized_sensitive = sorted(list(new_set))
                     
-                    # 3. ФУНКЦИЯ ВОССТАНОВЛЕНИЯ: Берем ORIG и вычитаем NEW_SET
-                    # Это позволяет вернуть слова, если их удалили из стоп-листа
+                    # 3. ФУНКЦИЯ ВОССТАНОВЛЕНИЯ (Берем ORIG и вычитаем NEW_SET)
                     def apply_filter(orig_key, sensitive_set):
                         original = st.session_state.get(orig_key, [])
                         return [w for w in original if w.lower() not in sensitive_set]
 
-                    # Применяем ко всем спискам
                     st.session_state.categorized_products = apply_filter('orig_products', new_set)
                     st.session_state.categorized_services = apply_filter('orig_services', new_set)
                     st.session_state.categorized_commercial = apply_filter('orig_commercial', new_set)
@@ -1705,5 +1707,6 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
