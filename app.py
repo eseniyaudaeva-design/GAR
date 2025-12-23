@@ -961,15 +961,24 @@ def get_page_data_for_gen(url):
     
     soup = BeautifulSoup(response.text, 'html.parser')
     
-    # 1. Ищем реальный заголовок страницы (H1), чтобы использовать его как {tag_name}
-    real_h1 = soup.find('h1')
-    page_title = real_h1.get_text(strip=True) if real_h1 else "Товар без названия"
-
-    # 2. Ищем текст описания
+    # 1. ЗАГОЛОВОК: Ищем строго H2 (как вы просили)
+    # Сначала ищем в контентной части (часто бывает h2 в меню, который нам не нужен)
+    # Если есть класс description-container, ищем внутри него, если нет - первый H2 на странице
     description_div = soup.find('div', class_='description-container')
+    
+    target_h2 = None
+    if description_div:
+        target_h2 = description_div.find('h2')
+    
+    if not target_h2:
+        target_h2 = soup.find('h2')
+        
+    page_header = target_h2.get_text(strip=True) if target_h2 else "Описание товара" # Дефолт, если H2 нет совсем
+
+    # 2. Фактура (текст)
     base_text = description_div.get_text(separator="\n", strip=True) if description_div else soup.body.get_text(separator="\n", strip=True)[:5000]
     
-    # 3. Ищем теги
+    # 3. Теги
     tags_container = soup.find(class_='popular-tags-inner')
     tags_data = []
     if tags_container:
@@ -978,7 +987,7 @@ def get_page_data_for_gen(url):
             tag_url = urljoin(url, link.get('href')) if link.get('href') else None
             if tag_url: tags_data.append({'name': link.get_text(strip=True), 'url': tag_url})
             
-    return base_text, tags_data, page_title, None
+    return base_text, tags_data, page_header, None
 
 def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
@@ -1938,16 +1947,17 @@ with tab_wholesale_main:
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
         
-# ... (начало цикла) ...
+# ... (внутри st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ"...))
+        
         for idx, page in enumerate(target_pages):
-            # 1. Получаем данные страницы + РЕАЛЬНЫЙ H1
-            base_text_raw, tags_on_page, real_title, err = get_page_data_for_gen(page['url'])
+            # 1. Получаем данные и ИМЕННО H2 (переменная real_header_h2)
+            base_text_raw, tags_on_page, real_header_h2, err = get_page_data_for_gen(page['url'])
             
-            # Если не удалось скачать, берем имя из ссылки
-            product_name_final = real_title if real_title else page['name']
-            base_text_final = base_text_raw if base_text_raw else ""
-
-            row_data = {'Page URL': page['url'], 'Product Name': product_name_final}
+            # Если H2 на сайте не найден, используем имя ссылки как запасной вариант
+            header_for_ai = real_header_h2 if real_header_h2 else page['name']
+            
+            # Для имени файла/строки используем имя ссылки (оно обычно короче)
+            row_data = {'Page URL': page['url'], 'Product Name': page['name']}
             
             # Статические поля
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
@@ -1957,8 +1967,9 @@ with tab_wholesale_main:
                 try:
                     blocks = generate_ai_content_blocks(
                         client, 
-                        base_text_final,  # Передаем скачанный текст
-                        product_name_final, # Передаем реальный H1
+                        base_text_raw if base_text_raw else "", 
+                        page['name'],      # Название товара для контекста
+                        header_for_ai,     # ЭТОТ ЗАГОЛОВОК (H2) ПОЙДЕТ В ПЕРВЫЙ БЛОК
                         num_blocks=num_text_blocks_val, 
                         seo_words=text_context_final_list
                     )
@@ -2074,6 +2085,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
