@@ -196,7 +196,7 @@ def render_clean_block(title, icon, words_list):
     st.markdown(html_code, unsafe_allow_html=True)
 
 # ==========================================
-# ЗАГРУЗКА СЛОВАРЕЙ (ИСПРАВЛЕНО)
+# ЗАГРУЗКА СЛОВАРЕЙ
 # ==========================================
 @st.cache_data
 def load_lemmatized_dictionaries():
@@ -2722,17 +2722,3 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
