@@ -1490,6 +1490,19 @@ with tab_wholesale_main:
     # Формируем дефолт для ГЕО блока
     geo_context_default = ", ".join(cat_geo)
 
+    # --- АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ АКТИВНОСТИ МОДУЛЕЙ ---
+    # Если список слов не пуст -> ставим галочку True, иначе False
+    auto_check_text = bool(text_context_list_raw)
+    auto_check_tags = bool(tags_list_source)
+    auto_check_tables = bool(cat_dimensions)
+    auto_check_promo = bool(promo_list_source)
+    # Сайдбар и Промо зависят от одних данных, но сайдбар чаще опционален, 
+    # поэтому включим его только если слов много (>5)
+    auto_check_sidebar = bool(count_struct > 5) 
+    auto_check_geo = bool(cat_geo)
+
+    st.info("ℹ️ **Авто-настройка:** Галочки активированы автоматически там, где после анализа нашлись подходящие слова. Вы можете изменить выбор вручную.")
+
     # ==========================================
     # 1. ВВОДНЫЕ ДАННЫЕ
     # ==========================================
@@ -1526,15 +1539,15 @@ with tab_wholesale_main:
     # 2. ВЫБОР МОДУЛЕЙ
     # ==========================================
     st.subheader("2. Какие блоки генерируем?")
-    # Теперь 6 колонок
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5, col_ch6 = st.columns(6)
     
-    with col_ch1: use_text = st.checkbox("🤖 AI Тексты", value=False)
-    with col_ch2: use_tags = st.checkbox("🏷️ Теги", value=False)
-    with col_ch3: use_tables = st.checkbox("🧩 Таблицы", value=False)
-    with col_ch4: use_promo = st.checkbox("🔥 Промо", value=False)
-    with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар", value=False)
-    with col_ch6: use_geo = st.checkbox("🌍 Гео-блок", value=False)
+    # Вставляем авто-значения в value=...
+    with col_ch1: use_text = st.checkbox("🤖 AI Тексты", value=auto_check_text)
+    with col_ch2: use_tags = st.checkbox("🏷️ Теги", value=auto_check_tags)
+    with col_ch3: use_tables = st.checkbox("🧩 Таблицы", value=auto_check_tables)
+    with col_ch4: use_promo = st.checkbox("🔥 Промо", value=auto_check_promo)
+    with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар", value=auto_check_sidebar)
+    with col_ch6: use_geo = st.checkbox("🌍 Гео-блок", value=auto_check_geo)
 
     # ==========================================
     # 3. НАСТРОЙКИ МОДУЛЕЙ
@@ -1707,7 +1720,6 @@ with tab_wholesale_main:
     if use_tags and not tags_file_content: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
-    # Для Geo обязательных внешних файлов нет (нужен только ключ API, если он нужен для текста)
     if use_geo and not pplx_api_key: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
