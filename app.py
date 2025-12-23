@@ -768,7 +768,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             score += idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (doc_len / avg_dl)))
         return score
 
-def calculate_width_score_val(lemmas_set):
+    def calculate_width_score_val(lemmas_set):
         if total_width_core_count == 0: return 0
         # Считаем, сколько слов из ядра мы нашли
         found_count = len(lemmas_set.intersection(S_WIDTH_CORE))
@@ -2669,6 +2669,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
