@@ -2577,17 +2577,3 @@ with tab_wholesale_main:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
 
-        if 'unified_excel_data' in st.session_state:
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.download_button(
-                label="📥 СКАЧАТЬ EXCEL (ФИНАЛ)",
-                data=st.session_state.unified_excel_data,
-                file_name="generated_content_preview.xlsx",
-                mime="application/vnd.ms-excel",
-                key="btn_dl_preview",
-                use_container_width=True,
-                type="primary"
-            )
-
-
-
