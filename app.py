@@ -1696,7 +1696,7 @@ with tab_wholesale_main:
                     use_custom_header = st.checkbox("Ввести свой заголовок", key="cb_custom_header")
                     
                     if use_custom_header:
-                        promo_title = st.text_input("Ваш заголовок", value="Смотрите также", key="pr_tit_vert")
+                        promo_title = st.text_input("Ваш заголовок", placeholder="Смотрите также", key="pr_tit_vert")
                     else:
                         promo_title = st.selectbox("Варианты заголовка", promo_presets, key="promo_header_select")
                     
@@ -2151,6 +2151,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
