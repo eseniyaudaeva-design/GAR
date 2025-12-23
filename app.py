@@ -2001,34 +2001,72 @@ with tab_wholesale_main:
                 else: row_data['Tags HTML'] = ""
 
             # --- AI TABLES ---
+# --- AI TABLES (ИСПРАВЛЕНО: AI = ДАННЫЕ, PYTHON = СТИЛИ) ---
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
-                    sys_p = "Generate HTML table only. Inline CSS borders. No markdown."
+                    # 1. СИСТЕМНЫЙ ПРОМТ: Эксперт-металлург (фокус на данные)
+                    sys_p_table = "You are an expert metallurgist and data analyst. Output ONLY raw HTML <table>. No markdown. No explanations."
+                    
+                    # 2. Контекст
                     context_hint = ""
                     if tech_context_final_str:
-                        context_hint = f" Use specs: {tech_context_final_str}."
-                    usr_p = f"Product: {header_for_ai}. Topic: {t_topic}. Realistic technical table.{context_hint}"
+                        context_hint = f"Используй технические данные (марки, ГОСТы): {tech_context_final_str}."
+                    
+                    # 3. ПРОМТ: Просим ТОЛЬКО данные, на стили плевать (их сделает скрипт)
+                    usr_p_table = f"""
+                    Задача: Составь подробную техническую таблицу для товара "{header_for_ai}".
+                    Тема таблицы: {t_topic}.
+                    {context_hint}
+                    
+                    ТРЕБОВАНИЯ К КОНТЕНТУ:
+                    1. Только реальные технические данные (размеры, марки стали, химический состав, свойства).
+                    2. Не пиши "воды". Только факты и цифры.
+                    3. Создай простую HTML таблицу <table>...</table>.
+                    
+                    ЗАПРЕТЫ:
+                    - НИКАКИХ ССЫЛОК [1], [2].
+                    - Без Markdown (```).
+                    """
+                    
                     try:
-                        resp = client.chat.completions.create(model="sonar-pro", messages=[{"role":"system","content":sys_p},{"role":"user","content":usr_p}], temperature=0.5)
-                        t_html = resp.choices[0].message.content.replace("```html","").replace("```","")
-                        row_data[f'Table_{t_i+1}_HTML'] = t_html
-                    except: row_data[f'Table_{t_i+1}_HTML'] = "Error"
-
-            # --- PROMO ---
-            if use_promo:
-                candidates = [x for x in promo_items_pool if x['url'].rstrip('/') != page['url'].rstrip('/')]
-                if len(candidates) > 5: chosen = random.sample(candidates, 5)
-                else: chosen = candidates
-                if chosen:
-                    items_html = ""
-                    for item in chosen:
-                        cache_key = item['url'].rstrip('/')
-                        real_name = url_name_cache.get(cache_key, "Товар") 
-                        items_html += f"""<div class="gallery-item"><h3><a href="{item['url']}">{real_name}</a></h3><figure><a href="{item['url']}"><img src="{item['img']}" loading="lazy"></a></figure></div>"""
-                    css = "<style>.five-col-gallery{display:flex;gap:15px;}</style>"
-                    full_promo = f"""{css}<div class="gallery-wrapper"><h3>{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div>"""
-                    row_data['Promo HTML'] = full_promo
-                else: row_data['Promo HTML'] = ""
+                        resp = client.chat.completions.create(
+                            model="sonar-pro", 
+                            messages=[
+                                {"role": "system", "content": sys_p_table},
+                                {"role": "user", "content": usr_p_table}
+                            ], 
+                            temperature=0.4 # Низкая температура для точности данных
+                        )
+                        raw_html = resp.choices[0].message.content
+                        
+                        # --- ПОСТ-ОБРАБОТКА СКРИПТОМ (ЖЕСТКОЕ ОФОРМЛЕНИЕ) ---
+                        
+                        # 1. Чистим мусор
+                        clean_html = raw_html.replace("```html", "").replace("```", "").strip()
+                        clean_html = re.sub(r'\[\d+\]', '', clean_html) # Вырезаем [1]
+                        
+                        # 2. ПАРСИМ И ВСТАВЛЯЕМ СТИЛИ ЧЕРЕЗ BEAUTIFULSOUP
+                        soup_table = BeautifulSoup(clean_html, 'html.parser')
+                        table_tag = soup_table.find('table')
+                        
+                        if table_tag:
+                            # Жесткий стиль для самой таблицы
+                            table_tag['style'] = "border-collapse: collapse; width: 100%; border: 2px solid black;"
+                            
+                            # Жесткий стиль для ВСЕХ ячеек (заголовки и данные)
+                            for cell in table_tag.find_all(['th', 'td']):
+                                cell['style'] = "border: 2px solid black; padding: 5px;"
+                                
+                            # Результат - идеально оформленный HTML
+                            final_table_html = str(table_tag)
+                        else:
+                            # Если нейронка не вернула таблицу, отдаем как есть (но чистым)
+                            final_table_html = clean_html
+                        
+                        row_data[f'Table_{t_i+1}_HTML'] = final_table_html
+                        
+                    except Exception as e:
+                        row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
             # --- SIDEBAR ---
             if use_sidebar:
@@ -2087,6 +2125,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
