@@ -1758,12 +1758,12 @@ if use_tables:
                         "Ранее вы интересовались"
                     ]
                     
-                    use_custom_header = st.checkbox("Ввести свой заголовок", key="cb_custom_header")
                     
                     if use_custom_header:
                         promo_title = st.text_input("Ваш заголовок", placeholder="Смотрите также", key="pr_tit_vert")
                     else:
                         promo_title = st.selectbox("Варианты заголовка", promo_presets, key="promo_header_select")
+                    use_custom_header = st.checkbox("Ввести свой заголовок", key="cb_custom_header")
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     u_img_man = st.checkbox("Своя база картинок", key="cb_img_vert")
@@ -2216,6 +2216,7 @@ if use_tables:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
