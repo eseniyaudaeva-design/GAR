@@ -1693,7 +1693,7 @@ if use_tables:
                     except: pass
                 
                 # Чек-бокс делаем компактнее
-                is_manual = st.checkbox("✍️ Свой заголовок", key=f"cb_tbl_manual_{i}")
+                is_manual = st.checkbox("Свой заголовок", key=f"cb_tbl_manual_{i}")
                 
                 if is_manual:
                     selected_topic = st.text_input(
@@ -2216,6 +2216,7 @@ if use_tables:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
