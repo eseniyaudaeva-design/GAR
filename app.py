@@ -335,7 +335,7 @@ def classify_semantics_with_api(words_list, yandex_key):
         # 5. УСЛУГИ
         if lemma in SERVICES_SET or word_lower in SERVICES_SET:
              categories['services'].add(word_lower); continue
-        if "резка" in word_lower or "обработка" in word_lower or "изготовление" in word_lower:
+        if lemma.endswith('обработка') or lemma.endswith('изготовление') or lemma == "резка":
             categories['services'].add(word_lower); continue
 
         # 6. КОММЕРЦИЯ
@@ -1001,24 +1001,32 @@ def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_wo
     )
 
     # 3. Формируем структуру блоков динамически
-    if num_blocks == 1:
-        structure_prompt = f"""
-    --- БЛОК 1 (Вводный и основной) ---
-    - Заголовок: <h2>{tag_name}</h2>
-    - Полное описание товара, назначение, ключевые характеристики и особенности.
-        """
-        headers_instruction = "1. Заголовок (<h2>)."
-    else:
-        structure_prompt = f"""
+    structure_prompt = ""
+    
+    # Блок 1 всегда есть
+    structure_prompt += f"""
     --- БЛОК 1 (Вводный) ---
     - Заголовок: <h2>{tag_name}</h2>
     - Описание товара, назначение, ключевые особенности.
+    """
     
+    # Остальные блоки
+    if num_blocks > 1:
+        if num_blocks == 2:
+             structure_prompt += """
+    --- БЛОК 2 (Технические детали) ---
+    - Заголовок: <h3> (Характеристики или Применение).
+    - Используй фактуру из "Базового текста".
+             """
+        else:
+             structure_prompt += f"""
     --- БЛОКИ 2-{num_blocks} (Технические детали) ---
     - Заголовки: <h3> (Характеристики, Применение, Производство, Особенности, Сортамент и т.д.).
     - Используй фактуру из "Базового текста".
-        """
-        headers_instruction = "1. Заголовок (<h2> только для 1-го блока, <h3> для остальных)."
+    - Раскрывай разные аспекты, не повторяйся.
+             """
+
+    headers_instruction = "1. Заголовок (<h2>)." if num_blocks == 1 else "1. Заголовок (<h2> только для 1-го блока, <h3> для остальных)."
 
     # 4. Пользовательский промт
     user_prompt = f"""
@@ -1029,7 +1037,8 @@ def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_wo
     {seo_instruction_block}
     
     ЗАДАЧА:
-    Напиши {num_blocks} (HTML-блоков), разделенных строго разделителем: |||BLOCK_SEP|||
+    Напиши СТРОГО {num_blocks} (HTML-блоков), разделенных строго разделителем: |||BLOCK_SEP|||
+    Не пиши больше или меньше блоков, чем {num_blocks}.
     
     ОБЩИЕ ТРЕБОВАНИЯ:
     1. ОБЪЕМ: Каждый блок должен содержать не менее 600 символов (включая пробелы). Раскрывай тему подробно.
@@ -1513,6 +1522,8 @@ with tab_wholesale_main:
     
     auto_check_geo = bool(cat_geo)
 
+    st.info("ℹ️ **Авто-настройка:** Галочки активированы автоматически там, где после анализа нашлись подходящие слова. Вы можете изменить выбор вручную.")
+
     # ==========================================
     # 1. ВВОДНЫЕ ДАННЫЕ
     # ==========================================
@@ -1549,7 +1560,6 @@ with tab_wholesale_main:
     # 2. ВЫБОР МОДУЛЕЙ
     # ==========================================
     st.subheader("2. Какие блоки генерируем?")
-    st.info("ℹ️ **Авто-настройка:** Галочки активированы автоматически там, где после анализа нашлись подходящие слова. Вы можете изменить выбор вручную.")
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5, col_ch6 = st.columns(6)
     
     # Вставляем авто-значения в value=...
@@ -2072,4 +2082,3 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
