@@ -406,6 +406,7 @@ GARBAGE_LATIN_STOPLIST = {
 # ==========================================
 # STOP LISTS (SENSITIVE / GEO UA)
 # ==========================================
+# Пишите здесь хоть КАПСОМ, хоть с Большой - код сам исправит
 SENSITIVE_STOPLIST_RAW = {
     "украина", "ukraine", "ua", "всу", "зсу", "ато",
     "киев", "львов", "харьков", "одесса", "днепр", "мариуполь",
@@ -1015,8 +1016,8 @@ def generate_five_blocks(client, base_text, tag_name, seo_words=None):
     Напиши 5 (пять) HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||
     
     ОБЩИЕ ТРЕБОВАНИЯ:
-    1. ОБЪЕМ: Каждый блок должен содержать максимум 800 символов. Раскрывай тему подробно.
-    2. ЧИСТОТА: Исключи любые ссылки на источники вида.
+    1. ОБЪЕМ: Каждый блок должен содержать не менее 600 символов (включая пробелы). Раскрывай тему подробно.
+    2. ЧИСТОТА: Исключи любые ссылки на источники вида [1], [2], [3].
     3. ПОЛЬЗА: Текст должен быть технически грамотным и полезным для специалиста по закупкам. Избегай "воды".
     
     ТРЕБОВАНИЯ К СТРУКТУРЕ КАЖДОГО БЛОКА:
@@ -1513,7 +1514,7 @@ with tab_wholesale_main:
                 manual_html_source = None
 
         with col_key:
-            default_key = st.session_state.get('pplx_key_cache', "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")
+            default_key = st.session_state.get('pplx_key_cache', "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")
             pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
 
@@ -1989,8 +1990,3 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
-
-
-
-
