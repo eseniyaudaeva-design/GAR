@@ -1430,6 +1430,7 @@ with tab_seo_main:
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
+# ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
 # ------------------------------------------
 with tab_wholesale_main:
@@ -1496,9 +1497,10 @@ with tab_wholesale_main:
     auto_check_tags = bool(tags_list_source)
     auto_check_tables = bool(cat_dimensions)
     auto_check_promo = bool(promo_list_source)
-    # Сайдбар и Промо зависят от одних данных, но сайдбар чаще опционален, 
-    # поэтому включим его только если слов много (>5)
-    auto_check_sidebar = bool(count_struct > 5) 
+    
+    # ИСПРАВЛЕНИЕ: Сайдбар включаем только если для него реально есть текст
+    auto_check_sidebar = bool(sidebar_default_text.strip())
+    
     auto_check_geo = bool(cat_geo)
 
     st.info("ℹ️ **Авто-настройка:** Галочки активированы автоматически там, где после анализа нашлись подходящие слова. Вы можете изменить выбор вручную.")
