@@ -2324,21 +2324,17 @@ with tab_wholesale_main:
                 else:
                     row_data['Tags HTML'] = ""
 
-# --- PROMO GENERATION (ИСПРАВЛЕНО: УБРАНЫ ОТСТУПЫ, ЧТОБЫ НЕ БЫЛО RAW HTML) ---
+# --- PROMO GENERATION (ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ) ---
             if use_promo:
-                # 1. Исключаем текущую страницу
                 candidates = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
                 
-                # 2. Берем 4 случайных товара
-                if len(candidates) >= 4:
-                    selected_promo = random.sample(candidates, 4)
-                else:
-                    selected_promo = candidates
+                # Берем ВСЕ найденные (без лимитов)
+                random.shuffle(candidates)
+                selected_promo = candidates
                 
                 if selected_promo:
-                    # 3. Собираем HTML (БЕЗ ЛИШНИХ ПРОБЕЛОВ)
-                    # Используем display: flex и flex-wrap, чтобы карточки не уезжали
-                    promo_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display: flex; flex-wrap: wrap; gap: 15px;">'
+                    # КОНТЕЙНЕР: overflow-x: auto включает скролл, padding-bottom нужен для отступа скроллбара
+                    promo_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display: flex; gap: 15px; overflow-x: auto; padding-bottom: 15px;">'
                     
                     for item in selected_promo:
                         p_url = item['url']
@@ -2346,8 +2342,8 @@ with tab_wholesale_main:
                         cache_key = p_url.rstrip('/')
                         p_name = url_name_cache.get(cache_key, "Товар")
                         
-                        # ВАЖНО: Собираем строку через += без тройных кавычек и отступов!
-                        promo_html += f'<div class="promo-card" style="width: 23%; box-sizing: border-box; border: 1px solid #eee; padding: 10px; border-radius: 5px; text-align: center;">'
+                        # КАРТОЧКА: min-width: 220px не дает карточке сжиматься -> появляется скролл
+                        promo_html += f'<div class="promo-card" style="min-width: 220px; width: 220px; border: 1px solid #eee; padding: 10px; border-radius: 5px; text-align: center;">'
                         promo_html += f'<a href="{p_url}" style="text-decoration: none; color: #333;">'
                         promo_html += f'<div style="height: 150px; overflow: hidden; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">'
                         promo_html += f'<img src="{p_img}" alt="{p_name}" style="max-height: 100%; max-width: 100%; object-fit: contain;">'
@@ -2591,4 +2587,5 @@ with tab_wholesale_main:
                 use_container_width=True,
                 type="primary"
             )
+
 
