@@ -1688,7 +1688,7 @@ with tab_wholesale_main:
                 if not global_geo_list:
                     st.warning("⚠️ Список городов пуст!")
                 else:
-                    st.info(f"Будет сформирован список из {len(global_geo_list)} городов.")
+                    st.info(f"Блок будет сформирован из {len(global_geo_list)} городов.")
 
     st.markdown("---")
     
@@ -2011,3 +2011,4 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
