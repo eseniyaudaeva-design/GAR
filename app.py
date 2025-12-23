@@ -774,20 +774,24 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         found_count = len(lemmas_set.intersection(S_WIDTH_CORE))
         ratio = found_count / total_width_core_count
         
-        # --- ДВУХСТУПЕНЧАТАЯ ЛОГИКА ---
+        # --- ЛИНЕЙНАЯ ЛОГИКА С ФИНАЛЬНЫМ БУСТОМ ---
         
-        # 1. Если покрыто меньше 50% ядра — считаем строго линейно (1% = 1 балл)
-        if ratio < 0.5:
+        # 1. До 80% покрытия: Строго 1% = 1 балл.
+        # (Например: 79% -> 79 баллов)
+        if ratio <= 0.8:
             val = ratio * 100
             
-        # 2. Если покрыто больше 50% — включаем ускорение
-        # Мы масштабируем отрезок от 0.5 до 0.8 (30%) в диапазон баллов от 50 до 100.
-        # Это значит, что при 80% покрытия вы получите 100 баллов.
-        else:
-            # (Сколько набрали сверх 50%) / (0.3) * 50 баллов + 50 базовых
-            val = 50 + ((ratio - 0.5) / 0.30) * 50
+        # 2. От 80% до 90%: Ускоряемся, чтобы в 90% достичь 100 баллов.
+        # (Например: 85% -> 90 баллов)
+        elif ratio < 0.9:
+            # Масштабируем отрезок 0.8-0.9 в баллы 80-100
+            val = 80 + ((ratio - 0.8) / 0.1) * 20
             
-        return int(round(min(100, max(0, val))))
+        # 3. Свыше 90%: Максимум
+        else:
+            val = 100
+            
+        return int(round(val))
 
 # ---------------------------------------------------------
     # 1. Функция расчета "Сырой силы" (BM25)
@@ -2679,6 +2683,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
