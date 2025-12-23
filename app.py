@@ -767,9 +767,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             # --- ДОБАВЛЯЕМ ТОЛЬКО ОДИН РАЗ ---
             if is_width_word: missing_semantics_high.append(item)
             elif percent >= 30: missing_semantics_low.append(item)
-            item = {'word': lemma, 'percent': percent, 'weight': weight_simple}
-            if is_width_word: missing_semantics_high.append(item)
-            elif percent >= 30: missing_semantics_low.append(item)
 
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['percent'], reverse=True)
@@ -2705,6 +2702,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
