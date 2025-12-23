@@ -2276,7 +2276,13 @@ with tab_wholesale_main:
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
+            
+            # Загружаем статику
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
+            
+            # 🔥 ВСТАВИТЬ СЮДА: Очищаем поле доставки, если галочка снята
+            if not use_geo:
+                row_data['IP_PROP4819'] = ""
             
             # ========================================================
             # 1. СНАЧАЛА ГЕНЕРИРУЕМ ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO)
@@ -2555,5 +2561,6 @@ if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not
             use_container_width=True,
             type="primary"
         )
+
 
 
