@@ -1001,55 +1001,66 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
 
     vocab_strs = [", ".join(b) if b else "None" for b in buckets]
 
-    # 2. СИСТЕМНЫЙ ПРОМТ (Нейтральный, чтобы не триггерить отказ)
+    # 2. СИСТЕМНЫЙ ПРОМТ
     system_instruction = (
-        "You are a Senior Technical Editor. "
-        "Your task is to process raw product data into structured HTML content in Russian. "
-        "Style: Professional, concise, natural. No marketing fluff. Output raw HTML only."
+        "You are a Senior Editor for a B2B industrial marketplace. "
+        "Your goal is to write natural, professional, and idiomatic Russian text. "
+        "Output raw HTML only."
     )
 
-    # 3. ФОРМИРОВАНИЕ ЗАГОЛОВКОВ
-    # Блок 1: Строго берем переданный H2 (forced_header)
-    # Блоки 2+: Придумываем H3
     h_tag_instruction = f"1. Header: <h2>{forced_header}</h2> (Use this EXACT text)."
     if num_blocks > 1:
-        h_tag_instruction += " For subsequent blocks use <h3> tags with relevant technical themes."
+        h_tag_instruction += " For blocks 2-N use <h3> tags with relevant technical themes."
 
-    # 4. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ
+    # 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ
     user_prompt = f"""
     INPUT DATA:
-    Product Context: "{tag_name}"
-    Raw Data: \"\"\"{base_text[:3000]}\"\"\"
+    Product: "{tag_name}"
+    Source Info: \"\"\"{base_text[:3000]}\"\"\"
     
-    TASK: Generate exactly {num_blocks} HTML sections. Separator: |||BLOCK_SEP|||
+    TASK: Generate {num_blocks} HTML sections. Separator: |||BLOCK_SEP|||
     
-    SECTION STRUCTURE (STRICT):
+    SECTION STRUCTURE:
     {h_tag_instruction}
-    2. <p> Detailed technical description (3-5 sentences).
-    3. Short intro sentence.
-    4. <ul><li>...</li></ul> (Key features list).
-    5. <p> Summary/Logistics paragraph.
+    2. <p> (3-5 sentences). Meaningful commercial/technical text.
+    3. Short intro line.
+    4. <ul><li>...</li></ul> (Specs/Benefits).
+    5. <p> Summary.
 
-    VOCABULARY INTEGRATION (CRITICAL):
-    Include these terms in respective sections. 
+    MANDATORY VOCABULARY TO INSERT:
     Section 1: {vocab_strs[0]}
     Section 2: {vocab_strs[1]}
     Section 3: {vocab_strs[2]}
     Section 4: {vocab_strs[3]}
     Section 5: {vocab_strs[4]}
     
-    RULES FOR TERMS:
-    1. NATURALNESS: Change case/declension/number to fit the sentence grammar naturally.
-       (e.g. "Москва" -> "доставка по <b>Москве</b>").
-    2. CONTEXT: Build the sentence AROUND the term. Do not just insert it.
-    3. HIGHLIGHT: Wrap the modified term in <b> tags.
-    4. QUANTITY: Use each term exactly ONCE per section.
+    CRITICAL RULES FOR VOCABULARY (READ CAREFULLY):
+    1. IDIOMATIC USE ONLY: Use words in their standard business context. Do not force them into sentences where they don't belong.
+       
+       --- EXAMPLES ---
+       Word: "согласиться"
+       BAD: "Вы можете согласиться купить товар." (Nonsense)
+       BAD: "Поставка с возможностью согласиться." (Robot style)
+       GOOD: "Оформляя заказ, покупатель <b>соглашается</b> с условиями публичной оферты." (Standard legal context)
+       GOOD: "Мы достигли <b>согласия</b> (noun) с производителями о лучших ценах." (Changed part of speech)
+
+       Word: "звонок"
+       BAD: "Сделайте звонок нам."
+       GOOD: "Закажите обратный <b>звонок</b> для консультации."
+       ----------------
+    
+    2. CHANGE PARTS OF SPEECH: If the verb sounds bad, change it to a noun or adjective. 
+       (согласиться -> согласие, продать -> продажа).
+       
+    3. NO "AI" FILLERS: Ban phrases like "с возможностью", "путем использования", "является важным".
+       
+    4. HIGHLIGHT: Wrap the inserted keyword (in its changed form) in <b> tags.
+    5. QUANTITY: Exactly 1 time per section.
     
     CONSTRAINTS:
-    - Language: Russian.
-    - Max length: 800 chars per section.
-    - NO Citations/Footnotes ([1], [2]).
-    - NO Markdown.
+    - Language: Russian (Native Business).
+    - Max length: 800 chars/section.
+    - NO citations ([1]). NO Markdown.
     """
 
     for attempt in range(3):
@@ -1060,11 +1071,10 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
                     {"role": "system", "content": system_instruction}, 
                     {"role": "user", "content": user_prompt}
                 ], 
-                temperature=0.7 
+                temperature=0.75 
             )
             content = response.choices[0].message.content
             
-            # Чистка
             content = re.sub(r'\[\d+\]', '', content)
             content = content.replace("```html", "").replace("```", "").strip()
             
@@ -2077,6 +2087,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
