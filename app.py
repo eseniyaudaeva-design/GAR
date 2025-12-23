@@ -729,45 +729,42 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 # ... (код выше)
     lsi_candidates_weighted = []
 
+# === ПОЛНАЯ ЗАМЕНА ЦИКЛА (ЧТОБЫ НЕ БЫЛО ДУБЛЕЙ) ===
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
         c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         med_val = np.median(c_counts)
         
-        # --- ИЗМЕНЕНИЕ: ОКРУГЛЕНИЕ МЕДИАНЫ ---
-        # Если медиана 0.5 (есть у 50% конкурентов), считаем её за 1.0
-        # Если медиана 0, она остается 0.
+        # Логика округления медианы (0.5 -> 1.0)
         if 0.4 < med_val < 0.6:
             effective_median = 1.0
         else:
             effective_median = med_val
 
         percent = int((doc_freqs[lemma] / N) * 100)
-        
-        # Для веса (сортировки) используем "округленную" медиану, 
-        # чтобы слова с 50% частотностью поднялись выше в списке
         weight_simple = word_idf_map.get(lemma, 0) * effective_median
         
         if med_val > 0: lsi_candidates_weighted.append((lemma, weight_simple))
         
         is_width_word = False
-        # Теперь проверяем по effective_median (которая стала 1, если была 0.5)
         if effective_median >= 1: 
             S_WIDTH_CORE.add(lemma)
             is_width_word = True
 
+        # Блок "Упущенной семантики"
         if lemma not in my_full_lemmas_set:
             if len(lemma) < 2 or lemma.isdigit(): continue
-            display_word = lemma # По дефолту лемма
+            
+            # --- ПОДМЕНА ЛЕММЫ НА ЖИВОЕ СЛОВО ---
+            display_word = lemma
             if global_forms_counter[lemma]:
-                # Берем самую популярную форму (например, "аноды" вместо "анод")
+                # Берем самую частую форму
                 display_word = global_forms_counter[lemma].most_common(1)[0][0]
             
-            # В item записываем display_word вместо lemma
             item = {'word': display_word, 'percent': percent, 'weight': weight_simple}
-            # ----------------------------------------------------
-
+            
+            # --- ДОБАВЛЯЕМ ТОЛЬКО ОДИН РАЗ ---
             if is_width_word: missing_semantics_high.append(item)
             elif percent >= 30: missing_semantics_low.append(item)
             item = {'word': lemma, 'percent': percent, 'weight': weight_simple}
@@ -2708,6 +2705,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
