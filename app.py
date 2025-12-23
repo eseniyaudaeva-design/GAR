@@ -1953,11 +1953,12 @@ with tab_wholesale_main:
             # 1. Получаем данные и ИМЕННО H2 (переменная real_header_h2)
             base_text_raw, tags_on_page, real_header_h2, err = get_page_data_for_gen(page['url'])
             
-            # Если H2 на сайте не найден, используем имя ссылки как запасной вариант
+            # Если H2 на сайте не найден, используем имя ссылки
+            # Это и есть главное название товара для нейросети
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
-            # Для имени файла/строки используем имя ссылки (оно обычно короче)
-            row_data = {'Page URL': page['url'], 'Product Name': page['name']}
+            # Данные для Excel
+            row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
             
             # Статические поля
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
@@ -1967,9 +1968,9 @@ with tab_wholesale_main:
                 try:
                     blocks = generate_ai_content_blocks(
                         client, 
-                        base_text_raw if base_text_raw else "", 
-                        page['name'],      # Название товара для контекста
-                        header_for_ai,     # ЭТОТ ЗАГОЛОВОК (H2) ПОЙДЕТ В ПЕРВЫЙ БЛОК
+                        base_text=base_text_raw if base_text_raw else "", 
+                        tag_name=page['name'],     # Название для контекста (из ссылки)
+                        forced_header=header_for_ai, # ЭТОТ ЗАГОЛОВОК (H2) ПОЙДЕТ В ПЕРВЫЙ БЛОК
                         num_blocks=num_text_blocks_val, 
                         seo_words=text_context_final_list
                     )
@@ -2005,7 +2006,7 @@ with tab_wholesale_main:
                     context_hint = ""
                     if tech_context_final_str:
                         context_hint = f" Use specs: {tech_context_final_str}."
-                    usr_p = f"Product: {product_name_final}. Topic: {t_topic}. Realistic technical table.{context_hint}"
+                    usr_p = f"Product: {header_for_ai}. Topic: {t_topic}. Realistic technical table.{context_hint}"
                     try:
                         resp = client.chat.completions.create(model="sonar-pro", messages=[{"role":"system","content":sys_p},{"role":"user","content":usr_p}], temperature=0.5)
                         t_html = resp.choices[0].message.content.replace("```html","").replace("```","")
@@ -2021,7 +2022,7 @@ with tab_wholesale_main:
                     items_html = ""
                     for item in chosen:
                         cache_key = item['url'].rstrip('/')
-                        real_name = url_name_cache.get(cache_key, "Товар")
+                        real_name = url_name_cache.get(cache_key, "Товар") 
                         items_html += f"""<div class="gallery-item"><h3><a href="{item['url']}">{real_name}</a></h3><figure><a href="{item['url']}"><img src="{item['img']}" loading="lazy"></a></figure></div>"""
                     css = "<style>.five-col-gallery{display:flex;gap:15px;}</style>"
                     full_promo = f"""{css}<div class="gallery-wrapper"><h3>{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div>"""
@@ -2038,32 +2039,32 @@ with tab_wholesale_main:
                 if len(selected_cities) > 20: selected_cities = random.sample(global_geo_list, 20)
                 cities_str = ", ".join(selected_cities)
                 
-                # ЖЕСТКИЙ ПРОМТ ДЛЯ ГЕО, ЧТОБЫ НЕ УМНИЧАЛ
+                # Используем header_for_ai вместо product_name_final
                 geo_prompt = f"""
-                Задача: Напиши ОДИН абзац текста (<p>...</p>) о доставке товара "{product_name_final}".
-                Смысл: Мы доставляем этот товар по всей России, в том числе в города: {cities_str}.
+                Task: Write a short paragraph (wrapped in <p>) in Russian about delivery options for "{header_for_ai}".
+                Context: We deliver across Russia, including specific cities: {cities_str}.
                 
-                Требования:
-                1. Выведи ТОЛЬКО HTML-код абзаца. Никаких вступлений "Вот текст".
-                2. Склоняй города правильно (в Москву, в Тулу).
-                3. Не используй списки, только сплошной текст.
-                4. Объем до 500 знаков.
+                Strict Rules:
+                1. Mention the listed cities naturally in the flow of the text.
+                2. IMPORTANT: Do not repeat the same city twice. Use each city name max 1 time.
+                3. Use correct Russian grammar (declensions/cases: "в Москву", "по Туле").
+                4. Do not list them as a catalog. Build sentences.
+                5. Output only the HTML <p> tag. No markdown.
                 """
                 try:
                     resp_geo = client.chat.completions.create(
                         model="sonar-pro", 
                         messages=[
-                            {"role": "system", "content": "Ты генератор HTML кода. Ты молчишь и пишешь только код."}, 
+                            {"role": "system", "content": "You are a logistic summary generator. Output raw HTML only."}, 
                             {"role": "user", "content": geo_prompt}
                         ],
-                        temperature=0.3 # Низкая температура для строгости
+                        temperature=0.4
                     )
                     clean_geo = resp_geo.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                    # Чистим от ссылок [1] если вдруг появятся
                     clean_geo = re.sub(r'\[\d+\]', '', clean_geo)
                     row_data['IP_PROP4819'] = clean_geo
                 except Exception as e:
-                    row_data['IP_PROP4819'] += f" <!-- Geo Error -->"
+                    row_data['IP_PROP4819'] += f" <!-- Geo Error: {e} -->"
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
@@ -2085,6 +2086,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
