@@ -2324,9 +2324,9 @@ with tab_wholesale_main:
                 else:
                     row_data['Tags HTML'] = ""
 
-# --- PROMO GENERATION (ИСПРАВЛЕНО: ГЕНЕРАЦИЯ HTML) ---
-            if use_promo and promo_items_pool:
-                # 1. Исключаем текущую страницу из кандидатов
+# --- PROMO GENERATION (ИСПРАВЛЕНО: УБРАНЫ ОТСТУПЫ, ЧТОБЫ НЕ БЫЛО RAW HTML) ---
+            if use_promo:
+                # 1. Исключаем текущую страницу
                 candidates = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
                 
                 # 2. Берем 4 случайных товара
@@ -2336,27 +2336,25 @@ with tab_wholesale_main:
                     selected_promo = candidates
                 
                 if selected_promo:
-                    # 3. Собираем HTML
-                    # promo_title - это переменная с умным заголовком, которую мы вычислили ранее
-                    promo_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display: flex; gap: 15px;">'
+                    # 3. Собираем HTML (БЕЗ ЛИШНИХ ПРОБЕЛОВ)
+                    # Используем display: flex и flex-wrap, чтобы карточки не уезжали
+                    promo_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display: flex; flex-wrap: wrap; gap: 15px;">'
                     
                     for item in selected_promo:
                         p_url = item['url']
                         p_img = item['img']
-                        # Пытаемся достать красивое имя из кэша, иначе берем из URL
                         cache_key = p_url.rstrip('/')
                         p_name = url_name_cache.get(cache_key, "Товар")
                         
-                        promo_html += f'''
-                        <div class="promo-card" style="width: 25%; border: 1px solid #eee; padding: 10px; border-radius: 5px; text-align: center;">
-                            <a href="{p_url}" style="text-decoration: none; color: #333;">
-                                <div style="height: 150px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                                    <img src="{p_img}" alt="{p_name}" style="max-height: 100%; max-width: 100%;">
-                                </div>
-                                <div style="margin-top: 10px; font-size: 14px; font-weight: bold; line-height: 1.2;">{p_name}</div>
-                            </a>
-                        </div>
-                        '''
+                        # ВАЖНО: Собираем строку через += без тройных кавычек и отступов!
+                        promo_html += f'<div class="promo-card" style="width: 23%; box-sizing: border-box; border: 1px solid #eee; padding: 10px; border-radius: 5px; text-align: center;">'
+                        promo_html += f'<a href="{p_url}" style="text-decoration: none; color: #333;">'
+                        promo_html += f'<div style="height: 150px; overflow: hidden; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">'
+                        promo_html += f'<img src="{p_img}" alt="{p_name}" style="max-height: 100%; max-width: 100%; object-fit: contain;">'
+                        promo_html += f'</div>'
+                        promo_html += f'<div style="font-size: 13px; font-weight: bold; line-height: 1.3;">{p_name}</div>'
+                        promo_html += f'</a></div>'
+
                     promo_html += '</div></div>'
                     row_data['Promo HTML'] = promo_html
                 else:
@@ -2593,3 +2591,4 @@ with tab_wholesale_main:
                 use_container_width=True,
                 type="primary"
             )
+
