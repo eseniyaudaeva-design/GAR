@@ -912,11 +912,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # Сортируем упущенную семантику по весу (важности)
     missing_semantics_all.sort(key=lambda x: x['weight'], reverse=True)
     
-    # Для совместимости со старым кодом разделяем на high/low (хотя логика теперь общая)
-    # Просто отдадим всё в high, а low оставим пустым или разобьем 50/50
-    split_idx = len(missing_semantics_all)
-    missing_semantics_high = missing_semantics_all # Всё самое важное здесь
-    missing_semantics_low = []
+    # ДЕЛИМ СПИСОК ПОПОЛАМ (50% Важные, 50% Дополнительные)
+    total_miss = len(missing_semantics_all)
+    if total_miss > 0:
+        half_idx = math.ceil(total_miss / 2) # Округляем вверх (большую часть в важные)
+        missing_semantics_high = missing_semantics_all[:half_idx]
+        missing_semantics_low = missing_semantics_all[half_idx:]
+    else:
+        missing_semantics_high = []
+        missing_semantics_low = []
 
     # Таблица Релевантности
     table_rel = []
@@ -1428,7 +1432,7 @@ with tab_seo_main:
 
             st.rerun()
 
-if st.session_state.analysis_done and st.session_state.analysis_results:
+    if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
         
         d_score = results['my_score']['depth']
@@ -1585,7 +1589,7 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
         if high or low:
             with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
                 if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Доп:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
         # --- ТАБЛИЦЫ ---
         render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
