@@ -766,7 +766,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         # --- ФИЛЬТР ДЛЯ ТАБЛИЦЫ ---
         # Показываем слово, если оно есть хотя бы у одного конкурента (Max > 0) ИЛИ есть у нас.
-        # Это нужно, чтобы в "Дополнительные" попали слова, где Медиана=0, но Максимум > 0.
         if obs_max == 0 and my_tf_count == 0:
             continue
 
@@ -791,7 +790,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             # 1. ВАЖНЫЕ: Медиана >= 1
             if rec_median >= 1:
                 missing_semantics_high.append(item)
-            # 2. ДОПОЛНИТЕЛЬНЫЕ: Все остальные (значит Медиана = 0, но Максимум > 0, т.к. фильтр пропустил)
+            # 2. ДОПОЛНИТЕЛЬНЫЕ: Все остальные (значит Медиана = 0, но Максимум > 0)
             else:
                 missing_semantics_low.append(item)
 
@@ -836,7 +835,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         })
 
     # =========================================================================
-    # 4. РАСЧЕТ БАЛЛОВ (ИСПРАВЛЕННАЯ ФОРМУЛА ШИРИНЫ)
+    # 4. РАСЧЕТ БАЛЛОВ (WIDTH & DEPTH SCORING)
     # =========================================================================
     
     total_needed = len(words_with_median_gt_0)
@@ -844,9 +843,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     if total_needed > 0:
         ratio = total_found / total_needed
-        # Было ошибочно: ratio * 120 * 100 (что давало 100 при малейшем совпадении)
-        # Стало верно: ratio * 120 (если 0.8 * 120 = 96 баллов)
-        my_width_score_final = int(min(100, ratio * 120)) 
+        my_width_score_final = int(min(100, ratio * 120)) # Ratio * 1.2 * 100
     else:
         my_width_score_final = 0
 
@@ -906,6 +903,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # Сортируем списки по весу (от более важных к менее)
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['weight'], reverse=True)
+
+    # --- ЛИМИТ ДЛЯ ДОПОЛНИТЕЛЬНЫХ СЛОВ (МАКС 500) ---
+    missing_semantics_low = missing_semantics_low[:500]
 
     # Таблица Релевантности
     table_rel = []
@@ -2711,5 +2711,6 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
