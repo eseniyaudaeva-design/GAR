@@ -2123,10 +2123,9 @@ with tab_wholesale_main:
             status_box.error(f"Критическая ошибка: {e}")
             st.stop()
             
-        status_box.write(f"✅ Найдено страниц: {len(target_pages)}")
-        
         # Сбор имен для ссылок
         urls_to_fetch_names = set()
+        promo_items_pool = []  # <--- ДОБАВЛЕНА ИНИЦИАЛИЗАЦИЯ
         
         if use_tags:
             for kw, matches in tags_map.items():
@@ -2143,12 +2142,14 @@ with tab_wholesale_main:
                 if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
                 
                 matches = []
+                # Ищем в keys() карты картинок
                 for u in p_img_map.keys():
                     if any(r in u for r in roots): matches.append(u)
 
                 for m in matches:
                     if m not in used_urls:
                         urls_to_fetch_names.add(m)
+                        # Теперь переменная существует, ошибки не будет
                         promo_items_pool.append({'url': m, 'img': p_img_map[m]})
                         used_urls.add(m)
 
@@ -2389,6 +2390,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
