@@ -1374,6 +1374,42 @@ if st.session_state.analysis_done and st.session_state.analysis_results:
             d_status = "Низкая"
 
         st.success("Анализ готов!")
+        # --- ВЕРНУТЬ ЭТОТ БЛОК (СТИЛИ ДЛЯ КАРТОЧЕК) ---
+        st.markdown("""
+        <style>
+            details > summary { list-style: none; }
+            details > summary::-webkit-details-marker { display: none; }
+            .details-card {
+                background-color: #f8f9fa; border: 1px solid #e9ecef;
+                border-radius: 8px; margin-bottom: 10px;
+                overflow: hidden; transition: all 0.2s ease;
+            }
+            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
+            .card-summary {
+                padding: 12px 15px; cursor: pointer; font-weight: 700;
+                font-size: 15px; color: #111827; display: flex;
+                justify-content: space-between; align-items: center;
+                background-color: #ffffff;
+            }
+            .card-summary:hover { background-color: #f3f4f6; }
+            .card-content {
+                padding: 15px; border-top: 1px solid #e9ecef;
+                font-size: 14px; color: #374151; line-height: 1.6;
+                background-color: #fcfcfc;
+            }
+            .count-tag { 
+                background: #e5e7eb; color: #374151; padding: 2px 8px; 
+                border-radius: 10px; font-size: 12px; font-weight: 600;
+                min-width: 25px; text-align: center;
+            }
+            .arrow-icon {
+                font-size: 10px; margin-right: 8px; color: #9ca3af;
+                transition: transform 0.2s;
+            }
+            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
+        </style>
+        """, unsafe_allow_html=True)
+        # ----------------------------------------------
         st.markdown(f"""
         <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
             <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
@@ -2608,5 +2644,6 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
