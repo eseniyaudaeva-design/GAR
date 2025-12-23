@@ -983,78 +983,49 @@ def get_page_data_for_gen(url):
 def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
     
-    # 1. Распределение ключей (Bucket logic)
+    # 1. Распределение ключей
     seo_words = seo_words or []
     buckets = [[] for _ in range(5)]
     if seo_words and num_blocks > 0:
         for i, word in enumerate(seo_words):
             buckets[i % num_blocks].append(word)
 
-    # Формируем строки для промта
-    kw_str_1 = ", ".join(buckets[0]) if buckets[0] else "Нет"
-    kw_str_2 = ", ".join(buckets[1]) if buckets[1] else "Нет"
-    kw_str_3 = ", ".join(buckets[2]) if buckets[2] else "Нет"
-    kw_str_4 = ", ".join(buckets[3]) if buckets[3] else "Нет"
-    kw_str_5 = ", ".join(buckets[4]) if buckets[4] else "Нет"
+    # 2. Формирование строк ключей
+    kw_strs = [", ".join(b) if b else "Нет" for b in buckets]
 
-    # 2. СИСТЕМНЫЙ ПРОМТ (Усилен на естественность)
-    system_instruction = (
-        "Ты — профессиональный технический редактор и копирайтер с идеальным русским языком. "
-        "Твоя задача — писать тексты для людей, которые легко читаются, но содержат техническую фактуру. "
-        "Ты выводишь ТОЛЬКО HTML-код. "
-        "СТРОГИЕ ЗАПРЕТЫ: "
-        "1. Никакой политики, Украины, гривны. Контент строго для РФ. "
-        "2. Удали все ссылки на источники вида [1], [2]. Текст должен быть чистым."
-    )
+    # 3. СИСТЕМНЫЙ ПРОМТ (Максимально сухой)
+    system_instruction = "Ты генератор HTML. Пиши только чистый код без Markdown и пояснений."
 
-    # Заголовок (динамический)
-    headers_instruction = "1. Заголовок: блок 1 <h2>{tag_name}</h2>."
-    if num_blocks > 1:
-        headers_instruction += " Блоки 2..{num_blocks} — <h3> (темы: Характеристики, Производство, Применение, Сортамент)."
+    # 4. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ (Сжатый)
+    # Определяем заголовки
+    h_tag = "<h2>" if num_blocks == 1 else "<h2> (только 1 блок), далее <h3>"
 
-    # 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ (Усилен блок SEO)
     user_prompt = f"""
-    ИСХОДНЫЕ ДАННЫЕ:
     Товар: "{tag_name}"
-    Фактура (источник данных): \"\"\"{base_text[:3000]}\"\"\"
-    Кол-во блоков: {num_blocks}
-
-    ЗАДАЧА:
-    Сгенерируй {num_blocks} HTML-блоков. Разделитель: |||BLOCK_SEP|||
+    Фактура: \"\"\"{base_text[:3000]}\"\"\"
     
-    СТРУКТУРА КАЖДОГО БЛОКА (СТРОГО):
-    {headers_instruction}
-    2. <p> (развернутый абзац, 3-4 предложения, техническая польза).
-    3. Короткая подводка к списку.
-    4. <ul><li>...</li></ul> (3-6 пунктов).
-    5. <p> (завершающий абзац, вывод или доп. детали).
-
-    === ГЛАВНОЕ ТРЕБОВАНИЕ: ЕСТЕСТВЕННОСТЬ ВНЕДРЕНИЯ КЛЮЧЕЙ ===
-    В каждый блок нужно вписать свой набор слов.
-    Блок 1: {kw_str_1}
-    Блок 2: {kw_str_2}
-    Блок 3: {kw_str_3}
-    Блок 4: {kw_str_4}
-    Блок 5: {kw_str_5}
-
-    ПРАВИЛА SEO (ЧИТАТЬ ВНИМАТЕЛЬНО):
-    1. НАТИВНОСТЬ: Слова должны звучать как часть обычной речи. 
-       - ПЛОХО: "Купить <b>труба стальная</b> можно у нас". (Робот)
-       - ХОРОШО: "В нашем каталоге представлена надежная <b>стальная труба</b>, устойчивая к коррозии". (Человек)
+    ЗАДАЧА: Сгенерируй {num_blocks} HTML-блоков. Разделитель: |||BLOCK_SEP|||
     
-    2. МОРФОЛОГИЯ: Ты ОБЯЗАН менять окончания, падежи и числа!
-       - Если ключ "цена" -> пиши "по выгодной <b>цене</b>".
-       - Если ключ "Москва" -> пиши "доставка по <b>Москве</b>".
-       - Если ключ "опт" -> пиши "реализуем <b>оптом</b>".
+    СТРУКТУРА БЛОКА (СТРОГО):
+    1. Заголовок {h_tag}
+    2. <p>Текст (3-4 предложения)</p>
+    3. <ul><li>Список (3-5 пунктов)</li></ul>
+    4. <p>Текст (вывод)</p>
 
-    3. ВЫДЕЛЕНИЕ: Оборачивай внедренное слово в тег <b>...</b>. Только само слово (в измененной форме).
-
-    4. СМЫСЛ: Строй предложение вокруг ключа, а не вставляй ключ в готовое предложение.
-
-    ОГРАНИЧЕНИЯ:
-    - Объем блока: 600-900 символов.
-    - Никаких [1], [2] в тексте.
-    - Только чистый HTML.
+    SEO-ИНСТРУКЦИЯ (ВАЖНО):
+    Впиши указанные слова в текст 1 РАЗ. Строй предложение ВОКРУГ слова, чтобы звучало естественно. Склоняй и меняй окончания как угодно.
+    Выделяй вставленное слово тегом <b>.
+    
+    Слова для блоков:
+    1: {kw_strs[0]}
+    2: {kw_strs[1]}
+    3: {kw_strs[2]}
+    4: {kw_strs[3]}
+    5: {kw_strs[4]}
+    
+    ЗАПРЕТЫ:
+    - Никаких ссылок [1], [2].
+    - Никакого Markdown (```).
     """
 
     for attempt in range(3):
@@ -1065,19 +1036,16 @@ def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_wo
                     {"role": "system", "content": system_instruction}, 
                     {"role": "user", "content": user_prompt}
                 ], 
-                temperature=0.6 # Чуть повысил (было 0.5), чтобы текст был живее, но не галлюцинировал
+                temperature=0.6 
             )
             content = response.choices[0].message.content
             
             # Чистка
-            clean_content = content
-            match = re.search(r'<HTML>(.*?)</HTML_END>', content, re.DOTALL)
-            if match: clean_content = match.group(1).strip()
+            content = re.sub(r'\[\d+\]', '', content) # Убираем сноски
+            content = content.replace("```html", "").replace("```", "").strip()
             
-            clean_content = re.sub(r'\[\d+\]', '', clean_content) # Убираем [1]
-            clean_content = clean_content.replace("```html", "").replace("```", "").strip()
-            
-            blocks = [b.strip() for b in clean_content.split("|||BLOCK_SEP|||") if b.strip()]
+            # Разделение
+            blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
             
             while len(blocks) < 5: blocks.append("")
             return blocks[:5]
@@ -2083,6 +2051,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
