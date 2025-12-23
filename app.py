@@ -1688,7 +1688,7 @@ with tab_wholesale_main:
                 if not global_geo_list:
                     st.warning("⚠️ Список городов пуст!")
                 else:
-                    st.info(f"Блок будет сформирован из {len(global_geo_list)} городов.")
+                    st.info(f"Будет сгенерирован текст доставки для поля IP_PROP4819 с упоминанием этих городов.")
 
     st.markdown("---")
     
@@ -1707,7 +1707,8 @@ with tab_wholesale_main:
     if use_tags and not tags_file_content: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
-    # Для Geo обязательных внешних файлов нет, достаточно списка слов
+    # Для Geo обязательных внешних файлов нет (нужен только ключ API, если он нужен для текста)
+    if use_geo and not pplx_api_key: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
@@ -1900,7 +1901,7 @@ with tab_wholesale_main:
 
         # 2. CLIENT
         client = None
-        if openai and (use_text or use_tables):
+        if openai and (use_text or use_tables or use_geo):
             client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
 
         # 3. ЦИКЛ ПО СТРАНИЦАМ
@@ -1909,6 +1910,10 @@ with tab_wholesale_main:
         
         for idx, page in enumerate(target_pages):
             row_data = {'Page URL': page['url'], 'Product Name': page['name']}
+            
+            # Статические поля по умолчанию
+            for k, v in STATIC_DATA_GEN.items():
+                row_data[k] = v
             
             # --- AI TEXT ---
             if use_text and client:
@@ -1920,7 +1925,6 @@ with tab_wholesale_main:
                     row_data['Text_Block_3'] = blocks[2]
                     row_data['Text_Block_4'] = blocks[3]
                     row_data['Text_Block_5'] = blocks[4]
-                    for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
                 except Exception as e: row_data['Text_Error'] = str(e)
 
             # --- TAGS ---
@@ -1976,20 +1980,37 @@ with tab_wholesale_main:
             if use_sidebar:
                 row_data['Sidebar HTML'] = full_sidebar_code
 
-            # --- GEO BLOCK ---
-            if use_geo and global_geo_list:
-                # Перемешиваем и берем случайные, чтобы на разных страницах было разное (опционально)
-                # Или выводим весь список. Обычно для ГЕО блока лучше выводить весь список или топ-20.
-                # Сделаем топ-30 случайных для разнообразия, если список большой.
-                current_geo_selection = global_geo_list
-                if len(global_geo_list) > 30:
-                    current_geo_selection = random.sample(global_geo_list, 30)
+            # --- GEO BLOCK (AI WRITES INTO IP_PROP4819) ---
+            if use_geo and client and global_geo_list:
+                # Берем случайные города (до 20 штук), чтобы не перегружать контекст
+                selected_cities = global_geo_list
+                if len(selected_cities) > 20:
+                    selected_cities = random.sample(global_geo_list, 20)
                 
-                # Формируем HTML список
-                geo_list_items = "".join([f"<li>{city}</li>" for city in sorted(current_geo_selection)])
-                row_data['Geo HTML'] = f'<div class="geo-block"><ul>{geo_list_items}</ul></div>'
-            elif use_geo:
-                row_data['Geo HTML'] = ""
+                cities_str = ", ".join(selected_cities)
+                
+                geo_prompt = f"""
+                Напиши короткий HTML-блок (тег <p>) о доставке металлопроката.
+                Суть: Мы доставляем грузы в разные города, включая: {cities_str}.
+                
+                ТРЕБОВАНИЯ:
+                1. Напиши связный текст, не просто перечисление.
+                2. Склоняй названия городов правильно (например: "в Москву", "в Тюмень", "по Екатеринбургу").
+                3. Не используй маркированные списки, только текст внутри <p>.
+                4. Объем до 500 символов.
+                5. Тон: деловой, уверенный.
+                """
+                try:
+                    resp_geo = client.chat.completions.create(
+                        model="sonar-pro", 
+                        messages=[{"role": "system", "content": "Ты логист-копирайтер."}, {"role": "user", "content": geo_prompt}],
+                        temperature=0.5
+                    )
+                    # ПЕРЕЗАПИСЫВАЕМ ПОЛЕ IP_PROP4819
+                    row_data['IP_PROP4819'] = resp_geo.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                except Exception as e:
+                    # Если ошибка - останется старый текст + коммент об ошибке
+                    row_data['IP_PROP4819'] += f" <!-- Geo Error: {e} -->"
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
@@ -2011,4 +2032,3 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
-
