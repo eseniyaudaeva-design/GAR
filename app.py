@@ -2398,7 +2398,7 @@ with tab_wholesale_main:
             key="btn_dl_unified"
         )
 # ==========================================
-# 5. БЛОК ПРЕДПРОСМОТРА (PREVIEW)
+# 5. БЛОК ПРЕДПРОСМОТРА (PREVIEW) - ОБНОВЛЕННЫЙ
 # ==========================================
 if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not None:
     st.markdown("---")
@@ -2406,30 +2406,47 @@ if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not
     
     df = st.session_state.gen_result_df
     
-    # Выбор страницы для просмотра (если их несколько)
+    # 1. Выбор страницы
     page_options = df['Product Name'].tolist()
     selected_page_name = st.selectbox("Выберите страницу для просмотра:", page_options, key="preview_selector")
     
-    # Получаем строку данных для выбранной страницы
+    # Получаем строку данных
     row = df[df['Product Name'] == selected_page_name].iloc[0]
     
-    # Стилизация для визуализации HTML компонентов
+    # 2. Определяем, какие данные ЕСТЬ в наличии
+    # Текст: проверяем, есть ли хоть один непустой текстовый блок
+    has_text = any(
+        (f'Text_Block_{i}' in row and pd.notna(row[f'Text_Block_{i}']) and str(row[f'Text_Block_{i}']).strip())
+        for i in range(1, 6)
+    )
+    
+    # Таблицы: проверяем наличие колонок с таблицами
+    table_cols = [c for c in df.columns if 'Table_' in c and '_HTML' in c and pd.notna(row[c]) and str(row[c]).strip()]
+    has_tables = len(table_cols) > 0
+    
+    # Визуал: проверяем теги, сайдбар или гео
+    has_tags = 'Tags HTML' in row and pd.notna(row['Tags HTML']) and str(row['Tags HTML']).strip()
+    has_sidebar = 'Sidebar HTML' in row and pd.notna(row['Sidebar HTML']) and str(row['Sidebar HTML']).strip()
+    has_geo = 'IP_PROP4819' in row and pd.notna(row['IP_PROP4819']) and str(row['IP_PROP4819']).strip()
+    has_visual = has_tags or has_sidebar or has_geo
+
+    # 3. Формируем список активных вкладок
+    active_tabs = []
+    if has_text: active_tabs.append("📝 Текст")
+    if has_tables: active_tabs.append("🧩 Таблицы")
+    if has_visual: active_tabs.append("🎨 Визуал")
+
+    # Стили
     st.markdown("""
     <style>
         .preview-box { border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; background: #fff; margin-bottom: 20px; }
         .preview-label { font-size: 12px; font-weight: bold; color: #888; text-transform: uppercase; margin-bottom: 5px; }
-        
-        /* Стили для Тегов */
         .popular-tags { display: flex; flex-wrap: wrap; gap: 8px; }
         .tag-link { background: #f0f2f5; color: #333; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 13px; }
         .tag-link:hover { background: #e1e4e8; }
-
-        /* Стили для Таблиц */
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #f2f2f2; font-weight: bold; }
-
-        /* Стили для Сайдбара (упрощенные) */
         .sidebar-wrapper ul { list-style-type: none; padding-left: 10px; }
         .level-1-header { font-weight: bold; margin-top: 10px; color: #277EFF; }
         .level-2-link-special a { color: #333; text-decoration: none; padding-left: 10px; }
@@ -2437,51 +2454,61 @@ if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not
     </style>
     """, unsafe_allow_html=True)
 
-    # Вкладки для удобства
-    tab_txt, tab_tbl, tab_vis = st.tabs(["📝 Текст", "🧩 Таблицы", "🎨 Визуал (Теги/Меню)"])
-    
-    with tab_txt:
-        st.subheader(row['Product Name'])
+    if not active_tabs:
+        st.warning("⚠️ Данные сгенерированы, но контент пуст (возможно, произошла ошибка). Скачайте Excel для проверки.")
+    else:
+        # Создаем только нужные вкладки
+        tabs_objects = st.tabs(active_tabs)
         
-        for i in range(1, 6):
-            col_key = f'Text_Block_{i}'
-            if col_key in row and pd.notna(row[col_key]):
-                with st.container():
-                    st.caption(f"Блок {i}")
-                    # Рендерим HTML текст как markdown (разрешаем HTML)
-                    st.markdown(f"<div class='preview-box'>{row[col_key]}</div>", unsafe_allow_html=True)
-
-    with tab_tbl:
-        # Ищем колонки с таблицами
-        table_cols = [c for c in df.columns if 'Table_' in c and '_HTML' in c]
-        if table_cols:
-            for t_col in table_cols:
-                if pd.notna(row[t_col]):
-                    st.caption(t_col.replace('_HTML', ''))
-                    st.markdown(row[t_col], unsafe_allow_html=True)
-        else:
-            st.info("Таблицы не генерировались.")
-
-    with tab_vis:
-        c1, c2 = st.columns(2)
+        # Словарь для маппинга: Имя вкладки -> Объект вкладки
+        tabs_map = dict(zip(active_tabs, tabs_objects))
         
-        with c1:
-            if 'Tags HTML' in row and pd.notna(row['Tags HTML']):
-                st.markdown('<div class="preview-label">Теги (Popular Tags)</div>', unsafe_allow_html=True)
-                st.markdown(f"<div class='preview-box'>{row['Tags HTML']}</div>", unsafe_allow_html=True)
-            
-            if 'IP_PROP4819' in row and pd.notna(row['IP_PROP4819']):
-                st.markdown('<div class="preview-label">Гео-блок (Доставка)</div>', unsafe_allow_html=True)
-                st.markdown(f"<div class='preview-box'>{row['IP_PROP4819']}</div>", unsafe_allow_html=True)
+        # --- ВКЛАДКА ТЕКСТ ---
+        if "📝 Текст" in tabs_map:
+            with tabs_map["📝 Текст"]:
+                st.subheader(row['Product Name'])
+                for i in range(1, 6):
+                    col_key = f'Text_Block_{i}'
+                    # Строгая проверка: колонка есть, она не NaN, и строка не пустая
+                    if col_key in row and pd.notna(row[col_key]):
+                        content = str(row[col_key]).strip()
+                        if content:
+                            with st.container():
+                                st.caption(f"Блок {i}")
+                                st.markdown(f"<div class='preview-box'>{content}</div>", unsafe_allow_html=True)
 
-        with c2:
-            if 'Sidebar HTML' in row and pd.notna(row['Sidebar HTML']):
-                st.markdown('<div class="preview-label">Сайдбар (Меню)</div>', unsafe_allow_html=True)
-                # Ограничиваем высоту, чтобы не занимало весь экран
-                st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+        # --- ВКЛАДКА ТАБЛИЦЫ ---
+        if "🧩 Таблицы" in tabs_map:
+            with tabs_map["🧩 Таблицы"]:
+                for t_col in table_cols:
+                    content = row[t_col]
+                    # Очищаем название колонки для заголовка (Table_1_HTML -> Table 1)
+                    clean_title = t_col.replace('_HTML', '').replace('_', ' ')
+                    st.caption(clean_title)
+                    st.markdown(content, unsafe_allow_html=True)
 
-    # Кнопка скачивания (дублируем тут для удобства)
+        # --- ВКЛАДКА ВИЗУАЛ ---
+        if "🎨 Визуал" in tabs_map:
+            with tabs_map["🎨 Визуал"]:
+                c1, c2 = st.columns(2)
+                
+                with c1:
+                    if has_tags:
+                        st.markdown('<div class="preview-label">Теги (Popular Tags)</div>', unsafe_allow_html=True)
+                        st.markdown(f"<div class='preview-box'>{row['Tags HTML']}</div>", unsafe_allow_html=True)
+                    
+                    if has_geo:
+                        st.markdown('<div class="preview-label">Гео-блок (Доставка)</div>', unsafe_allow_html=True)
+                        st.markdown(f"<div class='preview-box'>{row['IP_PROP4819']}</div>", unsafe_allow_html=True)
+
+                with c2:
+                    if has_sidebar:
+                        st.markdown('<div class="preview-label">Сайдбар (Меню)</div>', unsafe_allow_html=True)
+                        st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
+    # Кнопка скачивания
     if 'unified_excel_data' in st.session_state:
+        st.markdown("<br>", unsafe_allow_html=True)
         st.download_button(
             label="📥 СКАЧАТЬ EXCEL (ФИНАЛ)",
             data=st.session_state.unified_excel_data,
@@ -2491,28 +2518,3 @@ if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not
             use_container_width=True,
             type="primary"
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
