@@ -666,6 +666,7 @@ def parse_page(url, settings):
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     all_forms_map = defaultdict(set)
+        global_forms_counter = defaultdict(Counter) 
     if not my_data or not my_data.get('body_text'): 
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
         my_clean_domain = "local"
@@ -680,6 +681,19 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for p in comp_data_full:
         if not p.get('body_text'): continue
         body, c_forms = process_text_detailed(p['body_text'], settings)
+        raw_words_for_stats = re.findall(r'[а-яА-ЯёЁ0-9a-zA-Z]+', p['body_text'].lower())
+        for rw in raw_words_for_stats:
+            if len(rw) < 2: continue
+            # Лемматизируем "на лету" только для связки
+            if morph:
+                parsed = morph.parse(rw)[0]
+                if 'PREP' not in parsed.tag and 'CONJ' not in parsed.tag:
+                    rw_lemma = parsed.normal_form.replace('ё', 'е')
+                    # Записываем: для леммы "анод" встретилась форма "аноды"
+                    global_forms_counter[rw_lemma][rw] += 1
+        # --- КОНЕЦ ВСТАВКИ ---
+
+        anchor, _ = process_text_detailed(p['anchor_text'], settings)
         anchor, _ = process_text_detailed(p['anchor_text'], settings)
         comp_docs.append({'body': body, 'anchor': anchor, 'url': p['url'], 'domain': p['domain']})
         for k, v in c_forms.items(): all_forms_map[k].update(v)
@@ -745,6 +759,17 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
         if lemma not in my_full_lemmas_set:
             if len(lemma) < 2 or lemma.isdigit(): continue
+            display_word = lemma # По дефолту лемма
+            if global_forms_counter[lemma]:
+                # Берем самую популярную форму (например, "аноды" вместо "анод")
+                display_word = global_forms_counter[lemma].most_common(1)[0][0]
+            
+            # В item записываем display_word вместо lemma
+            item = {'word': display_word, 'percent': percent, 'weight': weight_simple}
+            # ----------------------------------------------------
+
+            if is_width_word: missing_semantics_high.append(item)
+            elif percent >= 30: missing_semantics_low.append(item)
             item = {'word': lemma, 'percent': percent, 'weight': weight_simple}
             if is_width_word: missing_semantics_high.append(item)
             elif percent >= 30: missing_semantics_low.append(item)
@@ -2683,6 +2708,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
