@@ -1921,7 +1921,7 @@ with tab_wholesale_main:
     st.markdown("---")
     
 # ==========================================
-    # 4. ЗАПУСК ГЕНЕРАЦИИ (С НОВОЙ ЛОГИКОЙ ПЕРЕРАСПРЕДЕЛЕНИЯ)
+    # 4. ЗАПУСК ГЕНЕРАЦИИ (ИСПРАВЛЕННЫЙ ПОИСК ССЫЛОК)
     # ==========================================
     
     ready_to_go = True
@@ -1932,113 +1932,150 @@ with tab_wholesale_main:
         if not main_category_url: ready_to_go = False
 
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
-    if use_tags and not tags_file_content: ready_to_go = False
+    # Убираем жесткие проверки контента здесь, так как подгрузим файлы принудительно ниже
+    # if use_tags and not tags_file_content: ready_to_go = False 
     if use_promo and df_db_promo is None: ready_to_go = False
-    if use_sidebar and not sidebar_content: ready_to_go = False
     if use_geo and not pplx_api_key: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         status_box = st.status("🛠️ Подготовка данных...", expanded=True)
         final_data = [] 
         
-        # 1. СБОР ИСХОДНЫХ ССЫЛОК И БАЗ (ЭТАП PRE-CALCULATION)
-        # Нам нужно собрать базы ДО цикла генерации, чтобы найти "потеряшек"
+        # 1. СБОР ИСХОДНЫХ ССЫЛОК И БАЗ (ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА)
         
-        # --- Подготовка базы Тегов ---
+        # --- База Тегов (links_base.txt) ---
         tags_map = {}
         all_tags_links = []
         if use_tags:
-            s_io = io.StringIO(tags_file_content)
-            all_tags_links = [l.strip() for l in s_io.readlines() if l.strip()]
-            # Предварительная карта (слово -> ссылки)
+            # Сначала пробуем взять из UI (если загружали вручную)
+            if tags_file_content:
+                s_io = io.StringIO(tags_file_content)
+                all_tags_links = [l.strip() for l in s_io.readlines() if l.strip()]
+            # Если пусто, пробуем читать файл с диска напрямую
+            elif os.path.exists("data/links_base.txt"):
+                with open("data/links_base.txt", "r", encoding="utf-8") as f:
+                    all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
+            
+            # --- УМНЫЙ ПОИСК (Smart Matching) ---
             for kw in global_tags_list:
+                # 1. Транслитерация
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                if len(tr) >= 3:
-                    matches = [u for u in all_tags_links if tr in u]
-                    if matches: tags_map[kw] = matches
+                
+                # 2. Выделение корня (обрезаем окончания, чтобы найти 'gibkiy' в 'gibkaya')
+                search_roots = {tr} # Исходный вариант
+                if len(tr) > 5: 
+                    search_roots.add(tr[:-1]) # минус 1 буква
+                    search_roots.add(tr[:-2]) # минус 2 буквы (iy, yy, ay)
+                elif len(tr) > 4:
+                    search_roots.add(tr[:-1])
 
-        # --- Подготовка базы Промо ---
+                # 3. Ищем любое совпадение корня в ссылках
+                matches = []
+                for u in all_tags_links:
+                    u_lower = u.lower()
+                    for root in search_roots:
+                        if root in u_lower:
+                            matches.append(u)
+                            break # Если нашли по одному корню, переходим к след. ссылке
+                
+                if matches: tags_map[kw] = matches
+
+        # --- База Промо (images_db.xlsx) ---
         p_img_map = {}
-        if use_promo:
+        if use_promo and df_db_promo is not None:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
         
-        # --- Подготовка базы Сайдбара ---
+        # --- База Сайдбара (menu_structure.txt) ---
         all_menu_urls = []
         if use_sidebar:
-            s_io = io.StringIO(sidebar_content)
-            all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
+            # Сначала из UI
+            if sidebar_content:
+                s_io = io.StringIO(sidebar_content)
+                all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
+            # Иначе с диска
+            elif os.path.exists("data/menu_structure.txt"):
+                with open("data/menu_structure.txt", "r", encoding="utf-8") as f:
+                    all_menu_urls = [l.strip() for l in f.readlines() if l.strip()]
 
         # =========================================================
-        # 🔥 НОВЫЙ БЛОК: ПОИСК ПОТЕРЯННЫХ СЛОВ И ПЕРЕРАСПРЕДЕЛЕНИЕ
+        # 🔥 ЛОГИКА ПОИСКА ПОТЕРЯННЫХ СЛОВ (ОБНОВЛЕННАЯ)
         # =========================================================
         missing_words_log = set()
         
         # 1. Проверяем ТЕГИ
         if use_tags:
             for kw in global_tags_list:
-                if kw not in tags_map: # Если не нашли в базе ссылок
+                if kw not in tags_map: 
                     missing_words_log.add(kw)
         
-        # 2. Проверяем ПРОМО
+        # 2. Проверяем ПРОМО (Тоже умный поиск)
         if use_promo:
             for kw in global_promo_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                # Простая проверка: есть ли хоть один URL в базе, содержащий этот транслит
-                has_match = any(tr in u for u in p_img_map.keys())
+                # Формируем корни для поиска
+                roots = [tr]
+                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
+                
+                has_match = False
+                for u in p_img_map.keys():
+                    if any(r in u for r in roots):
+                        has_match = True
+                        break
+                
                 if not has_match:
                     missing_words_log.add(kw)
                     
-        # 3. Проверяем САЙДБАР
+        # 3. Проверяем САЙДБАР (Тоже умный поиск)
         if use_sidebar and global_sidebar_list:
             for kw in global_sidebar_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                has_match = any(tr in u for u in all_menu_urls)
+                roots = [tr]
+                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
+                
+                has_match = False
+                for u in all_menu_urls:
+                    if any(r in u for r in roots):
+                        has_match = True
+                        break
+                
                 if not has_match:
                     missing_words_log.add(kw)
 
-        # 4. АВТОМАТИЧЕСКОЕ ПЕРЕРАСПРЕДЕЛЕНИЕ В AI КОНТЕКСТ
+        # 4. АВТОМАТИЧЕСКОЕ ПЕРЕРАСПРЕДЕЛЕНИЕ
         if missing_words_log:
             missing_list = sorted(list(missing_words_log))
             
-            # А. Добавляем в Текстовый контекст (для GPT)
-            # Чтобы не было дублей, добавляем только новые
+            # А. Добавляем в Текстовый контекст
             for w in missing_list:
                 if w not in text_context_final_list:
                     text_context_final_list.append(w)
             
-            # Б. Добавляем в Табличный контекст (если слово похоже на техническое)
-            # Эвристика: если есть цифры или ГОСТ - кидаем в таблицу
+            # Б. Добавляем в Табличный контекст
             tech_additions = []
             for w in missing_list:
-                if any(char.isdigit() for char in w) or "гост" in w.lower():
+                # Если цифра, ГОСТ или специфичные слова
+                if any(char.isdigit() for char in w) or any(x in w.lower() for x in ['гост', 'тип', 'форма', 'мм', 'кг']):
                     tech_additions.append(w)
             
             if tech_additions:
                 tech_context_final_str += "\n" + ", ".join(tech_additions)
 
-            # В. ВИЗУАЛЬНОЕ УВЕДОМЛЕНИЕ (КРАСИВАЯ ПЛАШКА)
+            # В. ПЛАШКА
             status_box.markdown(f"""
-                <div style="
-                    background-color: #FFF4E5; 
-                    border-left: 5px solid #FF9800; 
-                    padding: 15px; 
-                    border-radius: 4px; 
-                    margin-bottom: 15px;
-                    color: #663C00;">
+                <div style="background-color: #FFF4E5; border-left: 5px solid #FF9800; padding: 15px; border-radius: 4px; margin-bottom: 15px; color: #663C00;">
                     <strong>⚠️ Внимание: Часть ссылок не найдена</strong><br>
                     <span style="font-size: 0.9em;">
-                    Мы не нашли URL для слов: <b>{', '.join(missing_list)}</b>.<br>
-                    ✅ <u>Они были автоматически перенесены в задание для Нейросети (Текст/Таблицы).</u>
+                    Мы не нашли точного совпадения в структуре для: <b>{', '.join(missing_list)}</b>.<br>
+                    ✅ <u>Они были перенесены в ТЗ для Нейросети (будут в тексте/таблицах).</u>
                     </span>
                 </div>
             """, unsafe_allow_html=True)
-            
-            time.sleep(2) # Даем пользователю заметить плашку
+            time.sleep(2)
 
         # =========================================================
-        # ДАЛЕЕ СТАНДАРТНАЯ ЛОГИКА (ПАРСИНГ И ГЕНЕРАЦИЯ)
+        # ДАЛЕЕ СТАНДАРТНАЯ ЛОГИКА (БЕЗ ИЗМЕНЕНИЙ В СТРУКТУРЕ)
         # =========================================================
 
         target_pages = []
@@ -2047,7 +2084,7 @@ with tab_wholesale_main:
 
         try:
             if use_manual_html:
-                status_box.write("📂 Обрабатываем загруженный HTML код...")
+                status_box.write("📂 Обрабатываем HTML код...")
                 soup = BeautifulSoup(manual_html_source, 'html.parser')
             else:
                 status_box.write(f"🕵️ Сканируем категорию: {main_category_url}")
@@ -2077,7 +2114,7 @@ with tab_wholesale_main:
                             target_pages.append({'url': full_url, 'name': name})
                 
                 if not target_pages:
-                    status_box.warning("Теги (товары) не найдены в классе .popular-tags-inner.")
+                    status_box.warning("Теги товаров не найдены (класс .popular-tags-inner). Генерируем для одной страницы.")
                     h1 = soup.find('h1')
                     name = h1.get_text(strip=True) if h1 else "Товар"
                     target_pages.append({'url': current_base_url, 'name': name})
@@ -2086,41 +2123,49 @@ with tab_wholesale_main:
             status_box.error(f"Критическая ошибка: {e}")
             st.stop()
             
-        status_box.write(f"✅ Найдено страниц для обработки: {len(target_pages)}")
+        status_box.write(f"✅ Найдено страниц: {len(target_pages)}")
         
-        # Сбор имен для ссылок (URLs to fetch names)
-        # Мы используем те же missing_list, чтобы НЕ запрашивать имена для несуществующих ссылок
+        # Сбор имен для ссылок
         urls_to_fetch_names = set()
         
-        # Обновляем Tags Map (уже собран, просто добавляем в очередь fetch)
         if use_tags:
             for kw, matches in tags_map.items():
                 urls_to_fetch_names.update(matches)
 
-        # Обновляем Promo Pool
-        promo_items_pool = [] 
         if use_promo:
             used_urls = set()
             for kw in global_promo_list:
-                if kw in missing_words_log: continue # ПРОПУСКАЕМ ТЕХ, КОГО НЕ НАШЛИ
+                if kw in missing_words_log: continue
                 
+                # Повторяем умный поиск для сбора ссылок
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                matches = [u for u in p_img_map.keys() if tr in u]
+                roots = [tr]
+                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
+                
+                matches = []
+                for u in p_img_map.keys():
+                    if any(r in u for r in roots): matches.append(u)
+
                 for m in matches:
                     if m not in used_urls:
                         urls_to_fetch_names.add(m)
                         promo_items_pool.append({'url': m, 'img': p_img_map[m]})
                         used_urls.add(m)
 
-        # Обновляем Sidebar Pool
         sidebar_matched_urls = []
         if use_sidebar:
             if global_sidebar_list:
                 for kw in global_sidebar_list:
-                    if kw in missing_words_log: continue # ПРОПУСКАЕМ
+                    if kw in missing_words_log: continue
                     
                     tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                    found = [u for u in all_menu_urls if tr in u]
+                    roots = [tr]
+                    if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
+                    
+                    found = []
+                    for u in all_menu_urls:
+                        if any(r in u for r in roots): found.append(u)
+                    
                     sidebar_matched_urls.extend(found)
                 sidebar_matched_urls = list(set(sidebar_matched_urls))
             else:
@@ -2128,10 +2173,10 @@ with tab_wholesale_main:
             
             urls_to_fetch_names.update(sidebar_matched_urls)
 
-        # --- Fetch Names Loop (Кэширование имен) ---
+        # --- КЭШИРОВАНИЕ ИМЕН ---
         url_name_cache = {}
         if urls_to_fetch_names:
-            status_box.write(f"🌍 Получаем реальные названия для {len(urls_to_fetch_names)} ссылок...")
+            status_box.write(f"🌍 Получаем названия для {len(urls_to_fetch_names)} ссылок...")
             
             def fetch_name_worker(u): 
                 return u, get_breadcrumb_only(u) 
@@ -2155,7 +2200,9 @@ with tab_wholesale_main:
             
             status_box.write("✅ Названия собраны!")
 
-        # --- СБОРКА КОНТЕНТА (SIDEBAR + CLIENT) ---
+        # ------------------------------------------------------------------
+        # СБОРКА КОНТЕНТА
+        # ------------------------------------------------------------------
         
         full_sidebar_code = ""
         if use_sidebar:
@@ -2219,30 +2266,23 @@ with tab_wholesale_main:
         if openai and (use_text or use_tables or use_geo):
             client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
 
-        # --- ОСНОВНОЙ ЦИКЛ ПО СТРАНИЦАМ (Без изменений) ---
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
         
         for idx, page in enumerate(target_pages):
-            # ... (Весь код цикла остается прежним, 
-            # но он уже будет использовать ОБНОВЛЕННЫЕ 
-            # text_context_final_list и tech_context_final_str)
-            
             base_text_raw, tags_on_page, real_header_h2, err = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # --- AI TEXT (Context обновлен!) ---
             if use_text and client:
                 try:
-                    # Функция уже получит список с ДОБАВЛЕННЫМИ словами
                     blocks = generate_ai_content_blocks(
                         client, base_text=base_text_raw if base_text_raw else "", 
                         tag_name=page['name'], forced_header=header_for_ai,
                         num_blocks=num_text_blocks_val, 
-                        seo_words=text_context_final_list # <--- СЮДА УЖЕ ПОПАЛИ "ПОТЕРЯШКИ"
+                        seo_words=text_context_final_list
                     )
                     row_data['Text_Block_1'] = blocks[0]
                     row_data['Text_Block_2'] = blocks[1]
@@ -2251,11 +2291,10 @@ with tab_wholesale_main:
                     row_data['Text_Block_5'] = blocks[4]
                 except Exception as e: row_data['Text_Error'] = str(e)
 
-            # --- TAGS (Используем tags_map, который уже есть) ---
             if use_tags:
                 possible_candidates = []
                 for kw, urls in tags_map.items():
-                    if kw in missing_words_log: continue # Не трогаем тех, кого нет
+                    if kw in missing_words_log: continue
                     valid = [u for u in urls if u.rstrip('/') != page['url'].rstrip('/')]
                     if valid: possible_candidates.append(random.choice(valid))
                 random.shuffle(possible_candidates)
@@ -2270,14 +2309,11 @@ with tab_wholesale_main:
                     row_data['Tags HTML'] = "\n".join(html_parts)
                 else: row_data['Tags HTML'] = ""
 
-            # --- AI TABLES (Context обновлен!) ---
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
-                    sys_p_table = "You are an expert metallurgist and data analyst. Output ONLY raw HTML <table>. No markdown. No explanations."
-                    
+                    sys_p_table = "You are an expert metallurgist and data analyst. Output ONLY raw HTML <table>. No markdown."
                     context_hint = ""
                     if tech_context_final_str:
-                        # СЮДА ТОЖЕ ПОПАЛИ ТЕХНИЧЕСКИЕ "ПОТЕРЯШКИ"
                         context_hint = f"Используй технические данные (марки, ГОСТы): {tech_context_final_str}."
                     
                     usr_p_table = f"""
@@ -2315,13 +2351,10 @@ with tab_wholesale_main:
                     except Exception as e:
                         row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
-            # --- SIDEBAR ---
             if use_sidebar:
                 row_data['Sidebar HTML'] = full_sidebar_code
 
-            # --- GEO ---
             if use_geo and client and global_geo_list:
-                # Geo logic... (без изменений)
                 selected_cities = global_geo_list
                 if len(selected_cities) > 20: selected_cities = random.sample(global_geo_list, 20)
                 cities_str = ", ".join(selected_cities)
@@ -2356,6 +2389,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
