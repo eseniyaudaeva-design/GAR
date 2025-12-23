@@ -770,14 +770,16 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     def calculate_width_score_val(lemmas_set):
         if total_width_core_count == 0: return 0
-        # Считаем, сколько слов из ядра мы нашли
-        found_count = len(lemmas_set.intersection(S_WIDTH_CORE))
         
-        # ЧЕСТНАЯ ФОРМУЛА: Просто процент покрытия (было ratio / 0.9)
-        # Если нашли 48% слов -> получаем 48 баллов
+        found_count = len(lemmas_set.intersection(S_WIDTH_CORE))
         ratio = found_count / total_width_core_count
         
-        return int(round(ratio * 100))
+        # ЭВРИСТИКА ОРИГИНАЛА (ГАР):
+        # Покрытие 80% ядра считается идеальным результатом (100 баллов).
+        # Формула: (Ваш % / 0.8)
+        
+        val = (ratio / 0.80) * 100
+        return int(round(min(100, val)))
 
 # ---------------------------------------------------------
     # 1. Функция расчета "Сырой силы" (BM25)
@@ -2669,6 +2671,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
