@@ -2267,6 +2267,7 @@ with tab_wholesale_main:
         if openai and (use_text or use_tables or use_geo):
             client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
 
+# --- ОСНОВНОЙ ЦИКЛ ПО СТРАНИЦАМ ---
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
         
@@ -2277,13 +2278,67 @@ with tab_wholesale_main:
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
+            # ========================================================
+            # 1. СНАЧАЛА ГЕНЕРИРУЕМ ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO)
+            # Чтобы понять, что не влезло и перенести это в текст
+            # ========================================================
+            
+            # Копия глобального контекста для ЭТОЙ страницы
+            # Мы будем добавлять сюда слова, которые не получились в тегах
+            current_page_seo_words = list(text_context_final_list)
+            
+            # --- TAGS GENERATION (БЕЗ ЛИМИТОВ + FALLBACK) ---
+            tags_html_parts = []
+            if use_tags:
+                html_collector = []
+                for kw in global_tags_list:
+                    # 1. Если слова вообще нет в базе - оно уже в current_page_seo_words (благодаря глобальной проверке)
+                    if kw not in tags_map:
+                        continue 
+                        
+                    urls = tags_map[kw]
+                    # 2. Ищем ссылку, которая НЕ ведет на текущую страницу
+                    valid_urls = [u for u in urls if u.rstrip('/') != page['url'].rstrip('/')]
+                    
+                    if valid_urls:
+                        # УСПЕХ: Делаем тег
+                        selected_url = random.choice(valid_urls)
+                        cache_key = selected_url.rstrip('/')
+                        nm = url_name_cache.get(cache_key, kw) # Если имени нет, берем кейворд
+                        html_collector.append(f'<a href="{selected_url}" class="tag-link">{nm}</a>')
+                    else:
+                        # НЕУДАЧА: Ссылка есть, но она ведет на саму себя (valid_urls пуст)
+                        # Значит, тег мы не поставили. Чтобы слово не пропало -> кидаем в ТЕКСТ
+                        if kw not in current_page_seo_words:
+                            current_page_seo_words.append(kw)
+
+                if html_collector:
+                    tags_html_parts = ['<div class="popular-tags">'] + html_collector + ['</div>']
+                    row_data['Tags HTML'] = "\n".join(tags_html_parts)
+                else:
+                    row_data['Tags HTML'] = ""
+
+            # --- PROMO GENERATION ---
+            if use_promo:
+                # В текущей логике мы просто собирали пул картинок для Excel. 
+                # Если нужно будет генерировать HTML, логика fallback будет аналогичной.
+                # Пока оставляем как было, так как промо обычно не зависит от текущего URL так сильно.
+                pass 
+
+            # ========================================================
+            # 2. ГЕНЕРИРУЕМ ТЕКСТ (С УЧЕТОМ ВСЕХ "ПОТЕРЯШЕК")
+            # ========================================================
             if use_text and client:
                 try:
+                    # current_page_seo_words теперь содержит:
+                    # 1. То, что ввел юзер руками
+                    # 2. То, что глобально не нашлось в базе
+                    # 3. То, что локально не смогло стать тегом (ссылка на себя)
                     blocks = generate_ai_content_blocks(
                         client, base_text=base_text_raw if base_text_raw else "", 
                         tag_name=page['name'], forced_header=header_for_ai,
                         num_blocks=num_text_blocks_val, 
-                        seo_words=text_context_final_list
+                        seo_words=current_page_seo_words # <-- ПОЛНЫЙ СПИСОК
                     )
                     row_data['Text_Block_1'] = blocks[0]
                     row_data['Text_Block_2'] = blocks[1]
@@ -2292,24 +2347,7 @@ with tab_wholesale_main:
                     row_data['Text_Block_5'] = blocks[4]
                 except Exception as e: row_data['Text_Error'] = str(e)
 
-            if use_tags:
-                possible_candidates = []
-                for kw, urls in tags_map.items():
-                    if kw in missing_words_log: continue
-                    valid = [u for u in urls if u.rstrip('/') != page['url'].rstrip('/')]
-                    if valid: possible_candidates.append(random.choice(valid))
-                random.shuffle(possible_candidates)
-                selected = list(set(possible_candidates))[:20]
-                if selected:
-                    html_parts = ['<div class="popular-tags">']
-                    for l in selected:
-                        cache_key = l.rstrip('/')
-                        nm = url_name_cache.get(cache_key, "Товар")
-                        html_parts.append(f'<a href="{l}" class="tag-link">{nm}</a>')
-                    html_parts.append('</div>')
-                    row_data['Tags HTML'] = "\n".join(html_parts)
-                else: row_data['Tags HTML'] = ""
-
+            # --- AI TABLES (Контекст тот же, глобальный) ---
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
                     sys_p_table = "You are an expert metallurgist and data analyst. Output ONLY raw HTML <table>. No markdown."
@@ -2352,9 +2390,11 @@ with tab_wholesale_main:
                     except Exception as e:
                         row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
+            # --- SIDEBAR ---
             if use_sidebar:
                 row_data['Sidebar HTML'] = full_sidebar_code
 
+            # --- GEO ---
             if use_geo and client and global_geo_list:
                 selected_cities = global_geo_list
                 if len(selected_cities) > 20: selected_cities = random.sample(global_geo_list, 20)
@@ -2369,17 +2409,14 @@ with tab_wholesale_main:
                     clean_geo = resp_geo.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                     row_data['IP_PROP4819'] = clean_geo
                 except Exception as e: row_data['IP_PROP4819'] = f"Error: {e}"
-            
+
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
 
         # --- СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ---
         df_result = pd.DataFrame(final_data)
-        
-        # 1. Сохраняем в Session State для предпросмотра
         st.session_state.gen_result_df = df_result 
         
-        # 2. Создаем Excel для скачивания
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_result.to_excel(writer, index=False)
@@ -2518,4 +2555,5 @@ if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not
             use_container_width=True,
             type="primary"
         )
+
 
