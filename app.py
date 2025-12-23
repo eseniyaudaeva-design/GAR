@@ -738,7 +738,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     # Списки упущенной семантики
     missing_semantics_high = [] # ВАЖНЫЕ (Медиана >= 1, У нас = 0)
-    missing_semantics_low = []  # ДОПОЛНИТЕЛЬНЫЕ (Все остальные из таблицы, где У нас = 0)
+    missing_semantics_low = []  # ДОПОЛНИТЕЛЬНЫЕ (Медиана = 0, Макс > 0, У нас = 0)
     
     # Списки для расчета ширины
     words_with_median_gt_0 = set() # Общее кол-во слов с медианой >= 1
@@ -764,21 +764,20 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         # --- МОЯ СТАТИСТИКА ---
         my_tf_count = my_lemmas.count(lemma)
         
-        # --- ФИЛЬТР ДЛЯ ТАБЛИЦЫ (ИСПРАВЛЕНО) ---
-        # Чтобы заполнить блок "Дополнительные", мы должны пустить в таблицу слова,
-        # где Медиана = 0, но слово встречается у конкурентов (Max > 0).
-        # Исключаем только полный мусор (никто не использует и мы не используем).
+        # --- ФИЛЬТР ДЛЯ ТАБЛИЦЫ ---
+        # Показываем слово, если оно есть хотя бы у одного конкурента (Max > 0) ИЛИ есть у нас.
+        # Это нужно, чтобы в "Дополнительные" попали слова, где Медиана=0, но Максимум > 0.
         if obs_max == 0 and my_tf_count == 0:
             continue
 
         # --- ЛОГИКА ШИРИНЫ (WIDTH) ---
-        # Считаем только от слов с Медианой >= 1 (как в ТЗ)
+        # Считаем только от слов с Медианой >= 1 (как в ТЗ: "ОТ ОБЩЕГО КОЛИЧЕСТВА СЛОВ С МЕДИАНОЙ ВЫШЕ 0")
         if rec_median >= 1:
             words_with_median_gt_0.add(lemma)
             if my_tf_count > 0:
                 my_found_words_from_median.add(lemma)
 
-        # --- ЛОГИКА УПУЩЕННОЙ СЕМАНТИКИ (СТРОГО ПО ТЗ) ---
+        # --- ЛОГИКА УПУЩЕННОЙ СЕМАНТИКИ ---
         if my_tf_count == 0:
             # Живая форма для вывода
             display_word = lemma
@@ -786,16 +785,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 display_word = global_forms_counter[lemma].most_common(1)[0][0]
             
             # Вес для сортировки
-            # Для важных: IDF * Медиана
-            # Для дополнительных (где медиана 0): IDF * Максимум (чтобы хоть как-то ранжировать)
-            weight = word_idf_map.get(lemma, 0) * (rec_median if rec_median > 0 else (obs_max * 0.5))
-            
+            weight = word_idf_map.get(lemma, 0) * (rec_median if rec_median > 0 else 1)
             item = {'word': display_word, 'weight': weight}
 
             # 1. ВАЖНЫЕ: Медиана >= 1
             if rec_median >= 1:
                 missing_semantics_high.append(item)
-            # 2. ДОПОЛНИТЕЛЬНЫЕ: Все остальные из таблицы (значит Медиана = 0, т.к. фильтр выше пропустил только их)
+            # 2. ДОПОЛНИТЕЛЬНЫЕ: Все остальные (значит Медиана = 0, но Максимум > 0, т.к. фильтр пропустил)
             else:
                 missing_semantics_low.append(item)
 
@@ -840,7 +836,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         })
 
     # =========================================================================
-    # 4. РАСЧЕТ БАЛЛОВ
+    # 4. РАСЧЕТ БАЛЛОВ (ИСПРАВЛЕННАЯ ФОРМУЛА ШИРИНЫ)
     # =========================================================================
     
     total_needed = len(words_with_median_gt_0)
@@ -848,7 +844,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     if total_needed > 0:
         ratio = total_found / total_needed
-        my_width_score_final = int(min(100, ratio * 120 * 100))
+        # Было ошибочно: ratio * 120 * 100 (что давало 100 при малейшем совпадении)
+        # Стало верно: ratio * 120 (если 0.8 * 120 = 96 баллов)
+        my_width_score_final = int(min(100, ratio * 120)) 
     else:
         my_width_score_final = 0
 
@@ -875,7 +873,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         # Ширина конкурента
         c_found = len(set(doc['body']).intersection(S_WIDTH_CORE))
         if total_needed > 0:
-            c_width_val = int(min(100, (c_found / total_needed) * 1.2 * 100))
+            c_width_val = int(min(100, (c_found / total_needed) * 120))
         else:
             c_width_val = 0
             
@@ -902,7 +900,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         data['depth_final'] = int(round(min(100, data['raw_depth'] * k_norm)))
 
     # =========================================================================
-    # 5. СОРТИРОВКА СПИСКОВ
+    # 5. СОРТИРОВКА И ВЫВОД
     # =========================================================================
     
     # Сортируем списки по весу (от более важных к менее)
@@ -2713,4 +2711,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
