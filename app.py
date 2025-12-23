@@ -1646,7 +1646,7 @@ with tab_wholesale_main:
                     help="Эти данные помогут AI составить правильную таблицу."
                 )
                 
-                # Список пресетов для таблиц
+                # Список пресетов
                 table_presets = [
                     "Технические характеристики",
                     "Свойства",
@@ -1673,15 +1673,17 @@ with tab_wholesale_main:
                     "Разновидности"
                 ]
 
-                # 1. Выбор количества таблиц (Selectbox)
+                # 1. Выбор количества таблиц
                 cnt_options = [1, 2, 3, 4, 5]
-                cnt = st.selectbox("Кол-во таблиц", cnt_options, index=1, key="num_tbl_vert_select") # index=1 значит 2 таблицы по умолчанию
+                cnt = st.selectbox("Кол-во таблиц", cnt_options, index=1, key="num_tbl_vert_select")
                 
                 table_prompts = []
                 
-                # 2. Генерация полей для каждой таблицы
+                # 2. Генерация полей
                 for i in range(cnt):
-                    # Умная предустановка значений (чтобы не тыкать каждый раз)
+                    st.markdown(f"**Таблица {i+1}**")
+                    
+                    # Определяем дефолтный индекс для первых 3 таблиц
                     default_idx = 0
                     if i == 0: 
                         try: default_idx = table_presets.index("Технические характеристики")
@@ -1693,25 +1695,32 @@ with tab_wholesale_main:
                         try: default_idx = table_presets.index("ГОСТы и стандарты")
                         except: pass
                     
-                    col_t_sel, col_t_inp = st.columns([1, 1])
+                    # Чек-бокс для переключения режима
+                    is_manual = st.checkbox("✍️ Ввести свой заголовок вручную", key=f"cb_tbl_manual_{i}")
                     
-                    # Логика: Выбираем из списка или вводим свое
-                    with st.container():
-                        selected_topic = st.selectbox(
-                            f"Тема таблицы {i+1}", 
-                            table_presets + ["✨ Ввести свой заголовок..."], 
-                            index=default_idx, 
-                            key=f"tbl_topic_select_{i}"
+                    if is_manual:
+                        # Режим ручного ввода
+                        selected_topic = st.text_input(
+                            f"Введите название для Таблицы {i+1}", 
+                            value="", 
+                            key=f"tbl_topic_custom_{i}",
+                            placeholder="Например: Химический состав стали 09Г2С"
                         )
-                        
-                        final_topic = selected_topic
-                        
-                        # Если выбрали "Свой вариант", показываем поле ввода
-                        if selected_topic == "✨ Ввести свой заголовок...":
-                            final_topic = st.text_input(f"Введите название для Таблицы {i+1}", value="", key=f"tbl_topic_custom_{i}")
-                            if not final_topic: final_topic = "Характеристики" # Защита от пустоты
-                        
-                        table_prompts.append(final_topic)
+                        # Защита от пустого поля
+                        if not selected_topic.strip():
+                            selected_topic = "Характеристики" 
+                    else:
+                        # Режим выбора из списка (ввод запрещен, только выбор)
+                        selected_topic = st.selectbox(
+                            f"Выберите тему Таблицы {i+1}", 
+                            table_presets, 
+                            index=default_idx, 
+                            key=f"tbl_topic_select_{i}",
+                            label_visibility="collapsed" # Скрываем лейбл, так как сверху уже написали "Таблица N"
+                        )
+                    
+                    table_prompts.append(selected_topic)
+                    st.markdown("---")
 
         # --- PROMO ---
         if use_promo:
@@ -2213,6 +2222,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
