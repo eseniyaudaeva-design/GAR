@@ -666,7 +666,7 @@ def parse_page(url, settings):
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     all_forms_map = defaultdict(set)
-        global_forms_counter = defaultdict(Counter) 
+    global_forms_counter = defaultdict(Counter) 
     if not my_data or not my_data.get('body_text'): 
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
         my_clean_domain = "local"
@@ -2708,6 +2708,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
