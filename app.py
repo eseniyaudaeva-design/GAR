@@ -2324,12 +2324,45 @@ with tab_wholesale_main:
                 else:
                     row_data['Tags HTML'] = ""
 
-            # --- PROMO GENERATION ---
-            if use_promo:
-                # В текущей логике мы просто собирали пул картинок для Excel. 
-                # Если нужно будет генерировать HTML, логика fallback будет аналогичной.
-                # Пока оставляем как было, так как промо обычно не зависит от текущего URL так сильно.
-                pass 
+# --- PROMO GENERATION (ИСПРАВЛЕНО: ГЕНЕРАЦИЯ HTML) ---
+            if use_promo and promo_items_pool:
+                # 1. Исключаем текущую страницу из кандидатов
+                candidates = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
+                
+                # 2. Берем 4 случайных товара
+                if len(candidates) >= 4:
+                    selected_promo = random.sample(candidates, 4)
+                else:
+                    selected_promo = candidates
+                
+                if selected_promo:
+                    # 3. Собираем HTML
+                    # promo_title - это переменная с умным заголовком, которую мы вычислили ранее
+                    promo_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display: flex; gap: 15px;">'
+                    
+                    for item in selected_promo:
+                        p_url = item['url']
+                        p_img = item['img']
+                        # Пытаемся достать красивое имя из кэша, иначе берем из URL
+                        cache_key = p_url.rstrip('/')
+                        p_name = url_name_cache.get(cache_key, "Товар")
+                        
+                        promo_html += f'''
+                        <div class="promo-card" style="width: 25%; border: 1px solid #eee; padding: 10px; border-radius: 5px; text-align: center;">
+                            <a href="{p_url}" style="text-decoration: none; color: #333;">
+                                <div style="height: 150px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                                    <img src="{p_img}" alt="{p_name}" style="max-height: 100%; max-width: 100%;">
+                                </div>
+                                <div style="margin-top: 10px; font-size: 14px; font-weight: bold; line-height: 1.2;">{p_name}</div>
+                            </a>
+                        </div>
+                        '''
+                    promo_html += '</div></div>'
+                    row_data['Promo HTML'] = promo_html
+                else:
+                    row_data['Promo HTML'] = ""
+            elif use_promo:
+                row_data['Promo HTML'] = ""
 
             # ========================================================
             # 2. ГЕНЕРИРУЕМ ТЕКСТ (С УЧЕТОМ ВСЕХ "ПОТЕРЯШЕК")
@@ -2441,9 +2474,9 @@ with tab_wholesale_main:
             key="btn_dl_unified"
         )
 # ==========================================
-# 5. БЛОК ПРЕДПРОСМОТРА (PREVIEW) - ОБНОВЛЕННЫЙ
+# 5. БЛОК ПРЕДПРОСМОТРА (PREVIEW) - ФИНАЛЬНЫЙ
 # ==========================================
-with tab_wholesale_main:
+with tab_wholesale_main: 
     if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not None:
         st.markdown("---")
         st.header("👀 Предпросмотр результата")
@@ -2457,29 +2490,30 @@ with tab_wholesale_main:
         # Получаем строку данных
         row = df[df['Product Name'] == selected_page_name].iloc[0]
         
-        # 2. Определяем, какие данные ЕСТЬ в наличии
-        # Текст: проверяем, есть ли хоть один непустой текстовый блок
+        # 2. Определяем наличие данных
         has_text = any(
             (f'Text_Block_{i}' in row and pd.notna(row[f'Text_Block_{i}']) and str(row[f'Text_Block_{i}']).strip())
             for i in range(1, 6)
         )
         
-        # Таблицы: проверяем наличие колонок с таблицами
         table_cols = [c for c in df.columns if 'Table_' in c and '_HTML' in c and pd.notna(row[c]) and str(row[c]).strip()]
         has_tables = len(table_cols) > 0
         
-        # Визуал: проверяем теги, сайдбар или гео
         has_tags = 'Tags HTML' in row and pd.notna(row['Tags HTML']) and str(row['Tags HTML']).strip()
         has_sidebar = 'Sidebar HTML' in row and pd.notna(row['Sidebar HTML']) and str(row['Sidebar HTML']).strip()
         has_geo = 'IP_PROP4819' in row and pd.notna(row['IP_PROP4819']) and str(row['IP_PROP4819']).strip()
-        has_visual = has_tags or has_sidebar or has_geo
-    
-        # 3. Формируем список активных вкладок
+        
+        # --- ПРОВЕРКА ПРОМО ---
+        has_promo = 'Promo HTML' in row and pd.notna(row['Promo HTML']) and str(row['Promo HTML']).strip()
+        
+        has_visual = has_tags or has_sidebar or has_geo or has_promo # <-- Добавили промо в условие
+
+        # 3. Активные вкладки
         active_tabs = []
         if has_text: active_tabs.append("📝 Текст")
         if has_tables: active_tabs.append("🧩 Таблицы")
         if has_visual: active_tabs.append("🎨 Визуал")
-    
+
         # Стили
         st.markdown("""
         <style>
@@ -2487,70 +2521,67 @@ with tab_wholesale_main:
             .preview-label { font-size: 12px; font-weight: bold; color: #888; text-transform: uppercase; margin-bottom: 5px; }
             .popular-tags { display: flex; flex-wrap: wrap; gap: 8px; }
             .tag-link { background: #f0f2f5; color: #333; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 13px; }
-            .tag-link:hover { background: #e1e4e8; }
             table { width: 100%; border-collapse: collapse; font-size: 14px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
             th { background-color: #f2f2f2; font-weight: bold; }
             .sidebar-wrapper ul { list-style-type: none; padding-left: 10px; }
             .level-1-header { font-weight: bold; margin-top: 10px; color: #277EFF; }
-            .level-2-link-special a { color: #333; text-decoration: none; padding-left: 10px; }
-            .level-3-link a { color: #666; font-size: 0.9em; padding-left: 20px; }
+            /* Стили для карточек Промо */
+            .promo-grid { display: flex !important; flex-wrap: wrap; gap: 10px; }
+            .promo-card { width: 23%; box-sizing: border-box; }
+            .promo-card img { max-width: 100%; height: auto; }
         </style>
         """, unsafe_allow_html=True)
-    
+
         if not active_tabs:
-            st.warning("⚠️ Данные сгенерированы, но контент пуст (возможно, произошла ошибка). Скачайте Excel для проверки.")
+            st.warning("⚠️ Контент пуст.")
         else:
-            # Создаем только нужные вкладки
             tabs_objects = st.tabs(active_tabs)
-            
-            # Словарь для маппинга: Имя вкладки -> Объект вкладки
             tabs_map = dict(zip(active_tabs, tabs_objects))
             
-            # --- ВКЛАДКА ТЕКСТ ---
+            # --- ТЕКСТ ---
             if "📝 Текст" in tabs_map:
                 with tabs_map["📝 Текст"]:
                     st.subheader(row['Product Name'])
                     for i in range(1, 6):
                         col_key = f'Text_Block_{i}'
-                        # Строгая проверка: колонка есть, она не NaN, и строка не пустая
                         if col_key in row and pd.notna(row[col_key]):
                             content = str(row[col_key]).strip()
                             if content:
                                 with st.container():
                                     st.caption(f"Блок {i}")
                                     st.markdown(f"<div class='preview-box'>{content}</div>", unsafe_allow_html=True)
-    
-            # --- ВКЛАДКА ТАБЛИЦЫ ---
+
+            # --- ТАБЛИЦЫ ---
             if "🧩 Таблицы" in tabs_map:
                 with tabs_map["🧩 Таблицы"]:
                     for t_col in table_cols:
                         content = row[t_col]
-                        # Очищаем название колонки для заголовка (Table_1_HTML -> Table 1)
                         clean_title = t_col.replace('_HTML', '').replace('_', ' ')
                         st.caption(clean_title)
                         st.markdown(content, unsafe_allow_html=True)
-    
-            # --- ВКЛАДКА ВИЗУАЛ ---
+
+            # --- ВИЗУАЛ ---
             if "🎨 Визуал" in tabs_map:
                 with tabs_map["🎨 Визуал"]:
-                    c1, c2 = st.columns(2)
+                    # Вывод Промо
+                    if has_promo:
+                         st.markdown('<div class="preview-label">Промо-блок (Рекомендации)</div>', unsafe_allow_html=True)
+                         st.markdown(f"<div class='preview-box'>{row['Promo HTML']}</div>", unsafe_allow_html=True)
                     
+                    c1, c2 = st.columns(2)
                     with c1:
                         if has_tags:
-                            st.markdown('<div class="preview-label">Теги (Popular Tags)</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="preview-label">Теги</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box'>{row['Tags HTML']}</div>", unsafe_allow_html=True)
-                        
                         if has_geo:
-                            st.markdown('<div class="preview-label">Гео-блок (Доставка)</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="preview-label">Гео-блок</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box'>{row['IP_PROP4819']}</div>", unsafe_allow_html=True)
-    
                     with c2:
                         if has_sidebar:
-                            st.markdown('<div class="preview-label">Сайдбар (Меню)</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
-    
-        # Кнопка скачивания
+
         if 'unified_excel_data' in st.session_state:
             st.markdown("<br>", unsafe_allow_html=True)
             st.download_button(
@@ -2562,7 +2593,3 @@ with tab_wholesale_main:
                 use_container_width=True,
                 type="primary"
             )
-    
-    
-    
-    
