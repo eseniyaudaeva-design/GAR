@@ -989,7 +989,7 @@ def get_page_data_for_gen(url):
             
     return base_text, tags_data, page_header, None
 
-def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_words=None):
+def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
     
     # 1. Распределение ключей
@@ -999,64 +999,57 @@ def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_wo
         for i, word in enumerate(seo_words):
             buckets[i % num_blocks].append(word)
 
-    # Формируем списки слов
-    vocab_strs = [", ".join(b) if b else "Нет обязательных слов" for b in buckets]
+    vocab_strs = [", ".join(b) if b else "None" for b in buckets]
 
-    # 2. СИСТЕМНЫЙ ПРОМТ (Роль редактора)
+    # 2. СИСТЕМНЫЙ ПРОМТ (Нейтральный, чтобы не триггерить отказ)
     system_instruction = (
-        "You are a Senior Editor at a heavy industry magazine. "
-        "Your speciality is writing smooth, human-like, professional Russian text. "
-        "You NEVER output robot-like sentences. You output raw HTML only."
+        "You are a Senior Technical Editor. "
+        "Your task is to process raw product data into structured HTML content in Russian. "
+        "Style: Professional, concise, natural. No marketing fluff. Output raw HTML only."
     )
 
-    # Заголовки
-    h_tag = "<h2>" if num_blocks == 1 else "<h2> (only for block 1), then <h3>"
+    # 3. ФОРМИРОВАНИЕ ЗАГОЛОВКОВ
+    # Блок 1: Строго берем переданный H2 (forced_header)
+    # Блоки 2+: Придумываем H3
+    h_tag_instruction = f"1. Header: <h2>{forced_header}</h2> (Use this EXACT text)."
+    if num_blocks > 1:
+        h_tag_instruction += " For subsequent blocks use <h3> tags with relevant technical themes."
 
-    # 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ (С примерами склонений)
+    # 4. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ
     user_prompt = f"""
-    TASK: Write a unique, high-quality description for the product: "{tag_name}".
-    SOURCE MATERIAL: \"\"\"{base_text[:3000]}\"\"\"
-    OUTPUT FORMAT: Exactly {num_blocks} HTML blocks separated by |||BLOCK_SEP|||
+    INPUT DATA:
+    Product Context: "{tag_name}"
+    Raw Data: \"\"\"{base_text[:3000]}\"\"\"
     
-    === BLOCK STRUCTURE (STRICT) ===
-    1. Header {h_tag}
-    2. Detailed paragraph (<p>, 3-4 sentences).
-    3. Intro sentence for list.
-    4. List (<ul><li>...</li></ul>).
-    5. Closing paragraph (<p>).
+    TASK: Generate exactly {num_blocks} HTML sections. Separator: |||BLOCK_SEP|||
+    
+    SECTION STRUCTURE (STRICT):
+    {h_tag_instruction}
+    2. <p> Detailed technical description (3-5 sentences).
+    3. Short intro sentence.
+    4. <ul><li>...</li></ul> (Key features list).
+    5. <p> Summary/Logistics paragraph.
 
-    === VOCABULARY INTEGRATION RULES (CRITICAL) ===
-    You must include the following mandatory terms in their respective blocks.
+    VOCABULARY INTEGRATION (CRITICAL):
+    Include these terms in respective sections. 
+    Section 1: {vocab_strs[0]}
+    Section 2: {vocab_strs[1]}
+    Section 3: {vocab_strs[2]}
+    Section 4: {vocab_strs[3]}
+    Section 5: {vocab_strs[4]}
     
-    Block 1 terms: {vocab_strs[0]}
-    Block 2 terms: {vocab_strs[1]}
-    Block 3 terms: {vocab_strs[2]}
-    Block 4 terms: {vocab_strs[3]}
-    Block 5 terms: {vocab_strs[4]}
-
-    HOW TO INSERT WORDS NATURALLY (READ CAREFULLY):
-    1. MORPHOLOGY IS MANDATORY: You MUST change the case, number, and ending of the keyword to fit the sentence grammar.
+    RULES FOR TERMS:
+    1. NATURALNESS: Change case/declension/number to fit the sentence grammar naturally.
+       (e.g. "Москва" -> "доставка по <b>Москве</b>").
+    2. CONTEXT: Build the sentence AROUND the term. Do not just insert it.
+    3. HIGHLIGHT: Wrap the modified term in <b> tags.
+    4. QUANTITY: Use each term exactly ONCE per section.
     
-    --- EXAMPLES ---
-    Bad (Do NOT do this): "У нас есть <b>труба стальная</b> на складе." (Robot style)
-    Good (DO this): "В наличии имеется надежная <b>стальная труба</b>, устойчивая к коррозии." (Natural style)
-    
-    Bad: "Мы осуществляем <b>доставка</b> в регионы."
-    Good: "Мы берем на себя <b>доставку</b> грузов в любые регионы."
-    
-    Bad: "Цена на <b>арматура</b> низкая."
-    Good: "Приобрести <b>арматуру</b> можно по сниженной стоимости."
-    ----------------
-    
-    2. CONTEXT: Do not just list the words. Build a meaningful sentence around the word.
-    3. HIGHLIGHT: Wrap the modified word in <b> tags.
-    4. ONCE ONLY: Use each term exactly once per block.
-
-    === RESTRICTIONS ===
-    - Language: Russian (Native, Professional).
-    - No Markdown (```).
-    - No citations ([1], [2]).
-    - Min length per block: 600 chars.
+    CONSTRAINTS:
+    - Language: Russian.
+    - Max length: 800 chars per section.
+    - NO Citations/Footnotes ([1], [2]).
+    - NO Markdown.
     """
 
     for attempt in range(3):
@@ -1067,9 +1060,7 @@ def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_wo
                     {"role": "system", "content": system_instruction}, 
                     {"role": "user", "content": user_prompt}
                 ], 
-                # Температура 0.75 позволяет модели "играть" словами и склонять их, 
-                # при низкой температуре она боится менять форму слова.
-                temperature=0.75 
+                temperature=0.7 
             )
             content = response.choices[0].message.content
             
@@ -1969,8 +1960,8 @@ with tab_wholesale_main:
                     blocks = generate_ai_content_blocks(
                         client, 
                         base_text=base_text_raw if base_text_raw else "", 
-                        tag_name=page['name'],     # Название для контекста (из ссылки)
-                        forced_header=header_for_ai, # ЭТОТ ЗАГОЛОВОК (H2) ПОЙДЕТ В ПЕРВЫЙ БЛОК
+                        tag_name=page['name'],     
+                        forced_header=header_for_ai, # <--- ВОТ ЭТОТ АРГУМЕНТ ТЕПЕРЬ ЕСТЬ В ФУНКЦИИ
                         num_blocks=num_text_blocks_val, 
                         seo_words=text_context_final_list
                     )
@@ -2086,6 +2077,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
