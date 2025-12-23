@@ -953,13 +953,23 @@ STATIC_DATA_GEN = {
 def get_page_data_for_gen(url):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, headers=headers, timeout=15, verify=False)
         response.encoding = 'utf-8'
-    except Exception as e: return None, None, f"Ошибка соединения: {e}"
-    if response.status_code != 200: return None, None, f"Ошибка статуса: {response.status_code}"
+    except Exception as e: return None, None, None, f"Ошибка соединения: {e}"
+    
+    if response.status_code != 200: return None, None, None, f"Ошибка статуса: {response.status_code}"
+    
     soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # 1. Ищем реальный заголовок страницы (H1), чтобы использовать его как {tag_name}
+    real_h1 = soup.find('h1')
+    page_title = real_h1.get_text(strip=True) if real_h1 else "Товар без названия"
+
+    # 2. Ищем текст описания
     description_div = soup.find('div', class_='description-container')
     base_text = description_div.get_text(separator="\n", strip=True) if description_div else soup.body.get_text(separator="\n", strip=True)[:5000]
+    
+    # 3. Ищем теги
     tags_container = soup.find(class_='popular-tags-inner')
     tags_data = []
     if tags_container:
@@ -967,38 +977,42 @@ def get_page_data_for_gen(url):
         for link in links:
             tag_url = urljoin(url, link.get('href')) if link.get('href') else None
             if tag_url: tags_data.append({'name': link.get_text(strip=True), 'url': tag_url})
-    return base_text, tags_data, None
+            
+    return base_text, tags_data, page_title, None
 
 def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
     
-    # 1. Распределяем ключи по блокам (Round Robin distribution)
+    # Распределение ключей
     seo_words = seo_words or []
-    buckets = [[] for _ in range(5)] # Всегда 5 слотов, заполняем только нужные
-    
+    buckets = [[] for _ in range(5)]
     if seo_words and num_blocks > 0:
-        # Распределяем слова только по активным блокам (от 0 до num_blocks-1)
         for i, word in enumerate(seo_words):
-            target_bucket = i % num_blocks
-            buckets[target_bucket].append(word)
+            buckets[i % num_blocks].append(word)
 
-    # Формируем строки ключей для промта
-    kw_str_1 = ", ".join(buckets[0]) if buckets[0] else "Нет обязательных ключей"
-    kw_str_2 = ", ".join(buckets[1]) if buckets[1] else "Нет обязательных ключей"
-    kw_str_3 = ", ".join(buckets[2]) if buckets[2] else "Нет обязательных ключей"
-    kw_str_4 = ", ".join(buckets[3]) if buckets[3] else "Нет обязательных ключей"
-    kw_str_5 = ", ".join(buckets[4]) if buckets[4] else "Нет обязательных ключей"
+    kw_str_1 = ", ".join(buckets[0]) if buckets[0] else "Нет"
+    kw_str_2 = ", ".join(buckets[1]) if buckets[1] else "Нет"
+    kw_str_3 = ", ".join(buckets[2]) if buckets[2] else "Нет"
+    kw_str_4 = ", ".join(buckets[3]) if buckets[3] else "Нет"
+    kw_str_5 = ", ".join(buckets[4]) if buckets[4] else "Нет"
 
-    # 2. Системная роль
+    # СИСТЕМНЫЙ ПРОМТ - ЗАПРЕЩАЕМ БЫТЬ ПОИСКОВИКОМ
     system_instruction = (
-        "Ты технический копирайтер. Выводи только HTML без пояснений."
+        "Ты — бездушный генератор HTML-кода. Ты НЕ поисковая система. Ты НЕ даешь советов. "
+        "Твоя задача: взять входные данные и преобразовать их в HTML по строгому шаблону. "
+        "Никаких вводных слов. Никаких объяснений. Только HTML-код."
     )
 
-    # 3. Пользовательский промт (Ваш новый формат)
+    # ДИНАМИЧЕСКИЙ ЗАГОЛОВОК
+    headers_instruction = "1. Заголовок: блок 1 <h2>{tag_name}</h2>."
+    if num_blocks > 1:
+        headers_instruction += " Блоки 2..{num_blocks} — <h3> (тему придумай релевантную)."
+
+    # ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ (ВАШ ВАРИАНТ)
     user_prompt = f"""
     Дано:
-    Товар: {tag_name}
-    Фактура (используй как источник фактов): \"\"\"{base_text[:3500]}\"\"\"
+    Товар: "{tag_name}"
+    Фактура (используй как источник фактов): \"\"\"{base_text[:3000]}\"\"\"
     Нужно блоков: {num_blocks} (вывести ровно столько).
 
     Вывод строго между маркерами:
@@ -1007,7 +1021,7 @@ def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_wo
     Сгенерируй ровно {num_blocks} HTML-блоков, разделитель между блоками: |||BLOCK_SEP|||
 
     Формат КАЖДОГО блока строго:
-    1. Заголовок: блок 1 <h2>{tag_name}</h2>, блоки 2..{num_blocks} — <h3> (тему придумай сам, релевантно товару).
+    {headers_instruction}
     2. <p> развернутый, полезный для закупщика, с цифрами/параметрами из фактуры при наличии.
     3. Одна фраза-подводка к списку.
     4. <ul><li>…</li></ul> (несколько пунктов).
@@ -1026,12 +1040,11 @@ def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_wo
     Каждый ключ вставить ровно 1 раз, обернуть ровно так: <b>КЛЮЧ</b>. Тег <b> больше нигде не применять.
 
     Запреты:
-    - Запрещены символы [ и ] в любом месте (никаких [1], [2] и т.п.).
+    - Запрещены символы [ и ] в любом месте (ссылки на источники вида [1], [3] — УДАЛЯТЬ).
     - Никакого Markdown, никакого текста вне <HTML>...</HTML_END>.
     - Каждый блок не менее 600 символов.
     """
 
-    # Цикл повторных попыток
     for attempt in range(3):
         try:
             response = client.chat.completions.create(
@@ -1040,35 +1053,25 @@ def generate_ai_content_blocks(client, base_text, tag_name, num_blocks=5, seo_wo
                     {"role": "system", "content": system_instruction}, 
                     {"role": "user", "content": user_prompt}
                 ], 
-                temperature=0.7 
+                temperature=0.5 # Снизил температуру для строгости
             )
             content = response.choices[0].message.content
             
-            # 4. Пост-обработка (Парсинг маркеров)
             clean_content = content
-            
-            # Пытаемся найти контент между маркерами
             match = re.search(r'<HTML>(.*?)</HTML_END>', content, re.DOTALL)
-            if match:
-                clean_content = match.group(1).strip()
-            else:
-                # Если маркеров нет, чистим стандартный markdown
-                clean_content = clean_content.replace("```html", "").replace("```", "").strip()
-
-            # Удаляем квадратные скобки (ссылки), если они просочились
-            clean_content = re.sub(r'\[\d+\]', '', clean_content)
+            if match: clean_content = match.group(1).strip()
             
-            # Разбиваем на блоки
+            # Чистка от мусора Perplexity (ссылки [1])
+            clean_content = re.sub(r'\[\d+\]', '', clean_content)
+            clean_content = clean_content.replace("```html", "").replace("```", "").strip()
+            
             blocks = [b.strip() for b in clean_content.split("|||BLOCK_SEP|||") if b.strip()]
             
-            # Дополняем пустыми строками до 5, чтобы не ломать структуру Excel (всегда 5 колонок)
-            while len(blocks) < 5: 
-                blocks.append("")
-                
+            while len(blocks) < 5: blocks.append("")
             return blocks[:5]
         except Exception as e:
-            if attempt == 2: return [f"API Error: {str(e)}"] * 5
             time.sleep(2)
+    return ["API Error"] * 5
 
 # ==========================================
 # 7. UI TABS RESTRUCTURED
@@ -1932,21 +1935,27 @@ with tab_wholesale_main:
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
         
+# ... (начало цикла) ...
         for idx, page in enumerate(target_pages):
-            row_data = {'Page URL': page['url'], 'Product Name': page['name']}
+            # 1. Получаем данные страницы + РЕАЛЬНЫЙ H1
+            base_text_raw, tags_on_page, real_title, err = get_page_data_for_gen(page['url'])
             
-            # Статические поля по умолчанию
-            for k, v in STATIC_DATA_GEN.items():
-                row_data[k] = v
+            # Если не удалось скачать, берем имя из ссылки
+            product_name_final = real_title if real_title else page['name']
+            base_text_final = base_text_raw if base_text_raw else ""
+
+            row_data = {'Page URL': page['url'], 'Product Name': product_name_final}
+            
+            # Статические поля
+            for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
             # --- AI TEXT ---
             if use_text and client:
                 try:
-                    # ИСПОЛЬЗУЕМ ВЫБРАННОЕ КОЛ-ВО БЛОКОВ (num_text_blocks_val)
                     blocks = generate_ai_content_blocks(
                         client, 
-                        f"Контент для {page['name']}", 
-                        page['name'], 
+                        base_text_final,  # Передаем скачанный текст
+                        product_name_final, # Передаем реальный H1
                         num_blocks=num_text_blocks_val, 
                         seo_words=text_context_final_list
                     )
@@ -1978,12 +1987,11 @@ with tab_wholesale_main:
             # --- AI TABLES ---
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
-                    sys_p = "Generate HTML table only. Inline CSS borders."
+                    sys_p = "Generate HTML table only. Inline CSS borders. No markdown."
                     context_hint = ""
-                    # ИСПОЛЬЗУЕМ НОВЫЙ КОНТЕКСТ ТАБЛИЦ (tech_context_final_str)
                     if tech_context_final_str:
                         context_hint = f" Use specs: {tech_context_final_str}."
-                    usr_p = f"Product: {page['name']}. Topic: {t_topic}. Realistic table.{context_hint}"
+                    usr_p = f"Product: {product_name_final}. Topic: {t_topic}. Realistic technical table.{context_hint}"
                     try:
                         resp = client.chat.completions.create(model="sonar-pro", messages=[{"role":"system","content":sys_p},{"role":"user","content":usr_p}], temperature=0.5)
                         t_html = resp.choices[0].message.content.replace("```html","").replace("```","")
@@ -1999,7 +2007,7 @@ with tab_wholesale_main:
                     items_html = ""
                     for item in chosen:
                         cache_key = item['url'].rstrip('/')
-                        real_name = url_name_cache.get(cache_key, "Товар") # БЕРЕМ ИЗ КЭША
+                        real_name = url_name_cache.get(cache_key, "Товар")
                         items_html += f"""<div class="gallery-item"><h3><a href="{item['url']}">{real_name}</a></h3><figure><a href="{item['url']}"><img src="{item['img']}" loading="lazy"></a></figure></div>"""
                     css = "<style>.five-col-gallery{display:flex;gap:15px;}</style>"
                     full_promo = f"""{css}<div class="gallery-wrapper"><h3>{promo_title}</h3><div class="five-col-gallery">{items_html}</div></div>"""
@@ -2010,37 +2018,38 @@ with tab_wholesale_main:
             if use_sidebar:
                 row_data['Sidebar HTML'] = full_sidebar_code
 
-            # --- GEO BLOCK (AI WRITES INTO IP_PROP4819) ---
+            # --- GEO BLOCK (ИСПРАВЛЕННЫЙ) ---
             if use_geo and client and global_geo_list:
-                # Берем случайные города (до 20 штук), чтобы не перегружать контекст
                 selected_cities = global_geo_list
-                if len(selected_cities) > 20:
-                    selected_cities = random.sample(global_geo_list, 20)
-                
+                if len(selected_cities) > 20: selected_cities = random.sample(global_geo_list, 20)
                 cities_str = ", ".join(selected_cities)
                 
+                # ЖЕСТКИЙ ПРОМТ ДЛЯ ГЕО, ЧТОБЫ НЕ УМНИЧАЛ
                 geo_prompt = f"""
-                Напиши короткий HTML-блок (тег <p>) о доставке металлопроката.
-                Суть: Мы доставляем грузы в разные города, включая: {cities_str}.
+                Задача: Напиши ОДИН абзац текста (<p>...</p>) о доставке товара "{product_name_final}".
+                Смысл: Мы доставляем этот товар по всей России, в том числе в города: {cities_str}.
                 
-                ТРЕБОВАНИЯ:
-                1. Напиши связный текст, не просто перечисление.
-                2. Склоняй названия городов правильно (например: "в Москву", "в Тюмень", "по Екатеринбургу").
-                3. Не используй маркированные списки, только текст внутри <p>.
-                4. Объем до 500 символов.
-                5. Тон: деловой, уверенный.
+                Требования:
+                1. Выведи ТОЛЬКО HTML-код абзаца. Никаких вступлений "Вот текст".
+                2. Склоняй города правильно (в Москву, в Тулу).
+                3. Не используй списки, только сплошной текст.
+                4. Объем до 500 знаков.
                 """
                 try:
                     resp_geo = client.chat.completions.create(
                         model="sonar-pro", 
-                        messages=[{"role": "system", "content": "Ты логист-копирайтер."}, {"role": "user", "content": geo_prompt}],
-                        temperature=0.5
+                        messages=[
+                            {"role": "system", "content": "Ты генератор HTML кода. Ты молчишь и пишешь только код."}, 
+                            {"role": "user", "content": geo_prompt}
+                        ],
+                        temperature=0.3 # Низкая температура для строгости
                     )
-                    # ПЕРЕЗАПИСЫВАЕМ ПОЛЕ IP_PROP4819
-                    row_data['IP_PROP4819'] = resp_geo.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                    clean_geo = resp_geo.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                    # Чистим от ссылок [1] если вдруг появятся
+                    clean_geo = re.sub(r'\[\d+\]', '', clean_geo)
+                    row_data['IP_PROP4819'] = clean_geo
                 except Exception as e:
-                    # Если ошибка - останется старый текст + коммент об ошибке
-                    row_data['IP_PROP4819'] += f" <!-- Geo Error: {e} -->"
+                    row_data['IP_PROP4819'] += f" <!-- Geo Error -->"
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
@@ -2062,4 +2071,5 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
