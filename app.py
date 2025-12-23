@@ -754,24 +754,59 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         ratio = len(lemmas_set.intersection(S_WIDTH_CORE)) / total_width_core_count
         return 100 if ratio >= 0.9 else int(round((ratio / 0.9) * 100))
 
+# ---------------------------------------------------------
+    # 1. Функция расчета "Сырой силы" (BM25)
+    # ---------------------------------------------------------
+    def calculate_raw_power(doc_tokens, doc_len):
+        if avg_dl == 0 or doc_len == 0: return 0
+        score = 0
+        counts = Counter(doc_tokens)
+        k1 = 1.2; b = 0.75
+        target_words = S_WIDTH_CORE if S_WIDTH_CORE else S_DEPTH_TOP70
+        for word in target_words:
+            if word not in counts: continue
+            tf = counts[word]
+            idf = word_idf_map.get(word, 0)
+            term_weight = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (doc_len / avg_dl)))
+            score += term_weight
+        return score
+
+    # ---------------------------------------------------------
+    # 2. Расчет баллов (Идеал = 80, Максимум = 100)
+    # ---------------------------------------------------------
+    comp_raw_scores = []
     competitor_scores_map = {}
-    comp_bm25_list = []
+    
     for i, doc in enumerate(comp_docs):
-        raw_bm25 = calculate_bm25_okapi(doc['body'], c_lens[i])
-        comp_bm25_list.append(raw_bm25)
-        width_val = calculate_width_score_val(set(doc['body']))
-        competitor_scores_map[doc['url']] = {'width_final': min(100, width_val), 'bm25_val': raw_bm25}
+        raw_val = calculate_raw_power(doc['body'], c_lens[i])
+        comp_raw_scores.append(raw_val)
+        w_val = calculate_width_score_val(set(doc['body']))
+        competitor_scores_map[doc['url']] = {
+            'width_final': min(100, w_val),
+            'raw_depth': raw_val
+        }
 
-    median_bm25_top = np.median(comp_bm25_list) if comp_bm25_list else 0
-    spam_limit = median_bm25_top * 1.25 if median_bm25_top > 0 else 1
+    # ЭТАЛОН (Медиана Топа)
+    if comp_raw_scores:
+        median_raw = np.median(comp_raw_scores)
+        ref_val = median_raw if median_raw > 0.1 else 1.0
+    else:
+        ref_val = 1.0
 
-    for url, scores in competitor_scores_map.items():
-        depth_val = int(round((scores['bm25_val'] / spam_limit) * 100))
-        scores['depth_final'] = min(100, depth_val)
-
-    my_bm25 = calculate_bm25_okapi(my_lemmas, my_len)
-    my_depth_score_final = min(100, int(round((my_bm25 / spam_limit) * 100)))
+    # КОЭФФИЦИЕНТ: Медиана (ref_val) превращается в 80 баллов
+    k_norm = 80.0 / ref_val
+    
+    # Считаем СВОЮ силу (обрезаем до 100)
+    my_raw_bm25 = calculate_raw_power(my_lemmas, my_len)
+    raw_calc_score = my_raw_bm25 * k_norm
+    my_depth_score_final = int(round(min(100, raw_calc_score))) 
+    
     my_width_score_final = min(100, calculate_width_score_val(my_full_lemmas_set))
+
+    # Пересчитываем конкурентов (обрезаем до 100)
+    for url, data in competitor_scores_map.items():
+        d_score = int(round(min(100, data['raw_depth'] * k_norm)))
+        data['depth_final'] = d_score
 
     table_depth, table_hybrid = [], []
     for lemma in vocab:
@@ -1315,45 +1350,42 @@ with tab_seo_main:
 
             st.rerun()
 
-    if st.session_state.analysis_done and st.session_state.analysis_results:
+if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
-        st.success("Анализ готов!")
-        st.markdown(f"<div style='background:{LIGHT_BG_MAIN};padding:15px;border-radius:8px;'><b>Результат:</b> Ширина: {results['my_score']['width']} | Глубина: {results['my_score']['depth']}</div>", unsafe_allow_html=True)
         
-        # --- СТИЛИ (РАСКРЫВАЮЩИЕСЯ КАРТОЧКИ) ---
-        st.markdown("""
-        <style>
-            details > summary { list-style: none; }
-            details > summary::-webkit-details-marker { display: none; }
-            .details-card {
-                background-color: #f8f9fa; border: 1px solid #e9ecef;
-                border-radius: 8px; margin-bottom: 10px;
-                overflow: hidden; transition: all 0.2s ease;
-            }
-            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
-            .card-summary {
-                padding: 12px 15px; cursor: pointer; font-weight: 700;
-                font-size: 15px; color: #111827; display: flex;
-                justify-content: space-between; align-items: center;
-                background-color: #ffffff;
-            }
-            .card-summary:hover { background-color: #f3f4f6; }
-            .card-content {
-                padding: 15px; border-top: 1px solid #e9ecef;
-                font-size: 14px; color: #374151; line-height: 1.6;
-                background-color: #fcfcfc;
-            }
-            .count-tag { 
-                background: #e5e7eb; color: #374151; padding: 2px 8px; 
-                border-radius: 10px; font-size: 12px; font-weight: 600;
-                min-width: 25px; text-align: center;
-            }
-            .arrow-icon {
-                font-size: 10px; margin-right: 8px; color: #9ca3af;
-                transition: transform 0.2s;
-            }
-            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
-        </style>
+        d_score = results['my_score']['depth']
+        w_score = results['my_score']['width']
+        
+        # Ширина
+        w_color = "#2E7D32" if w_score >= 80 else ("#E65100" if w_score >= 50 else "#D32F2F")
+        
+        # Глубина (Цель = 80)
+        if 75 <= d_score <= 88:
+            d_color = "#2E7D32" # Зеленый (Отлично)
+            d_status = "ИДЕАЛ (Топ)"
+        elif 88 < d_score <= 100:
+            d_color = "#D32F2F" # Красный (Риск переспама)
+            d_status = "ПЕРЕСПАМ (Риск)"
+        elif 55 <= d_score < 75:
+            d_color = "#F9A825" # Желтый
+            d_status = "Средняя"
+        else:
+            d_color = "#D32F2F" # Красный
+            d_status = "Низкая"
+
+        st.success("Анализ готов!")
+        st.markdown(f"""
+        <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
+            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
+                <div style='font-size: 12px; color: #666;'>ШИРИНА (Охват тем)</div>
+                <div style='font-size: 24px; font-weight: bold; color: {w_color};'>{w_score}/100</div>
+            </div>
+            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {d_color};'>
+                <div style='font-size: 12px; color: #666;'>ГЛУБИНА (Цель: ~80)</div>
+                <div style='font-size: 24px; font-weight: bold; color: {d_color};'>{d_score}/100 <span style='font-size:14px; font-weight:normal;'>({d_status})</span></div>
+            </div>
+        </div>
+        <br>
         """, unsafe_allow_html=True)
 
         with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
@@ -2576,4 +2608,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
