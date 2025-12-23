@@ -1527,7 +1527,7 @@ with tab_wholesale_main:
         
         col_source, col_key = st.columns([3, 1])
         
-        use_manual_html = st.checkbox("📝 Вставить HTML код вручную", key="cb_manual_html_mode", value=False)
+        use_manual_html = st.checkbox("📝 Вставить HTML код страницы", key="cb_manual_html_mode", value=False)
         
         with col_source:
             if use_manual_html:
@@ -2217,6 +2217,7 @@ if use_tables:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
