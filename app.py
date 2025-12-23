@@ -735,7 +735,10 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     table_depth = []
     table_hybrid = []
-    missing_semantics_all = [] # Единый список упущенных
+    
+    # Списки упущенной семантики
+    missing_semantics_high = [] # ВАЖНЫЕ (Медиана >= 1, У нас = 0)
+    missing_semantics_low = []  # ДОПОЛНИТЕЛЬНЫЕ (Все остальные из таблицы, где У нас = 0)
     
     # Списки для расчета ширины
     words_with_median_gt_0 = set() # Общее кол-во слов с медианой >= 1
@@ -750,49 +753,53 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         
         # --- РАСЧЕТ МЕДИАНЫ ПО ПРАВИЛАМ МАТЕМАТИКИ ---
-        # Сортируем от меньшего к большему
         sorted_counts = sorted(c_counts)
-        # Находим медиану
         med_val = np.median(sorted_counts)
-        # Округляем по правилам математики (7.5 -> 8, 7.4 -> 7)
         rec_median = math_round(med_val)
         
-        # Статистика "Минимум" и "Максимум" (реальный разброс конкурентов, исключая совсем нули, если медиана высокая)
-        # Но по ТЗ: "скрипт должен выстроить... от меньшего к большему". 
-        # Для таблицы возьмем реальные min и max среди конкурентов
+        # Мин/Макс
         obs_min = sorted_counts[0]
         obs_max = sorted_counts[-1]
 
         # --- МОЯ СТАТИСТИКА ---
         my_tf_count = my_lemmas.count(lemma)
         
+        # --- ФИЛЬТР ДЛЯ ТАБЛИЦЫ (ИСПРАВЛЕНО) ---
+        # Чтобы заполнить блок "Дополнительные", мы должны пустить в таблицу слова,
+        # где Медиана = 0, но слово встречается у конкурентов (Max > 0).
+        # Исключаем только полный мусор (никто не использует и мы не используем).
+        if obs_max == 0 and my_tf_count == 0:
+            continue
+
         # --- ЛОГИКА ШИРИНЫ (WIDTH) ---
-        # "ОТ ОБЩЕГО КОЛИЧЕСТВА СЛОВ С МЕДИАНОЙ ВЫШЕ 0" (т.е. >= 1 т.к. int)
+        # Считаем только от слов с Медианой >= 1 (как в ТЗ)
         if rec_median >= 1:
             words_with_median_gt_0.add(lemma)
             if my_tf_count > 0:
                 my_found_words_from_median.add(lemma)
 
-        # --- ЛОГИКА УПУЩЕННОЙ СЕМАНТИКИ (ADDITIONAL WORDS) ---
-        # "все слова ... где в столбике вхождений у вас будет стоять 0"
-        # Но при условии, что они вообще нужны (т.е. Медиана >= 1)
-        if my_tf_count == 0 and rec_median >= 1:
-            # Живая форма
+        # --- ЛОГИКА УПУЩЕННОЙ СЕМАНТИКИ (СТРОГО ПО ТЗ) ---
+        if my_tf_count == 0:
+            # Живая форма для вывода
             display_word = lemma
             if global_forms_counter[lemma]:
                 display_word = global_forms_counter[lemma].most_common(1)[0][0]
             
-            # Вес для сортировки (частотность + IDF)
-            weight = word_idf_map.get(lemma, 0) * rec_median
-            missing_semantics_all.append({'word': display_word, 'weight': weight})
+            # Вес для сортировки
+            # Для важных: IDF * Медиана
+            # Для дополнительных (где медиана 0): IDF * Максимум (чтобы хоть как-то ранжировать)
+            weight = word_idf_map.get(lemma, 0) * (rec_median if rec_median > 0 else (obs_max * 0.5))
+            
+            item = {'word': display_word, 'weight': weight}
 
-        # --- ФИЛЬТР ДЛЯ ТАБЛИЦЫ ---
-        # Показываем слово, если оно есть у конкурентов (медиана >=1) ИЛИ есть у нас
-        if rec_median < 1 and my_tf_count == 0:
-            continue
+            # 1. ВАЖНЫЕ: Медиана >= 1
+            if rec_median >= 1:
+                missing_semantics_high.append(item)
+            # 2. ДОПОЛНИТЕЛЬНЫЕ: Все остальные из таблицы (значит Медиана = 0, т.к. фильтр выше пропустил только их)
+            else:
+                missing_semantics_low.append(item)
 
         # --- РЕКОМЕНДАЦИИ ---
-        # "допустим медиана 7, а у нас 10. рекомендация -3"
         diff = rec_median - my_tf_count
         
         if diff == 0:
@@ -805,10 +812,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             sort_val = diff
         else: # diff < 0
             status = "Переспам"
-            action_text = f"{diff}" # будет с минусом, т.к. diff отрицательный
+            action_text = f"{diff}"
             sort_val = abs(diff)
 
-        # Формы слова для таблицы
         forms_str = ", ".join(sorted(list(all_forms_map.get(lemma, set())))) if all_forms_map.get(lemma) else lemma
 
         # Заполнение таблицы "Глубина"
@@ -816,16 +822,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Слово": lemma,
             "Словоформы": forms_str,
             "Вхождений у вас": my_tf_count,
-            "Медиана": rec_median,       # Идеальное число
-            "Минимум (конкур.)": obs_min, # Для справки
-            "Максимум (конкур.)": obs_max, # Для справки
+            "Медиана": rec_median,
+            "Минимум (конкур.)": obs_min,
+            "Максимум (конкур.)": obs_max,
             "Статус": status,
             "Рекомендация": action_text,
             "is_missing": (my_tf_count == 0),
             "sort_val": sort_val
         })
         
-        # Таблица Hybrid (оставляем как есть для доп. аналитики)
         table_hybrid.append({
             "Слово": lemma,
             "TF-IDF ТОП": round(word_idf_map.get(lemma, 0) * (rec_median / avg_dl if avg_dl > 0 else 0), 4),
@@ -835,27 +840,20 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         })
 
     # =========================================================================
-    # 4. РАСЧЕТ БАЛЛОВ (WIDTH & DEPTH SCORING)
+    # 4. РАСЧЕТ БАЛЛОВ
     # =========================================================================
-    
-    # --- ШИРИНА (WIDTH SCORE) ---
-    # Пример пользователя: 136 всего, 110 есть -> 97 баллов.
-    # 110 / 136 = 0.808. 
-    # Формула с бустом: (Ratio * 1.2) * 100, но не более 100.
-    # 0.808 * 1.2 = 0.9696 -> 97 баллов. Идеально попадает в пример.
     
     total_needed = len(words_with_median_gt_0)
     total_found = len(my_found_words_from_median)
     
     if total_needed > 0:
         ratio = total_found / total_needed
-        my_width_score_final = int(min(100, ratio * 120 * 100)) # Ratio * 1.2 * 100
+        my_width_score_final = int(min(100, ratio * 120 * 100))
     else:
         my_width_score_final = 0
 
-    # --- ГЛУБИНА (DEPTH SCORE) - BM25 Raw Power ---
-    # Тут оставляем логику сравнения "силы" текста через BM25 относительно медианы конкурентов
-    S_WIDTH_CORE = words_with_median_gt_0 # Используем ядро медиан для расчета BM25
+    # Глубина (BM25)
+    S_WIDTH_CORE = words_with_median_gt_0
     
     def calculate_raw_power(doc_tokens, doc_len):
         if avg_dl == 0 or doc_len == 0: return 0
@@ -889,7 +887,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             'raw_depth': raw_val
         }
 
-    # Нормировка глубины (Медиана топа = 80 баллов)
     if comp_raw_scores:
         median_raw = np.median(comp_raw_scores)
         ref_val = median_raw if median_raw > 0.1 else 1.0
@@ -901,26 +898,16 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     my_raw_bm25 = calculate_raw_power(my_lemmas, my_len)
     my_depth_score_final = int(round(min(100, my_raw_bm25 * k_norm)))
 
-    # Пересчет конкурентов
     for url, data in competitor_scores_map.items():
         data['depth_final'] = int(round(min(100, data['raw_depth'] * k_norm)))
 
     # =========================================================================
-    # 5. СОРТИРОВКА И ВЫВОД
+    # 5. СОРТИРОВКА СПИСКОВ
     # =========================================================================
     
-    # Сортируем упущенную семантику по весу (важности)
-    missing_semantics_all.sort(key=lambda x: x['weight'], reverse=True)
-    
-    # ДЕЛИМ СПИСОК ПОПОЛАМ (50% Важные, 50% Дополнительные)
-    total_miss = len(missing_semantics_all)
-    if total_miss > 0:
-        half_idx = math.ceil(total_miss / 2) # Округляем вверх (большую часть в важные)
-        missing_semantics_high = missing_semantics_all[:half_idx]
-        missing_semantics_low = missing_semantics_all[half_idx:]
-    else:
-        missing_semantics_high = []
-        missing_semantics_low = []
+    # Сортируем списки по весу (от более важных к менее)
+    missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
+    missing_semantics_low.sort(key=lambda x: x['weight'], reverse=True)
 
     # Таблица Релевантности
     table_rel = []
@@ -2726,3 +2713,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
