@@ -1478,13 +1478,17 @@ with tab_wholesale_main:
     cat_dimensions = st.session_state.get('categorized_dimensions', [])
     tech_context_default = ", ".join(cat_dimensions) if cat_dimensions else ""
 
-    # 3. Для AI Текста (Коммерция + Общие + Гео)
+    # 3. Разделение Коммерции/Общих и ГЕО
     cat_commercial = st.session_state.get('categorized_commercial', [])
     cat_general = st.session_state.get('categorized_general', [])
     cat_geo = st.session_state.get('categorized_geo', [])
     
-    text_context_list_raw = cat_commercial + cat_general + cat_geo
+    # ИСКЛЮЧАЕМ ГЕО из текстового контекста
+    text_context_list_raw = cat_commercial + cat_general
     text_context_default = ", ".join(text_context_list_raw)
+    
+    # Формируем дефолт для ГЕО блока
+    geo_context_default = ", ".join(cat_geo)
 
     # ==========================================
     # 1. ВВОДНЫЕ ДАННЫЕ
@@ -1514,7 +1518,7 @@ with tab_wholesale_main:
                 manual_html_source = None
 
         with col_key:
-            default_key = st.session_state.get('pplx_key_cache', "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")
+            default_key = st.session_state.get('pplx_key_cache', "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")
             pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
 
@@ -1522,22 +1526,23 @@ with tab_wholesale_main:
     # 2. ВЫБОР МОДУЛЕЙ
     # ==========================================
     st.subheader("2. Какие блоки генерируем?")
-    col_ch1, col_ch2, col_ch3, col_ch4, col_ch5 = st.columns(5)
+    # Теперь 6 колонок
+    col_ch1, col_ch2, col_ch3, col_ch4, col_ch5, col_ch6 = st.columns(6)
     
-    # ВАЖНО: value=False гарантирует, что при перезагрузке они будут выключены
     with col_ch1: use_text = st.checkbox("🤖 AI Тексты", value=False)
     with col_ch2: use_tags = st.checkbox("🏷️ Теги", value=False)
     with col_ch3: use_tables = st.checkbox("🧩 Таблицы", value=False)
     with col_ch4: use_promo = st.checkbox("🔥 Промо", value=False)
     with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар", value=False)
+    with col_ch6: use_geo = st.checkbox("🌍 Гео-блок", value=False)
 
     # ==========================================
     # 3. НАСТРОЙКИ МОДУЛЕЙ
     # ==========================================
-    # Инициализируем переменные, чтобы не было ошибки NameError, если блоки скрыты
     global_tags_list = []
     global_promo_list = []
     global_sidebar_list = []
+    global_geo_list = []
     tags_file_content = ""
     table_prompts = []
     df_db_promo = None
@@ -1546,16 +1551,15 @@ with tab_wholesale_main:
     text_context_final_list = []
     tech_context_final_str = ""
     
-    # Показываем заголовок настроек только если хоть что-то выбрано
-    if any([use_text, use_tags, use_tables, use_promo, use_sidebar]):
+    if any([use_text, use_tags, use_tables, use_promo, use_sidebar, use_geo]):
         st.subheader("3. Настройки модулей")
 
-        # --- НАСТРОЙКИ ТЕКСТА ---
+        # --- AI TEXT ---
         if use_text:
             with st.container(border=True):
                 st.markdown("#### 🤖 1. AI Тексты")
                 ai_words_input = st.text_area(
-                    "Слова для внедрения (Коммерция, Гео, Общие) - через запятую", 
+                    "Слова для внедрения (Коммерция + Общие) - Гео здесь нет", 
                     value=text_context_default, 
                     height=100, 
                     key="ai_text_context_editable",
@@ -1563,18 +1567,17 @@ with tab_wholesale_main:
                 )
                 text_context_final_list = [x.strip() for x in re.split(r'[,\n]+', ai_words_input) if x.strip()]
 
-        # --- НАСТРОЙКИ ТЕГОВ ---
+        # --- TAGS ---
         if use_tags:
             with st.container(border=True):
                 st.markdown("#### 🏷️ 2. Теги")
                 kws_input_tags = st.text_area(
-                    "Список (Товары + Услуги) - через запятую или с новой строки", 
+                    "Список (Товары + Услуги) - через запятую", 
                     value=tags_default_text, 
                     height=100, 
                     key="kws_tags_auto"
                 )
                 global_tags_list = [x.strip() for x in re.split(r'[,\n]+', kws_input_tags) if x.strip()]
-                
                 if not global_tags_list: st.warning("⚠️ Список пуст!")
                 
                 st.markdown("---")
@@ -1590,7 +1593,7 @@ with tab_wholesale_main:
                         if up_t: tags_file_content = up_t.getvalue().decode("utf-8")
                     else: st.error("❌ Файл базы не найден!")
 
-        # --- НАСТРОЙКИ ТАБЛИЦ ---
+        # --- TABLES ---
         if use_tables:
             with st.container(border=True):
                 st.markdown("#### 🧩 3. Таблицы")
@@ -1598,10 +1601,8 @@ with tab_wholesale_main:
                     "Контекст для таблиц (Марки, ГОСТ, Размеры)", 
                     value=tech_context_default, 
                     height=70, 
-                    key="table_context_editable",
-                    help="Эти данные помогут AI составить правильную таблицу."
+                    key="table_context_editable"
                 )
-                
                 cnt = st.number_input("Кол-во таблиц", 1, 5, 2, key="num_tbl_vert")
                 defaults = ["Характеристики", "Размеры", "Хим. состав"]
                 for i in range(cnt):
@@ -1609,35 +1610,24 @@ with tab_wholesale_main:
                     t_p = st.text_input(f"Тема {i+1}", value=val, key=f"tbl_topic_vert_{i}")
                     table_prompts.append(t_p)
 
-        # --- НАСТРОЙКИ ПРОМО ---
+        # --- PROMO ---
         if use_promo:
             with st.container(border=True):
                 st.markdown("#### 🔥 4. Промо-блок")
                 kws_input_promo = st.text_area(
-                    "Список (Товары + Услуги) - через запятую или с новой строки", 
+                    "Список (Товары + Услуги) - через запятую", 
                     value=promo_default_text, 
                     height=100, 
                     key="kws_promo_auto"
                 )
                 global_promo_list = [x.strip() for x in re.split(r'[,\n]+', kws_input_promo) if x.strip()]
-
                 if not global_promo_list: st.warning("⚠️ Список пуст!")
                 
                 st.markdown("---")
                 col_p1, col_p2 = st.columns([1, 2])
                 with col_p1:
-                    promo_presets = [
-                        "Смотрите также",
-                        "Рекомендуем",
-                        "Похожие товары",
-                        "С этим товаром покупают",
-                        "Лидеры продаж",
-                        "Популярные категории",
-                        "Возможно вас заинтересует"
-                    ]
-                    
+                    promo_presets = ["Смотрите также", "Рекомендуем", "Похожие товары", "Лидеры продаж"]
                     use_custom_header = st.checkbox("Ввести свой заголовок", key="cb_custom_header")
-                    
                     if use_custom_header:
                         promo_title = st.text_input("Ваш заголовок", value="Смотрите также", key="pr_tit_vert")
                     else:
@@ -1657,7 +1647,7 @@ with tab_wholesale_main:
                         if up_i: df_db_promo = pd.read_excel(up_i)
                     else: st.error("❌ База картинок не найдена!")
 
-        # --- НАСТРОЙКИ САЙДБАРА ---
+        # --- SIDEBAR ---
         if use_sidebar:
             with st.container(border=True):
                 st.markdown("#### 📑 5. Сайдбар")
@@ -1668,7 +1658,6 @@ with tab_wholesale_main:
                     key="kws_sidebar_auto"
                 )
                 global_sidebar_list = [x.strip() for x in kws_input_sidebar.split('\n') if x.strip()]
-                
                 if not global_sidebar_list: st.warning("⚠️ Список пуст!")
                 
                 st.markdown("---")
@@ -1683,6 +1672,23 @@ with tab_wholesale_main:
                         up_s = st.file_uploader("Файл .txt", type=['txt'], key="up_sb_vert", label_visibility="collapsed")
                         if up_s: sidebar_content = up_s.getvalue().decode("utf-8")
                     else: st.error("❌ Файл меню не найден!")
+
+        # --- GEO BLOCK ---
+        if use_geo:
+            with st.container(border=True):
+                st.markdown("#### 🌍 6. Гео-блок")
+                kws_input_geo = st.text_area(
+                    "Список городов/регионов (из вкладки Анализ) - через запятую", 
+                    value=geo_context_default, 
+                    height=100, 
+                    key="kws_geo_auto"
+                )
+                global_geo_list = [x.strip() for x in re.split(r'[,\n]+', kws_input_geo) if x.strip()]
+                
+                if not global_geo_list:
+                    st.warning("⚠️ Список городов пуст!")
+                else:
+                    st.info(f"Будет сформирован список из {len(global_geo_list)} городов.")
 
     st.markdown("---")
     
@@ -1701,8 +1707,8 @@ with tab_wholesale_main:
     if use_tags and not tags_file_content: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_sidebar and not sidebar_content: ready_to_go = False
+    # Для Geo обязательных внешних файлов нет, достаточно списка слов
     
-    # Кнопка запуска (выводится всегда)
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         status_box = st.status("🛠️ Начинаем работу...", expanded=True)
         final_data = [] 
@@ -1907,7 +1913,7 @@ with tab_wholesale_main:
             # --- AI TEXT ---
             if use_text and client:
                 try:
-                    # ИСПОЛЬЗУЕМ НОВЫЙ СПИСОК СЛОВ (text_context_final_list)
+                    # ИСПОЛЬЗУЕМ НОВЫЙ СПИСОК СЛОВ (text_context_final_list) - БЕЗ ГЕО
                     blocks = generate_five_blocks(client, f"Контент для {page['name']}", page['name'], seo_words=text_context_final_list)
                     row_data['Text_Block_1'] = blocks[0]
                     row_data['Text_Block_2'] = blocks[1]
@@ -1969,6 +1975,21 @@ with tab_wholesale_main:
             # --- SIDEBAR ---
             if use_sidebar:
                 row_data['Sidebar HTML'] = full_sidebar_code
+
+            # --- GEO BLOCK ---
+            if use_geo and global_geo_list:
+                # Перемешиваем и берем случайные, чтобы на разных страницах было разное (опционально)
+                # Или выводим весь список. Обычно для ГЕО блока лучше выводить весь список или топ-20.
+                # Сделаем топ-30 случайных для разнообразия, если список большой.
+                current_geo_selection = global_geo_list
+                if len(global_geo_list) > 30:
+                    current_geo_selection = random.sample(global_geo_list, 30)
+                
+                # Формируем HTML список
+                geo_list_items = "".join([f"<li>{city}</li>" for city in sorted(current_geo_selection)])
+                row_data['Geo HTML'] = f'<div class="geo-block"><ul>{geo_list_items}</ul></div>'
+            elif use_geo:
+                row_data['Geo HTML'] = ""
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
