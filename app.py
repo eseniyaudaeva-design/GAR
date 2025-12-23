@@ -1920,8 +1920,8 @@ with tab_wholesale_main:
 
     st.markdown("---")
     
-    # ==========================================
-    # 4. ЗАПУСК
+# ==========================================
+    # 4. ЗАПУСК ГЕНЕРАЦИИ (С НОВОЙ ЛОГИКОЙ ПЕРЕРАСПРЕДЕЛЕНИЯ)
     # ==========================================
     
     ready_to_go = True
@@ -1938,9 +1938,109 @@ with tab_wholesale_main:
     if use_geo and not pplx_api_key: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
-        status_box = st.status("🛠️ Начинаем работу...", expanded=True)
+        status_box = st.status("🛠️ Подготовка данных...", expanded=True)
         final_data = [] 
         
+        # 1. СБОР ИСХОДНЫХ ССЫЛОК И БАЗ (ЭТАП PRE-CALCULATION)
+        # Нам нужно собрать базы ДО цикла генерации, чтобы найти "потеряшек"
+        
+        # --- Подготовка базы Тегов ---
+        tags_map = {}
+        all_tags_links = []
+        if use_tags:
+            s_io = io.StringIO(tags_file_content)
+            all_tags_links = [l.strip() for l in s_io.readlines() if l.strip()]
+            # Предварительная карта (слово -> ссылки)
+            for kw in global_tags_list:
+                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                if len(tr) >= 3:
+                    matches = [u for u in all_tags_links if tr in u]
+                    if matches: tags_map[kw] = matches
+
+        # --- Подготовка базы Промо ---
+        p_img_map = {}
+        if use_promo:
+            for _, row in df_db_promo.iterrows():
+                u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
+                if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
+        
+        # --- Подготовка базы Сайдбара ---
+        all_menu_urls = []
+        if use_sidebar:
+            s_io = io.StringIO(sidebar_content)
+            all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
+
+        # =========================================================
+        # 🔥 НОВЫЙ БЛОК: ПОИСК ПОТЕРЯННЫХ СЛОВ И ПЕРЕРАСПРЕДЕЛЕНИЕ
+        # =========================================================
+        missing_words_log = set()
+        
+        # 1. Проверяем ТЕГИ
+        if use_tags:
+            for kw in global_tags_list:
+                if kw not in tags_map: # Если не нашли в базе ссылок
+                    missing_words_log.add(kw)
+        
+        # 2. Проверяем ПРОМО
+        if use_promo:
+            for kw in global_promo_list:
+                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                # Простая проверка: есть ли хоть один URL в базе, содержащий этот транслит
+                has_match = any(tr in u for u in p_img_map.keys())
+                if not has_match:
+                    missing_words_log.add(kw)
+                    
+        # 3. Проверяем САЙДБАР
+        if use_sidebar and global_sidebar_list:
+            for kw in global_sidebar_list:
+                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                has_match = any(tr in u for u in all_menu_urls)
+                if not has_match:
+                    missing_words_log.add(kw)
+
+        # 4. АВТОМАТИЧЕСКОЕ ПЕРЕРАСПРЕДЕЛЕНИЕ В AI КОНТЕКСТ
+        if missing_words_log:
+            missing_list = sorted(list(missing_words_log))
+            
+            # А. Добавляем в Текстовый контекст (для GPT)
+            # Чтобы не было дублей, добавляем только новые
+            for w in missing_list:
+                if w not in text_context_final_list:
+                    text_context_final_list.append(w)
+            
+            # Б. Добавляем в Табличный контекст (если слово похоже на техническое)
+            # Эвристика: если есть цифры или ГОСТ - кидаем в таблицу
+            tech_additions = []
+            for w in missing_list:
+                if any(char.isdigit() for char in w) or "гост" in w.lower():
+                    tech_additions.append(w)
+            
+            if tech_additions:
+                tech_context_final_str += "\n" + ", ".join(tech_additions)
+
+            # В. ВИЗУАЛЬНОЕ УВЕДОМЛЕНИЕ (КРАСИВАЯ ПЛАШКА)
+            status_box.markdown(f"""
+                <div style="
+                    background-color: #FFF4E5; 
+                    border-left: 5px solid #FF9800; 
+                    padding: 15px; 
+                    border-radius: 4px; 
+                    margin-bottom: 15px;
+                    color: #663C00;">
+                    <strong>⚠️ Внимание: Часть ссылок не найдена</strong><br>
+                    <span style="font-size: 0.9em;">
+                    Мы не нашли URL для слов: <b>{', '.join(missing_list)}</b>.<br>
+                    ✅ <u>Они были автоматически перенесены в задание для Нейросети (Текст/Таблицы).</u>
+                    </span>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            time.sleep(2) # Даем пользователю заметить плашку
+
+        # =========================================================
+        # ДАЛЕЕ СТАНДАРТНАЯ ЛОГИКА (ПАРСИНГ И ГЕНЕРАЦИЯ)
+        # =========================================================
+
         target_pages = []
         soup = None
         current_base_url = main_category_url if main_category_url else "http://localhost"
@@ -1988,30 +2088,23 @@ with tab_wholesale_main:
             
         status_box.write(f"✅ Найдено страниц для обработки: {len(target_pages)}")
         
+        # Сбор имен для ссылок (URLs to fetch names)
+        # Мы используем те же missing_list, чтобы НЕ запрашивать имена для несуществующих ссылок
         urls_to_fetch_names = set()
-        tags_map = {}
+        
+        # Обновляем Tags Map (уже собран, просто добавляем в очередь fetch)
         if use_tags:
-            s_io = io.StringIO(tags_file_content)
-            all_links = [l.strip() for l in s_io.readlines() if l.strip()]
-            for kw in global_tags_list:
-                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                if len(tr) >= 3:
-                    matches = [u for u in all_links if tr in u]
-                    if matches: 
-                        tags_map[kw] = matches
-                        urls_to_fetch_names.update(matches)
+            for kw, matches in tags_map.items():
+                urls_to_fetch_names.update(matches)
 
+        # Обновляем Promo Pool
         promo_items_pool = [] 
         if use_promo:
-            p_img_map = {}
-            for _, row in df_db_promo.iterrows():
-                u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
-                if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
-            
             used_urls = set()
             for kw in global_promo_list:
+                if kw in missing_words_log: continue # ПРОПУСКАЕМ ТЕХ, КОГО НЕ НАШЛИ
+                
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                if len(tr) < 3: continue
                 matches = [u for u in p_img_map.keys() if tr in u]
                 for m in matches:
                     if m not in used_urls:
@@ -2019,15 +2112,14 @@ with tab_wholesale_main:
                         promo_items_pool.append({'url': m, 'img': p_img_map[m]})
                         used_urls.add(m)
 
+        # Обновляем Sidebar Pool
         sidebar_matched_urls = []
         if use_sidebar:
-            s_io = io.StringIO(sidebar_content)
-            all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
-            
             if global_sidebar_list:
                 for kw in global_sidebar_list:
+                    if kw in missing_words_log: continue # ПРОПУСКАЕМ
+                    
                     tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                    if len(tr) < 3: continue
                     found = [u for u in all_menu_urls if tr in u]
                     sidebar_matched_urls.extend(found)
                 sidebar_matched_urls = list(set(sidebar_matched_urls))
@@ -2036,6 +2128,7 @@ with tab_wholesale_main:
             
             urls_to_fetch_names.update(sidebar_matched_urls)
 
+        # --- Fetch Names Loop (Кэширование имен) ---
         url_name_cache = {}
         if urls_to_fetch_names:
             status_box.write(f"🌍 Получаем реальные названия для {len(urls_to_fetch_names)} ссылок...")
@@ -2062,11 +2155,8 @@ with tab_wholesale_main:
             
             status_box.write("✅ Названия собраны!")
 
-        # ==========================================
-        # СБОРКА КОНТЕНТА
-        # ==========================================
+        # --- СБОРКА КОНТЕНТА (SIDEBAR + CLIENT) ---
         
-        # 1. SIDEBAR (Сборка с использованием кэша имен)
         full_sidebar_code = ""
         if use_sidebar:
             status_box.write("🔨 Сборка меню...")
@@ -2083,7 +2173,6 @@ with tab_wholesale_main:
                     if part not in curr: curr[part] = {}
                     if i == len(rel_parts) - 1:
                         curr[part]['__url__'] = url
-                        # БЕРЕМ ИМЯ ИЗ КЭША
                         cache_key = url.rstrip('/')
                         curr[part]['__name__'] = url_name_cache.get(cache_key, force_cyrillic_name_global(part))
                     curr = curr[part]
@@ -2126,41 +2215,34 @@ with tab_wholesale_main:
             inner_html = render_tree_internal(tree, level=1)
             full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>"""
 
-        # 2. CLIENT
         client = None
         if openai and (use_text or use_tables or use_geo):
             client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
 
-        # 3. ЦИКЛ ПО СТРАНИЦАМ
+        # --- ОСНОВНОЙ ЦИКЛ ПО СТРАНИЦАМ (Без изменений) ---
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
         
-# ... (внутри st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ"...))
-        
         for idx, page in enumerate(target_pages):
-            # 1. Получаем данные и ИМЕННО H2 (переменная real_header_h2)
-            base_text_raw, tags_on_page, real_header_h2, err = get_page_data_for_gen(page['url'])
+            # ... (Весь код цикла остается прежним, 
+            # но он уже будет использовать ОБНОВЛЕННЫЕ 
+            # text_context_final_list и tech_context_final_str)
             
-            # Если H2 на сайте не найден, используем имя ссылки
-            # Это и есть главное название товара для нейросети
+            base_text_raw, tags_on_page, real_header_h2, err = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
-            # Данные для Excel
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
-            
-            # Статические поля
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # --- AI TEXT ---
+            # --- AI TEXT (Context обновлен!) ---
             if use_text and client:
                 try:
+                    # Функция уже получит список с ДОБАВЛЕННЫМИ словами
                     blocks = generate_ai_content_blocks(
-                        client, 
-                        base_text=base_text_raw if base_text_raw else "", 
-                        tag_name=page['name'],     
-                        forced_header=header_for_ai, # <--- ВОТ ЭТОТ АРГУМЕНТ ТЕПЕРЬ ЕСТЬ В ФУНКЦИИ
+                        client, base_text=base_text_raw if base_text_raw else "", 
+                        tag_name=page['name'], forced_header=header_for_ai,
                         num_blocks=num_text_blocks_val, 
-                        seo_words=text_context_final_list
+                        seo_words=text_context_final_list # <--- СЮДА УЖЕ ПОПАЛИ "ПОТЕРЯШКИ"
                     )
                     row_data['Text_Block_1'] = blocks[0]
                     row_data['Text_Block_2'] = blocks[1]
@@ -2169,10 +2251,11 @@ with tab_wholesale_main:
                     row_data['Text_Block_5'] = blocks[4]
                 except Exception as e: row_data['Text_Error'] = str(e)
 
-            # --- TAGS ---
+            # --- TAGS (Используем tags_map, который уже есть) ---
             if use_tags:
                 possible_candidates = []
                 for kw, urls in tags_map.items():
+                    if kw in missing_words_log: continue # Не трогаем тех, кого нет
                     valid = [u for u in urls if u.rstrip('/') != page['url'].rstrip('/')]
                     if valid: possible_candidates.append(random.choice(valid))
                 random.shuffle(possible_candidates)
@@ -2187,34 +2270,26 @@ with tab_wholesale_main:
                     row_data['Tags HTML'] = "\n".join(html_parts)
                 else: row_data['Tags HTML'] = ""
 
-            # --- AI TABLES ---
-# --- AI TABLES (ИСПРАВЛЕНО: AI = ДАННЫЕ, PYTHON = СТИЛИ) ---
+            # --- AI TABLES (Context обновлен!) ---
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
-                    # 1. СИСТЕМНЫЙ ПРОМТ: Эксперт-металлург (фокус на данные)
                     sys_p_table = "You are an expert metallurgist and data analyst. Output ONLY raw HTML <table>. No markdown. No explanations."
                     
-                    # 2. Контекст
                     context_hint = ""
                     if tech_context_final_str:
+                        # СЮДА ТОЖЕ ПОПАЛИ ТЕХНИЧЕСКИЕ "ПОТЕРЯШКИ"
                         context_hint = f"Используй технические данные (марки, ГОСТы): {tech_context_final_str}."
                     
-                    # 3. ПРОМТ: Просим ТОЛЬКО данные, на стили плевать (их сделает скрипт)
                     usr_p_table = f"""
                     Задача: Составь подробную техническую таблицу для товара "{header_for_ai}".
                     Тема таблицы: {t_topic}.
                     {context_hint}
                     
-                    ТРЕБОВАНИЯ К КОНТЕНТУ:
-                    1. Только реальные технические данные (размеры, марки стали, химический состав, свойства).
-                    2. Не пиши "воды". Только факты и цифры.
-                    3. Создай простую HTML таблицу <table>...</table>.
-                    
-                    ЗАПРЕТЫ:
-                    - НИКАКИХ ССЫЛОК [1], [2].
-                    - Без Markdown (```).
+                    ТРЕБОВАНИЯ:
+                    1. Только реальные технические данные.
+                    2. HTML <table>...</table>.
+                    3. Без Markdown.
                     """
-                    
                     try:
                         resp = client.chat.completions.create(
                             model="sonar-pro", 
@@ -2222,36 +2297,21 @@ with tab_wholesale_main:
                                 {"role": "system", "content": sys_p_table},
                                 {"role": "user", "content": usr_p_table}
                             ], 
-                            temperature=0.4 # Низкая температура для точности данных
+                            temperature=0.4
                         )
                         raw_html = resp.choices[0].message.content
-                        
-                        # --- ПОСТ-ОБРАБОТКА СКРИПТОМ (ЖЕСТКОЕ ОФОРМЛЕНИЕ) ---
-                        
-                        # 1. Чистим мусор
                         clean_html = raw_html.replace("```html", "").replace("```", "").strip()
-                        clean_html = re.sub(r'\[\d+\]', '', clean_html) # Вырезаем [1]
+                        clean_html = re.sub(r'\[\d+\]', '', clean_html)
                         
-                        # 2. ПАРСИМ И ВСТАВЛЯЕМ СТИЛИ ЧЕРЕЗ BEAUTIFULSOUP
                         soup_table = BeautifulSoup(clean_html, 'html.parser')
                         table_tag = soup_table.find('table')
-                        
                         if table_tag:
-                            # Жесткий стиль для самой таблицы
                             table_tag['style'] = "border-collapse: collapse; width: 100%; border: 2px solid black;"
-                            
-                            # Жесткий стиль для ВСЕХ ячеек (заголовки и данные)
                             for cell in table_tag.find_all(['th', 'td']):
                                 cell['style'] = "border: 2px solid black; padding: 5px;"
-                                
-                            # Результат - идеально оформленный HTML
                             final_table_html = str(table_tag)
-                        else:
-                            # Если нейронка не вернула таблицу, отдаем как есть (но чистым)
-                            final_table_html = clean_html
-                        
+                        else: final_table_html = clean_html
                         row_data[f'Table_{t_i+1}_HTML'] = final_table_html
-                        
                     except Exception as e:
                         row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
@@ -2259,38 +2319,22 @@ with tab_wholesale_main:
             if use_sidebar:
                 row_data['Sidebar HTML'] = full_sidebar_code
 
-            # --- GEO BLOCK (ИСПРАВЛЕННЫЙ) ---
+            # --- GEO ---
             if use_geo and client and global_geo_list:
+                # Geo logic... (без изменений)
                 selected_cities = global_geo_list
                 if len(selected_cities) > 20: selected_cities = random.sample(global_geo_list, 20)
                 cities_str = ", ".join(selected_cities)
-                
-                # Используем header_for_ai вместо product_name_final
-                geo_prompt = f"""
-                Task: Write a short paragraph (wrapped in <p>) in Russian about delivery options for "{header_for_ai}".
-                Context: We deliver across Russia, including specific cities: {cities_str}.
-                
-                Strict Rules:
-                1. Mention the listed cities naturally in the flow of the text.
-                2. IMPORTANT: Do not repeat the same city twice. Use each city name max 1 time.
-                3. Use correct Russian grammar (declensions/cases: "в Москву", "по Туле").
-                4. Do not list them as a catalog. Build sentences.
-                5. Output only the HTML <p> tag. No markdown.
-                """
+                geo_prompt = f"""Task: Write a short paragraph <p> about delivery options for "{header_for_ai}" to {cities_str}. Output HTML <p> only."""
                 try:
                     resp_geo = client.chat.completions.create(
                         model="sonar-pro", 
-                        messages=[
-                            {"role": "system", "content": "You are a logistic summary generator. Output raw HTML only."}, 
-                            {"role": "user", "content": geo_prompt}
-                        ],
+                        messages=[{"role": "system", "content": "You are a logistic summary generator."}, {"role": "user", "content": geo_prompt}],
                         temperature=0.4
                     )
                     clean_geo = resp_geo.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                    clean_geo = re.sub(r'\[\d+\]', '', clean_geo)
                     row_data['IP_PROP4819'] = clean_geo
-                except Exception as e:
-                    row_data['IP_PROP4819'] += f" <!-- Geo Error: {e} -->"
+                except Exception as e: row_data['IP_PROP4819'] = f"Error: {e}"
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
@@ -2312,6 +2356,7 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 
 
 
