@@ -622,41 +622,28 @@ def parse_page(url, settings, query_context=""):
         }
         r = cffi_requests.get(url, headers=headers, timeout=20, impersonate="chrome110")
         if r.status_code == 403: raise Exception("CURL_CFFI получил 403 Forbidden")
-        if r.status_code != 200:
-            st.warning(f"⚠️ Статус ответа (curl_cffi): {r.status_code}")
-            return None
+        if r.status_code != 200: return None
         content = r.content
         encoding = r.encoding if r.encoding else 'utf-8'
-    except Exception as e_cffi:
+    except Exception:
         try:
             import requests
-            from requests.adapters import HTTPAdapter
-            from urllib3.util.retry import Retry
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             session = requests.Session()
-            retry = Retry(connect=3, read=3, redirect=5, backoff_factor=0.5)
-            adapter = HTTPAdapter(max_retries=retry)
-            session.mount('http://', adapter)
-            session.mount('https://', adapter)
             headers = {'User-Agent': settings['ua']}
             r = session.get(url, headers=headers, timeout=20, verify=False)
-            if r.status_code != 200:
-                st.error(f"❌ Ошибка (Standard): Сервер вернул код {r.status_code}")
-                return None
+            if r.status_code != 200: return None
             content = r.content
             encoding = r.apparent_encoding
-        except Exception as e_final:
-            st.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА СКАЧИВАНИЯ:\n{e_final}")
-            return None
+        except Exception: return None
 
     try:
+        # 1. Создаем объект Soup (Полная страница)
         soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
         
-        # === НОВАЯ ЛОГИКА: ИЕРАРХИЧЕСКИЙ ПОИСК ТОВАРОВ ===
+        # === ЛОГИКА ТАБЛИЦЫ 2 (Поиск товаров по URL/Ссылке) ===
         product_titles = []
-        
-        # 1. Подготовка корней запроса
         search_roots = set()
         if query_context:
             clean_q = query_context.lower().replace('купить', '').replace('цена', '').replace(' в ', ' ')
@@ -665,16 +652,13 @@ def parse_page(url, settings, query_context=""):
                 if len(w) > 3: search_roots.add(w[:-1])
                 else: search_roots.add(w)
         
-        # 2. Определение "Базового пути"
         parsed_current = urlparse(url)
         current_path_clean = parsed_current.path.rstrip('/')
-        
         seen_titles = set()
         
         for a in soup.find_all('a', href=True):
             txt = a.get_text(strip=True)
             raw_href = a['href']
-            
             if len(txt) < 5 or len(txt) > 300: continue
             if raw_href.startswith('#') or raw_href.startswith('javascript'): continue
             
@@ -682,76 +666,80 @@ def parse_page(url, settings, query_context=""):
             parsed_href = urlparse(abs_href)
             href_path_clean = parsed_href.path.rstrip('/')
             
-            # Проверки: вложенность и длина пути
             is_child_path = href_path_clean.startswith(current_path_clean)
             is_deeper = len(href_path_clean) > len(current_path_clean)
             is_not_query_param_only = (href_path_clean != current_path_clean)
 
             if is_child_path and is_deeper and is_not_query_param_only:
-                # Проверка релевантности (есть ли слова из запроса)
                 txt_lower = txt.lower()
                 href_lower = abs_href.lower()
-                
                 has_keywords = False
                 if search_roots:
                     for root in search_roots:
                         if root in txt_lower or root in href_lower:
-                            has_keywords = True
-                            break
+                            has_keywords = True; break
                 else:
                     if re.search(r'\d', txt): has_keywords = True
 
                 is_buy_button = txt_lower in {'купить', 'подробнее', 'в корзину', 'заказать', 'цена'}
-
                 if has_keywords and not is_buy_button:
                     if txt not in seen_titles:
                         product_titles.append(txt)
                         seen_titles.add(txt)
         # ========================================================
         
-        # H1 для справки
         h1_tag = soup.find('h1')
         h1_text = h1_tag.get_text(strip=True) if h1_tag else ""
 
-        # Урезанный текст для Таблицы 2 (БЕЗ ВАШИХ ТОВАРОВ)
+        # 2. Создаем копию для Таблицы 2 (Удаляем блок товаров)
         soup_no_grid = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
         grid_div = soup_no_grid.find('div', class_='an-container-fluid an-container-xl')
-        if grid_div: grid_div.decompose() # Удаляем блок товаров
+        if grid_div: grid_div.decompose()
         
-# Чистка
+        # === [ВАЖНО] ФИЛЬТРАЦИЯ КОНТЕНТА ПО ГАЛОЧКАМ ===
+        
         tags_to_remove = []
+        # Если галочка "Исключать noindex" ВКЛЮЧЕНА - добавляем тег в список на удаление
         if settings['noindex']: tags_to_remove.append('noindex')
-        for s in [soup, soup_no_grid]: # <--- ТУТ ЦИКЛ
+        
+        for s in [soup, soup_no_grid]:
+            # Удаляем комментарии (всегда)
             for c in s.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
+            
+            # Удаляем теги из списка (noindex, если выбран)
             if tags_to_remove:
                 for t in s.find_all(tags_to_remove): t.decompose()
-            # ВОТ СТРОКА, КОТОРУЮ НАДО МЕНЯТЬ:
+            
+            # Удаляем скрипты и стили (всегда)
             for script in s(["script", "style", "svg", "path", "noscript"]): script.decompose()
 
+        # Текст ссылок (анкоры)
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
         
+        # Сбор ДОПОЛНИТЕЛЬНОГО текста (Description, Alt, Title)
         extra_text = []
+        
+        # Description берем всегда
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'): extra_text.append(meta_desc['content'])
-        
-        # --- ВЕРНУЛИ ALT/TITLE ---
+
+        # === [ВАЖНО] УЧЕТ ALT / TITLE ===
+        # Если галочка ВКЛЮЧЕНА - собираем, если НЕТ - пропускаем
         if settings['alt_title']:
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
-        # -------------------------
+        # ================================
 
-        body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
-
+        # Собираем итоговый текст: Видимый текст + Скрытый (Alt/Title/Desc)
         body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
 
+        # То же самое для версии "без товаров"
         body_text_no_grid_raw = soup_no_grid.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text_no_grid = re.sub(r'\s+', ' ', body_text_no_grid_raw).strip()
 
-        if not body_text: 
-            st.warning("⚠️ Страница скачалась, но текст не найден (пустой body).")
-            return None
+        if not body_text: return None
             
         return {
             'url': url, 
@@ -760,10 +748,9 @@ def parse_page(url, settings, query_context=""):
             'body_text_no_grid': body_text_no_grid,
             'anchor_text': anchor_text,
             'h1': h1_text,
-            'product_titles': product_titles # <--- НОВОЕ ПОЛЕ
+            'product_titles': product_titles
         }
-    except Exception as e_parse:
-        st.error(f"❌ Ошибка при обработке HTML: {e_parse}")
+    except Exception:
         return None
         
 def math_round(number):
@@ -3197,6 +3184,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
