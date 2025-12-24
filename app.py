@@ -872,26 +872,27 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             # Если выключена: берем как есть
             c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         
-# --- НОВАЯ ФОРМУЛА (АКСИОМА ЧЕТНОГО КОЛИЧЕСТВА) ---
-        # 1. Сортируем список (нули учитываем, так как это конкуренты из Топа)
+# --- ФОРМУЛА: КЛАССИЧЕСКАЯ МЕДИАНА (ПОСЕРЕДИНЕ ТОПА) ---
+        # 1. Сортируем список всех конкурентов (включая нули)
         sorted_counts = sorted(c_counts)
-        n_len = len(sorted_counts)
         
-        if n_len > 0:
-            # 2. Находим индексы двух центральных элементов
-            # Для N=10 (четное): индексы 4 и 5
-            # Для N=5 (нечетное): индексы 1 и 2 (если применять формулу четных)
-            right_idx = n_len // 2
-            left_idx = right_idx - 1
+        if sorted_counts:
+            # 2. Берем число посередине (библиотечная функция делает это сама)
+            # Если кол-во нечетное (5) -> берет 3-е число.
+            # Если кол-во четное (10) -> берет среднее между 5-м и 6-м.
+            med_val = np.median(sorted_counts)
             
-            # Защита на случай, если список вдруг из 1 элемента
-            if left_idx < 0:
-                med_val = sorted_counts[0]
-            else:
-                val1 = sorted_counts[left_idx]
-                val2 = sorted_counts[right_idx]
-                # 3. Считаем среднее
-                med_val = (val1 + val2) / 2
+            # 3. Округляем (0.5 -> 1)
+            rec_median = math_round(med_val)
+            
+            # Мин/Макс
+            obs_min = math_round(sorted_counts[0])
+            obs_max = math_round(sorted_counts[-1])
+        else:
+            rec_median = 0
+            obs_min = 0
+            obs_max = 0
+        # ---------------------------------------------------
             
             # 4. Округляем (0.5 -> 1, 3.5 -> 4)
             rec_median = math_round(med_val)
@@ -3209,6 +3210,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
