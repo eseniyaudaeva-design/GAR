@@ -1938,49 +1938,75 @@ with tab_seo_main:
 # ... (существующий вывод первой таблицы)
         render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
-# === ВЫВОД ТАБЛИЦЫ №2 (С ФОРМУЛОЙ) ===
+# === ВЫВОД ТАБЛИЦЫ №2 (БЕЗ HTML, НАТИВНЫЙ STREAMLIT) ===
         if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
             df_naming = st.session_state.naming_table_df
             
             st.markdown("### 2. Рекомендации по названию товаров")
             
-            # --- БЛОК 1: ФОРМУЛА (Выводим выше таблицы) ---
+            # --- БЛОК 1: ФОРМУЛА (НАТИВНЫЙ) ---
             if 'ideal_h1_result' in st.session_state:
                 res_ideal = st.session_state.ideal_h1_result
                 
-                # Проверка: данные должны быть новым кортежем (Название, Отчет)
-                # Если это старый словарь или пустота - не выводим, пока юзер не нажмет "Анализ"
                 if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
-                    example_name = res_ideal[0] # Пример: "Муфта соединительная..."
-                    report_list = res_ideal[1]  # Список строк отчета
+                    example_name = res_ideal[0]
+                    report_list = res_ideal[1]
                     
-                    # Извлекаем строку с формулой (она обычно первая в отчете)
-                    # Ищем строку, начинающуюся с "**Схема:**" или "**Типичная структура:**"
+                    # Чистим строку формулы от лишнего текста
                     formula_str = "Формула не определена"
                     for line in report_list:
-                        if "Схема" in line or "структура" in line:
-                            formula_str = line.replace("**Схема:**", "").replace("**Типичная структура:**", "").strip()
+                        if "структура" in line or "Схема" in line:
+                            # Убираем жирный шрифт и названия полей
+                            formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
                             break
                     
-                    # Красивый вывод
-                    st.markdown(f"""
-                    <div style="background-color: #f0f9ff; padding: 20px; border-radius: 10px; border: 1px solid #b3e5fc; margin-bottom: 25px;">
-                        <h4 style="margin-top:0; color: #0277bd; margin-bottom: 10px;">🧪 Идеальная формула названия</h4>
+                    # Вывод через стандартный контейнер с рамкой
+                    with st.container(border=True):
+                        st.markdown("#### 🧪 Идеальная формула названия")
+                        # st.info делает красивую синюю плашку без лишнего HTML
+                        st.info(f"**{formula_str}**", icon="🧩")
+                        st.markdown(f"**Пример генерации:** _{example_name}_")
                         
-                        <div style="font-size: 20px; font-weight: bold; color: #333; margin-bottom: 15px; padding: 10px; background: white; border-radius: 6px; border: 1px dashed #0277bd; text-align: center;">
-                            {formula_str}
-                        </div>
-                        
-                        <div style="display: flex; gap: 15px; align-items: center;">
-                            <div style="font-weight: bold; color: #555;">Пример генерации:</div>
-                            <div style="font-style: italic; color: #333; background: #fff; padding: 5px 10px; border-radius: 4px;">
-                                {example_name}
-                            </div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
                 else:
-                    st.warning("⚠️ Данные устарели. Нажмите 'ЗАПУСТИТЬ АНАЛИЗ', чтобы рассчитать формулу.")
+                    st.warning("⚠️ Данные устарели. Нажмите 'ЗАПУСТИТЬ АНАЛИЗ'.")
+
+            # --- БЛОК 2: ТАБЛИЦА ---
+            st.markdown("##### Детальный анализ характеристик")
+            
+            if not df_naming.empty:
+                col_ctrl1, col_ctrl2 = st.columns([1, 3])
+                with col_ctrl1:
+                    show_tech = st.toggle("Показать размеры и цифры", value=False)
+                
+                df_display = df_naming.copy()
+                
+                if not show_tech:
+                    # Скрываем категорию "Размеры/Прочее"
+                    df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
+
+                if 'cat_sort' in df_display.columns:
+                    df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
+                
+                # Убираем технические столбцы
+                cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
+                existing_cols = [c for c in cols_to_show if c in df_display.columns]
+                df_display = df_display[existing_cols]
+
+                # Раскраска
+                def style_rows(row):
+                    val = str(row.get('Добавить', ''))
+                    if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row) # Красный
+                    if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row) # Зеленый
+                    return [''] * len(row)
+
+                st.dataframe(
+                    df_display.style.apply(style_rows, axis=1),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
+                )
+            else:
+                st.warning("Нет данных для отображения.")
 
             # --- БЛОК 2: ТАБЛИЦА ---
             st.markdown("##### Детальный анализ характеристик")
@@ -3151,6 +3177,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
