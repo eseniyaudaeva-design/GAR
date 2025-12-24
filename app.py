@@ -2001,7 +2001,7 @@ with tab_seo_main:
 # ... (существующий вывод первой таблицы)
         render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
-# === ВЫВОД ТАБЛИЦЫ №2 (С ФОРМУЛОЙ ВВЕРХУ) ===
+# === ВЫВОД ТАБЛИЦЫ №2 (С ФОРМУЛОЙ) ===
         if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
             df_naming = st.session_state.naming_table_df
             
@@ -2010,23 +2010,40 @@ with tab_seo_main:
             # --- БЛОК 1: ФОРМУЛА (Выводим выше таблицы) ---
             if 'ideal_h1_result' in st.session_state:
                 res_ideal = st.session_state.ideal_h1_result
-                if isinstance(res_ideal, tuple) or isinstance(res_ideal, list):
-                    structure_formula = res_ideal[0] # "Маркер + Свойства + ..."
-                    details_report = res_ideal[1]    # Список популярных слов
+                
+                # Проверка: данные должны быть новым кортежем (Название, Отчет)
+                # Если это старый словарь или пустота - не выводим, пока юзер не нажмет "Анализ"
+                if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
+                    example_name = res_ideal[0] # Пример: "Муфта соединительная..."
+                    report_list = res_ideal[1]  # Список строк отчета
                     
-                    # Красивый вывод формулы
+                    # Извлекаем строку с формулой (она обычно первая в отчете)
+                    # Ищем строку, начинающуюся с "**Схема:**" или "**Типичная структура:**"
+                    formula_str = "Формула не определена"
+                    for line in report_list:
+                        if "Схема" in line or "структура" in line:
+                            formula_str = line.replace("**Схема:**", "").replace("**Типичная структура:**", "").strip()
+                            break
+                    
+                    # Красивый вывод
                     st.markdown(f"""
-                    <div style="background-color: #f0f7ff; padding: 15px; border-radius: 8px; border: 1px solid #bae6fd; margin-bottom: 20px;">
-                        <h4 style="margin-top:0; color: #0369a1;">🧪 Формула идеального названия</h4>
-                        <div style="font-size: 18px; font-weight: bold; color: #333; margin-bottom: 10px;">
-                            {structure_formula}
+                    <div style="background-color: #f0f9ff; padding: 20px; border-radius: 10px; border: 1px solid #b3e5fc; margin-bottom: 25px;">
+                        <h4 style="margin-top:0; color: #0277bd; margin-bottom: 10px;">🧪 Идеальная формула названия</h4>
+                        
+                        <div style="font-size: 20px; font-weight: bold; color: #333; margin-bottom: 15px; padding: 10px; background: white; border-radius: 6px; border: 1px dashed #0277bd; text-align: center;">
+                            {formula_str}
                         </div>
-                        <div style="font-size: 14px; color: #555;">
-                            <b>Частые элементы:</b><br>
-                            {"<br>".join(details_report[2:]) if len(details_report) > 2 else "Нет данных"}
+                        
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <div style="font-weight: bold; color: #555;">Пример генерации:</div>
+                            <div style="font-style: italic; color: #333; background: #fff; padding: 5px 10px; border-radius: 4px;">
+                                {example_name}
+                            </div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
+                else:
+                    st.warning("⚠️ Данные устарели. Нажмите 'ЗАПУСТИТЬ АНАЛИЗ', чтобы рассчитать формулу.")
 
             # --- БЛОК 2: ТАБЛИЦА ---
             st.markdown("##### Детальный анализ характеристик")
@@ -2034,13 +2051,12 @@ with tab_seo_main:
             if not df_naming.empty:
                 col_ctrl1, col_ctrl2 = st.columns([1, 3])
                 with col_ctrl1:
-                    # По умолчанию скрываем цифры, чтобы не пугать "60", "20"
                     show_tech = st.toggle("Показать размеры и цифры", value=False)
                 
                 df_display = df_naming.copy()
                 
                 if not show_tech:
-                    # Скрываем категорию "Размеры/Прочее", но оставляем "Марка/Сплав"
+                    # Скрываем категорию "Размеры/Прочее" (но оставляем Марки)
                     df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
 
                 if 'cat_sort' in df_display.columns:
@@ -3198,6 +3214,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
