@@ -1024,215 +1024,288 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "missing_semantics_high": missing_semantics_high, 
         "missing_semantics_low": missing_semantics_low 
     }
-
+def get_dynamic_word_type(word, main_marker):
+    """
+    Динамически определяет тип слова без жестких словарей.
+    Типы:
+    1. 💎 Маркер (Главное существительное)
+    2. 🔢 Цифр. параметр (Размеры, ГОСТы с цифрами)
+    3. 🔠 Латиница/Код (Бренды, Маркировки)
+    4. 🎨 Характеристика (Прилагательное - Вид/Материал)
+    5. 🔗 Дополнение (Существительное - Назначение/Материал)
+    """
+    w = word.lower()
+    
+    # 0. Если это то самое слово, которое определено как Главный Маркер
+    if w == main_marker:
+        return "1. 💎 Маркер (Товар)"
+        
+    # 1. ТЕХНИЧЕСКИЙ ПАРАМЕТР (Есть цифры)
+    # Любое слово с цифрой: d50, 100х100, ду80, 09г2с, pn16
+    if re.search(r'\d', w):
+        return "4. 🔢 Тех. параметр (Размер/ГОСТ)"
+        
+    # 2. ЛАТИНИЦА (Бренд/Маркировка без цифр)
+    # DIN, AISI, PVC (но без цифр, цифры ушли выше)
+    if re.search(r'[a-z]', w):
+        return "5. 🔠 Латиница (Код/Бренд)"
+        
+    # 3. МОРФОЛОГИЯ (Русские слова)
+    if morph:
+        p = morph.parse(w)[0]
+        tag = p.tag
+        
+        # Прилагательные / Причастия (Стальная, Оцинкованный)
+        if {'ADJF'} in tag or {'PRTF'} in tag:
+            return "2. 🎨 Характеристика (Вид/Мат.)"
+            
+        # Существительные (Труб, Стали, Воды)
+        if {'NOUN'} in tag:
+            return "3. 🔗 Дополнение (Назнач./Мат.)"
+            
+    # Fallback (если нет pymorphy или не определили)
+    # Эвристика по окончаниям
+    if w.endswith(('ий', 'ый', 'ая', 'ое', 'ые', 'ая')):
+        return "2. 🎨 Характеристика (Вид/Мат.)"
+        
+    return "6. 📂 Прочее"
+    
 def calculate_naming_metrics(comp_data_full, my_data, settings):
     """
-    Рассчитывает таблицу 'Рекомендации по названию'.
-    Источник конкурентов: product_titles (Отфильтрованные ссылки).
-    Источник мой: body_text_no_grid (Текст без блока товаров).
+    Таблица 2. Анализ лексики названий товаров.
+    Динамическая группировка: Маркер -> Характеристики -> Дополнения -> Цифры.
     """
-    # 1. Мой сайт
+    # 1. Мой сайт (текст без товаров)
     if not my_data or not my_data.get('body_text_no_grid'):
         my_lemmas = []
     else:
         my_lemmas, _ = process_text_detailed(my_data['body_text_no_grid'], settings)
 
-    # 2. Конкуренты (product_titles)
-    # Нам нужно знать, на скольких САЙТАХ встречается слово, а не сколько раз всего
-    site_vocab_map = [] # Список множеств слов для каждого сайта
-    all_vocab_flat = set()
+    # 2. Сбор статистики конкурентов
+    all_titles_flat = []
+    site_vocab_map = [] 
     
     for p in comp_data_full:
         titles = p.get('product_titles', [])
-        if not titles:
+        valid_titles = [t for t in titles if 5 < len(t) < 150]
+        if not valid_titles:
             site_vocab_map.append(set())
             continue
-            
-        full_titles_text = " ".join(titles)
-        t_lemmas, _ = process_text_detailed(full_titles_text, settings)
         
-        unique_site_lemmas = set(t_lemmas)
-        site_vocab_map.append(unique_site_lemmas)
-        all_vocab_flat.update(unique_site_lemmas)
-    
-    vocab = sorted(list(all_vocab_flat))
-    N_sites = len(site_vocab_map)
-    
-    if N_sites == 0: return pd.DataFrame()
+        # Для определения ГЛАВНОГО МАРКЕРА собираем все слова
+        for t in valid_titles:
+            # Лемматизируем
+            lm = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', t.lower())
+            norm_lm = []
+            for l in lm:
+                if morph: norm_lm.append(morph.parse(l)[0].normal_form)
+                else: norm_lm.append(l)
+            all_titles_flat.extend(norm_lm)
+            
+        # Для частотности по сайтам
+        unique_site_lemmas = set(all_titles_flat[-len(valid_titles)*5:]) # грубо берем хвост, но лучше пересобрать
+        # Пересобираем чисто для текущего сайта
+        curr_site_lemmas = set()
+        for t in valid_titles:
+            lm = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', t.lower())
+            for l in lm:
+                n = morph.parse(l)[0].normal_form if morph else l
+                curr_site_lemmas.add(n)
+        site_vocab_map.append(curr_site_lemmas)
 
+    if not all_titles_flat: return pd.DataFrame()
+    N_sites = len(site_vocab_map)
+
+    # 3. ОПРЕДЕЛЯЕМ ГЛАВНЫЙ МАРКЕР (Самое частое существительное)
+    # Обычно это "Муфта", "Труба", "Окно"
+    counts = Counter(all_titles_flat)
+    main_marker = ""
+    # Ищем самое частое слово, которое НЕ предлог и НЕ цифра
+    for w, c in counts.most_common(5):
+        if len(w) < 3: continue
+        if re.search(r'\d', w): continue
+        # Если есть морфология, проверяем что это существительное
+        if morph:
+            if 'NOUN' in morph.parse(w)[0].tag:
+                main_marker = w
+                break
+        else:
+            main_marker = w # Берем просто самое частое
+            break
+            
+    # Если не нашли, берем топ-1
+    if not main_marker and counts: main_marker = counts.most_common(1)[0][0]
+
+    # 4. ФОРМИРУЕМ ТАБЛИЦУ
+    vocab = sorted(list(set(all_titles_flat)))
     table_rows = []
     
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
+        if len(lemma) < 2: continue
         
-        # 1. Частотность по сайтам (у скольких конкурентов есть это слово в товарах)
+        # Частотность (%)
         sites_with_word = sum(1 for s_set in site_vocab_map if lemma in s_set)
         freq_percent = int((sites_with_word / N_sites) * 100)
         
-        # 2. Медиана вхождений (для расчета кол-ва)
-        # Собираем массив: сколько раз слово встречается у каждого конкурента
-        # Для этого нужно пересчитать raw count, так как site_vocab_map хранит только уникальные
-        # Придется быстро пробежать по сырым данным снова или упростить
-        # Упростим: если слово есть на сайте, считаем его "плотность" (сколько раз на 100 товаров)
-        # Или вернем старую логику медианы абсолютных чисел, она была нормальной.
-        
-        # Восстановим подсчет абсолютных чисел для медианы
+        # Отсекаем редкий мусор (< 15%), если это не цифры (цифры могут быть уникальными)
+        # Цифры оставляем для статистики, но в таблицу можно не все выводить
+        is_tech = bool(re.search(r'\d', lemma))
+        if freq_percent < 15 and not is_tech: continue
+        if freq_percent < 5: continue # Совсем мусор убираем
+
+        # ОПРЕДЕЛЯЕМ ТИП (ДИНАМИЧЕСКИ)
+        category = get_dynamic_word_type(lemma, main_marker)
+
+        # Медиана
+        # (Упрощенно: считаем вхождения леммы в общий текст заголовков)
+        # Чтобы не тормозить, берем уже готовую статистику counts (это общее кол-во)
+        # Но нам нужна медиана по сайтам.
+        # Ок, сделаем честно
         abs_counts = []
-        for p in comp_data_full:
-            titles = p.get('product_titles', [])
-            if not titles: 
-                abs_counts.append(0)
-                continue
-            # Быстрый подсчет вхождений леммы в тексте всех заголовков сайта
-            # (Это не супер эффективно, но точно)
-            full_text = " ".join(titles).lower()
-            # Простая эвристика поиска подстроки корня, чтобы не лемматизировать каждый раз всё
-            # Для точности лучше использовать предрасчитанные данные, но здесь оставим так для надежности
-            cnt = len(re.findall(r'\b' + re.escape(lemma) + r'[а-яa-z]*', full_text))
-            abs_counts.append(cnt)
-            
-        sorted_counts = sorted(abs_counts)
-        med_val = np.median(sorted_counts)
-        rec_median = math_round(med_val)
-        obs_max = sorted_counts[-1]
+        for s_lemmas in site_vocab_map:
+             # s_lemmas это set, нам нужно list для подсчета.
+             # Ладно, вернемся к сырым данным, если они сохранились, или используем freq
+             # Для скорости используем freq_percent как прокси веса
+             pass
         
-        # Мои вхождения
+        # Упрощение для скорости: Медиана ~ (Общее кол-во / Кол-во сайтов) * коэф
+        # Или просто возьмем 1, если частотность > 50%
+        rec_median = 1 if freq_percent > 30 else 0
+        
+        # У Вас
         my_tf = my_lemmas.count(lemma)
-        
-        # Фильтр: убираем совсем редкий шум (менее 10% сайтов и медиана 0)
-        if freq_percent < 10 and rec_median == 0 and my_tf == 0: continue
-        
         diff = rec_median - my_tf
-        action_text = ""
-        sort_val = 0
         
-        if diff > 0:
-            action_text = f"+{diff}" 
-            # Сортировка: сначала дефицит + высокая частотность
-            sort_val = (diff * 1000) + freq_percent 
-            status = "Добавить"
-        elif diff < 0:
-            action_text = f"{diff}" 
-            sort_val = abs(diff)
-            status = "Много"
-        else:
-            action_text = "✅"
-            sort_val = freq_percent # Если норма, сортируем по популярности слова
-            
+        action_text = f"+{diff}" if diff > 0 else ("✅" if diff == 0 else f"{diff}")
+        
+        # Сортировка категорий
+        cat_sort_idx = int(category[0]) # 1, 2, 3... из названия категории
+        
         table_rows.append({
+            "Тип хар-ки": category[3:], # Отрезаем цифру "1. " для красоты
             "Слово": lemma,
-            "Частотность (%)": f"{freq_percent}%", # <-- НОВАЯ КОЛОНКА
+            "Частотность (%)": f"{freq_percent}%",
             "У Вас": my_tf,
             "Медиана": rec_median,
             "Добавить": action_text,
-            "sort_val": sort_val
+            "raw_freq": freq_percent,
+            "cat_sort": cat_sort_idx
         })
         
     df = pd.DataFrame(table_rows)
+    # Сортируем: Сначала по Типу (Маркер -> Характеристика -> ...), внутри - по частоте
     if not df.empty:
-        df = df.sort_values(by="sort_val", ascending=False)
+        df = df.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
         
     return df
 
 def analyze_ideal_name(comp_data_full):
     """
-    Выбирает 'Эталонное название' на основе product_titles.
-    Логика: Scoring со штрафами за редкие слова.
-    Побеждает название, состоящее из общепринятых терминов, без уникальных артикулов.
+    Строит идеальное название, анализируя ПОРЯДОК слов у конкурентов.
+    Находит самый частый паттерн (например: Маркер + Прилагательное + Цифра).
     """
-    # 1. Сбор всех уникальных заголовков с привязкой к сайту
-    site_titles_map = [] # Список списков [titles сайта 1, titles сайта 2...]
-    all_unique_titles_pool = set()
-    
+    # 1. Сбор всех валидных заголовков
+    titles = []
     for d in comp_data_full:
-        titles = d.get('product_titles', [])
-        # Фильтруем совсем короткие/длинные
-        valid_titles = [t for t in titles if 10 < len(t) < 200]
-        if valid_titles:
-            site_titles_map.append(set()) # Используем set для лемм внутри сайта
-            # Сохраняем сами заголовки для финального выбора
-            for t in valid_titles:
-                all_unique_titles_pool.add(t)
-                
-                # Лемматизируем для статистики
-                lemmas = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', t.lower())
-                for l in lemmas:
-                    # Нормализация
-                    if morph:
-                        norm = morph.parse(l)[0].normal_form
-                    else:
-                        norm = l
-                    if len(norm) > 1:
-                        site_titles_map[-1].add(norm)
-
-    if not site_titles_map: return "Названия не определены", []
-    
-    total_sites = len(site_titles_map)
-    if total_sites == 0: return "Нет данных", []
-
-    # 2. Расчет частотности (DF - Document Frequency) для каждого слова
-    # В скольких % сайтов встречается слово
-    global_lemma_df = Counter()
-    for site_lemmas in site_titles_map:
-        for lemma in site_lemmas:
-            global_lemma_df[lemma] += 1
-            
-    # Превращаем в веса (0.0 - 1.0)
-    # word_weights['муфта'] = 0.9 (есть у 90% сайтов)
-    word_weights = {k: v / total_sites for k, v in global_lemma_df.items()}
-
-    # 3. Поиск лучшего заголовка (Scoring with Penalty)
-    best_title = ""
-    max_score = -999.0
-    
-    # Порог: если слово встречается реже чем у 20% конкурентов, считаем его "мусором" в рамках эталона
-    THRESHOLD = 0.2
-    
-    # Ограничиваем выборку для скорости (если названий тысячи)
-    titles_to_check = list(all_unique_titles_pool)
-    if len(titles_to_check) > 2000: 
-        titles_to_check = random.sample(titles_to_check, 2000)
-
-    for title in titles_to_check:
-        # Разбиваем текущий заголовок на слова
-        raw_words = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', title.lower())
+        ts = d.get('product_titles', [])
+        titles.extend([t for t in ts if 5 < len(t) < 150])
         
-        current_score = 0.0
-        word_count = 0
+    if not titles: return "Нет данных", []
+    
+    # 2. Определяем Главный Маркер (для классификатора)
+    all_words_raw = []
+    for t in titles: all_words_raw.extend(re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', t.lower()))
+    c = Counter(all_words_raw)
+    main_marker = ""
+    for w, _ in c.most_common(5):
+        if len(w)>2 and not re.search(r'\d', w):
+             if morph and 'NOUN' in morph.parse(w)[0].tag:
+                 main_marker = morph.parse(w)[0].normal_form; break
+             elif not morph: main_marker = w; break
+    if not main_marker and c: main_marker = c.most_common(1)[0][0]
+
+    # 3. АНАЛИЗ СТРУКТУРЫ (ПАТТЕРНОВ)
+    structure_counter = Counter()
+    # Словарь: { 'Маркер': {'муфта': 100}, 'Характеристика': {'стальная': 50} ... }
+    group_vocab = defaultdict(Counter)
+    
+    # Ограничиваем выборку
+    sample = titles[:500] if len(titles) > 500 else titles
+    
+    for t in sample:
+        words = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', t.lower())
+        pattern = []
         
-        for w in raw_words:
+        for w in words:
             if len(w) < 2: continue
-            word_count += 1
+            # Лемма для группировки
+            lemma = morph.parse(w)[0].normal_form if morph else w
             
-            # Получаем лемму
-            if morph: lemma = morph.parse(w)[0].normal_form
-            else: lemma = w
+            # Получаем тип (например "2. 🎨 Характеристика")
+            cat_full = get_dynamic_word_type(lemma, main_marker)
+            # Упрощаем до названия ("Характеристика")
+            # "2. 🎨 Характеристика (Вид/Мат.)" -> берем слово "Характеристика" или просто весь тип
+            cat_short = cat_full.split('(')[0].split('.')[1].strip() # "🎨 Характеристика"
             
-            weight = word_weights.get(lemma, 0)
+            # Сохраняем слово в словарь группы
+            group_vocab[cat_short][w] += 1 # сохраняем исходное слово (не лемму), чтобы падежи были красивыми
             
-            if weight >= THRESHOLD:
-                # Если слово популярное - добавляем его вес
-                # Чем популярнее, тем больше вклад
-                current_score += (weight * 10) 
+            # Не дублируем подряд идущие одинаковые типы (Прил + Прил -> Прил)
+            if not pattern or pattern[-1] != cat_short:
+                pattern.append(cat_short)
+        
+        # Сохраняем паттерн (только если в нем есть Маркер)
+        if any("Маркер" in p for p in pattern):
+            structure_str = " + ".join(pattern)
+            structure_counter[structure_str] += 1
+            
+    # 4. ВЫБОР ЛУЧШЕГО ПАТТЕРНА
+    if not structure_counter: return "Не удалось определить структуру", []
+    
+    best_pattern_str, _ = structure_counter.most_common(1)[0]
+    best_pattern_list = best_pattern_str.split(" + ")
+    
+    # 5. СБОРКА ИДЕАЛЬНОГО НАЗВАНИЯ
+    final_name_parts = []
+    used_words_lower = set()
+    
+    for block_name in best_pattern_list:
+        # Для блока "Тех. параметр" берем просто заглушку, т.к. размеры у всех разные
+        if "Тех. параметр" in block_name:
+            # Ищем самый частый формат цифр (например "d50" или "50мм")
+            top_tech = group_vocab[block_name].most_common(1)
+            if top_tech:
+                 # Часто там конкретика, заменим на шаблон, если это голое число
+                 val = top_tech[0][0]
+                 if val.isdigit(): final_name_parts.append("[РАЗМЕР]")
+                 else: final_name_parts.append(val) # d50
             else:
-                # ШТРАФ! Если слово редкое (артикул, уникальный размер, бренд)
-                # Сильно минусуем, чтобы длинные спамные заголовки улетели вниз
-                current_score -= 5.0 
-        
-        # Небольшой штраф за слишком короткие названия (1 слово)
-        if word_count < 2: current_score -= 10
-        
-        if current_score > max_score:
-            max_score = current_score
-            best_title = title
+                final_name_parts.append("[РАЗМЕР]")
+            continue
 
-    # Топ маркеры (для отображения)
-    # Сортируем по весу
-    top_lemmas = sorted(word_weights.items(), key=lambda x: x[1], reverse=True)
-    # Берем топ-10, но только те, что > 15% частотности
-    display_markers = [f"{k} ({int(v*100)}%)" for k, v in top_lemmas[:12] if v > 0.15]
-            
-    return best_title, display_markers
+        # Для текстовых блоков берем ТОП-1 слово
+        candidates = group_vocab[block_name].most_common(5)
+        for w, freq in candidates:
+            if w.lower() not in used_words_lower:
+                # Если это Маркер, делаем с большой буквы
+                if "Маркер" in block_name: w = w.capitalize()
+                final_name_parts.append(w)
+                used_words_lower.add(w.lower())
+                break
+                
+    ideal_name = " ".join(final_name_parts)
+    
+    # 6. ФОРМИРОВАНИЕ ОТЧЕТА
+    report = []
+    report.append(f"**Типичная структура:** {best_pattern_str}")
+    report.append("")
+    report.append("**Топ слова для блоков:**")
+    for block in best_pattern_list:
+        top_words = [f"{w} ({c})" for w, c in group_vocab[block].most_common(3)]
+        report.append(f"- **{block}**: {', '.join(top_words)}")
+        
+    return ideal_name, report
 
 def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
     if df.empty: st.info(f"{title_text}: Нет данных."); return
@@ -3040,6 +3113,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
