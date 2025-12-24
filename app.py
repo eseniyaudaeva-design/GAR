@@ -721,28 +721,12 @@ def parse_page(url, settings, query_context=""):
 # Чистка
         tags_to_remove = []
         if settings['noindex']: tags_to_remove.append('noindex')
-        
-        # Расширенный список мусора (Меню, Футер, Сайдбары)
-        garbage_tags = [
-            "script", "style", "svg", "path", "noscript", 
-            "header", "footer", "nav", "aside", "form" 
-        ]
-
-        for s in [soup, soup_no_grid]:
+        for s in [soup, soup_no_grid]: # <--- ТУТ ЦИКЛ
             for c in s.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
-            
-            # Удаляем noindex, если включена настройка
             if tags_to_remove:
                 for t in s.find_all(tags_to_remove): t.decompose()
-            
-            # Удаляем технические и сквозные блоки (ВОТ ТУТ ГЛАВНОЕ ИЗМЕНЕНИЕ)
-            for tag in s(garbage_tags): 
-                tag.decompose()
-            
-            # ОПЦИОНАЛЬНО: Удаление по классам (если на сайте нет тегов <header/footer>)
-            # Часто меню верстают просто через <div class="menu">
-            for div in s.find_all("div", class_=re.compile(r'(menu|nav|footer|sidebar|header)', re.I)):
-                div.decompose()
+            # ВОТ СТРОКА, КОТОРУЮ НАДО МЕНЯТЬ:
+            for script in s(["script", "style", "svg", "path", "noscript"]): script.decompose()
 
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
@@ -3185,6 +3169,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
