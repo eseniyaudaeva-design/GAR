@@ -1976,7 +1976,7 @@ with tab_seo_main:
             if not df_naming.empty:
                 col_ctrl1, col_ctrl2 = st.columns([1, 3])
                 with col_ctrl1:
-                    show_tech = st.toggle("Показать размеры и цифры", value=False)
+                    show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
                 
                 df_display = df_naming.copy()
                 
@@ -3177,6 +3177,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
