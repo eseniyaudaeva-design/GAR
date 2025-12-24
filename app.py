@@ -2008,45 +2008,6 @@ with tab_seo_main:
             else:
                 st.warning("Нет данных для отображения.")
 
-            # --- БЛОК 2: ТАБЛИЦА ---
-            st.markdown("##### Детальный анализ характеристик")
-            
-            if not df_naming.empty:
-                col_ctrl1, col_ctrl2 = st.columns([1, 3])
-                with col_ctrl1:
-                    show_tech = st.toggle("Показать размеры и цифры", value=False)
-                
-                df_display = df_naming.copy()
-                
-                if not show_tech:
-                    # Скрываем категорию "Размеры/Прочее" (но оставляем Марки)
-                    df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
-
-                if 'cat_sort' in df_display.columns:
-                    df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
-                
-                cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
-                existing_cols = [c for c in cols_to_show if c in df_display.columns]
-                df_display = df_display[existing_cols]
-
-                def style_rows(row):
-                    val = str(row.get('Добавить', ''))
-                    if "+" in val: return ['background-color: #fff1f2; color: #be123c; font-weight: 500'] * len(row)
-                    if "✅" in val: return ['background-color: #f0fdf4; color: #15803d'] * len(row)
-                    return [''] * len(row)
-
-                st.dataframe(
-                    df_display.style.apply(style_rows, axis=1),
-                    use_container_width=True,
-                    hide_index=True,
-                    height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
-                )
-            else:
-                st.warning("Нет данных для отображения.")
-
-        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
-
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
 # ------------------------------------------
@@ -3177,6 +3138,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
