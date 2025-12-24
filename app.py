@@ -834,7 +834,22 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
         # Данные по конкурентам (массив вхождений)
-        c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
+        if settings['norm'] and my_len > 0:
+            # Если включена нормировка: приводим кол-во слов конкурентов к длине ВАШЕГО текста
+            c_counts = []
+            for i in range(N):
+                raw_count = word_counts_per_doc[i][lemma]
+                comp_len = c_lens[i]
+                
+                if comp_len > 0:
+                    # Формула: (Сколько у него) * (Моя длина / Его длина)
+                    normalized_val = raw_count * (my_len / comp_len)
+                    c_counts.append(normalized_val)
+                else:
+                    c_counts.append(0)
+        else:
+            # Если выключена: берем как есть
+            c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         
         # --- РАСЧЕТ МЕДИАНЫ ПО ПРАВИЛАМ МАТЕМАТИКИ ---
         sorted_counts = sorted(c_counts)
@@ -3141,6 +3156,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
