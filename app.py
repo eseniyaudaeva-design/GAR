@@ -1069,159 +1069,157 @@ def get_dynamic_word_type(word, main_marker):
         return "2. 🎨 Характеристика (Вид/Мат.)"
         
     return "6. 📂 Прочее"
-def get_hybrid_word_type(word, main_marker_root):
+def get_hybrid_word_type(word, main_marker_root, specs_dict=None):
     """
-    Гибридный классификатор (Синтаксис + Типы данных).
+    Гибридный классификатор 2.0 (С разделением Тех. параметров).
+    Принимает specs_dict (множество из tech_specs.json) для точного определения марок.
     """
     w = word.lower()
+    specs_dict = specs_dict or set()
     
-    # 1. ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ (Коробка 1)
-    # Любое слово с цифрой (d50, 100х100, 09г2с)
-    if re.search(r'\d', w):
-        return "4. 🔢 Тех. параметры"
-        
-    # 2. ЛАТИНИЦА (Коробка 2)
-    # Чистая латиница без цифр (бренды, стандарты)
-    if re.search(r'^[a-z\-]+$', w):
-        return "5. 🔠 Латиница/Код"
-
-    # 3. МАРКЕР (Коробка 3)
-    # Если корень слова совпадает с корнем Самого Частого Слова
+    # 1. МАРКЕР (Товар) - Самый высокий приоритет
     if morph:
         norm = morph.parse(w)[0].normal_form
-        if norm == main_marker_root:
-            return "1. 💎 Маркер (Товар)"
-    elif w in main_marker_root:
-        return "1. 💎 Маркер (Товар)"
+        if norm == main_marker_root: return "1. 💎 Маркер (Товар)"
+    elif w in main_marker_root: return "1. 💎 Маркер (Товар)"
 
-    # 4. ГРАММАТИКА (Коробки 4 и 5)
+    # 2. СТАНДАРТЫ (ГОСТ, DIN, ISO, ТУ)
+    # Даже если есть цифры (ГОСТ 10704), это Стандарт
+    if re.search(r'(gost|din|iso|en|tu|astm|aisi|гост|ост|ту|дин)', w):
+        return "6. 📜 Стандарт"
+
+    # 3. МАРКИ / СПЛАВЫ (Словарь + Паттерны)
+    # А. Проверка по вашему словарю json
+    if w in specs_dict:
+        return "3. 🏗️ Марка/Сплав"
+    
+    # Б. Регулярка для марок (Сложные сочетания букв и цифр, но НЕ размеры)
+    # Пример: 09г2с, 12х18н10т, ст3, aisi304
+    # Исключаем явные размеры (d50, ду100, pn16)
+    is_dim = re.search(r'^(d|dn|pn|sn|ду|ру|sdr)\d', w)
+    if not is_dim and re.search(r'\d', w):
+        # Паттерн марки: Буквы+Цифры+Буквы (12х18...) или Ст+Цифра
+        if re.search(r'^[а-яa-z]{1,4}\-?\d+[а-яa-z]+', w) or w.startswith('ст'):
+             return "3. 🏗️ Марка/Сплав"
+
+    # 4. ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ (Размеры)
+    # Оставшиеся слова с цифрами
+    if re.search(r'\d', w):
+        return "5. 🔢 Размеры/Прочее"
+        
+    # 5. ЛАТИНИЦА (Бренды без цифр)
+    if re.search(r'^[a-z\-]+$', w):
+        return "7. 🔠 Латиница/Бренд"
+
+    # 6. ГРАММАТИКА (Свойства и Дополнения)
     if morph:
         p = morph.parse(w)[0]
         tag = p.tag
-        
-        # Предлоги и Союзы -> МУСОР (для, из, и, в)
-        if {'PREP'} in tag or {'CONJ'} in tag:
-            return "SKIP" 
-            
-        # Прилагательные -> СВОЙСТВА
-        if {'ADJF'} in tag or {'PRTF'} in tag or {'ADJS'} in tag:
-            return "2. 🎨 Свойства (Вид/Мат.)"
-            
-        # Существительные (не маркер) -> ДОПОЛНЕНИЯ
-        if {'NOUN'} in tag:
-            return "3. 🔗 Дополнения (Назнач./Мат.)"
+        if {'PREP'} in tag or {'CONJ'} in tag: return "SKIP"
+        if {'ADJF'} in tag or {'PRTF'} in tag or {'ADJS'} in tag: return "2. 🎨 Свойства"
+        if {'NOUN'} in tag: return "4. 🔗 Дополнения"
 
-    # Эвристика (если нет pymorphy)
-    if w.endswith(('ий', 'ый', 'ая', 'ое', 'ые', 'ая')):
-        return "2. 🎨 Свойства (Вид/Мат.)"
-        
-    return "3. 🔗 Дополнения (Назнач./Мат.)"
+    if w.endswith(('ий', 'ый', 'ая', 'ое', 'ые', 'ая')): return "2. 🎨 Свойства"
+    return "4. 🔗 Дополнения"
     
 def calculate_naming_metrics(comp_data_full, my_data, settings):
     """
-    Таблица 2. Гибридный анализ.
-    Группирует слова по 5 типам: Маркер, Свойства, Дополнения, Тех.Параметры, Латиница.
+    Таблица 2. С выделением Марки и ГОСТа.
     """
+    # ПОДГРУЗКА СЛОВАРЯ МАРОК (ИЗ ВАШЕГО JSON)
+    SPECS_SET = st.session_state.get('categorized_dimensions', set()) # Обычно сюда грузится tech_specs
+    # Если вдруг пусто, пробуем загрузить напрямую из кэша
+    if not SPECS_SET:
+        _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
+
     # 1. Мой сайт
     if not my_data or not my_data.get('body_text_no_grid'):
         my_lemmas = []
     else:
         my_lemmas, _ = process_text_detailed(my_data['body_text_no_grid'], settings)
 
-    # 2. Сбор статистики конкурентов
-    all_words_flat = [] # Все слова (для поиска Маркера)
-    site_vocab_map = [] # Для частотности
+    # 2. Сбор данных конкурентов
+    all_words_flat = []
+    site_vocab_map = []
     
     for p in comp_data_full:
         titles = p.get('product_titles', [])
         valid_titles = [t for t in titles if 5 < len(t) < 150]
         
-        # Если у сайта нет нормальных названий - пропускаем
         if not valid_titles:
             site_vocab_map.append(set())
             continue
             
         curr_site_lemmas = set()
         for t in valid_titles:
-            # Разбиваем на слова (включая цифры и латиницу)
             words = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', t.lower())
             for w in words:
-                if len(w) < 2: continue # Игнорим 1 букву
-                # Лемматизируем
-                lemma = morph.parse(w)[0].normal_form if morph else w
+                if len(w) < 2: continue
+                # Лемматизируем только русские слова без цифр, тех.параметры оставляем как есть
+                if not re.search(r'\d', w) and not re.search(r'[a-z]', w) and morph:
+                    lemma = morph.parse(w)[0].normal_form
+                else:
+                    lemma = w
+                
                 all_words_flat.append(lemma)
                 curr_site_lemmas.add(lemma)
-        
         site_vocab_map.append(curr_site_lemmas)
 
     if not all_words_flat: return pd.DataFrame()
     N_sites = len(site_vocab_map)
 
-    # 3. АВТО-ОПРЕДЕЛЕНИЕ МАРКЕРА
-    # Ищем самое частое СУЩЕСТВИТЕЛЬНОЕ, которое НЕ цифра
+    # 3. Маркер
     counts = Counter(all_words_flat)
     main_marker_root = ""
-    
     for w, c in counts.most_common(10):
-        if re.search(r'\d', w): continue # Пропускаем цифры
-        if morph:
-            if 'NOUN' in morph.parse(w)[0].tag:
-                main_marker_root = w
-                break
-        else:
-            main_marker_root = w; break # Без морфологии берем просто самое частое
-            
-    # Если не нашли, берем топ-1
-    if not main_marker_root and counts: main_marker_root = counts.most_common(1)[0][0]
+        if re.search(r'\d', w): continue
+        if morph and 'NOUN' in morph.parse(w)[0].tag: main_marker_root = w; break
+        elif not morph: main_marker_root = w; break
+    if not main_marker_root: main_marker_root = counts.most_common(1)[0][0]
 
-    # 4. СБОР СТРОК ТАБЛИЦЫ
+    # 4. Сбор таблицы
     vocab = sorted(list(set(all_words_flat)))
     table_rows = []
     
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
-        # Частотность по сайтам (%)
+        # Частотность
         sites_with_word = sum(1 for s_set in site_vocab_map if lemma in s_set)
         freq_percent = int((sites_with_word / N_sites) * 100)
         
-        # КЛАССИФИКАЦИЯ
-        cat = get_hybrid_word_type(lemma, main_marker_root)
+        # КЛАССИФИКАЦИЯ (Передаем словарь SPECS_SET)
+        cat = get_hybrid_word_type(lemma, main_marker_root, SPECS_SET)
         
-        # Фильтр мусора
-        if cat == "SKIP": continue # Предлоги
+        if cat == "SKIP": continue
         
-        # Фильтр редких слов
-        is_tech = "Тех." in cat
-        # Если это текст (свойства, маркер) и встречается реже 15% сайтов - скрываем
-        if not is_tech and freq_percent < 15: continue
-        # Если тех.параметр - показываем только частые (>10%)
-        if is_tech and freq_percent < 10: continue
+        # Логика скрытия редких слов
+        # Марки и Стандарты - важные штуки, показываем даже если редко (но > 5%)
+        is_spec = "Марка" in cat or "Стандарт" in cat
+        if is_spec and freq_percent < 5: continue
+        
+        # Обычные слова - отсекаем < 15%
+        if not is_spec and "Размеры" not in cat and freq_percent < 15: continue
+        # Размеры - отсекаем < 10%
+        if "Размеры" in cat and freq_percent < 10: continue
 
-        # Медиана (упрощенная)
         rec_median = 1 if freq_percent > 30 else 0
-        
         my_tf = my_lemmas.count(lemma)
         diff = rec_median - my_tf
-        
         action_text = f"+{diff}" if diff > 0 else ("✅" if diff == 0 else f"{diff}")
         
-        # Для сортировки
-        cat_sort_idx = int(cat[0])
-        
         table_rows.append({
-            "Тип хар-ки": cat[3:], # Отрезаем цифру "1. "
+            "Тип хар-ки": cat[3:],
             "Слово": lemma,
             "Частотность (%)": f"{freq_percent}%",
             "У Вас": my_tf,
             "Медиана": rec_median,
             "Добавить": action_text,
             "raw_freq": freq_percent,
-            "cat_sort": cat_sort_idx
+            "cat_sort": int(cat[0])
         })
         
     df = pd.DataFrame(table_rows)
-    # Сортируем: Тип -> Частота
     if not df.empty:
         df = df.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
         
@@ -1229,10 +1227,12 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
 
 def analyze_ideal_name(comp_data_full):
     """
-    Строит КОНСТРУКТОР названия.
-    Анализирует порядок: [Маркер] -> [Свойство] -> [Тех.Параметр].
+    Строит структуру с учетом Марок и ГОСТов.
     """
-    # 1. Сбор заголовков
+    # Подгружаем словарь
+    SPECS_SET = st.session_state.get('categorized_dimensions', set())
+    if not SPECS_SET: _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
+
     titles = []
     for d in comp_data_full:
         ts = d.get('product_titles', [])
@@ -1240,18 +1240,18 @@ def analyze_ideal_name(comp_data_full):
     
     if not titles: return "Нет данных", []
 
-    # 2. Определяем маркер (повторно, для автономности функции)
+    # Маркер
     all_w = []
     for t in titles: all_w.extend(re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', t.lower()))
     c = Counter(all_w)
     main_marker_root = ""
     for w, _ in c.most_common(5):
         if not re.search(r'\d', w):
-             lemma = morph.parse(w)[0].normal_form if morph else w
-             if morph and 'NOUN' in morph.parse(w)[0].tag: main_marker_root = lemma; break
+             if morph and 'NOUN' in morph.parse(w)[0].tag: main_marker_root = w; break
+             elif not morph: main_marker_root = w; break
     if not main_marker_root and c: main_marker_root = c.most_common(1)[0][0]
 
-    # 3. АНАЛИЗ ПОРЯДКА (ПАТТЕРНОВ)
+    # Анализ паттернов
     structure_counter = Counter()
     vocab_by_type = defaultdict(Counter)
     
@@ -1264,19 +1264,19 @@ def analyze_ideal_name(comp_data_full):
         for w in words:
             if len(w) < 2: continue
             
-            # Получаем тип
-            cat_full = get_hybrid_word_type(w, main_marker_root)
+            # Классификация с учетом словаря
+            cat_full = get_hybrid_word_type(w, main_marker_root, SPECS_SET)
+            if cat_full == "SKIP": continue
             
-            if cat_full == "SKIP": continue # Пропускаем предлоги в структуре
+            # Упрощенное имя типа ("Свойства", "Марка/Сплав", "Стандарт")
+            # "3. 🏗️ Марка/Сплав" -> "Марка/Сплав"
+            try:
+                cat_short = cat_full.split('.', 1)[1].strip().split(' ', 1)[1] # Берем текст после иконки
+            except:
+                cat_short = cat_full # Fallback
             
-            # Упрощаем имя типа ("Свойства", "Тех. параметры")
-            # "2. 🎨 Свойства (Вид/Мат.)" -> "🎨 Свойства"
-            cat_short = cat_full.split('(')[0].split('.')[1].strip()
+            vocab_by_type[cat_short][w] += 1
             
-            lemma = morph.parse(w)[0].normal_form if morph else w
-            vocab_by_type[cat_short][lemma] += 1
-            
-            # Не пишем подряд одинаковые блоки (Свойство + Свойство -> Свойство)
             if not pattern or pattern[-1] != cat_short:
                 pattern.append(cat_short)
         
@@ -1284,25 +1284,29 @@ def analyze_ideal_name(comp_data_full):
             structure_str = " + ".join(pattern)
             structure_counter[structure_str] += 1
             
-    # 4. ВЫБОР ПОБЕДИТЕЛЯ
+    # Сборка
     if not structure_counter: return "Структура не найдена", []
     
     best_struct_str, _ = structure_counter.most_common(1)[0]
     best_struct_list = best_struct_str.split(" + ")
     
-    # 5. СБОРКА НАЗВАНИЯ
     final_parts = []
     used_words = set()
     
     for block in best_struct_list:
-        # Для цифр ставим шаблон
-        if "Тех." in block:
-            final_parts.append("[РАЗМЕР/ГОСТ]")
+        # Для переменных параметров ставим заглушку
+        if "Размеры" in block or "Стандарт" in block or "Марка" in block:
+            # Пытаемся найти самый частый пример, если он очень популярен
+            top_cand = vocab_by_type[block].most_common(1)
+            if top_cand and top_cand[0][1] > (len(sample) * 0.3): # Если встречается у 30%
+                 final_parts.append(top_cand[0][0])
+            else:
+                 final_parts.append(f"[{block.upper()}]")
             continue
             
-        # Для слов берем ТОП-1
-        top_candidates = vocab_by_type[block].most_common(5)
-        for w, cnt in top_candidates:
+        # Для слов (Маркер, Свойства) берем ТОП-1
+        candidates = vocab_by_type[block].most_common(3)
+        for w, cnt in candidates:
             if w not in used_words:
                 if "Маркер" in block: w = w.capitalize()
                 final_parts.append(w)
@@ -1311,17 +1315,15 @@ def analyze_ideal_name(comp_data_full):
                 
     ideal_name = " ".join(final_parts)
     
-    # ОТЧЕТ
+    # Отчет
     report = []
-    report.append(f"**Самая частая структура:** {best_struct_str}")
+    report.append(f"**Схема:** {best_struct_str}")
     report.append("")
-    report.append("**Топ слова для блоков:**")
+    report.append("**Популярные значения:**")
     for block in best_struct_list:
-        if "Тех." in block:
-            report.append(f"- **{block}**: (Зависит от товара)")
-        else:
-            top = [f"{w}" for w, c in vocab_by_type[block].most_common(3)]
-            report.append(f"- **{block}**: {', '.join(top)}")
+        if "Размеры" in block: continue
+        top = [f"{w}" for w, c in vocab_by_type[block].most_common(3)]
+        report.append(f"- **{block}**: {', '.join(top)}")
             
     return ideal_name, report
 
@@ -3171,6 +3173,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
