@@ -1977,61 +1977,66 @@ with tab_seo_main:
 # ... (существующий вывод первой таблицы)
         render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
-# === НОВЫЙ ВЫВОД ТАБЛИЦЫ №2 (ГРУППИРОВКА) ===
+# === НОВЫЙ КОМПАКТНЫЙ ВЫВОД ТАБЛИЦЫ №2 ===
         if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
             df_naming = st.session_state.naming_table_df
             
             st.markdown("### 2. Рекомендации по названию товаров")
             
-            # Блок эталона
+            # 1. Блок эталона (Конструктор)
             if 'ideal_h1_result' in st.session_state:
                 res_ideal = st.session_state.ideal_h1_result
                 if isinstance(res_ideal, tuple) or isinstance(res_ideal, list):
                     ih1 = res_ideal[0]
-                    formatted_report = "\n\n".join(res_ideal[1])
+                    # Превращаем список отчета в строку
+                    formatted_report = "\n\n".join(res_ideal[1]) if isinstance(res_ideal[1], list) else str(res_ideal[1])
                     st.info(f"💡 **Эталонное название (Конструктор):** {ih1}\n\n{formatted_report}")
+
+            st.markdown("##### Анализ состава названий")
             
-            st.markdown("Анализ слов по группам:")
-
-            # Разбиваем таблицу по категориям для красоты
+            # 2. Подготовка единой таблицы
             if not df_naming.empty:
-                # Список категорий в правильном порядке (1, 2, 3...)
-                categories = sorted(df_naming['Тип хар-ки'].unique(), key=lambda x: str(x))
+                # Фильтр для тех. параметров (чтобы не засорять таблицу цифрами)
+                col_ctrl1, col_ctrl2 = st.columns([1, 3])
+                with col_ctrl1:
+                    show_tech = st.toggle("Показать технические параметры (цифры)", value=False)
                 
-                for cat in categories:
-                    df_cat = df_naming[df_naming['Тип хар-ки'] == cat].copy()
-                    
-                    # Убираем лишнее
-                    cols_show = ["Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
-                    df_show = df_cat[cols_show]
-                    
-                    count = len(df_cat)
-                    need_add = df_cat[df_cat['Добавить'].str.contains(r'\+', na=False)].shape[0]
-                    
-                    # Иконки
-                    icon = "📂"
-                    if "Маркер" in cat: icon = "💎"
-                    elif "Свойства" in cat: icon = "🎨"
-                    elif "Дополнения" in cat: icon = "🔗"
-                    elif "Тех." in cat: icon = "🔢"
-                    
-                    header = f"{icon} {cat} ({count})"
-                    if need_add > 0: header += f" — ⚠️ Нужно добавить: {need_add}"
-                    
-                    # Раскрываем все, кроме Тех.параметров (их обычно много и они засоряют вид)
-                    is_expanded = "Тех." not in cat
-                    
-                    with st.expander(header, expanded=is_expanded):
-                        def highlight(row):
-                            val = str(row['Добавить'])
-                            if "+" in val: return ['background-color: #ffebee'] * len(row)
-                            return [''] * len(row)
+                # Создаем копию для отображения
+                df_display = df_naming.copy()
+                
+                # Если галочка выключена - убираем строки с "Тех. параметр"
+                if not show_tech:
+                    df_display = df_display[~df_display['Тип хар-ки'].str.contains("Тех.", na=False)]
 
-                        st.dataframe(
-                            df_show.style.apply(highlight, axis=1),
-                            use_container_width=True,
-                            hide_index=True
-                        )
+                # Сортировка: Сначала по Категории (1,2,3), потом по Частоте
+                if 'cat_sort' in df_display.columns:
+                    df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
+                
+                # Оставляем только нужные столбцы
+                cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
+                # Проверяем, есть ли такие столбцы (защита от старых версий кэша)
+                existing_cols = [c for c in cols_to_show if c in df_display.columns]
+                df_display = df_display[existing_cols]
+
+                # Функция стилизации (Цвета строк)
+                def style_rows(row):
+                    val = str(row.get('Добавить', ''))
+                    # Красный оттенок, если нужно добавить
+                    if "+" in val: return ['background-color: #fff1f2; color: #be123c; font-weight: 500'] * len(row)
+                    # Зеленый оттенок, если норма
+                    if "✅" in val: return ['background-color: #f0fdf4; color: #15803d'] * len(row)
+                    return [''] * len(row)
+
+                # Рендер таблицы
+                st.dataframe(
+                    df_display.style.apply(style_rows, axis=1),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
+                )
+            else:
+                st.warning("Нет данных для отображения.")
+        # ===================================================
 
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
@@ -3166,6 +3171,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
