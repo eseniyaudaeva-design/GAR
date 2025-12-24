@@ -892,19 +892,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             rec_median = 0
             obs_min = 0
             obs_max = 0
-        # ---------------------------------------------------
-            
-            # 4. Округляем (0.5 -> 1, 3.5 -> 4)
-            rec_median = math_round(med_val)
-            
-            # Мин/Макс
-            obs_min = math_round(sorted_counts[0])
-            obs_max = math_round(sorted_counts[-1])
-        else:
-            rec_median = 0
-            obs_min = 0
-            obs_max = 0
-        # ---------------------------------------------------
 
         # --- МОЯ СТАТИСТИКА ---
         my_tf_count = my_lemmas.count(lemma)
@@ -3210,6 +3197,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
