@@ -734,6 +734,14 @@ def parse_page(url, settings, query_context=""):
         extra_text = []
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'): extra_text.append(meta_desc['content'])
+        
+        # --- ВЕРНУЛИ ALT/TITLE ---
+        if settings['alt_title']:
+            for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
+            for t in soup.find_all(title=True): extra_text.append(t['title'])
+        # -------------------------
+
+        body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
 
         body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
@@ -1653,7 +1661,6 @@ with tab_seo_main:
         st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
         st.checkbox("Учитывать числа", False, key="settings_numbers")
         st.checkbox("Нормировать по длине", True, key="settings_norm")
-        st.checkbox("Исключать агрегаторы", True, key="settings_agg")
 
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
@@ -1695,11 +1702,12 @@ with tab_seo_main:
                 
                 if not raw_top: st.stop()
                 
-                # Список исключений
+# Список исключений (Из поля ввода)
                 excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-                if st.session_state.settings_agg: 
-                    excl.extend(["avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex", "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua", "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis"])
-
+                
+                # Агрегаторы добавляем ВСЕГДА (без кнопки)
+                agg_list = ["avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex", "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua", "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis"]
+                excl.extend(agg_list)
                 for res in raw_top:
                     dom = urlparse(res['url']).netloc.lower()
                     
@@ -3193,6 +3201,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
