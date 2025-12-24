@@ -600,7 +600,7 @@ def process_text_detailed(text, settings, n_gram=1):
         forms_map[lemma].add(w)
     return lemmas, forms_map
 
-def parse_page(url, settings):
+def parse_page(url, settings, query_context=""):
     import streamlit as st
     try:
         from curl_cffi import requests as cffi_requests
@@ -639,51 +639,92 @@ def parse_page(url, settings):
             return None
 
     try:
-        # Основной суп для Глубины (полный текст)
         soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
         
-        # --- 1. Извлекаем H1 (для эталонного названия) ---
+        # === НОВАЯ ЛОГИКА: ИЕРАРХИЧЕСКИЙ ПОИСК ТОВАРОВ ===
+        product_titles = []
+        
+        # 1. Подготовка корней запроса
+        search_roots = set()
+        if query_context:
+            clean_q = query_context.lower().replace('купить', '').replace('цена', '').replace(' в ', ' ')
+            words = re.findall(r'[а-яa-z]+', clean_q)
+            for w in words:
+                if len(w) > 3: search_roots.add(w[:-1])
+                else: search_roots.add(w)
+        
+        # 2. Определение "Базового пути"
+        parsed_current = urlparse(url)
+        current_path_clean = parsed_current.path.rstrip('/')
+        
+        seen_titles = set()
+        
+        for a in soup.find_all('a', href=True):
+            txt = a.get_text(strip=True)
+            raw_href = a['href']
+            
+            if len(txt) < 5 or len(txt) > 300: continue
+            if raw_href.startswith('#') or raw_href.startswith('javascript'): continue
+            
+            abs_href = urljoin(url, raw_href)
+            parsed_href = urlparse(abs_href)
+            href_path_clean = parsed_href.path.rstrip('/')
+            
+            # Проверки: вложенность и длина пути
+            is_child_path = href_path_clean.startswith(current_path_clean)
+            is_deeper = len(href_path_clean) > len(current_path_clean)
+            is_not_query_param_only = (href_path_clean != current_path_clean)
+
+            if is_child_path and is_deeper and is_not_query_param_only:
+                # Проверка релевантности (есть ли слова из запроса)
+                txt_lower = txt.lower()
+                href_lower = abs_href.lower()
+                
+                has_keywords = False
+                if search_roots:
+                    for root in search_roots:
+                        if root in txt_lower or root in href_lower:
+                            has_keywords = True
+                            break
+                else:
+                    if re.search(r'\d', txt): has_keywords = True
+
+                is_buy_button = txt_lower in {'купить', 'подробнее', 'в корзину', 'заказать', 'цена'}
+
+                if has_keywords and not is_buy_button:
+                    if txt not in seen_titles:
+                        product_titles.append(txt)
+                        seen_titles.add(txt)
+        # ========================================================
+        
+        # H1 для справки
         h1_tag = soup.find('h1')
         h1_text = h1_tag.get_text(strip=True) if h1_tag else ""
 
-        # --- 2. Подготовка копии для "Рекомендаций по названию" (без .an-container-fluid.an-container-xl) ---
-        # Делаем это ДО очистки основного супа, чтобы структура была целой
+        # Урезанный текст для Таблицы 2 (БЕЗ ВАШИХ ТОВАРОВ)
         soup_no_grid = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
         grid_div = soup_no_grid.find('div', class_='an-container-fluid an-container-xl')
-        if grid_div:
-            grid_div.decompose() # Удаляем блок товаров
+        if grid_div: grid_div.decompose() # Удаляем блок товаров
         
-        # --- 3. Чистка основного супа ---
+        # Чистка
         tags_to_remove = []
         if settings['noindex']: tags_to_remove.append('noindex')
-        for c in soup.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
-        if tags_to_remove:
-            for t in soup.find_all(tags_to_remove): t.decompose()
-        for script in soup(["script", "style", "svg", "path", "noscript"]): script.decompose()
+        for s in [soup, soup_no_grid]:
+            for c in s.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
+            if tags_to_remove:
+                for t in s.find_all(tags_to_remove): t.decompose()
+            for script in s(["script", "style", "svg", "path", "noscript"]): script.decompose()
 
-        # --- 4. Чистка супа без сетки ---
-        for c in soup_no_grid.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
-        if tags_to_remove:
-            for t in soup_no_grid.find_all(tags_to_remove): t.decompose()
-        for script in soup_no_grid(["script", "style", "svg", "path", "noscript"]): script.decompose()
-
-        # --- 5. Сбор текста (ОСНОВНОЙ) ---
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
         
         extra_text = []
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'): extra_text.append(meta_desc['content'])
-        if settings['alt_title']:
-            for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
-            for t in soup.find_all(title=True): extra_text.append(t['title'])
-            
+
         body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
 
-        # --- 6. Сбор текста (БЕЗ ТОВАРОВ) ---
-        # Здесь нам нужны только тексты описания, не меню и не футер по-хорошему, 
-        # но согласно задаче мы убрали только конкретный div.
         body_text_no_grid_raw = soup_no_grid.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text_no_grid = re.sub(r'\s+', ' ', body_text_no_grid_raw).strip()
 
@@ -695,9 +736,10 @@ def parse_page(url, settings):
             'url': url, 
             'domain': urlparse(url).netloc, 
             'body_text': body_text, 
-            'body_text_no_grid': body_text_no_grid, # <--- НОВОЕ ПОЛЕ
+            'body_text_no_grid': body_text_no_grid,
             'anchor_text': anchor_text,
-            'h1': h1_text # <--- НОВОЕ ПОЛЕ
+            'h1': h1_text,
+            'product_titles': product_titles # <--- НОВОЕ ПОЛЕ
         }
     except Exception as e_parse:
         st.error(f"❌ Ошибка при обработке HTML: {e_parse}")
@@ -986,83 +1028,81 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 def calculate_naming_metrics(comp_data_full, my_data, settings):
     """
     Рассчитывает таблицу 'Рекомендации по названию'.
-    Логика: Конкуренты (Весь текст) VS Мой сайт (Текст БЕЗ .an-container-fluid.an-container-xl).
+    Источник конкурентов: product_titles (Отфильтрованные ссылки).
+    Источник мой: body_text_no_grid (Текст без блока товаров).
     """
-    # 1. Обработка МОЕГО сайта (используем body_text_no_grid)
+    # 1. Мой сайт
     if not my_data or not my_data.get('body_text_no_grid'):
         my_lemmas = []
     else:
-        # Используем тот же процессор, но передаем "чистый" текст без товаров
         my_lemmas, _ = process_text_detailed(my_data['body_text_no_grid'], settings)
 
-    # 2. Обработка КОНКУРЕНТОВ (используем полный body_text, как в ТЗ)
-    comp_lemmas_list = []
-    vocab = set(my_lemmas)
+    # 2. Конкуренты (product_titles)
+    comp_titles_lemmas = []
+    vocab = set()
     
     for p in comp_data_full:
-        if not p.get('body_text'): continue
-        body, _ = process_text_detailed(p['body_text'], settings)
-        comp_lemmas_list.append(body)
-        vocab.update(body)
+        titles = p.get('product_titles', [])
+        if not titles:
+            comp_titles_lemmas.append([]) 
+            continue
+            
+        # Склеиваем все названия в одну строку для лемматизации
+        full_titles_text = " ".join(titles)
+        t_lemmas, _ = process_text_detailed(full_titles_text, settings)
+        
+        comp_titles_lemmas.append(t_lemmas)
+        vocab.update(t_lemmas)
     
     vocab = sorted(list(vocab))
-    N = len(comp_lemmas_list)
+    N = len(comp_titles_lemmas)
     if N == 0: return pd.DataFrame()
 
-    word_counts_per_doc = [Counter(d) for d in comp_lemmas_list]
+    word_counts_per_site = [Counter(d) for d in comp_titles_lemmas]
     
     table_rows = []
     
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
-        # Считаем вхождения у конкурентов
-        c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
+        c_counts = [word_counts_per_site[i][lemma] for i in range(N)]
         sorted_counts = sorted(c_counts)
         
-        # Медиана
         med_val = np.median(sorted_counts)
         rec_median = math_round(med_val)
         
-        # У нас (в тексте без товаров)
+        obs_max = sorted_counts[-1]
         my_tf = my_lemmas.count(lemma)
         
-        # Фильтр: если у всех 0, пропускаем
-        obs_max = sorted_counts[-1]
-        if obs_max == 0 and my_tf == 0: continue
+        if obs_max == 0: continue
         
-        # Логика "Нужно добавить"
         diff = rec_median - my_tf
         
         action_text = ""
         sort_val = 0
         
         if diff > 0:
-            action_text = f"+{diff}" # Нужно добавить
-            sort_val = diff
+            action_text = f"+{diff}" 
+            sort_val = diff + 1000
             status = "Добавить"
         elif diff < 0:
-            action_text = f"{diff}" # Переспам (но для названий это менее критично, но покажем)
+            action_text = f"{diff}" 
             sort_val = abs(diff)
             status = "Много"
         else:
             action_text = "✅"
-            status = "Ок"
+            sort_val = 0
             
-        # Показываем только если есть рекомендация или слово есть у нас
-        # Или, если следовать логике "Глубины", показываем всё, где есть значимость
-        
         table_rows.append({
-            "Слово": lemma,
-            "Вхождений (без товаров)": my_tf,
-            "Медиана": rec_median,
+            "Слово (из товаров)": lemma,
+            "У Вас (в тексте)": my_tf,
+            "Медиана (товары)": rec_median,
             "Максимум": obs_max,
             "Добавить": action_text,
-            "sort_val": sort_val # Для сортировки
+            "sort_val": sort_val
         })
         
     df = pd.DataFrame(table_rows)
-    # Сортировка по умолчанию: сначала то, что нужно добавить (наибольший дефицит)
     if not df.empty:
         df = df.sort_values(by="sort_val", ascending=False)
         
@@ -1070,39 +1110,48 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
 
 def analyze_ideal_name(comp_data_full):
     """
-    Собирает 'Эталонное название' на основе H1 конкурентов.
+    Ищет паттерны в массиве ссылок-товаров (product_titles).
     """
-    h1s = [d.get('h1', '').strip() for d in comp_data_full if d.get('h1')]
-    if not h1s: return "H1 не найдены", []
+    all_titles = []
+    for d in comp_data_full:
+        # Берем только если названий больше 3, чтобы исключить страницы-ошибки
+        if len(d.get('product_titles', [])) > 3:
+            all_titles.extend(d['product_titles'])
+        
+    if not all_titles: return "Названия не определены", []
     
-    # 1. Частотный анализ слов в H1
+    # 1. Частотка
     all_words = []
-    for h in h1s:
-        # Разбиваем, убираем цифры и спецсимволы для анализа структуры
-        words = re.findall(r'[а-яА-Яa-zA-Z]{3,}', h.lower())
+    for t in all_titles:
+        # Разбиваем на слова (мин 3 буквы)
+        words = re.findall(r'[а-яА-Яa-zA-Z]{3,}', t.lower())
         all_words.extend(words)
         
     counts = Counter(all_words)
-    common_words = [w for w, c in counts.most_common(7)] # Топ-7 слов
+    # Исключаем явный мусор, если попал
+    stops = {'руб', 'рублей', 'цена', 'купить', 'шт'}
+    common_words = [w for w, c in counts.most_common(12) if w not in stops]
+    common_words = common_words[:8] # Топ-8 слов
     
-    # 2. Поиск "Центроидного" H1 (название, которое содержит больше всего популярных слов)
-    best_h1 = ""
+    # 2. Ищем центроид
+    best_title = ""
     max_score = -1
     
-    for h in h1s:
+    # Анализ выборки
+    sample = all_titles[:1000]
+    for t in sample:
         score = 0
-        normalized = h.lower()
+        norm = t.lower()
+        if len(t) < 10 or len(t) > 150: continue
+        
         for w in common_words:
-            if w in normalized: score += 1
-        
-        # Штраф за чрезмерную длину (если это не название, а целое предложение)
-        if len(h) > 100: score -= 2
-        
+            if w in norm: score += 1
+            
         if score > max_score:
             max_score = score
-            best_h1 = h
+            best_title = t
             
-    return best_h1, common_words
+    return best_title, common_words
 
 def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
     if df.empty: st.info(f"{title_text}: Нет данных."); return
@@ -1438,7 +1487,7 @@ with tab_seo_main:
         # 1. Обработка ВАШЕЙ страницы
         if current_input_type == "Релевантная страница на вашем сайте":
             with st.spinner("Скачивание вашей страницы..."):
-                my_data = parse_page(st.session_state.my_url_input, settings)
+                my_data = parse_page(st.session_state.my_url_input, settings, st.session_state.query_input)
                 if not my_data: st.error("Ошибка скачивания вашей страницы."); st.stop()
                 my_domain = urlparse(st.session_state.my_url_input).netloc
         elif current_input_type == "Исходный код страницы или текст":
@@ -1496,7 +1545,10 @@ with tab_seo_main:
         
         with st.status(f"🕵️ Глубокое сканирование (Кандидатов: {len(candidates_pool)})...", expanded=True) as status:
             with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-                futures = {executor.submit(parse_page, item['url'], settings): item for item in candidates_pool}
+                futures = {
+                    executor.submit(parse_page, item['url'], settings, st.session_state.query_input): item 
+                    for item in candidates_pool
+                }
                 
                 done_count = 0
                 for f in concurrent.futures.as_completed(futures):
@@ -2907,6 +2959,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
