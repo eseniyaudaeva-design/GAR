@@ -460,7 +460,7 @@ REGION_MAP = {
     "Алматы (KZ)": {"ya": 162, "go": 1014601}
 }
 
-DEFAULT_EXCLUDE_DOMAINS = [
+DEFAULT_EXCLUDE_DOMAINS = {
     "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "aliexpress.ru", 
     "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", 
     "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", 
@@ -471,6 +471,8 @@ DEFAULT_EXCLUDE_DOMAINS = [
     "market.yandex.ru", "youtube.com", "www.youtube.com", "gosuslugi.ru", 
     "www.gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", 
     "vk.com", "facebook.com"
+    }
+
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nстр\nул\nшт\nсм\nмм\nмл\nкг\nкв\nм²\nсм²\nм2\nсм2"
 
@@ -3183,6 +3185,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
