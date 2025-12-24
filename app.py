@@ -1071,47 +1071,57 @@ def get_dynamic_word_type(word, main_marker):
     return "6. 📂 Прочее"
 def get_hybrid_word_type(word, main_marker_root, specs_dict=None):
     """
-    Гибридный классификатор 2.0 (С разделением Тех. параметров).
-    Принимает specs_dict (множество из tech_specs.json) для точного определения марок.
+    Классификатор 3.0 (Строгий режим).
+    Четко отделяет Размеры (цифры, Ду, Ру) от Марок (Ст3, 09Г2С).
     """
     w = word.lower()
     specs_dict = specs_dict or set()
     
-    # 1. МАРКЕР (Товар) - Самый высокий приоритет
+    # 1. МАРКЕР (Самый высокий приоритет)
+    # Проверяем и полную форму, и лемму
+    if w == main_marker_root: return "1. 💎 Маркер (Товар)"
     if morph:
         norm = morph.parse(w)[0].normal_form
         if norm == main_marker_root: return "1. 💎 Маркер (Товар)"
-    elif w in main_marker_root: return "1. 💎 Маркер (Товар)"
 
-    # 2. СТАНДАРТЫ (ГОСТ, DIN, ISO, ТУ)
-    # Даже если есть цифры (ГОСТ 10704), это Стандарт
+    # 2. СТАНДАРТЫ (GOST, DIN...)
     if re.search(r'(gost|din|iso|en|tu|astm|aisi|гост|ост|ту|дин)', w):
         return "6. 📜 Стандарт"
 
-    # 3. МАРКИ / СПЛАВЫ (Словарь + Паттерны)
-    # А. Проверка по вашему словарю json
+    # 3. РАЗМЕРЫ И ТЕХ. ПАРАМЕТРЫ (Они имеют приоритет над марками)
+    # А. Голые цифры (10, 50, 100) -> Это всегда размеры или кол-во
+    if re.fullmatch(r'\d+([.,]\d+)?', w):
+        return "5. 🔢 Размеры/Прочее"
+        
+    # Б. Размеры с разделителями (10х20, 10*20)
+    if re.search(r'\d+[xх*]\d+', w):
+        return "5. 🔢 Размеры/Прочее"
+        
+    # В. Единицы измерения (мм, кг, м, бар)
+    if re.search(r'\d+(мм|mm|м|m|kg|кг|bar|бар|атм)$', w):
+        return "5. 🔢 Размеры/Прочее"
+        
+    # Г. Типичные трубные/арматурные префиксы (Ду, Ру, DN, PN, SDR, SN)
+    # Если слово начинается с них и содержит цифру -> Размер
+    if re.match(r'^(d|dn|pn|sn|sdr|ду|ру|ø)\d+', w):
+        return "5. 🔢 Размеры/Прочее"
+
+    # 4. МАРКИ / СПЛАВЫ
+    # А. Точное совпадение со словарем
     if w in specs_dict:
         return "3. 🏗️ Марка/Сплав"
     
-    # Б. Регулярка для марок (Сложные сочетания букв и цифр, но НЕ размеры)
-    # Пример: 09г2с, 12х18н10т, ст3, aisi304
-    # Исключаем явные размеры (d50, ду100, pn16)
-    is_dim = re.search(r'^(d|dn|pn|sn|ду|ру|sdr)\d', w)
-    if not is_dim and re.search(r'\d', w):
-        # Паттерн марки: Буквы+Цифры+Буквы (12х18...) или Ст+Цифра
-        if re.search(r'^[а-яa-z]{1,4}\-?\d+[а-яa-z]+', w) or w.startswith('ст'):
-             return "3. 🏗️ Марка/Сплав"
-
-    # 4. ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ (Размеры)
-    # Оставшиеся слова с цифрами
+    # Б. Паттерны марок (Буквы+Цифры, но не размеры)
+    # Ст3, 09Г2С, 12Х18Н10Т, БрБ2
     if re.search(r'\d', w):
-        return "5. 🔢 Размеры/Прочее"
-        
+        # Если это не попало в размеры выше, но имеет цифры и буквы -> Скорее всего марка
+        return "3. 🏗️ Марка/Сплав"
+
     # 5. ЛАТИНИЦА (Бренды без цифр)
     if re.search(r'^[a-z\-]+$', w):
         return "7. 🔠 Латиница/Бренд"
 
-    # 6. ГРАММАТИКА (Свойства и Дополнения)
+    # 6. ТЕКСТОВЫЕ ХАРАКТЕРИСТИКИ
     if morph:
         p = morph.parse(w)[0]
         tag = p.tag
@@ -1124,21 +1134,25 @@ def get_hybrid_word_type(word, main_marker_root, specs_dict=None):
     
 def calculate_naming_metrics(comp_data_full, my_data, settings):
     """
-    Таблица 2. С выделением Марки и ГОСТа.
+    Таблица 2. Без "обрезания" технических слов.
     """
-    # ПОДГРУЗКА СЛОВАРЯ МАРОК (ИЗ ВАШЕГО JSON)
-    SPECS_SET = st.session_state.get('categorized_dimensions', set()) # Обычно сюда грузится tech_specs
-    # Если вдруг пусто, пробуем загрузить напрямую из кэша
-    if not SPECS_SET:
-        _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
+    # Подгрузка словаря
+    SPECS_SET = st.session_state.get('categorized_dimensions', set())
+    if not SPECS_SET: _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
 
     # 1. Мой сайт
-    if not my_data or not my_data.get('body_text_no_grid'):
-        my_lemmas = []
-    else:
-        my_lemmas, _ = process_text_detailed(my_data['body_text_no_grid'], settings)
+    my_tokens = []
+    if my_data and my_data.get('body_text_no_grid'):
+        # Своя токенизация, чтобы сохранить Ду50
+        raw_w = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', my_data['body_text_no_grid'].lower())
+        for w in raw_w:
+            # Лемматизируем только чисто текстовые слова
+            if not re.search(r'\d', w) and morph:
+                my_tokens.append(morph.parse(w)[0].normal_form)
+            else:
+                my_tokens.append(w)
 
-    # 2. Сбор данных конкурентов
+    # 2. Конкуренты
     all_words_flat = []
     site_vocab_map = []
     
@@ -1150,67 +1164,75 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
             site_vocab_map.append(set())
             continue
             
-        curr_site_lemmas = set()
+        curr_site_tokens = set()
         for t in valid_titles:
             words = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', t.lower())
             for w in words:
                 if len(w) < 2: continue
-                # Лемматизируем только русские слова без цифр, тех.параметры оставляем как есть
-                if not re.search(r'\d', w) and not re.search(r'[a-z]', w) and morph:
-                    lemma = morph.parse(w)[0].normal_form
-                else:
-                    lemma = w
                 
-                all_words_flat.append(lemma)
-                curr_site_lemmas.add(lemma)
-        site_vocab_map.append(curr_site_lemmas)
+                # ЛОГИКА СОХРАНЕНИЯ ФОРМЫ:
+                # Если есть цифра -> сохраняем как есть (d50 -> d50)
+                if re.search(r'\d', w):
+                    token = w
+                elif re.search(r'^[a-z]+$', w): # Латиница -> как есть
+                    token = w
+                elif morph: # Русские слова -> лемматизируем (стальная -> стальной)
+                    token = morph.parse(w)[0].normal_form
+                else:
+                    token = w
+                
+                all_words_flat.append(token)
+                curr_site_tokens.add(token)
+                
+        site_vocab_map.append(curr_site_tokens)
 
     if not all_words_flat: return pd.DataFrame()
     N_sites = len(site_vocab_map)
 
-    # 3. Маркер
-    counts = Counter(all_words_flat)
+    # 3. Маркер (Самое частое текстовое слово)
+    counts = Counter([w for w in all_words_flat if not re.search(r'\d', w)])
     main_marker_root = ""
+    # Ищем существительное
     for w, c in counts.most_common(10):
-        if re.search(r'\d', w): continue
         if morph and 'NOUN' in morph.parse(w)[0].tag: main_marker_root = w; break
-        elif not morph: main_marker_root = w; break
-    if not main_marker_root: main_marker_root = counts.most_common(1)[0][0]
+    if not main_marker_root and counts: main_marker_root = counts.most_common(1)[0][0]
 
     # 4. Сбор таблицы
     vocab = sorted(list(set(all_words_flat)))
     table_rows = []
     
-    for lemma in vocab:
-        if lemma in GARBAGE_LATIN_STOPLIST: continue
+    for token in vocab:
+        if token in GARBAGE_LATIN_STOPLIST: continue
         
         # Частотность
-        sites_with_word = sum(1 for s_set in site_vocab_map if lemma in s_set)
+        sites_with_word = sum(1 for s_set in site_vocab_map if token in s_set)
         freq_percent = int((sites_with_word / N_sites) * 100)
         
-        # КЛАССИФИКАЦИЯ (Передаем словарь SPECS_SET)
-        cat = get_hybrid_word_type(lemma, main_marker_root, SPECS_SET)
+        # КЛАССИФИКАЦИЯ
+        cat = get_hybrid_word_type(token, main_marker_root, SPECS_SET)
         
         if cat == "SKIP": continue
         
-        # Логика скрытия редких слов
-        # Марки и Стандарты - важные штуки, показываем даже если редко (но > 5%)
+        # Фильтры отображения
+        # Марки и Стандарты показываем от 5%
         is_spec = "Марка" in cat or "Стандарт" in cat
         if is_spec and freq_percent < 5: continue
         
-        # Обычные слова - отсекаем < 15%
+        # Обычные слова от 15%
         if not is_spec and "Размеры" not in cat and freq_percent < 15: continue
-        # Размеры - отсекаем < 10%
-        if "Размеры" in cat and freq_percent < 10: continue
+        
+        # Размеры показываем только если они реально частые (например, ходовой диаметр)
+        # Иначе таблица будет забита цифрами 10, 11, 12...
+        if "Размеры" in cat and freq_percent < 15: continue
 
         rec_median = 1 if freq_percent > 30 else 0
-        my_tf = my_lemmas.count(lemma)
+        my_tf = my_tokens.count(token)
         diff = rec_median - my_tf
         action_text = f"+{diff}" if diff > 0 else ("✅" if diff == 0 else f"{diff}")
         
         table_rows.append({
             "Тип хар-ки": cat[3:],
-            "Слово": lemma,
+            "Слово": token, # Выводим токен как есть (с цифрами и буквами)
             "Частотность (%)": f"{freq_percent}%",
             "У Вас": my_tf,
             "Медиана": rec_median,
@@ -1979,57 +2001,61 @@ with tab_seo_main:
 # ... (существующий вывод первой таблицы)
         render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
-# === НОВЫЙ КОМПАКТНЫЙ ВЫВОД ТАБЛИЦЫ №2 ===
+# === ВЫВОД ТАБЛИЦЫ №2 (С ФОРМУЛОЙ ВВЕРХУ) ===
         if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
             df_naming = st.session_state.naming_table_df
             
             st.markdown("### 2. Рекомендации по названию товаров")
             
-            # 1. Блок эталона (Конструктор)
+            # --- БЛОК 1: ФОРМУЛА (Выводим выше таблицы) ---
             if 'ideal_h1_result' in st.session_state:
                 res_ideal = st.session_state.ideal_h1_result
                 if isinstance(res_ideal, tuple) or isinstance(res_ideal, list):
-                    ih1 = res_ideal[0]
-                    # Превращаем список отчета в строку
-                    formatted_report = "\n\n".join(res_ideal[1]) if isinstance(res_ideal[1], list) else str(res_ideal[1])
-                    st.info(f"💡 **Эталонное название (Конструктор):** {ih1}\n\n{formatted_report}")
+                    structure_formula = res_ideal[0] # "Маркер + Свойства + ..."
+                    details_report = res_ideal[1]    # Список популярных слов
+                    
+                    # Красивый вывод формулы
+                    st.markdown(f"""
+                    <div style="background-color: #f0f7ff; padding: 15px; border-radius: 8px; border: 1px solid #bae6fd; margin-bottom: 20px;">
+                        <h4 style="margin-top:0; color: #0369a1;">🧪 Формула идеального названия</h4>
+                        <div style="font-size: 18px; font-weight: bold; color: #333; margin-bottom: 10px;">
+                            {structure_formula}
+                        </div>
+                        <div style="font-size: 14px; color: #555;">
+                            <b>Частые элементы:</b><br>
+                            {"<br>".join(details_report[2:]) if len(details_report) > 2 else "Нет данных"}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-            st.markdown("##### Анализ состава названий")
+            # --- БЛОК 2: ТАБЛИЦА ---
+            st.markdown("##### Детальный анализ характеристик")
             
-            # 2. Подготовка единой таблицы
             if not df_naming.empty:
-                # Фильтр для тех. параметров (чтобы не засорять таблицу цифрами)
                 col_ctrl1, col_ctrl2 = st.columns([1, 3])
                 with col_ctrl1:
-                    show_tech = st.toggle("Показать технические параметры (цифры)", value=False)
+                    # По умолчанию скрываем цифры, чтобы не пугать "60", "20"
+                    show_tech = st.toggle("Показать размеры и цифры", value=False)
                 
-                # Создаем копию для отображения
                 df_display = df_naming.copy()
                 
-                # Если галочка выключена - убираем строки с "Тех. параметр"
                 if not show_tech:
-                    df_display = df_display[~df_display['Тип хар-ки'].str.contains("Тех.", na=False)]
+                    # Скрываем категорию "Размеры/Прочее", но оставляем "Марка/Сплав"
+                    df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
 
-                # Сортировка: Сначала по Категории (1,2,3), потом по Частоте
                 if 'cat_sort' in df_display.columns:
                     df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
                 
-                # Оставляем только нужные столбцы
                 cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
-                # Проверяем, есть ли такие столбцы (защита от старых версий кэша)
                 existing_cols = [c for c in cols_to_show if c in df_display.columns]
                 df_display = df_display[existing_cols]
 
-                # Функция стилизации (Цвета строк)
                 def style_rows(row):
                     val = str(row.get('Добавить', ''))
-                    # Красный оттенок, если нужно добавить
                     if "+" in val: return ['background-color: #fff1f2; color: #be123c; font-weight: 500'] * len(row)
-                    # Зеленый оттенок, если норма
                     if "✅" in val: return ['background-color: #f0fdf4; color: #15803d'] * len(row)
                     return [''] * len(row)
 
-                # Рендер таблицы
                 st.dataframe(
                     df_display.style.apply(style_rows, axis=1),
                     use_container_width=True,
@@ -2038,7 +2064,6 @@ with tab_seo_main:
                 )
             else:
                 st.warning("Нет данных для отображения.")
-        # ===================================================
 
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
@@ -3173,6 +3198,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
