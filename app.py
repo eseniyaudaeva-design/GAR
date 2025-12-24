@@ -1038,52 +1038,78 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
         my_lemmas, _ = process_text_detailed(my_data['body_text_no_grid'], settings)
 
     # 2. Конкуренты (product_titles)
-    comp_titles_lemmas = []
-    vocab = set()
+    # Нам нужно знать, на скольких САЙТАХ встречается слово, а не сколько раз всего
+    site_vocab_map = [] # Список множеств слов для каждого сайта
+    all_vocab_flat = set()
     
     for p in comp_data_full:
         titles = p.get('product_titles', [])
         if not titles:
-            comp_titles_lemmas.append([]) 
+            site_vocab_map.append(set())
             continue
             
-        # Склеиваем все названия в одну строку для лемматизации
         full_titles_text = " ".join(titles)
         t_lemmas, _ = process_text_detailed(full_titles_text, settings)
         
-        comp_titles_lemmas.append(t_lemmas)
-        vocab.update(t_lemmas)
+        unique_site_lemmas = set(t_lemmas)
+        site_vocab_map.append(unique_site_lemmas)
+        all_vocab_flat.update(unique_site_lemmas)
     
-    vocab = sorted(list(vocab))
-    N = len(comp_titles_lemmas)
-    if N == 0: return pd.DataFrame()
+    vocab = sorted(list(all_vocab_flat))
+    N_sites = len(site_vocab_map)
+    
+    if N_sites == 0: return pd.DataFrame()
 
-    word_counts_per_site = [Counter(d) for d in comp_titles_lemmas]
-    
     table_rows = []
     
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
-        c_counts = [word_counts_per_site[i][lemma] for i in range(N)]
-        sorted_counts = sorted(c_counts)
+        # 1. Частотность по сайтам (у скольких конкурентов есть это слово в товарах)
+        sites_with_word = sum(1 for s_set in site_vocab_map if lemma in s_set)
+        freq_percent = int((sites_with_word / N_sites) * 100)
         
+        # 2. Медиана вхождений (для расчета кол-ва)
+        # Собираем массив: сколько раз слово встречается у каждого конкурента
+        # Для этого нужно пересчитать raw count, так как site_vocab_map хранит только уникальные
+        # Придется быстро пробежать по сырым данным снова или упростить
+        # Упростим: если слово есть на сайте, считаем его "плотность" (сколько раз на 100 товаров)
+        # Или вернем старую логику медианы абсолютных чисел, она была нормальной.
+        
+        # Восстановим подсчет абсолютных чисел для медианы
+        abs_counts = []
+        for p in comp_data_full:
+            titles = p.get('product_titles', [])
+            if not titles: 
+                abs_counts.append(0)
+                continue
+            # Быстрый подсчет вхождений леммы в тексте всех заголовков сайта
+            # (Это не супер эффективно, но точно)
+            full_text = " ".join(titles).lower()
+            # Простая эвристика поиска подстроки корня, чтобы не лемматизировать каждый раз всё
+            # Для точности лучше использовать предрасчитанные данные, но здесь оставим так для надежности
+            cnt = len(re.findall(r'\b' + re.escape(lemma) + r'[а-яa-z]*', full_text))
+            abs_counts.append(cnt)
+            
+        sorted_counts = sorted(abs_counts)
         med_val = np.median(sorted_counts)
         rec_median = math_round(med_val)
-        
         obs_max = sorted_counts[-1]
+        
+        # Мои вхождения
         my_tf = my_lemmas.count(lemma)
         
-        if obs_max == 0: continue
+        # Фильтр: убираем совсем редкий шум (менее 10% сайтов и медиана 0)
+        if freq_percent < 10 and rec_median == 0 and my_tf == 0: continue
         
         diff = rec_median - my_tf
-        
         action_text = ""
         sort_val = 0
         
         if diff > 0:
             action_text = f"+{diff}" 
-            sort_val = diff + 1000
+            # Сортировка: сначала дефицит + высокая частотность
+            sort_val = (diff * 1000) + freq_percent 
             status = "Добавить"
         elif diff < 0:
             action_text = f"{diff}" 
@@ -1091,13 +1117,13 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
             status = "Много"
         else:
             action_text = "✅"
-            sort_val = 0
+            sort_val = freq_percent # Если норма, сортируем по популярности слова
             
         table_rows.append({
-            "Слово (из товаров)": lemma,
-            "У Вас (в тексте)": my_tf,
-            "Медиана (товары)": rec_median,
-            "Максимум": obs_max,
+            "Слово": lemma,
+            "Частотность (%)": f"{freq_percent}%", # <-- НОВАЯ КОЛОНКА
+            "У Вас": my_tf,
+            "Медиана": rec_median,
             "Добавить": action_text,
             "sort_val": sort_val
         })
@@ -1110,48 +1136,103 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
 
 def analyze_ideal_name(comp_data_full):
     """
-    Ищет паттерны в массиве ссылок-товаров (product_titles).
+    Выбирает 'Эталонное название' на основе product_titles.
+    Логика: Scoring со штрафами за редкие слова.
+    Побеждает название, состоящее из общепринятых терминов, без уникальных артикулов.
     """
-    all_titles = []
+    # 1. Сбор всех уникальных заголовков с привязкой к сайту
+    site_titles_map = [] # Список списков [titles сайта 1, titles сайта 2...]
+    all_unique_titles_pool = set()
+    
     for d in comp_data_full:
-        # Берем только если названий больше 3, чтобы исключить страницы-ошибки
-        if len(d.get('product_titles', [])) > 3:
-            all_titles.extend(d['product_titles'])
-        
-    if not all_titles: return "Названия не определены", []
+        titles = d.get('product_titles', [])
+        # Фильтруем совсем короткие/длинные
+        valid_titles = [t for t in titles if 10 < len(t) < 200]
+        if valid_titles:
+            site_titles_map.append(set()) # Используем set для лемм внутри сайта
+            # Сохраняем сами заголовки для финального выбора
+            for t in valid_titles:
+                all_unique_titles_pool.add(t)
+                
+                # Лемматизируем для статистики
+                lemmas = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', t.lower())
+                for l in lemmas:
+                    # Нормализация
+                    if morph:
+                        norm = morph.parse(l)[0].normal_form
+                    else:
+                        norm = l
+                    if len(norm) > 1:
+                        site_titles_map[-1].add(norm)
+
+    if not site_titles_map: return "Названия не определены", []
     
-    # 1. Частотка
-    all_words = []
-    for t in all_titles:
-        # Разбиваем на слова (мин 3 буквы)
-        words = re.findall(r'[а-яА-Яa-zA-Z]{3,}', t.lower())
-        all_words.extend(words)
-        
-    counts = Counter(all_words)
-    # Исключаем явный мусор, если попал
-    stops = {'руб', 'рублей', 'цена', 'купить', 'шт'}
-    common_words = [w for w, c in counts.most_common(12) if w not in stops]
-    common_words = common_words[:8] # Топ-8 слов
-    
-    # 2. Ищем центроид
+    total_sites = len(site_titles_map)
+    if total_sites == 0: return "Нет данных", []
+
+    # 2. Расчет частотности (DF - Document Frequency) для каждого слова
+    # В скольких % сайтов встречается слово
+    global_lemma_df = Counter()
+    for site_lemmas in site_titles_map:
+        for lemma in site_lemmas:
+            global_lemma_df[lemma] += 1
+            
+    # Превращаем в веса (0.0 - 1.0)
+    # word_weights['муфта'] = 0.9 (есть у 90% сайтов)
+    word_weights = {k: v / total_sites for k, v in global_lemma_df.items()}
+
+    # 3. Поиск лучшего заголовка (Scoring with Penalty)
     best_title = ""
-    max_score = -1
+    max_score = -999.0
     
-    # Анализ выборки
-    sample = all_titles[:1000]
-    for t in sample:
-        score = 0
-        norm = t.lower()
-        if len(t) < 10 or len(t) > 150: continue
+    # Порог: если слово встречается реже чем у 20% конкурентов, считаем его "мусором" в рамках эталона
+    THRESHOLD = 0.2
+    
+    # Ограничиваем выборку для скорости (если названий тысячи)
+    titles_to_check = list(all_unique_titles_pool)
+    if len(titles_to_check) > 2000: 
+        titles_to_check = random.sample(titles_to_check, 2000)
+
+    for title in titles_to_check:
+        # Разбиваем текущий заголовок на слова
+        raw_words = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', title.lower())
         
-        for w in common_words:
-            if w in norm: score += 1
+        current_score = 0.0
+        word_count = 0
+        
+        for w in raw_words:
+            if len(w) < 2: continue
+            word_count += 1
             
-        if score > max_score:
-            max_score = score
-            best_title = t
+            # Получаем лемму
+            if morph: lemma = morph.parse(w)[0].normal_form
+            else: lemma = w
             
-    return best_title, common_words
+            weight = word_weights.get(lemma, 0)
+            
+            if weight >= THRESHOLD:
+                # Если слово популярное - добавляем его вес
+                # Чем популярнее, тем больше вклад
+                current_score += (weight * 10) 
+            else:
+                # ШТРАФ! Если слово редкое (артикул, уникальный размер, бренд)
+                # Сильно минусуем, чтобы длинные спамные заголовки улетели вниз
+                current_score -= 5.0 
+        
+        # Небольшой штраф за слишком короткие названия (1 слово)
+        if word_count < 2: current_score -= 10
+        
+        if current_score > max_score:
+            max_score = current_score
+            best_title = title
+
+    # Топ маркеры (для отображения)
+    # Сортируем по весу
+    top_lemmas = sorted(word_weights.items(), key=lambda x: x[1], reverse=True)
+    # Берем топ-10, но только те, что > 15% частотности
+    display_markers = [f"{k} ({int(v*100)}%)" for k, v in top_lemmas[:12] if v > 0.15]
+            
+    return best_title, display_markers
 
 def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
     if df.empty: st.info(f"{title_text}: Нет данных."); return
@@ -2959,6 +3040,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
