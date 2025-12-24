@@ -422,7 +422,7 @@ def check_password():
         st.markdown('<div class="auth-logo-box"><h3>Вход в систему</h3></div>', unsafe_allow_html=True)
         password = st.text_input("Пароль", type="password", key="password_input", label_visibility="collapsed")
         if st.button("ВОЙТИ", type="primary", use_container_width=True):
-            if password == "jfV6Xel-Q7vp-_s2UYPO":
+            if password == "ZVC01w4_pIquj0bMiaAu":
                 st.session_state.authenticated = True
                 st.rerun()
             else:
@@ -3198,6 +3198,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
