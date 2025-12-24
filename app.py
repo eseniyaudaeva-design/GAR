@@ -460,9 +460,19 @@ REGION_MAP = {
     "Алматы (KZ)": {"ya": 162, "go": 1014601}
 }
 
-DEFAULT_EXCLUDE_DOMAINS = ["yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "aliexpress.ru", "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", "youtube.com", "gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com"]
+DEFAULT_EXCLUDE_DOMAINS = [
+    "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "aliexpress.ru", 
+    "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", 
+    "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", 
+    "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", 
+    "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", 
+    "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", 
+    "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", 
+    "market.yandex.ru", "youtube.com", "www.youtube.com", "gosuslugi.ru", 
+    "www.gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", 
+    "vk.com", "facebook.com"
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
-DEFAULT_STOPS = "рублей\nруб\nкупить\nцена\nшт\nсм\nмм\nкг\nкв\nм2\nстр\nул"
+DEFAULT_STOPS = "рублей\nруб\nстр\nул\nшт\nсм\nмм\nмл\nкг\nкв\nм²\nсм²\nм2\nсм2"
 
 PRIMARY_COLOR = "#277EFF"
 PRIMARY_DARK = "#1E63C4"
@@ -706,14 +716,31 @@ def parse_page(url, settings, query_context=""):
         grid_div = soup_no_grid.find('div', class_='an-container-fluid an-container-xl')
         if grid_div: grid_div.decompose() # Удаляем блок товаров
         
-        # Чистка
+# Чистка
         tags_to_remove = []
         if settings['noindex']: tags_to_remove.append('noindex')
+        
+        # Расширенный список мусора (Меню, Футер, Сайдбары)
+        garbage_tags = [
+            "script", "style", "svg", "path", "noscript", 
+            "header", "footer", "nav", "aside", "form" 
+        ]
+
         for s in [soup, soup_no_grid]:
             for c in s.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
+            
+            # Удаляем noindex, если включена настройка
             if tags_to_remove:
                 for t in s.find_all(tags_to_remove): t.decompose()
-            for script in s(["script", "style", "svg", "path", "noscript"]): script.decompose()
+            
+            # Удаляем технические и сквозные блоки (ВОТ ТУТ ГЛАВНОЕ ИЗМЕНЕНИЕ)
+            for tag in s(garbage_tags): 
+                tag.decompose()
+            
+            # ОПЦИОНАЛЬНО: Удаление по классам (если на сайте нет тегов <header/footer>)
+            # Часто меню верстают просто через <div class="menu">
+            for div in s.find_all("div", class_=re.compile(r'(menu|nav|footer|sidebar|header)', re.I)):
+                div.decompose()
 
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
         anchor_text = " ".join(anchors_list)
@@ -3156,6 +3183,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
