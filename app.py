@@ -200,7 +200,9 @@ def render_clean_block(title, icon, words_list):
 def render_relevance_chart(df_rel):
     """
     Строит график релевантности (Plotly).
-    Стиль: Современный, сглаженные линии (spline), компактный.
+    Исправления:
+    1. Убраны пунктирные линии (теперь solid).
+    2. График растянут на всю ширину (используются числовые индексы для оси X).
     """
     if df_rel.empty:
         return
@@ -208,64 +210,72 @@ def render_relevance_chart(df_rel):
     # 1. Подготовка данных
     df = df_rel.sort_values(by='Позиция').copy()
     
-    # Подписи для оси X (укороченные для стиля)
+    # Создаем числовую ось X для корректного отображения без отступов
+    x_indices = np.arange(len(df))
+    
+    # Подписи для оси X
     df['Label'] = df.apply(lambda x: f"#{x['Позиция']} {x['Домен'][:15]}..", axis=1)
+    labels_list = df['Label'].tolist()
     
     # Рассчитываем Общую релевантность
     df['Total_Rel'] = (df['Ширина (балл)'] + df['Глубина (балл)']) / 2
     
     # Тренд
-    x_nums = np.arange(len(df))
-    z = np.polyfit(x_nums, df['Total_Rel'], 1)
+    z = np.polyfit(x_indices, df['Total_Rel'], 1)
     p = np.poly1d(z)
-    df['Trend'] = p(x_nums)
+    df['Trend'] = p(x_indices)
 
     # 2. Создаем график
     fig = go.Figure()
 
-    # Настройки линий: shape='spline' делает их плавными
-    
     # Линия: Общая релевантность (Оранжевая)
     fig.add_trace(go.Scatter(
-        x=df['Label'], y=df['Total_Rel'],
+        x=x_indices, y=df['Total_Rel'],
         mode='lines+markers',
         name='Общая',
-        line=dict(color='#F59E0B', width=3, shape='spline'), # Amber-500
-        marker=dict(size=8, color='#F59E0B', line=dict(width=2, color='white'))
+        line=dict(color='#F59E0B', width=4, shape='spline'), # Сплошная, жирная
+        marker=dict(size=9, color='#F59E0B', line=dict(width=2, color='white'))
     ))
 
-    # Линия: Ширина (Синяя)
+    # Линия: Ширина (Синяя) - УБРАН dash='dot'
     fig.add_trace(go.Scatter(
-        x=df['Label'], y=df['Ширина (балл)'],
+        x=x_indices, y=df['Ширина (балл)'],
         mode='lines',
         name='Ширина',
-        line=dict(color='#3B82F6', width=2, shape='spline', dash='dot'), # Blue-500
-        marker=dict(size=0) # Без маркеров для чистоты
+        line=dict(color='#3B82F6', width=2, shape='spline'), # Сплошная
+        opacity=0.8
     ))
 
-    # Линия: Глубина (Красная)
+    # Линия: Глубина (Красная) - УБРАН dash='dot'
     fig.add_trace(go.Scatter(
-        x=df['Label'], y=df['Глубина (балл)'],
+        x=x_indices, y=df['Глубина (балл)'],
         mode='lines',
         name='Глубина',
-        line=dict(color='#EF4444', width=2, shape='spline', dash='dot'), # Red-500
-        marker=dict(size=0)
+        line=dict(color='#EF4444', width=2, shape='spline'), # Сплошная
+        opacity=0.8
     ))
 
     # Линия: Тренд (Зеленая)
     fig.add_trace(go.Scatter(
-        x=df['Label'], y=df['Trend'],
+        x=x_indices, y=df['Trend'],
         mode='lines',
         name='Тренд',
-        line=dict(color='#10B981', width=2, shape='spline'), # Emerald-500
-        opacity=0.6
+        line=dict(color='#10B981', width=2, shape='spline'),
+        opacity=0.5
     ))
 
     # 3. Настройка внешнего вида (Макет)
     fig.update_layout(
-        template="plotly_white", # Чистый белый фон
-        title=dict(text="Динамика релевантности (TOP-10)", font=dict(size=14, color="#374151")),
-        xaxis=dict(showgrid=False, linecolor='#E5E7EB', tickfont=dict(size=10)),
+        template="plotly_white",
+        xaxis=dict(
+            showgrid=False, 
+            linecolor='#E5E7EB', 
+            tickmode='array',      # Принудительный режим тиков
+            tickvals=x_indices,    # Ставим тики в точках 0, 1, 2...
+            ticktext=labels_list,  # Подписываем их названиями сайтов
+            tickfont=dict(size=11),
+            range=[-0.2, len(df) - 0.8] # Жестко фиксируем границы, чтобы убрать пустоту слева
+        ),
         yaxis=dict(
             range=[0, 110], 
             showgrid=True, 
@@ -275,13 +285,13 @@ def render_relevance_chart(df_rel):
         ),
         legend=dict(
             orientation="h",
-            yanchor="bottom", y=1.0,
+            yanchor="bottom", y=1.02,
             xanchor="right", x=1,
-            font=dict(size=10)
+            font=dict(size=11)
         ),
-        margin=dict(l=10, r=10, t=50, b=10), # Компактные отступы
+        margin=dict(l=10, r=10, t=30, b=10),
         hovermode="x unified",
-        height=350 # Уменьшенная высота
+        height=350
     )
 
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
@@ -3281,4 +3291,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
