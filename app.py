@@ -200,42 +200,34 @@ def render_clean_block(title, icon, words_list):
 def render_relevance_chart(df_rel):
     """
     Строит график релевантности (Plotly).
-    Стиль: Modern Flat UI.
-    - Легенда сверху по центру.
-    - Кликабельные ссылки на оси X.
-    - Современная палитра и заливка (Area chart).
+    Стиль: Строгий, чистый, контрастный.
+    - Нет заливки.
+    - Нет пунктиров.
+    - Все линии одной толщины.
+    - Маркеры (точки) на всех линиях.
+    - Ссылки на оси X.
     """
     if df_rel.empty:
         return
 
     # 1. Подготовка данных
     df = df_rel.sort_values(by='Позиция').copy()
-    
-    # Генерация индексов для оси X
     x_indices = np.arange(len(df))
     
-    # Подготовка ссылок для оси X
     tick_links = []
-    hover_names = []
     
     for _, row in df.iterrows():
-        # Очищаем имя (убираем "www." и "(Вы)")
         raw_name = row['Домен'].replace(' (Вы)', '').strip()
         clean_domain = raw_name.replace('www.', '').split('/')[0]
         
-        # Формируем подпись (например: "#1 site.ru")
         label_text = f"#{row['Позиция']} {clean_domain}"
-        if len(label_text) > 20: 
-            label_text = label_text[:18] + ".."
-            
-        # Формируем ссылку. 
-        # Примечание: Мы используем домен как ссылку, т.к. полные URL не сохранены в этой таблице.
+        if len(label_text) > 20: label_text = label_text[:18] + ".."
+        
         url_target = f"https://{raw_name}"
         
-        # HTML-ссылка для оси X (подчеркнутая, кликабельная)
-        link_html = f"<a href='{url_target}' target='_blank' style='color: #4B5563; text-decoration: none; border-bottom: 1px dotted #6366f1;'>{label_text}</a>"
+        # Ссылка снизу: цвет темно-серый, подчеркивание едва заметное
+        link_html = f"<a href='{url_target}' target='_blank' style='color: #374151; text-decoration: none; border-bottom: 1px solid #D1D5DB;'>{label_text}</a>"
         tick_links.append(link_html)
-        hover_names.append(clean_domain)
 
     # Метрики
     df['Total_Rel'] = (df['Ширина (балл)'] + df['Глубина (балл)']) / 2
@@ -248,69 +240,69 @@ def render_relevance_chart(df_rel):
     # 2. Создаем график
     fig = go.Figure()
 
-    # --- ПАЛИТРА (MODERN) ---
-    COLOR_MAIN = '#8b5cf6'  # Фиолетовый (Violet-500)
-    COLOR_WIDTH = '#3b82f6' # Голубой (Blue-500)
-    COLOR_DEPTH = '#f43f5e' # Розовый (Rose-500)
-    COLOR_TREND = '#10b981' # Изумрудный (Emerald-500)
+    # --- НОВАЯ КОНТРАСТНАЯ ПАЛИТРА ---
+    COLOR_MAIN = '#2563EB'  # Яркий Синий (Royal Blue)
+    COLOR_WIDTH = '#F97316' # Насыщенный Оранжевый
+    COLOR_DEPTH = '#DC2626' # Строгий Красный
+    COLOR_TREND = '#10B981' # Зеленый
 
-    # 1. ГЛАВНАЯ ЛИНИЯ (Общая) + Заливка
+    COMMON_LINE_CONFIG = dict(width=3, shape='spline') # Единая толщина
+    COMMON_MARKER_CONFIG = dict(size=8, line=dict(width=2, color='white')) # Единые точки с белой обводкой
+
+    # 1. ОБЩАЯ ОЦЕНКА
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Total_Rel'],
-        mode='lines+markers',
-        name='Общая оценка',
-        line=dict(color=COLOR_MAIN, width=4, shape='spline'),
-        marker=dict(size=10, color=COLOR_MAIN, line=dict(width=2, color='white')),
-        fill='tozeroy', # Заливка области под графиком
-        fillcolor='rgba(139, 92, 246, 0.1)' # Прозрачный фиолетовый
+        mode='lines+markers', # Линия + Точки
+        name='Общая',
+        line=dict(color=COLOR_MAIN, **COMMON_LINE_CONFIG),
+        marker=dict(color=COLOR_MAIN, **COMMON_MARKER_CONFIG)
     ))
 
     # 2. ШИРИНА
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Ширина (балл)'],
-        mode='lines',
+        mode='lines+markers',
         name='Ширина',
-        line=dict(color=COLOR_WIDTH, width=2, shape='spline'),
-        opacity=0.9
+        line=dict(color=COLOR_WIDTH, **COMMON_LINE_CONFIG),
+        marker=dict(color=COLOR_WIDTH, **COMMON_MARKER_CONFIG)
     ))
 
     # 3. ГЛУБИНА
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Глубина (балл)'],
-        mode='lines',
+        mode='lines+markers',
         name='Глубина',
-        line=dict(color=COLOR_DEPTH, width=2, shape='spline'),
-        opacity=0.9
+        line=dict(color=COLOR_DEPTH, **COMMON_LINE_CONFIG),
+        marker=dict(color=COLOR_DEPTH, **COMMON_MARKER_CONFIG)
     ))
 
-    # 4. ТРЕНД (Пунктир)
+    # 4. ТРЕНД (Сплошная, с точками)
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Trend'],
-        mode='lines',
+        mode='lines+markers',
         name='Тренд',
-        line=dict(color=COLOR_TREND, width=2, shape='spline', dash='dash'),
-        opacity=0.6,
-        hoverinfo='skip'
+        line=dict(color=COLOR_TREND, **COMMON_LINE_CONFIG), # Сплошная линия
+        marker=dict(color=COLOR_TREND, **COMMON_MARKER_CONFIG),
+        opacity=0.6 # Чуть прозрачнее, чтобы не перебивать основные данные
     ))
 
     # 3. Настройка Layout
     fig.update_layout(
-        template="plotly_white", # Чистый белый фон
-        # Легенда СВЕРХУ ПО ЦЕНТРУ
+        template="plotly_white",
         legend=dict(
             orientation="h",
             yanchor="bottom", y=1.05,
             xanchor="center", x=0.5,
-            font=dict(size=12, color="#374151")
+            font=dict(size=12, color="#111827", family="Inter, sans-serif")
         ),
         xaxis=dict(
             showgrid=False, 
             linecolor='#E5E7EB',
             tickmode='array',
             tickvals=x_indices,
-            ticktext=tick_links, # <--- Сюда вставляем ссылки
+            ticktext=tick_links,
             tickfont=dict(size=11),
-            fixedrange=True, # Отключаем зум по X
+            fixedrange=True,
             range=[-0.2, len(df) - 0.8]
         ),
         yaxis=dict(
@@ -319,8 +311,7 @@ def render_relevance_chart(df_rel):
             gridcolor='#F3F4F6', 
             gridwidth=1,
             zeroline=False,
-            fixedrange=True, # Отключаем зум по Y
-            tickfont=dict(color="#9CA3AF")
+            fixedrange=True
         ),
         margin=dict(l=10, r=10, t=50, b=20),
         hovermode="x unified",
@@ -3323,6 +3314,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
