@@ -230,7 +230,7 @@ def render_relevance_chart(df_rel, unique_key="default"):
         label_text = f"{row['Позиция']}. {clean_domain}"
         if len(label_text) > 20: label_text = label_text[:18] + ".."
         
-        url_target = f"https://{raw_name}"
+        url_target = row.get('URL', f"https://{raw_name}")
         
         # Используем CSS-класс .chart-link вместо style="..." для работы hover
         link_html = f"<a href='{url_target}' target='_blank' class='chart-link'>{label_text}</a>"
@@ -1190,6 +1190,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         scores = competitor_scores_map[url]
         table_rel.append({ 
             "Домен": display_name, 
+            "URL": url, # <--- СОХРАНЯЕМ ПОЛНУЮ ССЫЛКУ
             "Позиция": item['pos'], 
             "Ширина (балл)": scores['width_final'], 
             "Глубина (балл)": scores['depth_final'] 
@@ -1198,7 +1199,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     if not my_site_found_in_selection:
         pos_to_show = my_serp_pos if my_serp_pos > 0 else 0
         my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
-        table_rel.append({ "Домен": my_label, "Позиция": pos_to_show, "Ширина (балл)": my_width_score_final, "Глубина (балл)": my_depth_score_final })
+        my_full_url = my_data['url'] if (my_data and 'url' in my_data) else "#"
+        table_rel.append({ "Домен": my_label, "URL": my_full_url, "Позиция": pos_to_show, "Ширина (балл)":
+my_width_score_final, "Глубина (балл)": my_depth_score_final })
 
     return { 
         "depth": pd.DataFrame(table_depth), 
@@ -3322,3 +3325,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
