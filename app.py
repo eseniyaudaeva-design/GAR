@@ -195,20 +195,7 @@ def render_clean_block(title, icon, words_list):
         </div>
         """
     
-        st.markdown(html_code, unsafe_allow_html=True)  # <-- Ориентируемся на эту строку
-
-        # ВАЖНО: Следующие строки должны начинаться с того же уровня отступа!
-        # Уберите лишние пробелы перед render_paginated_table
-        
-        # === ВСТАВЛЯЕМ ГРАФИК ЗДЕСЬ (ВЫЗОВ, А НЕ ОПРЕДЕЛЕНИЕ) ===
-        if 'relevance_top' in results and not results['relevance_top'].empty:
-             st.markdown("### 📊 Графический анализ")
-             with st.expander("📈 Показать график релевантности (ТОП-10)", expanded=False):
-                  render_relevance_chart(results['relevance_top'])
-        # ========================================================
-
-        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+    st.markdown(html_code, unsafe_allow_html=True)
 
 def render_relevance_chart(df_rel):
     """
@@ -297,6 +284,7 @@ def render_relevance_chart(df_rel):
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#f0f0f0')
 
     st.plotly_chart(fig, use_container_width=True)
+
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ
 # ==========================================
@@ -2151,14 +2139,14 @@ with tab_seo_main:
                 )
             else:
                 st.warning("Нет данных для отображения.")
+
         # === ГРАФИК (ВСТАВЛЯЕМ ЗДЕСЬ) ===
-        # Обратите внимание: этот блок должен быть на том же уровне отступа, что и render_paginated_table ниже
         if 'relevance_top' in results and not results['relevance_top'].empty:
-            st.markdown("### 📊 Графический анализ")
-            with st.expander("📈 Показать график релевантности (ТОП-10)", expanded=False):
-                 render_relevance_chart(results['relevance_top'])
-        # =================================
-                
+             st.markdown("### 📊 Графический анализ")
+             with st.expander("📈 Показать график релевантности (ТОП-10)", expanded=False):
+                  render_relevance_chart(results['relevance_top'])
+        # ========================================================
+
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
@@ -2996,10 +2984,6 @@ with tab_wholesale_main:
             # Загружаем статику
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # 🔥 ВСТАВИТЬ СЮДА: Очищаем поле доставки, если галочка снята
-            if not use_geo:
-                row_data['IP_PROP4819'] = ""
-            
             # ========================================================
             # 1. СНАЧАЛА ГЕНЕРИРУЕМ ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO)
             # Чтобы понять, что не влезло и перенести это в текст
@@ -3292,38 +3276,3 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
