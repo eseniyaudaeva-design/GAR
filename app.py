@@ -197,7 +197,7 @@ def render_clean_block(title, icon, words_list):
     
     st.markdown(html_code, unsafe_allow_html=True)
 
-def render_relevance_chart(df_rel):
+def render_relevance_chart(df_rel, unique_key="default"):
     """
     ФИНАЛЬНАЯ ВЕРСИЯ.
     - Исключает позицию 0 (Ваш сайт).
@@ -328,7 +328,7 @@ def render_relevance_chart(df_rel):
         height=380
     )
 
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ
 # ==========================================
@@ -3555,6 +3555,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
