@@ -1833,7 +1833,17 @@ with tab_seo_main:
 
         st.markdown("### Поисковой запрос")
         st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
+        
         st.markdown("### Поиск конкурентов")
+
+                        # --- ИСПРАВЛЕНИЕ: Обработка авто-переключения ---
+            if st.session_state.get('force_radio_switch'):
+                # Меняем значение ДО отрисовки виджета
+                st.session_state["competitor_source_radio"] = "Список url-адресов ваших конкурентов"
+                # Сбрасываем флаг, чтобы не переключало вечно
+                st.session_state['force_radio_switch'] = False
+        # -----------------------------------------------
+        
         source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
@@ -2396,7 +2406,7 @@ with tab_seo_main:
 
             # === ФИНАЛЬНЫЙ ШТРИХ: АВТО-ПЕРЕКЛЮЧЕНИЕ ===
             # 1. Принудительно меняем радио-кнопку на "Ручной список"
-            st.session_state["competitor_source_radio"] = "Список url-адресов ваших конкурентов"
+            st.session_state['force_radio_switch'] = True
             
             # 2. Если мы запускали через API, убеждаемся, что в поле "Ручной ввод" попали ссылки
             # (good_urls мы получили чуть выше из функции анализатора)
@@ -3538,6 +3548,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
