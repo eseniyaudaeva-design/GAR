@@ -232,10 +232,8 @@ def render_relevance_chart(df_rel):
         
         url_target = f"https://{raw_name}"
         
-        # СТИЛЬ ССЫЛКИ: Серый (Slate-700), жирный, подчеркивание
-        link_style = "color: #277EFF; font-weight: 600; text-decoration: none; border-bottom: 4px solid #CBD5E1;"
-        
-        link_html = f"<a href='{url_target}' target='_blank' style='{link_style}'>{label_text}</a>"
+# ЗАМЕНА: Используем CSS-класс .chart-link вместо style="..." для работы hover
+        link_html = f"<a href='{url_target}' target='_blank' class='chart-link'>{label_text}</a>"
         tick_links.append(link_html)
 
     # Метрики
@@ -648,6 +646,19 @@ st.markdown(f"""
         }}
         .stButton button:disabled {{ opacity: 1 !important; background-color: {PRIMARY_COLOR} !important; color: white !important; cursor: progress !important; }}
         div[data-testid="stAppViewContainer"] {{ filter: none !important; opacity: 1 !important; transition: none !important; }}
+        /* Стили для ссылок внутри графика Plotly */
+        .chart-link {
+            color: #277EFF !important;
+            font-weight: 600 !important;
+            text-decoration: none !important;
+            border-bottom: 4px solid #CBD5E1 !important; 
+            display: inline-block !important; /* Важно для отображения границы */
+            transition: border-color 0.2s ease !important;
+        }
+        .chart-link:hover {
+            border-bottom-color: #277EFF !important; /* Цвет границы при наведении */
+            cursor: pointer !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -3544,4 +3555,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
