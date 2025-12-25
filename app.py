@@ -1813,17 +1813,57 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
 tab_seo_main, tab_wholesale_main = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор"])
 
 # ------------------------------------------
-# TAB 1: SEO ANALYSIS (KEPT AS IS)
+# TAB 1: SEO ANALYSIS (UPDATED UI)
 # ------------------------------------------
 with tab_seo_main:
     col_main, col_sidebar = st.columns([65, 35])
+    
+    # --- САЙДБАР (СНАЧАЛА НАСТРОЙКИ) ---
+    with col_sidebar:
+        # 1. Блок сервиса (Кнопка обновления словарей)
+        with st.container(border=True):
+            st.markdown("##### 🛠️ Сервис")
+            if st.button("🧹 Обновить словари (Кэш)", key="clear_cache_btn", use_container_width=True, help="Нажмите, если вы изменили файлы JSON и хотите подтянуть новые данные без перезагрузки сервера."):
+                st.cache_data.clear()
+                st.rerun()
+
+        st.markdown("##### ⚙️ Настройки API")
+        if not ARSENKIN_TOKEN:
+             new_arsenkin = st.text_input("Arsenkin Token", type="password", key="input_arsenkin")
+             if new_arsenkin: st.session_state.arsenkin_token = new_arsenkin; ARSENKIN_TOKEN = new_arsenkin 
+        if not YANDEX_DICT_KEY:
+             new_yandex = st.text_input("Yandex Dict Key", type="password", key="input_yandex")
+             if new_yandex: st.session_state.yandex_dict_key = new_yandex; YANDEX_DICT_KEY = new_yandex
+        
+        st.markdown("##### ⚙️ Параметры поиска")
+        st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
+        st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
+        st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
+        st.selectbox("Кол-во конкурентов для анализа", [10, 20], index=0, key="settings_top_n")
+        
+        st.markdown("##### 🎛️ Фильтры парсинга")
+        st.checkbox("Исключать <noindex>", True, key="settings_noindex")
+        st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
+        st.checkbox("Учитывать числа", False, key="settings_numbers")
+        st.checkbox("Нормировать по длине", True, key="settings_norm")
+        
+        # === НОВОЕ МЕСТО ДЛЯ СПИСКОВ (СКРЫТЫЙ СЛОЙ) ===
+        st.write("") # Отступ
+        with st.expander("🚫 Списки исключений (Stop / Exclude)", expanded=False):
+            st.caption("⛔ Домены (исключить из анализа):")
+            st.text_area("Domains", DEFAULT_EXCLUDE, height=150, key="settings_excludes", label_visibility="collapsed", help="Список доменов, которые будут игнорироваться при сборе конкурентов.")
+            
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+            
+            st.caption("⛔ Стоп-слова (мусор):")
+            st.text_area("Stop-words", DEFAULT_STOPS, height=150, key="settings_stops", label_visibility="collapsed", help="Слова, которые будут удалены из текста перед анализом.")
+        # ==============================================
+
+    # --- ОСНОВНАЯ КОЛОНКА ---
     with col_main:
         st.title("SEO Анализатор")
         
-        # Сброс кэша для словарей
-        if st.button("🧹 Обновить словари (Кэш)", key="clear_cache_btn"):
-            st.cache_data.clear()
-            st.rerun()
+        # (Кнопка кэша убрана отсюда в сайдбар)
 
         my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
         if my_input_type == "Релевантная страница на вашем сайте":
@@ -1836,24 +1876,18 @@ with tab_seo_main:
         
         st.markdown("### Поиск конкурентов")
         
-        # --- ИСПРАВЛЕНИЕ: Обработка авто-переключения ---
         if st.session_state.get('force_radio_switch'):
-            # Меняем значение ДО отрисовки виджета
             st.session_state["competitor_source_radio"] = "Список url-адресов ваших конкурентов"
-            # Сбрасываем флаг, чтобы не переключало вечно
             st.session_state['force_radio_switch'] = False
-        # -----------------------------------------------
 
         source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
-            # 1. КНОПКА СБРОСА (Появляется, если есть результаты)
             if st.session_state.get('analysis_done'):
                 col_reset, _ = st.columns([1, 4])
                 with col_reset:
                     if st.button("🔄 Новый поиск (Сброс)", type="secondary", help="Сбросить все результаты и ввести новый список"):
-                        # Чистим вообще всё, чтобы начать с чистого листа
                         keys_to_clear = [
                             'analysis_done', 'analysis_results', 'excluded_urls_auto', 
                             'detected_anomalies', 'serp_trend_info', 'persistent_urls',
@@ -1863,8 +1897,6 @@ with tab_seo_main:
                             if k in st.session_state: del st.session_state[k]
                         st.rerun()
 
-            # 2. ЛОГИКА ОТОБРАЖЕНИЯ (1 или 2 колонки)
-            # Если есть список исключенных - показываем 2 колонки
             has_exclusions = st.session_state.get('excluded_urls_auto') and len(st.session_state.get('excluded_urls_auto')) > 5
             
             if has_exclusions:
@@ -1883,10 +1915,9 @@ with tab_seo_main:
                         height=200, 
                         key="excluded_urls_widget_display", 
                         value=st.session_state.get('excluded_urls_auto', ""),
-                        help="Сюда попали слабые сайты. Если считаете, что сайт нормальный - скопируйте его и вставьте обратно в левое окно."
+                        help="Сюда попали слабые сайты."
                     )
             else:
-                # Обычный вид (1 колонка)
                 manual_val = st.text_area(
                     "Список ссылок (каждая с новой строки)", 
                     height=200, 
@@ -1895,8 +1926,6 @@ with tab_seo_main:
                 )
                 st.session_state['persistent_urls'] = manual_val
 
-    # ================= НОВОЕ МЕСТО ДЛЯ ГРАФИКА =================
-    # Показываем график ТОЛЬКО если есть результаты анализа
         if st.session_state.get('analysis_done') and st.session_state.get('analysis_results'):
             results = st.session_state.analysis_results
             if 'relevance_top' in results and not results['relevance_top'].empty:
@@ -1905,13 +1934,11 @@ with tab_seo_main:
                   graph_data = st.session_state.get('full_graph_data', results['relevance_top'])
                   render_relevance_chart(graph_data, unique_key="main")
                 st.markdown("<br>", unsafe_allow_html=True)
-    # ===========================================================
 
-        st.markdown("### Списки (Stop / Exclude)")
-        st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=100, key="settings_excludes")
-        st.text_area("Стоп-слова", DEFAULT_STOPS, height=100, key="settings_stops")
+        # (Списки Stop / Exclude отсюда УБРАНЫ)
+        
+        st.markdown("### Запуск")
         if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-            # === ОЧИСТКА ВСЕХ СТАРЫХ ДАННЫХ ===
             st.session_state.analysis_results = None
             st.session_state.analysis_done = False
             st.session_state.naming_table_df = None
@@ -1922,13 +1949,10 @@ with tab_seo_main:
             if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
             if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
             if 'serp_trend_info' in st.session_state: del st.session_state['serp_trend_info']
-            # ---------------------------------------------------------------
             
-            # Сброс пагинации таблиц
             for key in list(st.session_state.keys()):
                 if key.endswith('_page'): st.session_state[key] = 1
             
-            # Запуск флага и перезагрузка страницы, чтобы интерфейс очистился
             st.session_state.start_analysis_flag = True
             st.rerun()
 
@@ -3552,3 +3576,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
