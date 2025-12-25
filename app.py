@@ -43,8 +43,10 @@ except ImportError:
     openai = None
 
 # ==========================================
-# CONFIG & CONSTANTS
+# CONFIG & GLOBAL CONSTANTS (MOVED TO TOP)
 # ==========================================
+st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
+
 PRIMARY_COLOR = "#277EFF"
 PRIMARY_DARK = "#1E63C4"
 TEXT_COLOR = "#3D4858"
@@ -53,9 +55,61 @@ BORDER_COLOR = "#E2E8F0"
 HEADER_BG = "#F0F7FF"
 ROW_BORDER_COLOR = "#DBEAFE"
 
-st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
+# --- GLOBAL STOPLISTS (Defined here to avoid NameError) ---
+GARBAGE_LATIN_STOPLIST = {
+    'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
+    'cookie', 'cookies', 'policy', 'privacy', 'agreement', 'terms',
+    'click', 'submit', 'send', 'zakaz', 'basket', 'cart', 'order', 'call', 'back', 'callback',
+    'login', 'logout', 'sign', 'register', 'auth', 'account', 'profile',
+    'search', 'menu', 'nav', 'navigation', 'footer', 'header', 'sidebar',
+    'img', 'jpg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'svg',
+    'ok', 'error', 'undefined', 'null', 'true', 'false', 'var', 'let', 'const', 'function', 'return',
+    'ru', 'en', 'com', 'net', 'org', 'biz', 'shop', 'store',
+    'phone', 'email', 'tel', 'fax', 'mob', 'address', 'copyright', 'all', 'rights', 'reserved',
+    'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
+}
 
-# --- ИСПРАВЛЕННЫЙ CSS БЛОК (С УДВОЕННЫМИ СКОБКАМИ) ---
+SENSITIVE_STOPLIST_RAW = {
+    "украина", "ukraine", "ua", "всу", "зсу", "ато",
+    "киев", "львов", "харьков", "одесса", "днепр", "мариуполь",
+    "донецк", "луганск", "днр", "лнр", "донбасс", 
+    "мелитополь", "бердянск", "бахмут", "запорожье", "херсон",
+    "крым", "севастополь", "симферополь"
+}
+SENSITIVE_STOPLIST = {w.lower() for w in SENSITIVE_STOPLIST_RAW}
+
+REGION_MAP = {
+    "Москва": {"ya": 213, "go": 1011969},
+    "Санкт-Петербург": {"ya": 2, "go": 1011966},
+    "Екатеринбург": {"ya": 54, "go": 1011868},
+    "Новосибирск": {"ya": 65, "go": 1011928},
+    "Казань": {"ya": 43, "go": 1011904},
+    "Нижний Новгород": {"ya": 47, "go": 1011918},
+    "Самара": {"ya": 51, "go": 1011956},
+    "Челябинск": {"ya": 56, "go": 1011882},
+    "Омск": {"ya": 66, "go": 1011931},
+    "Краснодар": {"ya": 35, "go": 1011894},
+    "Киев (UA)": {"ya": 143, "go": 1012852},
+    "Минск (BY)": {"ya": 157, "go": 1001493},
+    "Алматы (KZ)": {"ya": 162, "go": 1014601}
+}
+
+DEFAULT_EXCLUDE_DOMAINS = {
+    "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "aliexpress.ru", 
+    "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", 
+    "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", 
+    "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", 
+    "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", 
+    "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", 
+    "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", 
+    "market.yandex.ru", "youtube.com", "www.youtube.com", "gosuslugi.ru", 
+    "www.gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", 
+    "vk.com", "facebook.com"
+}
+DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
+DEFAULT_STOPS = "рублей\nруб\nстр\nул\nшт\nсм\nмм\nмл\nкг\nкв\nм²\nсм²\nм2\nсм2"
+
+# --- CSS ---
 st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -579,18 +633,6 @@ if 'auto_tags_words' not in st.session_state: st.session_state.auto_tags_words =
 if 'auto_promo_words' not in st.session_state: st.session_state.auto_promo_words = []
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
 
-# ==========================================
-# STOP LISTS (SENSITIVE / GEO UA)
-# ==========================================
-SENSITIVE_STOPLIST_RAW = {
-    "украина", "ukraine", "ua", "всу", "зсу", "ато",
-    "киев", "львов", "харьков", "одесса", "днепр", "мариуполь",
-    "донецк", "луганск", "днр", "лнр", "донбасс", 
-    "мелитополь", "бердянск", "бахмут", "запорожье", "херсон",
-    "крым", "севастополь", "симферополь"
-}
-SENSITIVE_STOPLIST = {w.lower() for w in SENSITIVE_STOPLIST_RAW}
-
 def check_password():
     if st.session_state.get("authenticated"):
         return True
@@ -621,42 +663,6 @@ if "yandex_dict_key" in st.session_state:
 else:
     try: YANDEX_DICT_KEY = st.secrets["api"]["yandex_dict_key"]
     except (FileNotFoundError, KeyError): YANDEX_DICT_KEY = None
-
-REGION_MAP = {
-    "Москва": {"ya": 213, "go": 1011969},
-    "Санкт-Петербург": {"ya": 2, "go": 1011966},
-    "Екатеринбург": {"ya": 54, "go": 1011868},
-    "Новосибирск": {"ya": 65, "go": 1011928},
-    "Казань": {"ya": 43, "go": 1011904},
-    "Нижний Новгород": {"ya": 47, "go": 1011918},
-    "Самара": {"ya": 51, "go": 1011956},
-    "Челябинск": {"ya": 56, "go": 1011882},
-    "Омск": {"ya": 66, "go": 1011931},
-    "Краснодар": {"ya": 35, "go": 1011894},
-    "Киев (UA)": {"ya": 143, "go": 1012852},
-    "Минск (BY)": {"ya": 157, "go": 1001493},
-    "Алматы (KZ)": {"ya": 162, "go": 1014601}
-}
-
-DEFAULT_EXCLUDE_DOMAINS = {
-    "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "aliexpress.ru", 
-    "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", 
-    "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", 
-    "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", 
-    "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", 
-    "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", 
-    "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", 
-    "market.yandex.ru", "youtube.com", "www.youtube.com", "gosuslugi.ru", 
-    "www.gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", 
-    "vk.com", "facebook.com"
-    }
-
-DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
-DEFAULT_STOPS = "рублей\nруб\nстр\nул\nшт\nсм\nмм\nмл\nкг\nкв\nм²\nсм²\nм2\nсм2"
-
-# ==========================================
-# PARSING & METRICS
-# ==========================================
 
 def get_yandex_dict_info(text, api_key):
     if not api_key: return {'lemma': text, 'pos': 'unknown'}
@@ -1551,176 +1557,18 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     st.markdown("---")
 
 # ==========================================
-# PERPLEXITY GEN
-# ==========================================
-STATIC_DATA_GEN = {
-    'IP_PROP4817': "Условия поставки",
-    'IP_PROP4818': "Оперативные отгрузки в регионы точно в срок",
-    'IP_PROP4819': """<p>Надежная и быстрая доставка заказа в любую точку страны: "Стальметурал" отгружает товар 24 часа в сутки, 7 дней в неделю. Более 4 000 отгрузок в год. При оформлении заказа менеджер предложит вам оптимальный логистический маршрут.</p>""",
-    'IP_PROP4820': """<p>Наши изделия успешно применяются на некоторых предприятиях Урала, центрального региона, Поволжья, Сибири. Партнеры по логистике предложат доставить заказ самым удобным способом – автомобильным, железнодорожным, даже авиационным транспортом. Для вас разработают транспортную схему под удобный способ получения. Погрузка выполняется полностью с соблюдением особенностей техники безопасности.</p><div class="h4"><h4>Самовывоз</h4></div><p>Если обычно соглашаетесь самостоятельно забрать товар или даете это право уполномоченным, адрес и время работы склада в своем городе уточняйте у менеджера.</p><div class="h4"><h4>Грузовой транспорт компании</h4></div><p>Отправим прокат на ваш объект собственным автопарком. Получение в упаковке для безопасной транспортировки, а именно на деревянном поддоне.</p><div class="h4"><h4>Сотрудничаем с ТК</h4></div><p>Доставка с помощью транспортной компании по России и СНГ. Окончательная цена может измениться, так как ссылается на прайс-лист, который предоставляет контрагент, однако, сравним стоимость логистических служб и выберем лучшую.</p>""",
-    'IP_PROP4821': "Оплата и реквизиты для постоянных клиентов:",
-    'IP_PROP4822': """<p>Наша компания готова принять любые комфортные виды оплаты для юридических и физических лиц: по счету, наличная и безналичная, наложенный платеж, также возможны предоплата и отсрочка платежа.</p>""",
-    'IP_PROP4823': """<div class="h4"><h3>Примеры возможной оплаты</h3></div><div class="an-col-12"><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">С помощью менеджера в центрах продаж</span></p></li></ul><p>Важно! Цена не является публичной офертой. Приходите в наш офис, чтобы уточнить поступление, получить ответы на почти любой вопрос, согласовать возврат, счет, рассчитать логистику.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">На расчетный счет</span></p></li></ul><p>По внутреннему счету в отделении банка или путем перечисления средств через личный кабинет (транзакции защищены, скорость зависит от отделения). Для права подтверждения нужно показать согласие на платежное поручение с отметкой банка.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">Наличными или банковской картой при получении</span></p></li></ul><p><span style="font-weight: 400;">Поможем с оплатой: объем имеет значение. Крупным покупателям – деньги можно перевести после приемки товара.</span></p><p>Менеджеры предоставят необходимую информацию.</p><p>Заказывайте через прайс-лист:</p><p><a class="btn btn-blue" href="/catalog/">Каталог (магазин-меню):</a></p></div></div><br>""",
-    'IP_PROP4824': "Описание, статьи, поиск, отзывы, новости, акции, журнал, info:",
-    'IP_PROP4825': "Можем металлизировать, оцинковать, никелировать, проволочь",
-    'IP_PROP4826': "Современный практический подход",
-    'IP_PROP4834': "Надежность без примесей",
-    'IP_PROP4835': "Популярный поставщик",
-    'IP_PROP4836': "Качество и характер",
-    'IP_PROP4837': "Порядок в ГОСТах"
-}
-
-def get_page_data_for_gen(url):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-    try:
-        response = requests.get(url, headers=headers, timeout=15, verify=False)
-        response.encoding = 'utf-8'
-    except Exception as e: return None, None, None, f"Ошибка соединения: {e}"
-    
-    if response.status_code != 200: return None, None, None, f"Ошибка статуса: {response.status_code}"
-    
-    soup = BeautifulSoup(response.text, 'html.parser')
-    
-    # 1. ЗАГОЛОВОК: Ищем строго H2 (как вы просили)
-    # Сначала ищем в контентной части (часто бывает h2 в меню, который нам не нужен)
-    # Если есть класс description-container, ищем внутри него, если нет - первый H2 на странице
-    description_div = soup.find('div', class_='description-container')
-    
-    target_h2 = None
-    if description_div:
-        target_h2 = description_div.find('h2')
-    
-    if not target_h2:
-        target_h2 = soup.find('h2')
-        
-    page_header = target_h2.get_text(strip=True) if target_h2 else "Описание товара" # Дефолт, если H2 нет совсем
-
-    # 2. Фактура (текст)
-    base_text = description_div.get_text(separator="\n", strip=True) if description_div else soup.body.get_text(separator="\n", strip=True)[:5000]
-    
-    # 3. Теги
-    tags_container = soup.find(class_='popular-tags-inner')
-    tags_data = []
-    if tags_container:
-        links = tags_container.find_all('a')
-        for link in links:
-            tag_url = urljoin(url, link.get('href')) if link.get('href') else None
-            if tag_url: tags_data.append({'name': link.get_text(strip=True), 'url': tag_url})
-            
-    return base_text, tags_data, page_header, None
-
-def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
-    if not base_text: return ["Error: No base text"] * 5
-    
-    # 1. Распределение ключей
-    seo_words = seo_words or []
-    buckets = [[] for _ in range(5)]
-    if seo_words and num_blocks > 0:
-        for i, word in enumerate(seo_words):
-            buckets[i % num_blocks].append(word)
-
-    vocab_strs = [", ".join(b) if b else "None" for b in buckets]
-
-    # 2. СИСТЕМНЫЙ ПРОМТ
-    system_instruction = (
-        "You are a Senior Editor for a B2B industrial marketplace. "
-        "Your goal is to write natural, professional, and idiomatic Russian text. "
-        "Output raw HTML only."
-    )
-
-    h_tag_instruction = f"1. Header: <h2>{forced_header}</h2> (Use this EXACT text)."
-    if num_blocks > 1:
-        h_tag_instruction += " For blocks 2-N use <h3> tags with relevant technical themes."
-
-    # 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ
-    user_prompt = f"""
-    INPUT DATA:
-    Product: "{tag_name}"
-    Source Info: \"\"\"{base_text[:3000]}\"\"\"
-    
-    TASK: Generate {num_blocks} HTML sections. Separator: |||BLOCK_SEP|||
-    
-    SECTION STRUCTURE:
-    {h_tag_instruction}
-    2. <p> (3-5 sentences). Meaningful commercial/technical text.
-    3. Short intro line.
-    4. <ul><li>...</li></ul> (Specs/Benefits).
-    5. <p> Summary.
-
-    MANDATORY VOCABULARY TO INSERT:
-    Section 1: {vocab_strs[0]}
-    Section 2: {vocab_strs[1]}
-    Section 3: {vocab_strs[2]}
-    Section 4: {vocab_strs[3]}
-    Section 5: {vocab_strs[4]}
-    
-    CRITICAL RULES FOR VOCABULARY (READ CAREFULLY):
-    1. IDIOMATIC USE ONLY: Use words in their standard business context. Do not force them into sentences where they don't belong.
-       
-       --- EXAMPLES ---
-       Word: "согласиться"
-       BAD: "Вы можете согласиться купить товар." (Nonsense)
-       BAD: "Поставка с возможностью согласиться." (Robot style)
-       GOOD: "Оформляя заказ, покупатель <b>соглашается</b> с условиями публичной оферты." (Standard legal context)
-       GOOD: "Мы достигли <b>согласия</b> (noun) с производителями о лучших ценах." (Changed part of speech)
-
-       Word: "звонок"
-       BAD: "Сделайте звонок нам."
-       GOOD: "Закажите обратный <b>звонок</b> для консультации."
-       ----------------
-    
-    2. CHANGE PARTS OF SPEECH: If the verb sounds bad, change it to a noun or adjective. 
-       (согласиться -> согласие, продать -> продажа).
-       
-    3. NO "AI" FILLERS: Ban phrases like "с возможностью", "путем использования", "является важным".
-       
-    4. HIGHLIGHT: Wrap the inserted keyword (in its changed form) in <b> tags.
-    5. QUANTITY: Exactly 1 time per section.
-    
-    CONSTRAINTS:
-    - Language: Russian (Native Business).
-    - Max length: 800 chars/section.
-    - NO citations ([1]). NO Markdown.
-    """
-
-    for attempt in range(3):
-        try:
-            response = client.chat.completions.create(
-                model="sonar-pro", 
-                messages=[
-                    {"role": "system", "content": system_instruction}, 
-                    {"role": "user", "content": user_prompt}
-                ], 
-                temperature=0.75 
-            )
-            content = response.choices[0].message.content
-            
-            content = re.sub(r'\[\d+\]', '', content)
-            content = content.replace("```html", "").replace("```", "").strip()
-            
-            blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
-            
-            while len(blocks) < 5: blocks.append("")
-            return blocks[:5]
-        except Exception as e:
-            time.sleep(2)
-            
-    return ["API Error"] * 5
-
-# ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
 tab_seo_main, tab_wholesale_main = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор"])
 
 # ------------------------------------------
-# TAB 1: SEO ANALYSIS (KEPT AS IS)
+# TAB 1: SEO ANALYSIS
 # ------------------------------------------
 with tab_seo_main:
     col_main, col_sidebar = st.columns([65, 35])
     with col_main:
         st.title("SEO Анализатор")
         
-        # Сброс кэша для словарей
         if st.button("🧹 Обновить словари (Кэш)", key="clear_cache_btn"):
             st.cache_data.clear()
             st.rerun()
@@ -1783,7 +1631,6 @@ with tab_seo_main:
         st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
         st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
         
-        # ИЗМЕНЕНИЕ: Убрали 30, оставили только 10 и 20
         st.selectbox("Кол-во конкурентов для анализа", [10, 20], index=0, key="settings_top_n")
         
         st.checkbox("Исключать <noindex>", True, key="settings_noindex")
@@ -1819,41 +1666,6 @@ with tab_seo_main:
 
         st.success("Анализ готов!")
         
-        st.markdown("""
-        <style>
-            details > summary { list-style: none; }
-            details > summary::-webkit-details-marker { display: none; }
-            .details-card {
-                background-color: #f8f9fa; border: 1px solid #e9ecef;
-                border-radius: 8px; margin-bottom: 10px;
-                overflow: hidden; transition: all 0.2s ease;
-            }
-            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
-            .card-summary {
-                padding: 12px 15px; cursor: pointer; font-weight: 700;
-                font-size: 15px; color: #111827; display: flex;
-                justify-content: space-between; align-items: center;
-                background-color: #ffffff;
-            }
-            .card-summary:hover { background-color: #f3f4f6; }
-            .card-content {
-                padding: 15px; border-top: 1px solid #e9ecef;
-                font-size: 14px; color: #374151; line-height: 1.6;
-                background-color: #fcfcfc;
-            }
-            .count-tag { 
-                background: #e5e7eb; color: #374151; padding: 2px 8px; 
-                border-radius: 10px; font-size: 12px; font-weight: 600;
-                min-width: 25px; text-align: center;
-            }
-            .arrow-icon {
-                font-size: 10px; margin-right: 8px; color: #9ca3af;
-                transition: transform 0.2s;
-            }
-            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
-        </style>
-        """, unsafe_allow_html=True)
-
         st.markdown(f"""
         <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
             <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
@@ -2166,7 +1978,7 @@ with tab_wholesale_main:
     st.header("🏭 Единый генератор контента")
     
     # ==========================================
-    # 0. ПОДГОТОВКА ДАННЫХ (ИЗ ТЕКУЩЕГО СОСТОЯНИЯ)
+    # 0. ПОДГОТОВКА ДАННЫХ
     # ==========================================
     cat_products = st.session_state.get('categorized_products', [])
     cat_services = st.session_state.get('categorized_services', [])
@@ -2349,82 +2161,43 @@ with tab_wholesale_main:
 
 # --- ФУНКЦИЯ ГЛУБОКОГО АНАЛИЗА КОНТЕКСТА ДЛЯ ТАБЛИЦ ---
         def generate_context_aware_headers(count, query, dimensions_list, general_list):
-            """
-            Анализирует запрос И найденные слова (размеры, общие), 
-            чтобы понять, какие типы таблиц нужны.
-            """
             query_lower = query.lower()
-            
-            # Превращаем списки слов в одну строку для быстрого поиска
             dims_str = " ".join(dimensions_list).lower()
             gen_str = " ".join(general_list).lower()
             full_context = f"{dims_str} {gen_str} {query_lower}"
             
-            # --- 1. ДЕТЕКТОРЫ СИГНАЛОВ (Ищем признаки в семантике) ---
-            
-            # Признак размеров: есть цифры с 'х' (10х20), слова мм, кг, тонна, размер
             has_sizes_signal = (
                 len(dimensions_list) > 0 or 
                 bool(re.search(r'\d+[xх*]\d+', full_context)) or 
                 any(x in full_context for x in ['размер', 'габарит', 'толщин', 'диаметр', 'раскрой', 'вес', 'масс'])
             )
-            
-            # Признак стандартов: ГОСТ, ОСТ, ТУ, DIN, AISI
             has_gost_signal = any(x in full_context for x in ['гост', 'din', 'aisi', 'astm', 'ту ', 'стандарт'])
-            
-            # Признак марок/материала: сталь, сплав, марка, ст.3, 09г2с
             has_grade_signal = any(x in full_context for x in ['марк', 'сплав', 'сталь', 'ст.', 'материал', 'химич', 'состав'])
-            
-            # Признак применения: для чего, сфера, использование
             has_usage_signal = any(x in full_context for x in ['применен', 'сфер', 'назначен', 'использ'])
 
-            # --- 2. СБОРКА ОЧЕРЕДИ (PRIORITY QUEUE) ---
-            # Мы расставляем таблицы в порядке логической важности для пользователя
-            
             priority_stack = []
             
-            # Если это металлопрокат (есть марки/сплавы), обычно сначала ставят Характеристики или Марки
-            if has_grade_signal:
-                priority_stack.append("Марки и сплавы")
-                
-            # Если найдены конкретные размеры - это супер важно, ставим в начало
-            if has_sizes_signal:
-                # Если уже есть Марки, то Размеры вторыми. Если нет - первыми.
-                priority_stack.append("Таблица размеров")
-                
-            # Если есть упоминание ГОСТов
-            if has_gost_signal:
-                priority_stack.append("ГОСТы и стандарты")
-                
-            # Если запрос про хим состав (специфично)
+            if has_grade_signal: priority_stack.append("Марки и сплавы")
+            if has_sizes_signal: priority_stack.append("Таблица размеров")
+            if has_gost_signal: priority_stack.append("ГОСТы и стандарты")
             if "хим" in full_context and "состав" in full_context:
-                 # Вставляем "Химический состав" вместо "Марки и сплавы" или рядом
                  if "Марки и сплавы" in priority_stack:
                      idx = priority_stack.index("Марки и сплавы")
                      priority_stack.insert(idx+1, "Химический состав")
                  else:
                      priority_stack.append("Химический состав")
 
-            # --- 3. ЗАПОЛНЕНИЕ ПУСТОТ (DEFAULTS) ---
-            # Если мы выбрали 5 таблиц, а сигналов нашли только на 2, нужно добить остальное
             defaults = [
-                "Технические характеристики", # Универсальная заглушка
-                "Свойства",
-                "Сферы использования",
-                "Параметры изделия",
-                "Аналоги"
+                "Технические характеристики", "Свойства", "Сферы использования",
+                "Параметры изделия", "Аналоги"
             ]
             
             final_headers = []
-            # Сначала добавляем то, что нашли умным поиском
             for p in priority_stack:
                 if p not in final_headers: final_headers.append(p)
-            
-            # Добиваем стандартными
             for d in defaults:
                 if d not in final_headers: final_headers.append(d)
                 
-            # Если вдруг всё равно мало (редкий случай)
             while len(final_headers) < count:
                 final_headers.append("Характеристики")
                 
@@ -2435,17 +2208,16 @@ with tab_wholesale_main:
             with st.container(border=True):
                 st.markdown("#### 🧩 3. Таблицы")
                 
-                # ДАННЫЕ ДЛЯ АНАЛИЗА (Берем из session_state, куда сохранили результаты анализа)
                 raw_query = st.session_state.get('query_input', '')
-                found_dims = st.session_state.get('categorized_dimensions', []) # Словарь размеров
-                found_general = st.session_state.get('categorized_general', []) # Словарь общих слов
+                found_dims = st.session_state.get('categorized_dimensions', [])
+                found_general = st.session_state.get('categorized_general', [])
                 
                 col_ctx, col_cnt = st.columns([3, 1]) 
                 
                 with col_ctx:
                     tech_context_final_str = st.text_area(
                         "Контекст для таблиц (Марки, ГОСТ, Размеры)", 
-                        value=tech_context_default, # Здесь лежат найденные размеры
+                        value=tech_context_default, 
                         height=68, 
                         key="table_context_editable",
                         help="Эти данные помогут AI составить правильную таблицу."
@@ -2455,8 +2227,6 @@ with tab_wholesale_main:
                     cnt_options = [1, 2, 3, 4, 5]
                     cnt = st.selectbox("Кол-во таблиц", cnt_options, index=1, key="num_tbl_vert_select")
 
-                # --- ЗАПУСК АНАЛИЗАТОРА ---
-                # Формируем список заголовков на основе ТОГО, ЧТО НАШЛИ В СЕМАНТИКЕ
                 smart_headers_list = generate_context_aware_headers(cnt, raw_query, found_dims, found_general)
 
                 table_presets = [
@@ -2478,10 +2248,7 @@ with tab_wholesale_main:
                 for i, col in enumerate(cols):
                     with col:
                         st.caption(f"**Таблица {i+1}**")
-                        
-                        # Авто-выбор на основе анализатора
                         suggested_topic = smart_headers_list[i]
-                        
                         try: default_idx = table_presets.index(suggested_topic)
                         except: default_idx = 0
                         
@@ -2497,7 +2264,7 @@ with tab_wholesale_main:
                             selected_topic = st.selectbox(
                                 f"Тема табл. {i+1}", 
                                 table_presets, 
-                                index=default_idx, # <--- УМНЫЙ ИНДЕКС
+                                index=default_idx, 
                                 key=f"tbl_topic_select_{i}",
                                 label_visibility="collapsed"
                             )
@@ -2532,32 +2299,18 @@ with tab_wholesale_main:
                         "Не забудьте добавить", "Вы недавно смотрели"
                     ]
 
-                    # --- ЛОГИКА АНАЛИЗА КОММЕРЦИИ ---
-                    # Берем запрос + список коммерческих слов из анализа (Tab 1)
                     raw_query = st.session_state.get('query_input', '').lower()
                     comm_words = st.session_state.get('categorized_commercial', [])
-                    
-                    # Объединяем в одну строку для проверки
                     comm_context = f"{raw_query} {' '.join(comm_words)}".lower()
-                    
-                    target_header = "Смотрите также" # Дефолт (информационный)
+                    target_header = "Смотрите также"
 
-                    # 1. Явная коммерция (есть слова 'цена', 'купить' в семантике или запросе)
                     is_commercial = any(x in comm_context for x in ["купить", "цена", "заказ", "стоимость", "прайс", "магазин", "корзина"])
-                    
-                    # 2. Акционные слова
                     is_promo = any(x in comm_context for x in ["акция", "скидк", "распродаж", "выгодн"])
-                    
-                    # 3. Рейтинговые слова
                     is_top = any(x in comm_context for x in ["топ", "лучш", "рейтинг", "популярн"])
 
-                    if is_promo:
-                        target_header = "Спецпредложения"
-                    elif is_top:
-                        target_header = "Лидеры спроса"
-                    elif is_commercial:
-                        # Если это явная коммерция, лучше "Покупают вместе" или "Рекомендуем"
-                        target_header = "С этим товаром покупают"
+                    if is_promo: target_header = "Спецпредложения"
+                    elif is_top: target_header = "Лидеры спроса"
+                    elif is_commercial: target_header = "С этим товаром покупают"
                     
                     try: promo_smart_idx = promo_presets.index(target_header)
                     except: promo_smart_idx = 0
@@ -2570,7 +2323,7 @@ with tab_wholesale_main:
                         promo_title = st.selectbox(
                             "Варианты заголовка", 
                             promo_presets, 
-                            index=promo_smart_idx, # <--- УМНЫЙ ВЫБОР
+                            index=promo_smart_idx,
                             key="promo_header_select"
                         )
 
@@ -2645,8 +2398,6 @@ with tab_wholesale_main:
         if not main_category_url: ready_to_go = False
 
     if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
-    # Убираем жесткие проверки контента здесь, так как подгрузим файлы принудительно ниже
-    # if use_tags and not tags_file_content: ready_to_go = False 
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_geo and not pplx_api_key: ready_to_go = False
     
@@ -2676,25 +2427,21 @@ with tab_wholesale_main:
             
             # --- УМНЫЙ ПОИСК (Smart Matching) ---
             for kw in global_tags_list:
-                # 1. Транслитерация
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                
-                # 2. Выделение корня (обрезаем окончания, чтобы найти 'gibkiy' в 'gibkaya')
-                search_roots = {tr} # Исходный вариант
+                search_roots = {tr}
                 if len(tr) > 5: 
-                    search_roots.add(tr[:-1]) # минус 1 буква
-                    search_roots.add(tr[:-2]) # минус 2 буквы (iy, yy, ay)
+                    search_roots.add(tr[:-1])
+                    search_roots.add(tr[:-2])
                 elif len(tr) > 4:
                     search_roots.add(tr[:-1])
 
-                # 3. Ищем любое совпадение корня в ссылках
                 matches = []
                 for u in all_tags_links:
                     u_lower = u.lower()
                     for root in search_roots:
                         if root in u_lower:
                             matches.append(u)
-                            break # Если нашли по одному корню, переходим к след. ссылке
+                            break
                 
                 if matches: tags_map[kw] = matches
 
@@ -2708,11 +2455,9 @@ with tab_wholesale_main:
         # --- База Сайдбара (menu_structure.txt) ---
         all_menu_urls = []
         if use_sidebar:
-            # Сначала из UI
             if sidebar_content:
                 s_io = io.StringIO(sidebar_content)
                 all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
-            # Иначе с диска
             elif os.path.exists("data/menu_structure.txt"):
                 with open("data/menu_structure.txt", "r", encoding="utf-8") as f:
                     all_menu_urls = [l.strip() for l in f.readlines() if l.strip()]
@@ -2732,7 +2477,6 @@ with tab_wholesale_main:
         if use_promo:
             for kw in global_promo_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                # Формируем корни для поиска
                 roots = [tr]
                 if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
                 
@@ -2764,23 +2508,18 @@ with tab_wholesale_main:
         # 4. АВТОМАТИЧЕСКОЕ ПЕРЕРАСПРЕДЕЛЕНИЕ
         if missing_words_log:
             missing_list = sorted(list(missing_words_log))
-            
-            # А. Добавляем в Текстовый контекст
             for w in missing_list:
                 if w not in text_context_final_list:
                     text_context_final_list.append(w)
             
-            # Б. Добавляем в Табличный контекст
             tech_additions = []
             for w in missing_list:
-                # Если цифра, ГОСТ или специфичные слова
                 if any(char.isdigit() for char in w) or any(x in w.lower() for x in ['гост', 'тип', 'форма', 'мм', 'кг']):
                     tech_additions.append(w)
             
             if tech_additions:
                 tech_context_final_str += "\n" + ", ".join(tech_additions)
 
-            # В. ПЛАШКА
             status_box.markdown(f"""
                 <div style="background-color: #FFF4E5; border-left: 5px solid #FF9800; padding: 15px; border-radius: 4px; margin-bottom: 15px; color: #663C00;">
                     <strong>⚠️ Внимание: Часть ссылок не найдена</strong><br>
@@ -2791,10 +2530,6 @@ with tab_wholesale_main:
                 </div>
             """, unsafe_allow_html=True)
             time.sleep(2)
-
-        # =========================================================
-        # ДАЛЕЕ СТАНДАРТНАЯ ЛОГИКА (БЕЗ ИЗМЕНЕНИЙ В СТРУКТУРЕ)
-        # =========================================================
 
         target_pages = []
         soup = None
@@ -2841,9 +2576,8 @@ with tab_wholesale_main:
             status_box.error(f"Критическая ошибка: {e}")
             st.stop()
             
-        # Сбор имен для ссылок
         urls_to_fetch_names = set()
-        promo_items_pool = []  # <--- ДОБАВЛЕНА ИНИЦИАЛИЗАЦИЯ
+        promo_items_pool = [] 
         
         if use_tags:
             for kw, matches in tags_map.items():
@@ -2854,20 +2588,17 @@ with tab_wholesale_main:
             for kw in global_promo_list:
                 if kw in missing_words_log: continue
                 
-                # Повторяем умный поиск для сбора ссылок
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                 roots = [tr]
                 if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
                 
                 matches = []
-                # Ищем в keys() карты картинок
                 for u in p_img_map.keys():
                     if any(r in u for r in roots): matches.append(u)
 
                 for m in matches:
                     if m not in used_urls:
                         urls_to_fetch_names.add(m)
-                        # Теперь переменная существует, ошибки не будет
                         promo_items_pool.append({'url': m, 'img': p_img_map[m]})
                         used_urls.add(m)
 
@@ -2876,20 +2607,16 @@ with tab_wholesale_main:
             if global_sidebar_list:
                 for kw in global_sidebar_list:
                     if kw in missing_words_log: continue
-                    
                     tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                     roots = [tr]
                     if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
-                    
                     found = []
                     for u in all_menu_urls:
                         if any(r in u for r in roots): found.append(u)
-                    
                     sidebar_matched_urls.extend(found)
                 sidebar_matched_urls = list(set(sidebar_matched_urls))
             else:
                 sidebar_matched_urls = all_menu_urls
-            
             urls_to_fetch_names.update(sidebar_matched_urls)
 
         # --- КЭШИРОВАНИЕ ИМЕН ---
@@ -2919,10 +2646,6 @@ with tab_wholesale_main:
             
             status_box.write("✅ Названия собраны!")
 
-        # ------------------------------------------------------------------
-        # СБОРКА КОНТЕНТА
-        # ------------------------------------------------------------------
-        
         full_sidebar_code = ""
         if use_sidebar:
             status_box.write("🔨 Сборка меню...")
@@ -2995,40 +2718,25 @@ with tab_wholesale_main:
             
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
             
-            # Загружаем статику
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # ========================================================
-            # 1. СНАЧАЛА ГЕНЕРИРУЕМ ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO)
-            # Чтобы понять, что не влезло и перенести это в текст
-            # ========================================================
-            
-            # Копия глобального контекста для ЭТОЙ страницы
-            # Мы будем добавлять сюда слова, которые не получились в тегах
             current_page_seo_words = list(text_context_final_list)
             
-            # --- TAGS GENERATION (БЕЗ ЛИМИТОВ + FALLBACK) ---
+            # --- TAGS GENERATION ---
             tags_html_parts = []
             if use_tags:
                 html_collector = []
                 for kw in global_tags_list:
-                    # 1. Если слова вообще нет в базе - оно уже в current_page_seo_words (благодаря глобальной проверке)
                     if kw not in tags_map:
                         continue 
-                        
                     urls = tags_map[kw]
-                    # 2. Ищем ссылку, которая НЕ ведет на текущую страницу
                     valid_urls = [u for u in urls if u.rstrip('/') != page['url'].rstrip('/')]
-                    
                     if valid_urls:
-                        # УСПЕХ: Делаем тег
                         selected_url = random.choice(valid_urls)
                         cache_key = selected_url.rstrip('/')
-                        nm = url_name_cache.get(cache_key, kw) # Если имени нет, берем кейворд
+                        nm = url_name_cache.get(cache_key, kw)
                         html_collector.append(f'<a href="{selected_url}" class="tag-link">{nm}</a>')
                     else:
-                        # НЕУДАЧА: Ссылка есть, но она ведет на саму себя (valid_urls пуст)
-                        # Значит, тег мы не поставили. Чтобы слово не пропало -> кидаем в ТЕКСТ
                         if kw not in current_page_seo_words:
                             current_page_seo_words.append(kw)
 
@@ -3038,28 +2746,20 @@ with tab_wholesale_main:
                 else:
                     row_data['Tags HTML'] = ""
 
-# --- PROMO GENERATION (ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ) ---
+            # --- PROMO GENERATION ---
             if use_promo:
                 candidates = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
-                
-                # Берем ВСЕ найденные (без лимитов)
                 random.shuffle(candidates)
                 selected_promo = candidates
                 
                 if selected_promo:
-                    # КОНТЕЙНЕР:
-                    # flex-wrap: nowrap -> запрещает перенос на новую строку
-                    # overflow-x: auto -> включает скролл
                     promo_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display: flex; flex-wrap: nowrap; gap: 15px; overflow-x: auto; padding-bottom: 15px; scrollbar-width: thin;">'
-                    
                     for item in selected_promo:
                         p_url = item['url']
                         p_img = item['img']
                         cache_key = p_url.rstrip('/')
                         p_name = url_name_cache.get(cache_key, "Товар")
                         
-                        # КАРТОЧКА: 
-                        # flex-shrink: 0 -> запрещает карточке сжиматься, заставляя контейнер скроллиться
                         promo_html += f'<div class="promo-card" style="min-width: 220px; width: 220px; flex-shrink: 0; border: 1px solid #eee; padding: 10px; border-radius: 5px; text-align: center;">'
                         promo_html += f'<a href="{p_url}" style="text-decoration: none; color: #333;">'
                         promo_html += f'<div style="height: 150px; overflow: hidden; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">'
@@ -3073,20 +2773,14 @@ with tab_wholesale_main:
                 else:
                     row_data['Promo HTML'] = ""
 
-            # ========================================================
-            # 2. ГЕНЕРИРУЕМ ТЕКСТ (С УЧЕТОМ ВСЕХ "ПОТЕРЯШЕК")
-            # ========================================================
+            # --- TEXT GEN ---
             if use_text and client:
                 try:
-                    # current_page_seo_words теперь содержит:
-                    # 1. То, что ввел юзер руками
-                    # 2. То, что глобально не нашлось в базе
-                    # 3. То, что локально не смогло стать тегом (ссылка на себя)
                     blocks = generate_ai_content_blocks(
                         client, base_text=base_text_raw if base_text_raw else "", 
                         tag_name=page['name'], forced_header=header_for_ai,
                         num_blocks=num_text_blocks_val, 
-                        seo_words=current_page_seo_words # <-- ПОЛНЫЙ СПИСОК
+                        seo_words=current_page_seo_words
                     )
                     row_data['Text_Block_1'] = blocks[0]
                     row_data['Text_Block_2'] = blocks[1]
@@ -3095,7 +2789,7 @@ with tab_wholesale_main:
                     row_data['Text_Block_5'] = blocks[4]
                 except Exception as e: row_data['Text_Error'] = str(e)
 
-            # --- AI TABLES (Контекст тот же, глобальный) ---
+            # --- AI TABLES ---
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
                     sys_p_table = "You are an expert metallurgist and data analyst. Output ONLY raw HTML <table>. No markdown."
@@ -3107,11 +2801,7 @@ with tab_wholesale_main:
                     Задача: Составь подробную техническую таблицу для товара "{header_for_ai}".
                     Тема таблицы: {t_topic}.
                     {context_hint}
-                    
-                    ТРЕБОВАНИЯ:
-                    1. Только реальные технические данные.
-                    2. HTML <table>...</table>.
-                    3. Без Markdown.
+                    ТРЕБОВАНИЯ: HTML <table>...</table>. Без Markdown.
                     """
                     try:
                         resp = client.chat.completions.create(
