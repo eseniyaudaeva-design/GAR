@@ -243,7 +243,7 @@ def render_relevance_chart(df_rel):
     COLOR_MAIN = '#4F46E5'  # Индиго (Indigo-600) - Основная линия
     COLOR_WIDTH = '#0EA5E9' # Небесно-голубой (Sky-500)
     COLOR_DEPTH = '#E11D48' # Насыщенный малиновый (Rose-600)
-    COLOR_TREND = '#4B5563' # Графитовый (Cool Gray-600) - ВМЕСТО САЛАТОВОГО
+    COLOR_TREND = '#15803d' # Графитовый (Cool Gray-600) - ВМЕСТО САЛАТОВОГО
 
     # Единые настройки для всех линий
     COMMON_CONFIG = dict(
@@ -3317,6 +3317,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
