@@ -1869,6 +1869,11 @@ with tab_seo_main:
             st.session_state.ideal_h1_result = None
             st.session_state.gen_result_df = None
             st.session_state.unified_excel_data = None
+
+            if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+            if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
+            if 'serp_trend_info' in st.session_state: del st.session_state['serp_trend_info']
+            # ---------------------------------------------------------------
             
             # Сброс пагинации таблиц
             for key in list(st.session_state.keys()):
@@ -3431,6 +3436,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
