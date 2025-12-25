@@ -334,36 +334,67 @@ def render_relevance_chart(df_rel, unique_key="default"):
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
 
 def analyze_serp_anomalies(df_rel):
-    if df_rel.empty: return [], [], {"type": "none", "msg": ""}
-    
-    # Убираем ваш сайт
-    df = df_rel[~df_rel['Домен'].str.contains("\(Вы\)", na=False)].copy()
-    if df.empty: return [], [], {"type": "none", "msg": ""}
+    """
+    Анализирует таблицу релевантности (Версия v5 - Robust).
+    Порог: 75% от лидера. Принудительная типизация.
+    """
+    if df_rel.empty:
+        return [], [], {"type": "none", "msg": ""}
 
+    # Исключаем "Ваш сайт" из расчетов эталона
+    df = df_rel[~df_rel['Домен'].str.contains("\(Вы\)", na=False)].copy()
+    
+    if df.empty:
+        return [], [], {"type": "none", "msg": ""}
+
+    # Принудительно делаем числами (защита от сбоев)
+    df['Ширина (балл)'] = pd.to_numeric(df['Ширина (балл)'], errors='coerce').fillna(0)
+    df['Глубина (балл)'] = pd.to_numeric(df['Глубина (балл)'], errors='coerce').fillna(0)
+
+    # Считаем средний балл
     df['Total'] = (df['Ширина (балл)'] + df['Глубина (балл)']) / 2
     
-    # ЛОГИКА: МАКСИМУМ vs АУТСАЙДЕР
+    # 1. ИЩЕМ ЛИДЕРА
     max_score = df['Total'].max()
-    threshold = max(max_score * 0.65, 30) # 55% от лидера. Если лидер 100, то ниже 55 - бан.
+    if max_score < 1: max_score = 1 # Защита от деления на 0
+    
+    # 2. ЖЕСТКИЙ ПОРОГ: 75% от лидера.
+    # Если Лидер=100, порог=75. Все что < 75 - удаляем.
+    threshold = max(max_score * 0.75, 40) 
     
     anomalies = []
     normal_urls = []
     
+    debug_counts = 0
+    
     for _, row in df.iterrows():
-        # ВАЖНО: Если нет колонки URL, берем домен, но лучше чтобы была URL
-        current_url = row.get('URL', f"https://{row['Домен']}")
+        # Достаем ссылку. Защита от пробелов.
+        current_url = str(row.get('URL', '')).strip()
+        if not current_url or current_url.lower() == 'nan':
+             current_url = f"https://{row['Домен']}" 
+
+        score = row['Total']
         
-        if row['Total'] < threshold:
-            reason = f"Скор {int(row['Total'])} (Лидер {int(max_score)})"
-            anomalies.append({'url': current_url, 'reason': reason, 'score': row['Total']})
+        # АНАЛИЗ
+        if score < threshold:
+            reason = f"Скор {int(score)} < {int(threshold)} (Лидер {int(max_score)})"
+            anomalies.append({'url': current_url, 'reason': reason, 'score': score})
+            debug_counts += 1
         else:
             normal_urls.append(current_url)
 
+    # Уведомление с деталями
+    if anomalies:
+        st.toast(f"🗑️ Фильтр (Лидер {int(max_score)} / Порог {int(threshold)}). Исключено: {len(anomalies)}", icon="⚠️")
+    else:
+        # Если никого не исключили, пишем почему
+        st.toast(f"✅ Все конкуренты ок. (Лидер {int(max_score)} / Порог {int(threshold)}). Мин. балл: {int(df['Total'].min())}", icon="ℹ️")
+    
     # Тренд
     x = np.arange(len(df)); y = df['Total'].values
     slope = np.polyfit(x, y, 1)[0] if len(x) > 1 else 0
     trend_msg = "📉 Нормальный топ" if slope < -1 else ("📈 Перевернутый топ" if slope > 1 else "➡️ Ровный топ")
-    
+
     return normal_urls, anomalies, {"type": "info", "msg": trend_msg}
 
 # ==========================================
@@ -2256,7 +2287,7 @@ with tab_seo_main:
 
             st.session_state.analysis_done = True
             
-            # === ПРОВЕРКА НА АНОМАЛИИ И РАЗДЕЛЕНИЕ СПИСКОВ ПРЯМО ЗДЕСЬ ===
+# === ПРОВЕРКА НА АНОМАЛИИ И РАЗДЕЛЕНИЕ СПИСКОВ ПРЯМО ЗДЕСЬ ===
             # Превращаем таблицу релевантности в DataFrame
             df_rel_check = results['relevance_top']
             
@@ -2276,7 +2307,9 @@ with tab_seo_main:
             else:
                 # Если все ок - просто обновляем список (чтобы убрать лишние пробелы и тд)
                 st.session_state['persistent_urls'] = "\n".join(good_urls)
+                # ОЧИЩАЕМ ИСКЛЮЧЕННЫЕ, ЧТОБЫ НЕ ВИСЕЛИ СТАРЫЕ (ВАЖНО!)
                 if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+                if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
             # ==============================================================
 
             # Логика семантики (без изменений)
@@ -3454,6 +3487,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
