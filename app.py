@@ -201,15 +201,23 @@ def render_relevance_chart(df_rel):
     """
     Строит график релевантности (Plotly).
     Стиль: Premium Business.
-    - Тренд теперь строгого графитового цвета (не салатовый).
-    - Остальные цвета более глубокие и насыщенные.
-    - Линии одной толщины, сплошные, с точками.
+    - Исключена позиция 0 (сайт пользователя, если он не в топе).
+    - Убраны решетки (#) из названий.
+    - Ссылки стилизованы: нейтральный цвет, аккуратное подчеркивание.
+    - Тренд: Forest Green.
     """
     if df_rel.empty:
         return
 
     # 1. Подготовка данных
-    df = df_rel.sort_values(by='Позиция').copy()
+    # Фильтруем: оставляем только позиции больше 0 (реальная выдача)
+    df = df_rel[df_rel['Позиция'] > 0].copy()
+    
+    if df.empty:
+        st.info("Нет данных по конкурентам из ТОПа для построения графика.")
+        return
+
+    df = df.sort_values(by='Позиция')
     x_indices = np.arange(len(df))
     
     tick_links = []
@@ -218,13 +226,19 @@ def render_relevance_chart(df_rel):
         raw_name = row['Домен'].replace(' (Вы)', '').strip()
         clean_domain = raw_name.replace('www.', '').split('/')[0]
         
-        label_text = f"#{row['Позиция']} {clean_domain}"
+        # Формат: "1. site.ru" (без решетки)
+        label_text = f"{row['Позиция']}. {clean_domain}"
         if len(label_text) > 20: label_text = label_text[:18] + ".."
         
         url_target = f"https://{raw_name}"
         
-        # Ссылка снизу: строгий серый цвет
-        link_html = f"<a href='{url_target}' target='_blank' style='color: #374151; text-decoration: none; border-bottom: 1px solid #9CA3AF;'>{label_text}</a>"
+        # СТИЛЬ ССЫЛКИ:
+        # color: #334155 (Slate 700) - красивый нейтральный темный.
+        # border-bottom: 1px solid #CBD5E1 - аккуратная линия подчеркивания.
+        # font-weight: 600 - полужирный для читаемости.
+        link_style = "color: #334155; font-weight: 600; text-decoration: none; border-bottom: 2px solid #CBD5E1;"
+        
+        link_html = f"<a href='{url_target}' target='_blank' style='{link_style}'>{label_text}</a>"
         tick_links.append(link_html)
 
     # Метрики
@@ -238,21 +252,20 @@ def render_relevance_chart(df_rel):
     # 2. Создаем график
     fig = go.Figure()
 
-    # --- НОВАЯ PREMIUM ПАЛИТРА ---
-    # Глубокие, "дорогие" цвета вместо стандартных ярких
-    COLOR_MAIN = '#4F46E5'  # Индиго (Indigo-600)
-    COLOR_WIDTH = '#0EA5E9' # Небесно-голубой (Sky-500)
-    COLOR_DEPTH = '#E11D48' # Насыщенный малиновый (Rose-600)
-    COLOR_TREND = '#15803d' # ✅ Нормальный, глубокий зеленый (Forest Green)
+    # --- ПАЛИТРА ---
+    COLOR_MAIN = '#4F46E5'  # Индиго
+    COLOR_WIDTH = '#0EA5E9' # Голубой
+    COLOR_DEPTH = '#E11D48' # Малиновый
+    COLOR_TREND = '#15803d' # Зеленый (Forest Green)
 
-    # Единые настройки для всех линий
+    # Единые настройки
     COMMON_CONFIG = dict(
         mode='lines+markers',
         line=dict(width=3, shape='spline'), 
         marker=dict(size=8, line=dict(width=2, color='white'), symbol='circle')
     )
 
-    # 1. ОБЩАЯ ОЦЕНКА
+    # 1. ОБЩАЯ
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Total_Rel'],
         name='Общая',
@@ -279,17 +292,17 @@ def render_relevance_chart(df_rel):
         mode='lines+markers'
     ))
 
-    # 4. ТРЕНД (Графитовый)
+    # 4. ТРЕНД
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Trend'],
         name='Тренд',
-        line=dict(color=COLOR_TREND, width=3, shape='spline'), # Сплошная
+        line=dict(color=COLOR_TREND, width=3, shape='spline'),
         marker=dict(color=COLOR_TREND, size=8, line=dict(width=2, color='white')),
         mode='lines+markers',
         opacity=0.8
     ))
 
-    # 3. Настройка Layout
+    # 3. Layout
     fig.update_layout(
         template="plotly_white",
         legend=dict(
@@ -304,7 +317,7 @@ def render_relevance_chart(df_rel):
             tickmode='array',
             tickvals=x_indices,
             ticktext=tick_links,
-            tickfont=dict(size=11),
+            tickfont=dict(size=12), # Чуть увеличил шрифт подписей
             fixedrange=True,
             range=[-0.2, len(df) - 0.8]
         ),
@@ -316,7 +329,7 @@ def render_relevance_chart(df_rel):
             zeroline=False,
             fixedrange=True
         ),
-        margin=dict(l=10, r=10, t=50, b=20),
+        margin=dict(l=10, r=10, t=50, b=30), # Чуть больше места снизу для ссылок
         hovermode="x unified",
         height=380
     )
@@ -3317,6 +3330,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
