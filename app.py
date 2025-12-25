@@ -200,21 +200,21 @@ def render_clean_block(title, icon, words_list):
 def render_relevance_chart(df_rel):
     """
     Строит график релевантности (Plotly).
-    Стиль: Premium Business.
-    - Исключена позиция 0 (сайт пользователя, если он не в топе).
-    - Убраны решетки (#) из названий.
-    - Ссылки стилизованы: нейтральный цвет, аккуратное подчеркивание.
-    - Тренд: Forest Green.
+    Стиль: Строгий, контрастный.
+    - Исключен ваш сайт (позиция 0).
+    - Без заливки, без пунктиров, все линии одной толщины.
+    - Маркеры на всех линиях.
+    - Ссылки внизу: нейтральный цвет, кликабельные.
     """
     if df_rel.empty:
         return
 
-    # 1. Подготовка данных
-    # Фильтруем: оставляем только позиции больше 0 (реальная выдача)
+    # 1. Подготовка данных: Убираем позицию 0 (Ваш сайт)
     df = df_rel[df_rel['Позиция'] > 0].copy()
     
     if df.empty:
-        st.info("Нет данных по конкурентам из ТОПа для построения графика.")
+        # Если кроме вас никого нет, график не строим (или выводим заглушку)
+        st.info("Недостаточно данных о конкурентах в ТОПе для построения графика.")
         return
 
     df = df.sort_values(by='Позиция')
@@ -223,20 +223,19 @@ def render_relevance_chart(df_rel):
     tick_links = []
     
     for _, row in df.iterrows():
+        # Очистка имени
         raw_name = row['Домен'].replace(' (Вы)', '').strip()
         clean_domain = raw_name.replace('www.', '').split('/')[0]
         
-        # Формат: "1. site.ru" (без решетки)
+        # Формируем подпись: "1. domain.ru" (без #)
         label_text = f"{row['Позиция']}. {clean_domain}"
+        # Обрезаем, если слишком длинное
         if len(label_text) > 20: label_text = label_text[:18] + ".."
         
         url_target = f"https://{raw_name}"
         
-        # СТИЛЬ ССЫЛКИ:
-        # color: #334155 (Slate 700) - красивый нейтральный темный.
-        # border-bottom: 1px solid #CBD5E1 - аккуратная линия подчеркивания.
-        # font-weight: 600 - полужирный для читаемости.
-        link_style = "color: #334155; font-weight: 600; text-decoration: none; border-bottom: 2px solid #CBD5E1;"
+        # СТИЛЬ ССЫЛКИ: Серый цвет, жирный шрифт, аккуратное подчеркивание
+        link_style = "color: #4B5563; font-weight: 600; text-decoration: none; border-bottom: 2px solid #D1D5DB;"
         
         link_html = f"<a href='{url_target}' target='_blank' style='{link_style}'>{label_text}</a>"
         tick_links.append(link_html)
@@ -253,12 +252,12 @@ def render_relevance_chart(df_rel):
     fig = go.Figure()
 
     # --- ПАЛИТРА ---
-    COLOR_MAIN = '#4F46E5'  # Индиго
-    COLOR_WIDTH = '#0EA5E9' # Голубой
-    COLOR_DEPTH = '#E11D48' # Малиновый
+    COLOR_MAIN = '#4F46E5'  # Индиго (Indigo-600)
+    COLOR_WIDTH = '#0EA5E9' # Голубой (Sky-500)
+    COLOR_DEPTH = '#E11D48' # Малиновый (Rose-600)
     COLOR_TREND = '#15803d' # Зеленый (Forest Green)
 
-    # Единые настройки
+    # Единые настройки линий (сплошная, 3px, точки)
     COMMON_CONFIG = dict(
         mode='lines+markers',
         line=dict(width=3, shape='spline'), 
@@ -269,8 +268,8 @@ def render_relevance_chart(df_rel):
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Total_Rel'],
         name='Общая',
-        line=dict(color=COLOR_MAIN, width=3, shape='spline'),
-        marker=dict(color=COLOR_MAIN, size=8, line=dict(width=2, color='white')),
+        line=dict(color=COLOR_MAIN, **COMMON_CONFIG['line']),
+        marker=dict(color=COLOR_MAIN, **COMMON_CONFIG['marker']),
         mode='lines+markers'
     ))
 
@@ -278,8 +277,8 @@ def render_relevance_chart(df_rel):
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Ширина (балл)'],
         name='Ширина',
-        line=dict(color=COLOR_WIDTH, width=3, shape='spline'),
-        marker=dict(color=COLOR_WIDTH, size=8, line=dict(width=2, color='white')),
+        line=dict(color=COLOR_WIDTH, **COMMON_CONFIG['line']),
+        marker=dict(color=COLOR_WIDTH, **COMMON_CONFIG['marker']),
         mode='lines+markers'
     ))
 
@@ -287,8 +286,8 @@ def render_relevance_chart(df_rel):
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Глубина (балл)'],
         name='Глубина',
-        line=dict(color=COLOR_DEPTH, width=3, shape='spline'),
-        marker=dict(color=COLOR_DEPTH, size=8, line=dict(width=2, color='white')),
+        line=dict(color=COLOR_DEPTH, **COMMON_CONFIG['line']),
+        marker=dict(color=COLOR_DEPTH, **COMMON_CONFIG['marker']),
         mode='lines+markers'
     ))
 
@@ -296,8 +295,8 @@ def render_relevance_chart(df_rel):
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Trend'],
         name='Тренд',
-        line=dict(color=COLOR_TREND, width=3, shape='spline'),
-        marker=dict(color=COLOR_TREND, size=8, line=dict(width=2, color='white')),
+        line=dict(color=COLOR_TREND, **COMMON_CONFIG['line']),
+        marker=dict(color=COLOR_TREND, **COMMON_CONFIG['marker']),
         mode='lines+markers',
         opacity=0.8
     ))
@@ -316,8 +315,8 @@ def render_relevance_chart(df_rel):
             linecolor='#E5E7EB',
             tickmode='array',
             tickvals=x_indices,
-            ticktext=tick_links,
-            tickfont=dict(size=12), # Чуть увеличил шрифт подписей
+            ticktext=tick_links, # ССЫЛКИ
+            tickfont=dict(size=12),
             fixedrange=True,
             range=[-0.2, len(df) - 0.8]
         ),
@@ -329,7 +328,7 @@ def render_relevance_chart(df_rel):
             zeroline=False,
             fixedrange=True
         ),
-        margin=dict(l=10, r=10, t=50, b=30), # Чуть больше места снизу для ссылок
+        margin=dict(l=10, r=10, t=50, b=30),
         hovermode="x unified",
         height=380
     )
@@ -1762,9 +1761,25 @@ with tab_seo_main:
         st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=100, key="settings_excludes")
         st.text_area("Стоп-слова", DEFAULT_STOPS, height=100, key="settings_stops")
         if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+            # 1. Очищаем результаты SEO анализа
+            st.session_state.analysis_results = None
+            st.session_state.analysis_done = False
+            st.session_state.naming_table_df = None
+            st.session_state.ideal_h1_result = None
+            
+            # 2. Очищаем результаты второй вкладки (Генератора), чтобы не висели старые данные
+            st.session_state.gen_result_df = None
+            st.session_state.unified_excel_data = None
+            
+            # 3. Сбрасываем пагинацию таблиц
             for key in list(st.session_state.keys()):
                 if key.endswith('_page'): st.session_state[key] = 1
+            
+            # 4. Ставим флаг запуска
             st.session_state.start_analysis_flag = True
+            
+            # 5. Перезагружаем интерфейс, чтобы всё старое исчезло МГНОВЕННО
+            st.rerun()
 
     with col_sidebar:
         st.markdown("#####⚙️ Настройки API")
@@ -2696,6 +2711,11 @@ with tab_wholesale_main:
     if use_geo and not pplx_api_key: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
+        # === ОЧИСТКА ПРЕДЫДУЩИХ РЕЗУЛЬТАТОВ ===
+        st.session_state.gen_result_df = None
+        st.session_state.unified_excel_data = None
+        # ======================================
+        
         status_box = st.status("🛠️ Подготовка данных...", expanded=True)
         final_data = [] 
         
@@ -3330,6 +3350,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
