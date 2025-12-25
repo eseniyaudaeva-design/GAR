@@ -199,24 +199,23 @@ def render_clean_block(title, icon, words_list):
 
 def render_relevance_chart(df_rel):
     """
-    Строит график релевантности (Plotly) как на скриншоте.
+    Строит график релевантности (Plotly).
+    Стиль: Современный, сглаженные линии (spline), компактный.
     """
     if df_rel.empty:
         return
 
     # 1. Подготовка данных
-    # Сортируем по позиции, чтобы ось X шла логично (TOP1 -> TOP10)
     df = df_rel.sort_values(by='Позиция').copy()
     
-    # Создаем красивую подпись для оси X: "TOP1 site.ru"
-    df['Label'] = df.apply(lambda x: f"TOP{x['Позиция']} {x['Домен']}", axis=1)
+    # Подписи для оси X (укороченные для стиля)
+    df['Label'] = df.apply(lambda x: f"#{x['Позиция']} {x['Домен'][:15]}..", axis=1)
     
-    # Рассчитываем Общую релевантность (среднее между шириной и глубиной)
+    # Рассчитываем Общую релевантность
     df['Total_Rel'] = (df['Ширина (балл)'] + df['Глубина (балл)']) / 2
     
-    # Рассчитываем Тренд (Линейная регрессия)
+    # Тренд
     x_nums = np.arange(len(df))
-    # y = kx + b
     z = np.polyfit(x_nums, df['Total_Rel'], 1)
     p = np.poly1d(z)
     df['Trend'] = p(x_nums)
@@ -224,31 +223,33 @@ def render_relevance_chart(df_rel):
     # 2. Создаем график
     fig = go.Figure()
 
+    # Настройки линий: shape='spline' делает их плавными
+    
     # Линия: Общая релевантность (Оранжевая)
     fig.add_trace(go.Scatter(
         x=df['Label'], y=df['Total_Rel'],
         mode='lines+markers',
-        name='Общая релевантность',
-        line=dict(color='#ff7f0e', width=3),
-        marker=dict(size=8)
+        name='Общая',
+        line=dict(color='#F59E0B', width=3, shape='spline'), # Amber-500
+        marker=dict(size=8, color='#F59E0B', line=dict(width=2, color='white'))
     ))
 
     # Линия: Ширина (Синяя)
     fig.add_trace(go.Scatter(
         x=df['Label'], y=df['Ширина (балл)'],
-        mode='lines+markers',
+        mode='lines',
         name='Ширина',
-        line=dict(color='#0000FF', width=2),
-        marker=dict(symbol='diamond', size=6)
+        line=dict(color='#3B82F6', width=2, shape='spline', dash='dot'), # Blue-500
+        marker=dict(size=0) # Без маркеров для чистоты
     ))
 
     # Линия: Глубина (Красная)
     fig.add_trace(go.Scatter(
         x=df['Label'], y=df['Глубина (балл)'],
-        mode='lines+markers',
+        mode='lines',
         name='Глубина',
-        line=dict(color='#FF0000', width=2),
-        marker=dict(symbol='square', size=6)
+        line=dict(color='#EF4444', width=2, shape='spline', dash='dot'), # Red-500
+        marker=dict(size=0)
     ))
 
     # Линия: Тренд (Зеленая)
@@ -256,34 +257,34 @@ def render_relevance_chart(df_rel):
         x=df['Label'], y=df['Trend'],
         mode='lines',
         name='Тренд',
-        line=dict(color='#2ca02c', width=2, dash='solid') # dash='dash' для пунктира
+        line=dict(color='#10B981', width=2, shape='spline'), # Emerald-500
+        opacity=0.6
     ))
 
     # 3. Настройка внешнего вида (Макет)
     fig.update_layout(
-        title="Анализ релевантности выдачи",
-        title_x=0.5, # Центрирование заголовка
-        xaxis_title="",
-        yaxis_title="Релевантность (0-100)",
-        yaxis=dict(range=[0, 105]), # Фиксируем высоту до 100+
-        legend=dict(
-            orientation="h", # Горизонтальная легенда
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
+        template="plotly_white", # Чистый белый фон
+        title=dict(text="Динамика релевантности (TOP-10)", font=dict(size=14, color="#374151")),
+        xaxis=dict(showgrid=False, linecolor='#E5E7EB', tickfont=dict(size=10)),
+        yaxis=dict(
+            range=[0, 110], 
+            showgrid=True, 
+            gridcolor='#F3F4F6', 
+            gridwidth=1,
+            tickfont=dict(size=10)
         ),
-        margin=dict(l=20, r=20, t=80, b=80),
-        hovermode="x unified", # Удобный тултип
-        plot_bgcolor="white",
-        height=500
+        legend=dict(
+            orientation="h",
+            yanchor="bottom", y=1.0,
+            xanchor="right", x=1,
+            font=dict(size=10)
+        ),
+        margin=dict(l=10, r=10, t=50, b=10), # Компактные отступы
+        hovermode="x unified",
+        height=350 # Уменьшенная высота
     )
-    
-    # Добавляем сетку
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#f0f0f0', tickangle=-45)
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#f0f0f0')
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ
@@ -1697,6 +1698,17 @@ with tab_seo_main:
             )
             st.session_state['persistent_urls'] = manual_val
 
+    # ================= НОВОЕ МЕСТО ДЛЯ ГРАФИКА =================
+    # Показываем график ТОЛЬКО если есть результаты анализа
+        if st.session_state.get('analysis_done') and st.session_state.get('analysis_results'):
+            results = st.session_state.analysis_results
+            if 'relevance_top' in results and not results['relevance_top'].empty:
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.expander("📊 График релевантности (Нажмите, чтобы раскрыть)", expanded=False):
+                    render_relevance_chart(results['relevance_top'])
+                st.markdown("<br>", unsafe_allow_html=True)
+    # ===========================================================
+
         st.markdown("### Списки (Stop / Exclude)")
         st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=100, key="settings_excludes")
         st.text_area("Стоп-слова", DEFAULT_STOPS, height=100, key="settings_stops")
@@ -2139,13 +2151,6 @@ with tab_seo_main:
                 )
             else:
                 st.warning("Нет данных для отображения.")
-
-        # === ГРАФИК (ВСТАВЛЯЕМ ЗДЕСЬ) ===
-        if 'relevance_top' in results and not results['relevance_top'].empty:
-             st.markdown("### 📊 Графический анализ")
-             with st.expander("📈 Показать график релевантности (ТОП-10)", expanded=False):
-                  render_relevance_chart(results['relevance_top'])
-        # ========================================================
 
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
@@ -3276,3 +3281,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
