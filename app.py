@@ -232,7 +232,7 @@ def render_relevance_chart(df_rel, unique_key="default"):
         
         url_target = f"https://{raw_name}"
         
-# ЗАМЕНА: Используем CSS-класс .chart-link вместо style="..." для работы hover
+        # Используем CSS-класс .chart-link вместо style="..." для работы hover
         link_html = f"<a href='{url_target}' target='_blank' class='chart-link'>{label_text}</a>"
         tick_links.append(link_html)
 
@@ -327,8 +327,10 @@ def render_relevance_chart(df_rel, unique_key="default"):
         hovermode="x unified",
         height=380
     )
-
+    
+    # ДОБАВЛЕН UNIQUE_KEY
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
+
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ
 # ==========================================
@@ -646,7 +648,7 @@ st.markdown(f"""
         }}
         .stButton button:disabled {{ opacity: 1 !important; background-color: {PRIMARY_COLOR} !important; color: white !important; cursor: progress !important; }}
         div[data-testid="stAppViewContainer"] {{ filter: none !important; opacity: 1 !important; transition: none !important; }}
-/* Стили для ссылок внутри графика Plotly */
+        /* Стили для ссылок внутри графика Plotly */
         .chart-link {{
             color: #277EFF !important;
             font-weight: 600 !important;
@@ -665,6 +667,7 @@ st.markdown(f"""
 # ==========================================
 # PARSING & METRICS
 # ==========================================
+# ... (Остальной код функций без изменений)
 
 def get_yandex_dict_info(text, api_key):
     if not api_key: return {'lemma': text, 'pos': 'unknown'}
@@ -2030,7 +2033,6 @@ with tab_seo_main:
         if 'relevance_top' in results and not results['relevance_top'].empty:
              st.markdown("### 📊 Графический анализ")
              with st.expander("📈 Показать график релевантности (ТОП-10)", expanded=True):
-                  # Добавляем уникальный ключ, чтобы не конфликтовать с верхним графиком
                   render_relevance_chart(results['relevance_top'], unique_key="main")
 
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
@@ -2187,243 +2189,6 @@ with tab_seo_main:
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
             st.rerun()    
-
-    if st.session_state.analysis_done and st.session_state.analysis_results:
-        results = st.session_state.analysis_results
-        
-        d_score = results['my_score']['depth']
-        w_score = results['my_score']['width']
-        
-        # Ширина
-        w_color = "#2E7D32" if w_score >= 80 else ("#E65100" if w_score >= 50 else "#D32F2F")
-        
-        # Глубина (Цель = 80)
-        if 75 <= d_score <= 88:
-            d_color = "#2E7D32" # Зеленый (Отлично)
-            d_status = "ИДЕАЛ (Топ)"
-        elif 88 < d_score <= 100:
-            d_color = "#D32F2F" # Красный (Риск переспама)
-            d_status = "ПЕРЕСПАМ (Риск)"
-        elif 55 <= d_score < 75:
-            d_color = "#F9A825" # Желтый
-            d_status = "Средняя"
-        else:
-            d_color = "#D32F2F" # Красный
-            d_status = "Низкая"
-
-        st.success("Анализ готов!")
-        # --- ВЕРНУТЬ ЭТОТ БЛОК (СТИЛИ ДЛЯ КАРТОЧЕК) ---
-        st.markdown("""
-        <style>
-            details > summary { list-style: none; }
-            details > summary::-webkit-details-marker { display: none; }
-            .details-card {
-                background-color: #f8f9fa; border: 1px solid #e9ecef;
-                border-radius: 8px; margin-bottom: 10px;
-                overflow: hidden; transition: all 0.2s ease;
-            }
-            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
-            .card-summary {
-                padding: 12px 15px; cursor: pointer; font-weight: 700;
-                font-size: 15px; color: #111827; display: flex;
-                justify-content: space-between; align-items: center;
-                background-color: #ffffff;
-            }
-            .card-summary:hover { background-color: #f3f4f6; }
-            .card-content {
-                padding: 15px; border-top: 1px solid #e9ecef;
-                font-size: 14px; color: #374151; line-height: 1.6;
-                background-color: #fcfcfc;
-            }
-            .count-tag { 
-                background: #e5e7eb; color: #374151; padding: 2px 8px; 
-                border-radius: 10px; font-size: 12px; font-weight: 600;
-                min-width: 25px; text-align: center;
-            }
-            .arrow-icon {
-                font-size: 10px; margin-right: 8px; color: #9ca3af;
-                transition: transform 0.2s;
-            }
-            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
-        </style>
-        """, unsafe_allow_html=True)
-    
-        # ----------------------------------------------
-        st.markdown(f"""
-        <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
-            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
-                <div style='font-size: 12px; color: #666;'>ШИРИНА (Охват тем)</div>
-                <div style='font-size: 24px; font-weight: bold; color: {w_color};'>{w_score}/100</div>
-            </div>
-            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {d_color};'>
-                <div style='font-size: 12px; color: #666;'>ГЛУБИНА (Цель: ~80)</div>
-                <div style='font-size: 24px; font-weight: bold; color: {d_color};'>{d_score}/100 <span style='font-size:14px; font-weight:normal;'>({d_status})</span></div>
-            </div>
-        </div>
-        <br>
-        """, unsafe_allow_html=True)
-
-        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
-            if not st.session_state.get('orig_products'):
-                st.info("⚠️ Данные отсутствуют. Запустите анализ.")
-            else:
-                # Ряд 1
-                c1, c2, c3 = st.columns(3)
-                with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
-                with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
-                with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
-                
-                # Ряд 2
-                c4, c5, c6 = st.columns(3)
-                with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
-                with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
-                with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
-
-                st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-
-                # Блок стоп-слов
-                cs1, cs2 = st.columns([1, 3])
-                
-                # Инициализация ключа
-                if 'sensitive_words_input_final' not in st.session_state:
-                    current_list = st.session_state.get('categorized_sensitive', [])
-                    st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
-                
-                current_text_value = st.session_state['sensitive_words_input_final']
-                
-                with cs1:
-                    count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
-                    st.markdown(f"**⛔ Стоп-слова**")
-                    st.markdown(f"Исключено: **{count_excluded}**")
-                    st.caption("Эти слова автоматически удалены.")
-                
-                with cs2:
-                    new_sens_str = st.text_area(
-                        "hidden_label", height=100,
-                        key="sensitive_words_input_final",
-                        label_visibility="collapsed",
-                        placeholder="Слова для исключения..."
-                    )
-
-                    if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                        raw_input = st.session_state.get("sensitive_words_input_final", "")
-                        new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
-                        
-                        st.session_state.categorized_sensitive = sorted(list(new_stop_set))
-                        
-                        def apply_filter(orig_list_key, stop_set):
-                            original = st.session_state.get(orig_list_key, [])
-                            return [w for w in original if w.lower() not in stop_set]
-
-                        st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
-                        st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
-                        st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
-                        st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
-                        st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
-                        st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
-
-                        # Обновляем вкладку генератора
-                        all_prods = st.session_state.categorized_products
-                        count_prods = len(all_prods)
-                        if count_prods < 20:
-                            st.session_state.auto_tags_words = all_prods
-                            st.session_state.auto_promo_words = []
-                        else:
-                            half = int(math.ceil(count_prods / 2))
-                            st.session_state.auto_tags_words = all_prods[:half]
-                            st.session_state.auto_promo_words = all_prods[half:]
-
-                        st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
-                        st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
-
-                        st.toast("Фильтр обновлен!", icon="✅")
-                        time.sleep(0.5)
-                        st.rerun()
-
-        # --- УПУЩЕННАЯ СЕМАНТИКА ---
-        high = results.get('missing_semantics_high', [])
-        low = results.get('missing_semantics_low', [])
-        if high or low:
-            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
-
-        # --- ТАБЛИЦЫ ---
-# ... (существующий вывод первой таблицы)
-        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-        
-# === ВЫВОД ТАБЛИЦЫ №2 (БЕЗ HTML, НАТИВНЫЙ STREAMLIT) ===
-        if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
-            df_naming = st.session_state.naming_table_df
-            
-            st.markdown("### 2. Рекомендации по названию товаров")
-            
-            # --- БЛОК 1: ФОРМУЛА (НАТИВНЫЙ) ---
-            if 'ideal_h1_result' in st.session_state:
-                res_ideal = st.session_state.ideal_h1_result
-                
-                if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
-                    example_name = res_ideal[0]
-                    report_list = res_ideal[1]
-                    
-                    # Чистим строку формулы от лишнего текста
-                    formula_str = "Формула не определена"
-                    for line in report_list:
-                        if "структура" in line or "Схема" in line:
-                            # Убираем жирный шрифт и названия полей
-                            formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
-                            break
-                    
-                    # Вывод через стандартный контейнер с рамкой
-                    with st.container(border=True):
-                        st.markdown("#### 🧪 Идеальная формула названия")
-                        # st.info делает красивую синюю плашку без лишнего HTML
-                        st.info(f"**{formula_str}**", icon="🧩")
-                        st.markdown(f"**Пример генерации:** _{example_name}_")
-                        
-                else:
-                    st.warning("⚠️ Данные устарели. Нажмите 'ЗАПУСТИТЬ АНАЛИЗ'.")
-
-            # --- БЛОК 2: ТАБЛИЦА ---
-            st.markdown("##### Детальный анализ характеристик")
-            
-            if not df_naming.empty:
-                col_ctrl1, col_ctrl2 = st.columns([1, 3])
-                with col_ctrl1:
-                    show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
-                
-                df_display = df_naming.copy()
-                
-                if not show_tech:
-                    # Скрываем категорию "Размеры/Прочее"
-                    df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
-
-                if 'cat_sort' in df_display.columns:
-                    df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
-                
-                # Убираем технические столбцы
-                cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
-                existing_cols = [c for c in cols_to_show if c in df_display.columns]
-                df_display = df_display[existing_cols]
-
-                # Раскраска
-                def style_rows(row):
-                    val = str(row.get('Добавить', ''))
-                    if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row) # Красный
-                    if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row) # Зеленый
-                    return [''] * len(row)
-
-                st.dataframe(
-                    df_display.style.apply(style_rows, axis=1),
-                    use_container_width=True,
-                    hide_index=True,
-                    height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
-                )
-            else:
-                st.warning("Нет данных для отображения.")
-
-        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -3439,6 +3204,7 @@ with tab_wholesale_main:
         
         status_box.update(label="✅ Конвейер завершен! Данные готовы.", state="complete", expanded=False)
 
+    # ИСПРАВЛЕНИЕ: Проверяем, что данные не просто есть в ключах, а не равны None
     if st.session_state.get('unified_excel_data') is not None:
         st.success("Файл успешно сгенерирован!")
         st.download_button(
@@ -3556,10 +3322,3 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
-
-
-
-
-
-
-
