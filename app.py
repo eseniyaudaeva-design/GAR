@@ -43,7 +43,7 @@ except ImportError:
     openai = None
 
 # ==========================================
-# 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ
+# 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ И УТИЛИТЫ
 # ==========================================
 
 def transliterate_text(text):
@@ -169,7 +169,6 @@ def render_clean_block(title, icon, words_list):
     
     if count > 0:
         content_html = ", ".join(unique_words)
-        # Карточка раскрывается
         html_code = f"""
         <details class="details-card">
             <summary class="card-summary">
@@ -185,7 +184,6 @@ def render_clean_block(title, icon, words_list):
         </details>
         """
     else:
-        # Если пусто - карточка неактивна (без контента)
         html_code = f"""
         <div class="details-card">
             <div class="card-summary" style="cursor: default; color: #9ca3af;">
@@ -194,8 +192,187 @@ def render_clean_block(title, icon, words_list):
             </div>
         </div>
         """
-    
     st.markdown(html_code, unsafe_allow_html=True)
+
+def render_relevance_chart(df_rel, unique_key="default"):
+    """
+    ФИНАЛЬНАЯ ВЕРСИЯ ГРАФИКА.
+    """
+    if df_rel.empty:
+        return
+
+    # 1. ЖЕСТКАЯ ФИЛЬТРАЦИЯ: Оставляем только то, что > 0
+    df = df_rel[df_rel['Позиция'] > 0].copy()
+    if df.empty: return
+
+    df = df.sort_values(by='Позиция')
+    x_indices = np.arange(len(df))
+    
+    tick_links = []
+    
+    for _, row in df.iterrows():
+        raw_name = row['Домен'].replace(' (Вы)', '').strip()
+        clean_domain = raw_name.replace('www.', '').split('/')[0]
+        
+        label_text = f"{row['Позиция']}. {clean_domain}"
+        if len(label_text) > 20: label_text = label_text[:18] + ".."
+        
+        url_target = row.get('URL', f"https://{raw_name}")
+        
+        link_html = f"<a href='{url_target}' target='_blank' class='chart-link'>{label_text}</a>"
+        tick_links.append(link_html)
+
+    # Метрики
+    df['Total_Rel'] = (df['Ширина (балл)'] + df['Глубина (балл)']) / 2
+    
+    # Тренд
+    z = np.polyfit(x_indices, df['Total_Rel'], 1)
+    p = np.poly1d(z)
+    df['Trend'] = p(x_indices)
+
+    fig = go.Figure()
+
+    COLOR_MAIN = '#4F46E5'  # Индиго
+    COLOR_WIDTH = '#0EA5E9' # Голубой
+    COLOR_DEPTH = '#E11D48' # Малиновый
+    COLOR_TREND = '#15803d' # Зеленый
+
+    COMMON_CONFIG = dict(
+        mode='lines+markers',
+        line=dict(width=3, shape='spline'), 
+        marker=dict(size=8, line=dict(width=2, color='white'), symbol='circle')
+    )
+
+    fig.add_trace(go.Scatter(x=x_indices, y=df['Total_Rel'], name='Общая', line=dict(color=COLOR_MAIN, **COMMON_CONFIG['line']), marker=dict(color=COLOR_MAIN, **COMMON_CONFIG['marker']), mode='lines+markers'))
+    fig.add_trace(go.Scatter(x=x_indices, y=df['Ширина (балл)'], name='Ширина', line=dict(color=COLOR_WIDTH, **COMMON_CONFIG['line']), marker=dict(color=COLOR_WIDTH, **COMMON_CONFIG['marker']), mode='lines+markers'))
+    fig.add_trace(go.Scatter(x=x_indices, y=df['Глубина (балл)'], name='Глубина', line=dict(color=COLOR_DEPTH, **COMMON_CONFIG['line']), marker=dict(color=COLOR_DEPTH, **COMMON_CONFIG['marker']), mode='lines+markers'))
+    fig.add_trace(go.Scatter(x=x_indices, y=df['Trend'], name='Тренд', line=dict(color=COLOR_TREND, **COMMON_CONFIG['line']), marker=dict(color=COLOR_TREND, **COMMON_CONFIG['marker']), mode='lines+markers', opacity=0.8))
+
+    fig.update_layout(
+        template="plotly_white",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom", y=1.05,
+            xanchor="center", x=0.5,
+            font=dict(size=12, color="#111827", family="Inter, sans-serif")
+        ),
+        xaxis=dict(
+            showgrid=False, 
+            linecolor='#E5E7EB',
+            tickmode='array',
+            tickvals=x_indices,
+            ticktext=tick_links, 
+            tickfont=dict(size=12),
+            fixedrange=True,
+            range=[-0.5, len(df) - 0.5],
+            automargin=True
+        ),
+        yaxis=dict(
+            range=[0, 115], 
+            showgrid=True, 
+            gridcolor='#F3F4F6', 
+            gridwidth=1,
+            zeroline=False,
+            fixedrange=True
+        ),
+        margin=dict(l=10, r=10, t=50, b=40),
+        hovermode="x unified",
+        height=280 # Компактная высота
+    )
+    
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
+
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
+    """
+    Функция отрисовки таблицы. Должна быть объявлена ДО вызова.
+    """
+    if df.empty: st.info(f"{title_text}: Нет данных."); return
+    col_t1, col_t2 = st.columns([7, 3])
+    with col_t1: st.markdown(f"### {title_text}")
+    if f'{key_prefix}_sort_col' not in st.session_state: st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if (default_sort_col and default_sort_col in df.columns) else df.columns[0]
+    if f'{key_prefix}_sort_order' not in st.session_state: st.session_state[f'{key_prefix}_sort_order'] = "Убывание"
+
+    search_query = st.text_input(f"🔍 Поиск ({title_text})", key=f"{key_prefix}_search")
+    if search_query:
+        mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
+        df_filtered = df[mask].copy()
+    else: df_filtered = df.copy()
+
+    if df_filtered.empty: st.warning("Ничего не найдено."); return
+
+    with st.container():
+        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
+        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
+        with col_s1:
+            current_sort = st.session_state[f'{key_prefix}_sort_col']
+            if current_sort not in df_filtered.columns: current_sort = df_filtered.columns[0]
+            sort_col = st.selectbox("🗂 Сортировать по:", df_filtered.columns, key=f"{key_prefix}_sort_box", index=list(df_filtered.columns).index(current_sort))
+            st.session_state[f'{key_prefix}_sort_col'] = sort_col
+        with col_s2:
+            sort_order = st.radio("Порядок:", ["Убывание", "Возрастание"], horizontal=True, key=f"{key_prefix}_order_box", index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1)
+            st.session_state[f'{key_prefix}_sort_order'] = sort_order
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    ascending = (sort_order == "Возрастание")
+    if use_abs_sort_default and sort_col == "Рекомендация" and "sort_val" in df_filtered.columns: df_filtered = df_filtered.sort_values(by="sort_val", ascending=ascending)
+    elif ("Добавить" in sort_col or "+/-" in sort_col) and df_filtered[sort_col].dtype == object:
+        try:
+            df_filtered['_temp_sort'] = df_filtered[sort_col].astype(str).str.replace(r'[^\d]', '', regex=True)
+            df_filtered['_temp_sort'] = pd.to_numeric(df_filtered['_temp_sort'], errors='coerce').fillna(0)
+            df_filtered = df_filtered.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
+        except: df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
+    else: df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
+
+    df_filtered = df_filtered.reset_index(drop=True); df_filtered.index = df_filtered.index + 1
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        export_df = df_filtered.copy()
+        if "is_missing" in export_df.columns: del export_df["is_missing"]
+        if "sort_val" in export_df.columns: del export_df["sort_val"]
+        export_df.to_excel(writer, index=False, sheet_name='Data')
+    excel_data = buffer.getvalue()
+    with col_t2: st.download_button(label="📥 Скачать Excel", data=excel_data, file_name=f"{key_prefix}_export.xlsx", mime="application/vnd.ms-excel", key=f"{key_prefix}_down")
+
+    ROWS_PER_PAGE = 20
+    if f'{key_prefix}_page' not in st.session_state: st.session_state[f'{key_prefix}_page'] = 1
+    total_rows = len(df_filtered); total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
+    if total_pages == 0: total_pages = 1
+    current_page = st.session_state[f'{key_prefix}_page']
+    if current_page > total_pages: current_page = total_pages
+    if current_page < 1: current_page = 1
+    st.session_state[f'{key_prefix}_page'] = current_page
+    start_idx = (current_page - 1) * ROWS_PER_PAGE
+    end_idx = start_idx + ROWS_PER_PAGE
+    df_view = df_filtered.iloc[start_idx:end_idx]
+
+    def highlight_rows(row):
+        base_style = 'background-color: #FFFFFF; color: #3D4858; border-bottom: 1px solid #DBEAFE;'
+        styles = []
+        status = row.get("Статус", "")
+        for col_name in row.index:
+            cell_style = base_style
+            if col_name == "Статус":
+                if status == "Недоспам": cell_style += "color: #D32F2F; font-weight: bold;"
+                elif status == "Переспам": cell_style += "color: #E65100; font-weight: bold;"
+                elif status == "Норма": cell_style += "color: #2E7D32; font-weight: bold;"
+            styles.append(cell_style)
+        return styles
+
+    cols_to_hide = [c for c in ["is_missing", "sort_val"] if c in df_view.columns]
+    try: styled_df = df_view.style.apply(highlight_rows, axis=1)
+    except: styled_df = df_view
+    st.dataframe(styled_df, use_container_width=True, height=(len(df_view) * 35) + 40, column_config={c: None for c in cols_to_hide})
+    c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
+    with c_btn_prev:
+        if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] -= 1
+            st.rerun()
+    with c_info: st.markdown(f"<div style='text-align: center; margin-top: 10px;'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
+    with c_btn_next:
+        if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
+            st.session_state[f'{key_prefix}_page'] += 1
+            st.rerun()
+    st.markdown("---")
 
 def analyze_serp_anomalies(df_rel):
     """
@@ -261,139 +438,6 @@ def analyze_serp_anomalies(df_rel):
 
     return normal_urls, anomalies, {"type": "info", "msg": trend_msg}
 
-def render_relevance_chart(df_rel, unique_key="default"):
-    """
-    ФИНАЛЬНАЯ ВЕРСИЯ.
-    """
-    if df_rel.empty:
-        return
-
-    # 1. ЖЕСТКАЯ ФИЛЬТРАЦИЯ: Оставляем только то, что > 0
-    # Ваш сайт (позиция 0) удаляется из данных для графика
-    df = df_rel[df_rel['Позиция'] > 0].copy()
-    
-    # Если после удаления вашего сайта таблица пуста - выходим
-    if df.empty:
-        return
-
-    df = df.sort_values(by='Позиция')
-    x_indices = np.arange(len(df))
-    
-    tick_links = []
-    
-    for _, row in df.iterrows():
-        # Чистим имя домена
-        raw_name = row['Домен'].replace(' (Вы)', '').strip()
-        clean_domain = raw_name.replace('www.', '').split('/')[0]
-        
-        # Формат: "1. site.ru" (без #)
-        label_text = f"{row['Позиция']}. {clean_domain}"
-        if len(label_text) > 20: label_text = label_text[:18] + ".."
-        
-        # ИСПРАВЛЕНИЕ: Берем реальный URL из данных, а не придумываем из домена
-        url_target = row.get('URL', f"https://{raw_name}")
-        
-        # Используем CSS-класс .chart-link вместо style="..." для работы hover
-        link_html = f"<a href='{url_target}' target='_blank' class='chart-link'>{label_text}</a>"
-        tick_links.append(link_html)
-
-    # Метрики
-    df['Total_Rel'] = (df['Ширина (балл)'] + df['Глубина (балл)']) / 2
-    
-    # Тренд
-    z = np.polyfit(x_indices, df['Total_Rel'], 1)
-    p = np.poly1d(z)
-    df['Trend'] = p(x_indices)
-
-    # 2. Создаем график
-    fig = go.Figure()
-
-    # --- ПАЛИТРА (Premium) ---
-    COLOR_MAIN = '#4F46E5'  # Индиго
-    COLOR_WIDTH = '#0EA5E9' # Голубой
-    COLOR_DEPTH = '#E11D48' # Малиновый
-    COLOR_TREND = '#15803d' # Зеленый (Forest Green)
-
-    COMMON_CONFIG = dict(
-        mode='lines+markers',
-        line=dict(width=3, shape='spline'), 
-        marker=dict(size=8, line=dict(width=2, color='white'), symbol='circle')
-    )
-
-    # 1. ОБЩАЯ
-    fig.add_trace(go.Scatter(
-        x=x_indices, y=df['Total_Rel'],
-        name='Общая',
-        line=dict(color=COLOR_MAIN, **COMMON_CONFIG['line']),
-        marker=dict(color=COLOR_MAIN, **COMMON_CONFIG['marker']),
-        mode='lines+markers'
-    ))
-
-    # 2. ШИРИНА
-    fig.add_trace(go.Scatter(
-        x=x_indices, y=df['Ширина (балл)'],
-        name='Ширина',
-        line=dict(color=COLOR_WIDTH, **COMMON_CONFIG['line']),
-        marker=dict(color=COLOR_WIDTH, **COMMON_CONFIG['marker']),
-        mode='lines+markers'
-    ))
-
-    # 3. ГЛУБИНА
-    fig.add_trace(go.Scatter(
-        x=x_indices, y=df['Глубина (балл)'],
-        name='Глубина',
-        line=dict(color=COLOR_DEPTH, **COMMON_CONFIG['line']),
-        marker=dict(color=COLOR_DEPTH, **COMMON_CONFIG['marker']),
-        mode='lines+markers'
-    ))
-
-    # 4. ТРЕНД
-    fig.add_trace(go.Scatter(
-        x=x_indices, y=df['Trend'],
-        name='Тренд',
-        line=dict(color=COLOR_TREND, **COMMON_CONFIG['line']),
-        marker=dict(color=COLOR_TREND, **COMMON_CONFIG['marker']),
-        mode='lines+markers',
-        opacity=0.8
-    ))
-
-    # 3. Настройка Layout
-    fig.update_layout(
-        template="plotly_white",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom", y=1.05,
-            xanchor="center", x=0.5,
-            font=dict(size=12, color="#111827", family="Inter, sans-serif")
-        ),
-        xaxis=dict(
-            showgrid=False, 
-            linecolor='#E5E7EB',
-            tickmode='array',
-            tickvals=x_indices,
-            ticktext=tick_links, 
-            tickfont=dict(size=12),
-            fixedrange=True,
-            # ИСПРАВЛЕНИЕ: Даем больше места слева и справа (-0.5 ... +0.5), чтобы крайние точки не резались
-            range=[-0.5, len(df) - 0.5],
-            automargin=True # Автоматический отступ, чтобы текст не наезжал
-        ),
-        yaxis=dict(
-            range=[0, 115], 
-            showgrid=True, 
-            gridcolor='#F3F4F6', 
-            gridwidth=1,
-            zeroline=False,
-            fixedrange=True
-        ),
-        margin=dict(l=10, r=10, t=50, b=40),
-        hovermode="x unified",
-        height=280 # КОМПАКТНЫЙ ГРАФИК
-    )
-    
-    # ДОБАВЛЕН UNIQUE_KEY
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
-
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ
 # ==========================================
@@ -439,48 +483,33 @@ def load_lemmatized_dictionaries():
                     words_bucket = data
                 
                 for phrase in words_bucket:
-                    # 1. Чистим, переводим в нижний регистр, меняем Ё на Е
                     w_clean = str(phrase).lower().strip().replace('ё', 'е')
-                    
                     if not w_clean: continue
-
                     sets[set_key].add(w_clean)
-                    
-                    # 2. Добавляем лемму (нормальную форму)
                     if morph:
                         normal_form = morph.parse(w_clean)[0].normal_form.replace('ё', 'е')
                         sets[set_key].add(normal_form)
-                    
-                    # 3. Если фраза из нескольких слов, добавляем каждое слово отдельно
                     if ' ' in w_clean:
                         parts = w_clean.split()
                         for p in parts:
                             sets[set_key].add(p)
                             if morph: 
                                 sets[set_key].add(morph.parse(p)[0].normal_form.replace('ё', 'е'))
+        except: pass
 
-        except json.JSONDecodeError as e:
-            st.error(f"❌ ОШИБКА В ФАЙЛЕ {filename}!\nСкорее всего, лишняя запятая в конце списка или пропущенная кавычка.\nДетали: {e}")
-        except Exception as e:
-            st.error(f"❌ Ошибка чтения {filename}: {e}")
-
-    # Возвращаем 6 наборов
     return sets["products"], sets["commercial"], sets["specs"], sets["geo"], sets["services"], sets["sensitive"]
 
 # ==========================================
 # КЛАССИФИКАТОР (УСИЛЕННЫЙ)
 # ==========================================
 def classify_semantics_with_api(words_list, yandex_key):
-    # Распаковываем 6 словарей, которые вернула функция загрузки
+    # Распаковываем 6 словарей
     PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = load_lemmatized_dictionaries()
-    
-    # Объединяем стоп-слова из файла и из глобального списка в коде
     FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
 
     if 'debug_geo_count' not in st.session_state:
         st.session_state.debug_geo_count = len(GEO_SET)
     
-    # Отладка в сайдбаре: показывает, сколько слов реально загрузилось
     st.sidebar.info(f"Словари (из файлов):\n📦 Товары: {len(PRODUCTS_SET)}\n💰 Коммерция: {len(COMM_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n🌍 Города: {len(GEO_SET)}")
 
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
@@ -491,8 +520,6 @@ def classify_semantics_with_api(words_list, yandex_key):
     
     for word in words_list:
         word_lower = word.lower()
-        
-        # 1. СТОП-СЛОВА
         is_sensitive = False
         if word_lower in FULL_SENSITIVE: is_sensitive = True
         else:
@@ -500,48 +527,26 @@ def classify_semantics_with_api(words_list, yandex_key):
                 if len(stop_w) > 3 and stop_w in word_lower: is_sensitive = True; break
         if is_sensitive: categories['sensitive'].add(word_lower); continue
         
-        # Лемматизация
         lemma = word_lower
         if morph:
             p = morph.parse(word_lower)[0]
             lemma = p.normal_form
 
-        # 2. РАЗМЕРЫ / ГОСТ
-        if word_lower in SPECS_SET or lemma in SPECS_SET:
-            categories['dimensions'].add(word_lower); continue
-        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
-            categories['dimensions'].add(word_lower); continue
+        if word_lower in SPECS_SET or lemma in SPECS_SET: categories['dimensions'].add(word_lower); continue
+        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit(): categories['dimensions'].add(word_lower); continue
 
-        # 3. ТОВАРЫ (Улучшенная логика)
-        if word_lower in PRODUCTS_SET or lemma in PRODUCTS_SET:
-            categories['products'].add(word_lower); continue
-        
-        # Проверка вхождения корня (если в словаре "алюминий", а слово "алюминиевый")
+        if word_lower in PRODUCTS_SET or lemma in PRODUCTS_SET: categories['products'].add(word_lower); continue
         is_product_root = False
         for prod in PRODUCTS_SET:
-            # Если слово в словаре длинное, отрезаем последние буквы
             check_root = prod[:-1] if len(prod) > 4 else prod
             if len(check_root) > 3 and check_root in word_lower:
-                categories['products'].add(word_lower)
-                is_product_root = True
-                break
+                categories['products'].add(word_lower); is_product_root = True; break
         if is_product_root: continue
 
-        # 4. ГЕО
-        if lemma in GEO_SET or word_lower in GEO_SET:
-            categories['geo'].add(word_lower); continue
-        
-        # 5. УСЛУГИ
-        if lemma in SERVICES_SET or word_lower in SERVICES_SET:
-             categories['services'].add(word_lower); continue
-        if lemma.endswith('обработка') or lemma.endswith('изготовление') or lemma == "резка":
-            categories['services'].add(word_lower); continue
-
-        # 6. КОММЕРЦИЯ
-        if lemma in COMM_SET or word_lower in COMM_SET:
-            categories['commercial'].add(word_lower); continue
-            
-        # 7. ОБЩИЕ
+        if lemma in GEO_SET or word_lower in GEO_SET: categories['geo'].add(word_lower); continue
+        if lemma in SERVICES_SET or word_lower in SERVICES_SET: categories['services'].add(word_lower); continue
+        if lemma.endswith('обработка') or lemma.endswith('изготовление') or lemma == "резка": categories['services'].add(word_lower); continue
+        if lemma in COMM_SET or word_lower in COMM_SET: categories['commercial'].add(word_lower); continue
         categories['general'].add(word_lower)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -569,7 +574,7 @@ if 'categorized_geo' not in st.session_state: st.session_state.categorized_geo =
 if 'categorized_general' not in st.session_state: st.session_state.categorized_general = []
 if 'categorized_sensitive' not in st.session_state: st.session_state.categorized_sensitive = []
 
-# Original lists (for restoration)
+# Original lists
 if 'orig_products' not in st.session_state: st.session_state.orig_products = []
 if 'orig_services' not in st.session_state: st.session_state.orig_services = []
 if 'orig_commercial' not in st.session_state: st.session_state.orig_commercial = []
@@ -588,26 +593,19 @@ st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_i
 
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
-    'cookie', 'cookies', 'policy', 'privacy', 'agreement', 'terms',
-    'click', 'submit', 'send', 'zakaz', 'basket', 'cart', 'order', 'call', 'back', 'callback',
-    'login', 'logout', 'sign', 'register', 'auth', 'account', 'profile',
-    'search', 'menu', 'nav', 'navigation', 'footer', 'header', 'sidebar',
-    'img', 'jpg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'svg',
-    'ok', 'error', 'undefined', 'null', 'true', 'false', 'var', 'let', 'const', 'function', 'return',
-    'ru', 'en', 'com', 'net', 'org', 'biz', 'shop', 'store',
-    'phone', 'email', 'tel', 'fax', 'mob', 'address', 'copyright', 'all', 'rights', 'reserved',
-    'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
+    'cookie', 'cookies', 'policy', 'privacy', 'agreement', 'terms', 'click', 'submit', 'send', 'zakaz', 
+    'basket', 'cart', 'order', 'call', 'back', 'callback', 'login', 'logout', 'sign', 'register', 'auth', 
+    'account', 'profile', 'search', 'menu', 'nav', 'navigation', 'footer', 'header', 'sidebar',
+    'img', 'jpg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'svg', 'ok', 'error', 'undefined', 
+    'null', 'true', 'false', 'var', 'let', 'const', 'function', 'return', 'ru', 'en', 'com', 'net', 
+    'org', 'biz', 'shop', 'store', 'phone', 'email', 'tel', 'fax', 'mob', 'address', 'copyright', 
+    'all', 'rights', 'reserved', 'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
 }
 
-# ==========================================
-# STOP LISTS (SENSITIVE / GEO UA)
-# ==========================================
 SENSITIVE_STOPLIST_RAW = {
-    "украина", "ukraine", "ua", "всу", "зсу", "ато",
-    "киев", "львов", "харьков", "одесса", "днепр", "мариуполь",
-    "донецк", "луганск", "днр", "лнр", "донбасс", 
-    "мелитополь", "бердянск", "бахмут", "запорожье", "херсон",
-    "крым", "севастополь", "симферополь"
+    "украина", "ukraine", "ua", "всу", "зсу", "ато", "киев", "львов", "харьков", "одесса", "днепр", 
+    "мариуполь", "донецк", "луганск", "днр", "лнр", "донбасс", "мелитополь", "бердянск", "бахмут", 
+    "запорожье", "херсон", "крым", "севастополь", "симферополь"
 }
 SENSITIVE_STOPLIST = {w.lower() for w in SENSITIVE_STOPLIST_RAW}
 
@@ -630,47 +628,35 @@ def check_password():
 if not check_password():
     st.stop()
 
-if "arsenkin_token" in st.session_state:
-    ARSENKIN_TOKEN = st.session_state.arsenkin_token
+if "arsenkin_token" in st.session_state: ARSENKIN_TOKEN = st.session_state.arsenkin_token
 else:
     try: ARSENKIN_TOKEN = st.secrets["api"]["arsenkin_token"]
-    except (FileNotFoundError, KeyError): ARSENKIN_TOKEN = None
+    except: ARSENKIN_TOKEN = None
 
-if "yandex_dict_key" in st.session_state:
-    YANDEX_DICT_KEY = st.session_state.yandex_dict_key
+if "yandex_dict_key" in st.session_state: YANDEX_DICT_KEY = st.session_state.yandex_dict_key
 else:
     try: YANDEX_DICT_KEY = st.secrets["api"]["yandex_dict_key"]
-    except (FileNotFoundError, KeyError): YANDEX_DICT_KEY = None
+    except: YANDEX_DICT_KEY = None
 
 REGION_MAP = {
-    "Москва": {"ya": 213, "go": 1011969},
-    "Санкт-Петербург": {"ya": 2, "go": 1011966},
-    "Екатеринбург": {"ya": 54, "go": 1011868},
-    "Новосибирск": {"ya": 65, "go": 1011928},
-    "Казань": {"ya": 43, "go": 1011904},
-    "Нижний Новгород": {"ya": 47, "go": 1011918},
-    "Самара": {"ya": 51, "go": 1011956},
-    "Челябинск": {"ya": 56, "go": 1011882},
-    "Омск": {"ya": 66, "go": 1011931},
-    "Краснодар": {"ya": 35, "go": 1011894},
-    "Киев (UA)": {"ya": 143, "go": 1012852},
-    "Минск (BY)": {"ya": 157, "go": 1001493},
-    "Алматы (KZ)": {"ya": 162, "go": 1014601}
+    "Москва": {"ya": 213, "go": 1011969}, "Санкт-Петербург": {"ya": 2, "go": 1011966},
+    "Екатеринбург": {"ya": 54, "go": 1011868}, "Новосибирск": {"ya": 65, "go": 1011928},
+    "Казань": {"ya": 43, "go": 1011904}, "Нижний Новгород": {"ya": 47, "go": 1011918},
+    "Самара": {"ya": 51, "go": 1011956}, "Челябинск": {"ya": 56, "go": 1011882},
+    "Омск": {"ya": 66, "go": 1011931}, "Краснодар": {"ya": 35, "go": 1011894},
+    "Киев (UA)": {"ya": 143, "go": 1012852}, "Минск (BY)": {"ya": 157, "go": 1001493}, "Алматы (KZ)": {"ya": 162, "go": 1014601}
 }
 
 DEFAULT_EXCLUDE_DOMAINS = {
     "yandex.ru", "avito.ru", "beru.ru", "tiu.ru", "aliexpress.com", "aliexpress.ru", 
-    "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", 
-    "pandao.ru", "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", 
-    "banki.ru", "regmarkets.ru", "zoon.ru", "pulscen.ru", "prodoctorov.ru", 
-    "blizko.ru", "domclick.ru", "satom.ru", "quto.ru", "edadeal.ru", 
-    "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", "yell.ru", 
-    "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", 
-    "market.yandex.ru", "youtube.com", "www.youtube.com", "gosuslugi.ru", 
-    "www.gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", 
-    "vk.com", "facebook.com", "chipdip.ru"
-    }
-
+    "ebay.com", "auto.ru", "2gis.ru", "sravni.ru", "toshop.ru", "price.ru", "pandao.ru", 
+    "instagram.com", "wikipedia.org", "rambler.ru", "hh.ru", "banki.ru", "regmarkets.ru", 
+    "zoon.ru", "pulscen.ru", "prodoctorov.ru", "blizko.ru", "domclick.ru", "satom.ru", 
+    "quto.ru", "edadeal.ru", "cataloxy.ru", "irr.ru", "onliner.by", "shop.by", "deal.by", 
+    "yell.ru", "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", "market.yandex.ru", 
+    "youtube.com", "www.youtube.com", "gosuslugi.ru", "www.gosuslugi.ru", "dzen.ru", 
+    "2gis.by", "wildberries.ru", "rutube.ru", "vk.com", "facebook.com", "chipdip.ru"
+}
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nстр\nул\nшт\nсм\nмм\nмл\nкг\nкв\nм²\nсм²\nм2\nсм2"
 
@@ -736,22 +722,33 @@ tab_seo_main, tab_wholesale_main = st.tabs(["📊 SEO Анализ", "🏭 Оп�
 # TAB 1: SEO ANALYSIS (KEPT AS IS)
 # ------------------------------------------
 with tab_seo_main:
-    col_main, col_sidebar = st.columns([68, 32]) # Чуть больше места контенту
+    col_main, col_sidebar = st.columns([68, 32])
     
     with col_main:
         st.title("SEO Анализатор")
         
-        # 1. ВЫБОР ИСТОЧНИКА + КНОПКА СБРОСА (В ОДНУ СТРОКУ)
+        # 1. MY PAGE & QUERY
+        st.markdown("### Данные для анализа")
+        c_req1, c_req2 = st.columns(2)
+        with c_req1:
+            my_input_type = st.radio("Тип вашей страницы", ["URL на сайте", "Текст/HTML", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
+            if my_input_type == "URL на сайте":
+                st.text_input("Ваш URL", placeholder="https://site.ru/...", label_visibility="collapsed", key="my_url_input")
+            elif my_input_type == "Текст/HTML":
+                st.text_area("Код", height=100, label_visibility="collapsed", placeholder="<html>...", key="my_content_input")
+        
+        with c_req2:
+            st.text_input("Поисковой запрос", placeholder="Например: купить никель", label_visibility="visible", key="query_input")
+
+        # 2. COMPETITOR SOURCE
         st.markdown("### Поиск конкурентов")
         
-        # Обработка авто-переключения (флаг)
+        # Обработка авто-переключения
         if st.session_state.get('force_radio_switch'):
             st.session_state["competitor_source_radio"] = "Список url-адресов ваших конкурентов"
             st.session_state['force_radio_switch'] = False
 
-        # Делаем колонки: Слева выбор источника, Справа кнопка сброса (если нужна)
         c_src, c_reset = st.columns([3, 1])
-        
         with c_src:
             source_type_new = st.radio(
                 "Источник данных", 
@@ -776,7 +773,7 @@ with tab_seo_main:
 
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
-        # 2. ПОЛЕ ВВОДА ССЫЛОК (Логика с 2 колонками)
+        # 3. ПОЛЕ ВВОДА ССЫЛОК (Логика с 2 колонками)
         if source_type == "Ручной список":
             has_exclusions = st.session_state.get('excluded_urls_auto') and len(st.session_state.get('excluded_urls_auto')) > 5
             
@@ -790,18 +787,6 @@ with tab_seo_main:
             else:
                 manual_val = st.text_area("Список ссылок (каждая с новой строки)", height=200, key="manual_urls_widget", value=st.session_state.get('persistent_urls', ""))
                 st.session_state['persistent_urls'] = manual_val
-
-        # 3. НАСТРОЙКИ СТРАНИЦЫ И ЗАПРОСА
-        c_req1, c_req2 = st.columns(2)
-        with c_req1:
-            my_input_type = st.radio("Тип вашей страницы", ["URL на сайте", "Текст/HTML", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
-            if my_input_type == "URL на сайте":
-                st.text_input("Ваш URL", placeholder="https://site.ru/...", label_visibility="collapsed", key="my_url_input")
-            elif my_input_type == "Текст/HTML":
-                st.text_area("Код", height=100, label_visibility="collapsed", placeholder="<html>...", key="my_content_input")
-        
-        with c_req2:
-            st.text_input("Поисковой запрос", placeholder="Например: купить никель", label_visibility="visible", key="query_input")
 
         st.markdown("<br>", unsafe_allow_html=True)
         
@@ -818,10 +803,12 @@ with tab_seo_main:
             st.session_state.gen_result_df = None
             st.session_state.unified_excel_data = None
 
-            if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
-            if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
-            if 'serp_trend_info' in st.session_state: del st.session_state['serp_trend_info']
-            # ---------------------------------------------------------------
+            # Если мы в ручном режиме и есть исключения, мы их не трогаем, так как юзер мог их редактировать.
+            # Если это новый запуск, они очистятся.
+            if not st.session_state.get('analysis_done'):
+                 if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+                 if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
+                 if 'serp_trend_info' in st.session_state: del st.session_state['serp_trend_info']
             
             # Сброс пагинации таблиц
             for key in list(st.session_state.keys()):
@@ -1013,7 +1000,7 @@ with tab_seo_main:
                         time.sleep(0.5)
                         st.rerun()
 
-        # --- УПУЩЕННАЯ СЕМАНТИКА ---
+        # === УПУЩЕННАЯ СЕМАНТИКА ---
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         if high or low:
@@ -1146,12 +1133,12 @@ with tab_seo_main:
         current_input_type = st.session_state.get("my_page_source_radio")
         
         # 1. Обработка ВАШЕЙ страницы
-        if current_input_type == "Релевантная страница на вашем сайте":
+        if current_input_type == "URL на сайте":
             with st.spinner("Скачивание вашей страницы..."):
                 my_data = parse_page(st.session_state.my_url_input, settings, st.session_state.query_input)
                 if not my_data: st.error("Ошибка скачивания вашей страницы."); st.stop()
                 my_domain = urlparse(st.session_state.my_url_input).netloc
-        elif current_input_type == "Исходный код страницы или текст":
+        elif current_input_type == "Текст/HTML":
             my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
             
         # 2. Сбор КАНДИДАТОВ
