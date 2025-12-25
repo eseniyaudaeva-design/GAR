@@ -43,6 +43,83 @@ except ImportError:
     openai = None
 
 # ==========================================
+# CONFIG & CONSTANTS
+# ==========================================
+PRIMARY_COLOR = "#277EFF"
+PRIMARY_DARK = "#1E63C4"
+TEXT_COLOR = "#3D4858"
+LIGHT_BG_MAIN = "#F1F5F9"
+BORDER_COLOR = "#E2E8F0"
+HEADER_BG = "#F0F7FF"
+ROW_BORDER_COLOR = "#DBEAFE"
+
+st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
+
+st.markdown(f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
+        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
+        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
+        .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
+            background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
+        }}
+        div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important; border-radius: 8px !important; }}
+        div[data-testid="stDataFrame"] div[role="columnheader"] {{
+            background-color: {HEADER_BG} !important; color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
+        }}
+        div[data-testid="stDataFrame"] div[role="gridcell"] {{
+            background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
+        }}
+        .legend-box {{ padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px; }}
+        .text-red {{ color: #D32F2F; font-weight: bold; }}
+        .text-green {{ color: #2E7D32; font-weight: bold; }}
+        .text-bold {{ font-weight: 600; }}
+        .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR}; }}
+        
+        .stApp > header {{ background-color: transparent !important; }}
+        .stTextInput input:disabled, .stTextArea textarea:disabled, .stSelectbox div[aria-disabled="true"] {{
+            opacity: 1 !important; background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; cursor: text !important; -webkit-text-fill-color: {TEXT_COLOR} !important; border-color: {BORDER_COLOR} !important;
+        }}
+        .stButton button:disabled {{ opacity: 1 !important; background-color: {PRIMARY_COLOR} !important; color: white !important; cursor: progress !important; }}
+        div[data-testid="stAppViewContainer"] {{ filter: none !important; opacity: 1 !important; transition: none !important; }}
+        
+        /* Стили для карточек семантики */
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+        .details-card {
+            background-color: #f8f9fa; border: 1px solid #e9ecef;
+            border-radius: 8px; margin-bottom: 10px;
+            overflow: hidden; transition: all 0.2s ease;
+        }
+        .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
+        .card-summary {
+            padding: 12px 15px; cursor: pointer; font-weight: 700;
+            font-size: 15px; color: #111827; display: flex;
+            justify-content: space-between; align-items: center;
+            background-color: #ffffff;
+        }
+        .card-summary:hover { background-color: #f3f4f6; }
+        .card-content {
+            padding: 15px; border-top: 1px solid #e9ecef;
+            font-size: 14px; color: #374151; line-height: 1.6;
+            background-color: #fcfcfc;
+        }
+        .count-tag { 
+            background: #e5e7eb; color: #374151; padding: 2px 8px; 
+            border-radius: 10px; font-size: 12px; font-weight: 600;
+            min-width: 25px; text-align: center;
+        }
+        .arrow-icon {
+            font-size: 10px; margin-right: 8px; color: #9ca3af;
+            transition: transform 0.2s;
+        }
+        details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
 # 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ
 # ==========================================
 
@@ -208,11 +285,10 @@ def render_relevance_chart(df_rel):
     if df_rel.empty:
         return
 
-    # 1. ЖЕСТКАЯ ФИЛЬТРАЦИЯ: Оставляем только то, что > 0
-    # Ваш сайт (позиция 0) удаляется из данных для графика
+    # 1. ФИЛЬТРАЦИЯ: Оставляем только то, что > 0
     df = df_rel[df_rel['Позиция'] > 0].copy()
     
-    # Если после удаления вашего сайта таблица пуста - выходим
+    # Если конкурентов нет - график не строим
     if df.empty:
         return
 
@@ -226,15 +302,14 @@ def render_relevance_chart(df_rel):
         raw_name = row['Домен'].replace(' (Вы)', '').strip()
         clean_domain = raw_name.replace('www.', '').split('/')[0]
         
-        # Формат: "1. site.ru" (без #)
+        # Формат: "1. site.ru"
         label_text = f"{row['Позиция']}. {clean_domain}"
         if len(label_text) > 20: label_text = label_text[:18] + ".."
         
         url_target = f"https://{raw_name}"
         
-        # СТИЛЬ ССЫЛКИ: Серый (Slate-700), жирный, подчеркивание
+        # СТИЛЬ ССЫЛКИ
         link_style = "color: #334155; font-weight: 600; text-decoration: none; border-bottom: 2px solid #CBD5E1;"
-        
         link_html = f"<a href='{url_target}' target='_blank' style='{link_style}'>{label_text}</a>"
         tick_links.append(link_html)
 
@@ -249,11 +324,11 @@ def render_relevance_chart(df_rel):
     # 2. Создаем график
     fig = go.Figure()
 
-    # --- ПАЛИТРА (Premium) ---
+    # ПАЛИТРА
     COLOR_MAIN = '#4F46E5'  # Индиго
     COLOR_WIDTH = '#0EA5E9' # Голубой
     COLOR_DEPTH = '#E11D48' # Малиновый
-    COLOR_TREND = '#15803d' # Зеленый (Forest Green)
+    COLOR_TREND = '#15803d' # Зеленый
 
     COMMON_CONFIG = dict(
         mode='lines+markers',
@@ -263,8 +338,7 @@ def render_relevance_chart(df_rel):
 
     # 1. ОБЩАЯ
     fig.add_trace(go.Scatter(
-        x=x_indices, y=df['Total_Rel'],
-        name='Общая',
+        x=x_indices, y=df['Total_Rel'], name='Общая',
         line=dict(color=COLOR_MAIN, **COMMON_CONFIG['line']),
         marker=dict(color=COLOR_MAIN, **COMMON_CONFIG['marker']),
         mode='lines+markers'
@@ -272,8 +346,7 @@ def render_relevance_chart(df_rel):
 
     # 2. ШИРИНА
     fig.add_trace(go.Scatter(
-        x=x_indices, y=df['Ширина (балл)'],
-        name='Ширина',
+        x=x_indices, y=df['Ширина (балл)'], name='Ширина',
         line=dict(color=COLOR_WIDTH, **COMMON_CONFIG['line']),
         marker=dict(color=COLOR_WIDTH, **COMMON_CONFIG['marker']),
         mode='lines+markers'
@@ -281,8 +354,7 @@ def render_relevance_chart(df_rel):
 
     # 3. ГЛУБИНА
     fig.add_trace(go.Scatter(
-        x=x_indices, y=df['Глубина (балл)'],
-        name='Глубина',
+        x=x_indices, y=df['Глубина (балл)'], name='Глубина',
         line=dict(color=COLOR_DEPTH, **COMMON_CONFIG['line']),
         marker=dict(color=COLOR_DEPTH, **COMMON_CONFIG['marker']),
         mode='lines+markers'
@@ -290,40 +362,27 @@ def render_relevance_chart(df_rel):
 
     # 4. ТРЕНД
     fig.add_trace(go.Scatter(
-        x=x_indices, y=df['Trend'],
-        name='Тренд',
+        x=x_indices, y=df['Trend'], name='Тренд',
         line=dict(color=COLOR_TREND, **COMMON_CONFIG['line']),
         marker=dict(color=COLOR_TREND, **COMMON_CONFIG['marker']),
-        mode='lines+markers',
-        opacity=0.8
+        mode='lines+markers', opacity=0.8
     ))
 
-    # 3. Настройка Layout
+    # 3. Layout
     fig.update_layout(
         template="plotly_white",
         legend=dict(
-            orientation="h",
-            yanchor="bottom", y=1.05,
-            xanchor="center", x=0.5,
+            orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5,
             font=dict(size=12, color="#111827", family="Inter, sans-serif")
         ),
         xaxis=dict(
-            showgrid=False, 
-            linecolor='#E5E7EB',
-            tickmode='array',
-            tickvals=x_indices,
-            ticktext=tick_links, # Вставляем ссылки
-            tickfont=dict(size=12),
-            fixedrange=True,
-            range=[-0.2, len(df) - 0.8]
+            showgrid=False, linecolor='#E5E7EB',
+            tickmode='array', tickvals=x_indices, ticktext=tick_links,
+            tickfont=dict(size=12), fixedrange=True, range=[-0.2, len(df) - 0.8]
         ),
         yaxis=dict(
-            range=[0, 115], 
-            showgrid=True, 
-            gridcolor='#F3F4F6', 
-            gridwidth=1,
-            zeroline=False,
-            fixedrange=True
+            range=[0, 115], showgrid=True, gridcolor='#F3F4F6',
+            gridwidth=1, zeroline=False, fixedrange=True
         ),
         margin=dict(l=10, r=10, t=50, b=40),
         hovermode="x unified",
@@ -331,6 +390,7 @@ def render_relevance_chart(df_rel):
     )
 
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ
 # ==========================================
@@ -519,24 +579,6 @@ if 'auto_promo_words' not in st.session_state: st.session_state.auto_promo_words
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
 
 # ==========================================
-# CONFIG & CONSTANTS
-# ==========================================
-st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
-
-GARBAGE_LATIN_STOPLIST = {
-    'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
-    'cookie', 'cookies', 'policy', 'privacy', 'agreement', 'terms',
-    'click', 'submit', 'send', 'zakaz', 'basket', 'cart', 'order', 'call', 'back', 'callback',
-    'login', 'logout', 'sign', 'register', 'auth', 'account', 'profile',
-    'search', 'menu', 'nav', 'navigation', 'footer', 'header', 'sidebar',
-    'img', 'jpg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'svg',
-    'ok', 'error', 'undefined', 'null', 'true', 'false', 'var', 'let', 'const', 'function', 'return',
-    'ru', 'en', 'com', 'net', 'org', 'biz', 'shop', 'store',
-    'phone', 'email', 'tel', 'fax', 'mob', 'address', 'copyright', 'all', 'rights', 'reserved',
-    'div', 'span', 'class', 'id', 'style', 'script', 'body', 'html', 'head', 'meta', 'link'
-}
-
-# ==========================================
 # STOP LISTS (SENSITIVE / GEO UA)
 # ==========================================
 SENSITIVE_STOPLIST_RAW = {
@@ -610,46 +652,6 @@ DEFAULT_EXCLUDE_DOMAINS = {
 
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
 DEFAULT_STOPS = "рублей\nруб\nстр\nул\nшт\nсм\nмм\nмл\nкг\nкв\nм²\nсм²\nм2\nсм2"
-
-PRIMARY_COLOR = "#277EFF"
-PRIMARY_DARK = "#1E63C4"
-TEXT_COLOR = "#3D4858"
-LIGHT_BG_MAIN = "#F1F5F9"
-BORDER_COLOR = "#E2E8F0"
-HEADER_BG = "#F0F7FF"
-ROW_BORDER_COLOR = "#DBEAFE"
-
-st.markdown(f"""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
-        html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
-        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
-        .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
-            background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
-        }}
-        div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important; border-radius: 8px !important; }}
-        div[data-testid="stDataFrame"] div[role="columnheader"] {{
-            background-color: {HEADER_BG} !important; color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
-        }}
-        div[data-testid="stDataFrame"] div[role="gridcell"] {{
-            background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; border-bottom: 1px solid {ROW_BORDER_COLOR} !important;
-        }}
-        .legend-box {{ padding: 10px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 5px; font-size: 14px; margin-bottom: 10px; }}
-        .text-red {{ color: #D32F2F; font-weight: bold; }}
-        .text-green {{ color: #2E7D32; font-weight: bold; }}
-        .text-bold {{ font-weight: 600; }}
-        .sort-container {{ background-color: {LIGHT_BG_MAIN}; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid {BORDER_COLOR}; }}
-        
-        .stApp > header {{ background-color: transparent !important; }}
-        .stTextInput input:disabled, .stTextArea textarea:disabled, .stSelectbox div[aria-disabled="true"] {{
-            opacity: 1 !important; background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; cursor: text !important; -webkit-text-fill-color: {TEXT_COLOR} !important; border-color: {BORDER_COLOR} !important;
-        }}
-        .stButton button:disabled {{ opacity: 1 !important; background-color: {PRIMARY_COLOR} !important; color: white !important; cursor: progress !important; }}
-        div[data-testid="stAppViewContainer"] {{ filter: none !important; opacity: 1 !important; transition: none !important; }}
-    </style>
-""", unsafe_allow_html=True)
 
 # ==========================================
 # PARSING & METRICS
@@ -1743,36 +1745,9 @@ with tab_seo_main:
             )
             st.session_state['persistent_urls'] = manual_val
 
-    # ================= НОВОЕ МЕСТО ДЛЯ ГРАФИКА =================
-    # Показываем график ТОЛЬКО если есть результаты анализа
-        if st.session_state.get('analysis_done') and st.session_state.get('analysis_results'):
-            results = st.session_state.analysis_results
-            if 'relevance_top' in results and not results['relevance_top'].empty:
-                st.markdown("<br>", unsafe_allow_html=True)
-                with st.expander("📊 График релевантности (Нажмите, чтобы раскрыть)", expanded=False):
-                    render_relevance_chart(results['relevance_top'])
-                st.markdown("<br>", unsafe_allow_html=True)
-    # ===========================================================
-
         st.markdown("### Списки (Stop / Exclude)")
         st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=100, key="settings_excludes")
         st.text_area("Стоп-слова", DEFAULT_STOPS, height=100, key="settings_stops")
-        if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-            # === ОЧИСТКА ВСЕХ СТАРЫХ ДАННЫХ ===
-            st.session_state.analysis_results = None
-            st.session_state.analysis_done = False
-            st.session_state.naming_table_df = None
-            st.session_state.ideal_h1_result = None
-            st.session_state.gen_result_df = None
-            st.session_state.unified_excel_data = None
-            
-            # Сброс пагинации таблиц
-            for key in list(st.session_state.keys()):
-                if key.endswith('_page'): st.session_state[key] = 1
-            
-            # Запуск флага и перезагрузка страницы, чтобы интерфейс очистился
-            st.session_state.start_analysis_flag = True
-            st.rerun()
 
     with col_sidebar:
         st.markdown("#####⚙️ Настройки API")
@@ -1795,10 +1770,11 @@ with tab_seo_main:
         st.checkbox("Учитывать числа", False, key="settings_numbers")
         st.checkbox("Нормировать по длине", True, key="settings_norm")
 
-# ==========================================
-    # БЛОК 1: ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ (ТЕПЕРЬ ПЕРВЫЙ)
-    # ==========================================
-    if st.session_state.analysis_done and st.session_state.analysis_results:
+    # =========================================================================
+    # 1. СНАЧАЛА ИДЕТ БЛОК ОТОБРАЖЕНИЯ (Теперь он первый!)
+    # =========================================================================
+    # ВАЖНОЕ УСЛОВИЕ: and not start_analysis_flag. Если нажат старт - результаты пропадают.
+    if st.session_state.analysis_done and st.session_state.analysis_results and not st.session_state.get('start_analysis_flag'):
         results = st.session_state.analysis_results
         
         d_score = results['my_score']['depth']
@@ -2024,12 +2000,32 @@ with tab_seo_main:
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
+    with col_main:
+        # =========================================================================
+        # 2. КНОПКА ЗАПУСКА (Очищает всё перед стартом)
+        # =========================================================================
+        if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
+            # Полный сброс всех переменных
+            st.session_state.analysis_results = None
+            st.session_state.analysis_done = False
+            st.session_state.naming_table_df = None
+            st.session_state.ideal_h1_result = None
+            st.session_state.gen_result_df = None
+            st.session_state.unified_excel_data = None
+            
+            # Сброс пагинации
+            for key in list(st.session_state.keys()):
+                if key.endswith('_page'): st.session_state[key] = 1
+            
+            # Включаем флаг сканирования
+            st.session_state.start_analysis_flag = True
+            st.rerun()
 
-    # ==========================================
-    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (ТЕПЕРЬ ПОСЛЕДНИЙ)
-    # ==========================================
+    # =========================================================================
+    # 3. ПОТОМ ИДЕТ БЛОК СКАНИРОВАНИЯ (Теперь он последний!)
+    # =========================================================================
     if st.session_state.get('start_analysis_flag'):
-        st.session_state.start_analysis_flag = False
+        # st.session_state.start_analysis_flag = False # Не выключаем здесь, а в конце
         
         # Настройки парсинга
         settings = {
@@ -2133,7 +2129,7 @@ with tab_seo_main:
             st.session_state.naming_table_df = naming_df 
             st.session_state.ideal_h1_result = analyze_ideal_name(final_competitors_data)
 
-            st.session_state.analysis_done = True
+            # st.session_state.analysis_done = True # Рано включать
             
             res = st.session_state.analysis_results
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
@@ -2174,244 +2170,10 @@ with tab_seo_main:
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
-            st.rerun()    
-
-    if st.session_state.analysis_done and st.session_state.analysis_results:
-        results = st.session_state.analysis_results
-        
-        d_score = results['my_score']['depth']
-        w_score = results['my_score']['width']
-        
-        # Ширина
-        w_color = "#2E7D32" if w_score >= 80 else ("#E65100" if w_score >= 50 else "#D32F2F")
-        
-        # Глубина (Цель = 80)
-        if 75 <= d_score <= 88:
-            d_color = "#2E7D32" # Зеленый (Отлично)
-            d_status = "ИДЕАЛ (Топ)"
-        elif 88 < d_score <= 100:
-            d_color = "#D32F2F" # Красный (Риск переспама)
-            d_status = "ПЕРЕСПАМ (Риск)"
-        elif 55 <= d_score < 75:
-            d_color = "#F9A825" # Желтый
-            d_status = "Средняя"
-        else:
-            d_color = "#D32F2F" # Красный
-            d_status = "Низкая"
-
-        st.success("Анализ готов!")
-        # --- ВЕРНУТЬ ЭТОТ БЛОК (СТИЛИ ДЛЯ КАРТОЧЕК) ---
-        st.markdown("""
-        <style>
-            details > summary { list-style: none; }
-            details > summary::-webkit-details-marker { display: none; }
-            .details-card {
-                background-color: #f8f9fa; border: 1px solid #e9ecef;
-                border-radius: 8px; margin-bottom: 10px;
-                overflow: hidden; transition: all 0.2s ease;
-            }
-            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
-            .card-summary {
-                padding: 12px 15px; cursor: pointer; font-weight: 700;
-                font-size: 15px; color: #111827; display: flex;
-                justify-content: space-between; align-items: center;
-                background-color: #ffffff;
-            }
-            .card-summary:hover { background-color: #f3f4f6; }
-            .card-content {
-                padding: 15px; border-top: 1px solid #e9ecef;
-                font-size: 14px; color: #374151; line-height: 1.6;
-                background-color: #fcfcfc;
-            }
-            .count-tag { 
-                background: #e5e7eb; color: #374151; padding: 2px 8px; 
-                border-radius: 10px; font-size: 12px; font-weight: 600;
-                min-width: 25px; text-align: center;
-            }
-            .arrow-icon {
-                font-size: 10px; margin-right: 8px; color: #9ca3af;
-                transition: transform 0.2s;
-            }
-            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
-        </style>
-        """, unsafe_allow_html=True)
-    
-        # ----------------------------------------------
-        st.markdown(f"""
-        <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
-            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
-                <div style='font-size: 12px; color: #666;'>ШИРИНА (Охват тем)</div>
-                <div style='font-size: 24px; font-weight: bold; color: {w_color};'>{w_score}/100</div>
-            </div>
-            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {d_color};'>
-                <div style='font-size: 12px; color: #666;'>ГЛУБИНА (Цель: ~80)</div>
-                <div style='font-size: 24px; font-weight: bold; color: {d_color};'>{d_score}/100 <span style='font-size:14px; font-weight:normal;'>({d_status})</span></div>
-            </div>
-        </div>
-        <br>
-        """, unsafe_allow_html=True)
-
-        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
-            if not st.session_state.get('orig_products'):
-                st.info("⚠️ Данные отсутствуют. Запустите анализ.")
-            else:
-                # Ряд 1
-                c1, c2, c3 = st.columns(3)
-                with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
-                with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
-                with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
-                
-                # Ряд 2
-                c4, c5, c6 = st.columns(3)
-                with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
-                with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
-                with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
-
-                st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-
-                # Блок стоп-слов
-                cs1, cs2 = st.columns([1, 3])
-                
-                # Инициализация ключа
-                if 'sensitive_words_input_final' not in st.session_state:
-                    current_list = st.session_state.get('categorized_sensitive', [])
-                    st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
-                
-                current_text_value = st.session_state['sensitive_words_input_final']
-                
-                with cs1:
-                    count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
-                    st.markdown(f"**⛔ Стоп-слова**")
-                    st.markdown(f"Исключено: **{count_excluded}**")
-                    st.caption("Эти слова автоматически удалены.")
-                
-                with cs2:
-                    new_sens_str = st.text_area(
-                        "hidden_label", height=100,
-                        key="sensitive_words_input_final",
-                        label_visibility="collapsed",
-                        placeholder="Слова для исключения..."
-                    )
-
-                    if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                        raw_input = st.session_state.get("sensitive_words_input_final", "")
-                        new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
-                        
-                        st.session_state.categorized_sensitive = sorted(list(new_stop_set))
-                        
-                        def apply_filter(orig_list_key, stop_set):
-                            original = st.session_state.get(orig_list_key, [])
-                            return [w for w in original if w.lower() not in stop_set]
-
-                        st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
-                        st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
-                        st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
-                        st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
-                        st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
-                        st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
-
-                        # Обновляем вкладку генератора
-                        all_prods = st.session_state.categorized_products
-                        count_prods = len(all_prods)
-                        if count_prods < 20:
-                            st.session_state.auto_tags_words = all_prods
-                            st.session_state.auto_promo_words = []
-                        else:
-                            half = int(math.ceil(count_prods / 2))
-                            st.session_state.auto_tags_words = all_prods[:half]
-                            st.session_state.auto_promo_words = all_prods[half:]
-
-                        st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
-                        st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
-
-                        st.toast("Фильтр обновлен!", icon="✅")
-                        time.sleep(0.5)
-                        st.rerun()
-
-        # --- УПУЩЕННАЯ СЕМАНТИКА ---
-        high = results.get('missing_semantics_high', [])
-        low = results.get('missing_semantics_low', [])
-        if high or low:
-            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
-
-        # --- ТАБЛИЦЫ ---
-# ... (существующий вывод первой таблицы)
-        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-        
-# === ВЫВОД ТАБЛИЦЫ №2 (БЕЗ HTML, НАТИВНЫЙ STREAMLIT) ===
-        if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
-            df_naming = st.session_state.naming_table_df
-            
-            st.markdown("### 2. Рекомендации по названию товаров")
-            
-            # --- БЛОК 1: ФОРМУЛА (НАТИВНЫЙ) ---
-            if 'ideal_h1_result' in st.session_state:
-                res_ideal = st.session_state.ideal_h1_result
-                
-                if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
-                    example_name = res_ideal[0]
-                    report_list = res_ideal[1]
-                    
-                    # Чистим строку формулы от лишнего текста
-                    formula_str = "Формула не определена"
-                    for line in report_list:
-                        if "структура" in line or "Схема" in line:
-                            # Убираем жирный шрифт и названия полей
-                            formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
-                            break
-                    
-                    # Вывод через стандартный контейнер с рамкой
-                    with st.container(border=True):
-                        st.markdown("#### 🧪 Идеальная формула названия")
-                        # st.info делает красивую синюю плашку без лишнего HTML
-                        st.info(f"**{formula_str}**", icon="🧩")
-                        st.markdown(f"**Пример генерации:** _{example_name}_")
-                        
-                else:
-                    st.warning("⚠️ Данные устарели. Нажмите 'ЗАПУСТИТЬ АНАЛИЗ'.")
-
-            # --- БЛОК 2: ТАБЛИЦА ---
-            st.markdown("##### Детальный анализ характеристик")
-            
-            if not df_naming.empty:
-                col_ctrl1, col_ctrl2 = st.columns([1, 3])
-                with col_ctrl1:
-                    show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
-                
-                df_display = df_naming.copy()
-                
-                if not show_tech:
-                    # Скрываем категорию "Размеры/Прочее"
-                    df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
-
-                if 'cat_sort' in df_display.columns:
-                    df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
-                
-                # Убираем технические столбцы
-                cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
-                existing_cols = [c for c in cols_to_show if c in df_display.columns]
-                df_display = df_display[existing_cols]
-
-                # Раскраска
-                def style_rows(row):
-                    val = str(row.get('Добавить', ''))
-                    if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row) # Красный
-                    if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row) # Зеленый
-                    return [''] * len(row)
-
-                st.dataframe(
-                    df_display.style.apply(style_rows, axis=1),
-                    use_container_width=True,
-                    hide_index=True,
-                    height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
-                )
-            else:
-                st.warning("Нет данных для отображения.")
-
-        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+            # Выключаем флаг сканирования, включаем результаты
+            st.session_state.start_analysis_flag = False
+            st.session_state.analysis_done = True
+            st.rerun()
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -3544,16 +3306,3 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
