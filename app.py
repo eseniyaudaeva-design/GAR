@@ -1876,7 +1876,8 @@ with tab_seo_main:
             if 'relevance_top' in results and not results['relevance_top'].empty:
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander("📊 График релевантности (Нажмите, чтобы раскрыть)", expanded=False):
-                    render_relevance_chart(results['relevance_top'], unique_key="top")
+                  graph_data = st.session_state.get('full_graph_data', results['relevance_top'])
+                  render_relevance_chart(graph_data, unique_key="main")
                 st.markdown("<br>", unsafe_allow_html=True)
     # ===========================================================
 
@@ -2149,8 +2150,8 @@ with tab_seo_main:
             render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
-    # ==========================================
-    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (ТЕПЕРЬ ПОСЛЕДНИЙ)
+# ==========================================
+    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ
     # ==========================================
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
@@ -2179,9 +2180,12 @@ with tab_seo_main:
             
         # 2. Сбор КАНДИДАТОВ
         candidates_pool = []
-        
         current_source_val = st.session_state.get("competitor_source_radio")
-        needed_count = 20
+        
+        # ИСПРАВЛЕНИЕ: Берем настройку пользователя (10 или 20) для ФИНАЛА
+        user_target_top_n = st.session_state.settings_top_n
+        # А скачиваем всегда МАКСИМУМ (30), чтобы было из чего выбирать
+        download_limit = 30 
         
         if "API" in current_source_val:
             if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
@@ -2219,9 +2223,9 @@ with tab_seo_main:
 
         if not candidates_pool: st.error("После фильтрации не осталось кандидатов."); st.stop()
         
-        # 3. СКАЧИВАНИЕ
+        # 3. СКАЧИВАНИЕ (Всех 30)
         comp_data_valid = []
-        with st.status(f"🕵️ Глубокое сканирование (Кандидатов: {len(candidates_pool)})...", expanded=True) as status:
+        with st.status(f"🕵️ Глубокое сканирование (Всего кандидатов: {len(candidates_pool)})...", expanded=True) as status:
             with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
                 futures = {
                     executor.submit(parse_page, item['url'], settings, st.session_state.query_input): item 
@@ -2240,53 +2244,59 @@ with tab_seo_main:
                     status.update(label=f"Обработано: {done_count}/{len(candidates_pool)} | Успешно скачано: {len(comp_data_valid)}")
 
             comp_data_valid.sort(key=lambda x: x['pos'])
-            final_competitors_data = comp_data_valid[:needed_count]
-            final_targets_list = [{'url': d['url'], 'pos': d['pos']} for d in final_competitors_data]
-            st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_competitors_data])
+            # Сначала берем ВСЕХ, кто скачался (до 30), для графика
+            data_for_graph = comp_data_valid[:download_limit]
+            targets_for_graph = [{'url': d['url'], 'pos': d['pos']} for d in data_for_graph]
 
-            if len(final_competitors_data) < needed_count:
-                st.warning(f"⚠️ Удалось собрать только {len(final_competitors_data)} валидных страниц.")
-            else:
-                st.success(f"✅ Анализ выполнен по Топ-{len(final_competitors_data)} конкурентам.")
-
-# 5. РАСЧЕТ МЕТРИК
-        with st.spinner("Расчет метрик..."):
-            # Запускаем расчет
-            results = calculate_metrics(final_competitors_data, my_data, settings, my_serp_pos, final_targets_list)
-            st.session_state.analysis_results = results
+        # 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
+        with st.spinner("Анализ и фильтрация..."):
             
-            naming_df = calculate_naming_metrics(final_competitors_data, my_data, settings)
-            st.session_state.naming_table_df = naming_df 
-            st.session_state.ideal_h1_result = analyze_ideal_name(final_competitors_data)
-
-            st.session_state.analysis_done = True
+            # --- ЭТАП 1: Черновой прогон (по всем 30 сайтам) ---
+            # Это нужно, чтобы построить график и найти аномалии
+            results_full = calculate_metrics(data_for_graph, my_data, settings, my_serp_pos, targets_for_graph)
             
-# === ПРОВЕРКА НА АНОМАЛИИ И РАЗДЕЛЕНИЕ СПИСКОВ ПРЯМО ЗДЕСЬ ===
-            # Превращаем таблицу релевантности в DataFrame
-            df_rel_check = results['relevance_top']
+            # Сохраняем ПОЛНЫЕ данные для графика (чтобы на нем были все)
+            st.session_state['full_graph_data'] = results_full['relevance_top']
             
-            # Запускаем твой анализатор
+            # Анализ аномалий по полному списку
+            df_rel_check = results_full['relevance_top']
             good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
-            
-            # Сохраняем тренд
             st.session_state['serp_trend_info'] = trend
             
+            # --- ЭТАП 2: Отбор чистовых (Топ-10/20 без мусора) ---
+            
+            # 1. Берем данные тех сайтов, которые НЕ в списке плохих
+            bad_urls_set = set(item['url'] for item in bad_urls_dicts)
+            clean_data_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
+            
+            # 2. Отрезаем ровно столько, сколько просил юзер (10 или 20)
+            final_clean_data = clean_data_pool[:user_target_top_n]
+            final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
+            
+            # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Только по элите)
+            # Медианы и TF-IDF пересчитаются строго по этому списку
+            results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
+            st.session_state.analysis_results = results_final
+            
+            # --- Остальная логика (нейминг, семантика) ---
+            naming_df = calculate_naming_metrics(final_clean_data, my_data, settings)
+            st.session_state.naming_table_df = naming_df 
+            st.session_state.ideal_h1_result = analyze_ideal_name(final_clean_data)
+            st.session_state.analysis_done = True
+            
+            # Обновление UI списков
             if bad_urls_dicts:
-                # Если есть плохие - сохраняем их и хорошие отдельно
                 st.session_state['detected_anomalies'] = bad_urls_dicts
-                st.session_state['persistent_urls'] = "\n".join(good_urls)
-                # Важно: берем именно URL из словаря
+                # В "Активных" оставляем только тех, кто вошел в финальный расчет (Топ-10/20)
+                st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
                 excluded_list = [item['url'] for item in bad_urls_dicts]
                 st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
             else:
-                # Если все ок - просто обновляем список (чтобы убрать лишние пробелы и тд)
-                st.session_state['persistent_urls'] = "\n".join(good_urls)
-                # ОЧИЩАЕМ ИСКЛЮЧЕННЫЕ, ЧТОБЫ НЕ ВИСЕЛИ СТАРЫЕ (ВАЖНО!)
+                st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
                 if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
                 if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
-            # ==============================================================
 
-            # Логика семантики (без изменений)
+            # Классификация семантики (по финальным данным)
             res = st.session_state.analysis_results
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             if not words_to_check:
@@ -2326,7 +2336,6 @@ with tab_seo_main:
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
-            # !!! ВОТ ЭТА СТРОЧКА ЗАСТАВИТ ИНТЕРФЕЙС ОБНОВИТЬСЯ И ПОКАЗАТЬ 2 КОЛОНКИ !!!
             st.rerun()
 
 # ------------------------------------------
@@ -3461,6 +3470,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
