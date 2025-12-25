@@ -200,12 +200,10 @@ def render_clean_block(title, icon, words_list):
 def render_relevance_chart(df_rel):
     """
     Строит график релевантности (Plotly).
-    Стиль: Строгий, чистый, контрастный.
-    - Нет заливки.
-    - Нет пунктиров.
-    - Все линии одной толщины.
-    - Маркеры (точки) на всех линиях.
-    - Ссылки на оси X.
+    Стиль: Premium Business.
+    - Тренд теперь строгого графитового цвета (не салатовый).
+    - Остальные цвета более глубокие и насыщенные.
+    - Линии одной толщины, сплошные, с точками.
     """
     if df_rel.empty:
         return
@@ -225,8 +223,8 @@ def render_relevance_chart(df_rel):
         
         url_target = f"https://{raw_name}"
         
-        # Ссылка снизу: цвет темно-серый, подчеркивание едва заметное
-        link_html = f"<a href='{url_target}' target='_blank' style='color: #374151; text-decoration: none; border-bottom: 1px solid #D1D5DB;'>{label_text}</a>"
+        # Ссылка снизу: строгий серый цвет
+        link_html = f"<a href='{url_target}' target='_blank' style='color: #374151; text-decoration: none; border-bottom: 1px solid #9CA3AF;'>{label_text}</a>"
         tick_links.append(link_html)
 
     # Метрики
@@ -240,50 +238,55 @@ def render_relevance_chart(df_rel):
     # 2. Создаем график
     fig = go.Figure()
 
-    # --- НОВАЯ КОНТРАСТНАЯ ПАЛИТРА ---
-    COLOR_MAIN = '#2563EB'  # Яркий Синий (Royal Blue)
-    COLOR_WIDTH = '#F97316' # Насыщенный Оранжевый
-    COLOR_DEPTH = '#DC2626' # Строгий Красный
-    COLOR_TREND = '#10B981' # Зеленый
+    # --- НОВАЯ PREMIUM ПАЛИТРА ---
+    # Глубокие, "дорогие" цвета вместо стандартных ярких
+    COLOR_MAIN = '#4F46E5'  # Индиго (Indigo-600) - Основная линия
+    COLOR_WIDTH = '#0EA5E9' # Небесно-голубой (Sky-500)
+    COLOR_DEPTH = '#E11D48' # Насыщенный малиновый (Rose-600)
+    COLOR_TREND = '#4B5563' # Графитовый (Cool Gray-600) - ВМЕСТО САЛАТОВОГО
 
-    COMMON_LINE_CONFIG = dict(width=3, shape='spline') # Единая толщина
-    COMMON_MARKER_CONFIG = dict(size=8, line=dict(width=2, color='white')) # Единые точки с белой обводкой
+    # Единые настройки для всех линий
+    COMMON_CONFIG = dict(
+        mode='lines+markers',
+        line=dict(width=3, shape='spline'), 
+        marker=dict(size=8, line=dict(width=2, color='white'), symbol='circle')
+    )
 
     # 1. ОБЩАЯ ОЦЕНКА
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Total_Rel'],
-        mode='lines+markers', # Линия + Точки
         name='Общая',
-        line=dict(color=COLOR_MAIN, **COMMON_LINE_CONFIG),
-        marker=dict(color=COLOR_MAIN, **COMMON_MARKER_CONFIG)
+        line=dict(color=COLOR_MAIN, width=3, shape='spline'),
+        marker=dict(color=COLOR_MAIN, size=8, line=dict(width=2, color='white')),
+        mode='lines+markers'
     ))
 
     # 2. ШИРИНА
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Ширина (балл)'],
-        mode='lines+markers',
         name='Ширина',
-        line=dict(color=COLOR_WIDTH, **COMMON_LINE_CONFIG),
-        marker=dict(color=COLOR_WIDTH, **COMMON_MARKER_CONFIG)
+        line=dict(color=COLOR_WIDTH, width=3, shape='spline'),
+        marker=dict(color=COLOR_WIDTH, size=8, line=dict(width=2, color='white')),
+        mode='lines+markers'
     ))
 
     # 3. ГЛУБИНА
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Глубина (балл)'],
-        mode='lines+markers',
         name='Глубина',
-        line=dict(color=COLOR_DEPTH, **COMMON_LINE_CONFIG),
-        marker=dict(color=COLOR_DEPTH, **COMMON_MARKER_CONFIG)
+        line=dict(color=COLOR_DEPTH, width=3, shape='spline'),
+        marker=dict(color=COLOR_DEPTH, size=8, line=dict(width=2, color='white')),
+        mode='lines+markers'
     ))
 
-    # 4. ТРЕНД (Сплошная, с точками)
+    # 4. ТРЕНД (Графитовый)
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Trend'],
-        mode='lines+markers',
         name='Тренд',
-        line=dict(color=COLOR_TREND, **COMMON_LINE_CONFIG), # Сплошная линия
-        marker=dict(color=COLOR_TREND, **COMMON_MARKER_CONFIG),
-        opacity=0.6 # Чуть прозрачнее, чтобы не перебивать основные данные
+        line=dict(color=COLOR_TREND, width=3, shape='spline'), # Сплошная
+        marker=dict(color=COLOR_TREND, size=8, line=dict(width=2, color='white')),
+        mode='lines+markers',
+        opacity=0.8
     ))
 
     # 3. Настройка Layout
@@ -3314,6 +3317,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
