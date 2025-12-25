@@ -201,8 +201,9 @@ def render_relevance_chart(df_rel):
     """
     Строит график релевантности (Plotly).
     Исправления:
-    1. Убраны пунктирные линии (теперь solid).
-    2. График растянут на всю ширину (используются числовые индексы для оси X).
+    1. fixedrange=True для осей (отключает зум и перетаскивание).
+    2. Убраны пунктирные линии.
+    3. График растянут на всю ширину.
     """
     if df_rel.empty:
         return
@@ -210,7 +211,7 @@ def render_relevance_chart(df_rel):
     # 1. Подготовка данных
     df = df_rel.sort_values(by='Позиция').copy()
     
-    # Создаем числовую ось X для корректного отображения без отступов
+    # Создаем числовую ось X для корректного отображения
     x_indices = np.arange(len(df))
     
     # Подписи для оси X
@@ -233,25 +234,25 @@ def render_relevance_chart(df_rel):
         x=x_indices, y=df['Total_Rel'],
         mode='lines+markers',
         name='Общая',
-        line=dict(color='#F59E0B', width=4, shape='spline'), # Сплошная, жирная
+        line=dict(color='#F59E0B', width=4, shape='spline'),
         marker=dict(size=9, color='#F59E0B', line=dict(width=2, color='white'))
     ))
 
-    # Линия: Ширина (Синяя) - УБРАН dash='dot'
+    # Линия: Ширина (Синяя)
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Ширина (балл)'],
         mode='lines',
         name='Ширина',
-        line=dict(color='#3B82F6', width=2, shape='spline'), # Сплошная
+        line=dict(color='#3B82F6', width=2, shape='spline'),
         opacity=0.8
     ))
 
-    # Линия: Глубина (Красная) - УБРАН dash='dot'
+    # Линия: Глубина (Красная)
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Глубина (балл)'],
         mode='lines',
         name='Глубина',
-        line=dict(color='#EF4444', width=2, shape='spline'), # Сплошная
+        line=dict(color='#EF4444', width=2, shape='spline'),
         opacity=0.8
     ))
 
@@ -270,18 +271,22 @@ def render_relevance_chart(df_rel):
         xaxis=dict(
             showgrid=False, 
             linecolor='#E5E7EB', 
-            tickmode='array',      # Принудительный режим тиков
-            tickvals=x_indices,    # Ставим тики в точках 0, 1, 2...
-            ticktext=labels_list,  # Подписываем их названиями сайтов
+            tickmode='array',
+            tickvals=x_indices,
+            ticktext=labels_list,
             tickfont=dict(size=11),
-            range=[-0.2, len(df) - 0.8] # Жестко фиксируем границы, чтобы убрать пустоту слева
+            # === ВАЖНО: ОТКЛЮЧЕНИЕ ЗУМА ПО ГОРИЗОНТАЛИ ===
+            fixedrange=True, 
+            range=[-0.2, len(df) - 0.8]
         ),
         yaxis=dict(
             range=[0, 110], 
             showgrid=True, 
             gridcolor='#F3F4F6', 
             gridwidth=1,
-            tickfont=dict(size=10)
+            tickfont=dict(size=10),
+            # === ВАЖНО: ОТКЛЮЧЕНИЕ ЗУМА ПО ВЕРТИКАЛИ ===
+            fixedrange=True
         ),
         legend=dict(
             orientation="h",
@@ -294,6 +299,7 @@ def render_relevance_chart(df_rel):
         height=350
     )
 
+    # config={'displayModeBar': False} скрывает панель инструментов сверху, чтобы нельзя было включить зум кнопками
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
@@ -3291,5 +3297,6 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
