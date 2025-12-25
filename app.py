@@ -344,7 +344,7 @@ def analyze_serp_anomalies(df_rel):
     
     # ЛОГИКА: МАКСИМУМ vs АУТСАЙДЕР
     max_score = df['Total'].max()
-    threshold = max(max_score * 0.55, 30) # 55% от лидера. Если лидер 100, то ниже 55 - бан.
+    threshold = max(max_score * 0.65, 30) # 55% от лидера. Если лидер 100, то ниже 55 - бан.
     
     anomalies = []
     normal_urls = []
@@ -3454,6 +3454,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
