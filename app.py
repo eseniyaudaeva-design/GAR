@@ -199,22 +199,21 @@ def render_clean_block(title, icon, words_list):
 
 def render_relevance_chart(df_rel):
     """
-    Строит график релевантности (Plotly).
-    Стиль: Строгий, контрастный.
-    - Исключен ваш сайт (позиция 0).
-    - Без заливки, без пунктиров, все линии одной толщины.
-    - Маркеры на всех линиях.
-    - Ссылки внизу: нейтральный цвет, кликабельные.
+    ФИНАЛЬНАЯ ВЕРСИЯ.
+    - Исключает позицию 0 (Ваш сайт).
+    - Если в df_rel только ваш сайт - график не строится.
+    - Ссылки снизу кликабельные (нейтральный серый).
+    - Цвета: Синий, Оранжевый, Красный, Зеленый.
     """
     if df_rel.empty:
         return
 
-    # 1. Подготовка данных: Убираем позицию 0 (Ваш сайт)
+    # 1. ЖЕСТКАЯ ФИЛЬТРАЦИЯ: Оставляем только то, что > 0
+    # Ваш сайт (позиция 0) удаляется из данных для графика
     df = df_rel[df_rel['Позиция'] > 0].copy()
     
+    # Если после удаления вашего сайта таблица пуста - выходим
     if df.empty:
-        # Если кроме вас никого нет, график не строим (или выводим заглушку)
-        st.info("Недостаточно данных о конкурентах в ТОПе для построения графика.")
         return
 
     df = df.sort_values(by='Позиция')
@@ -223,19 +222,18 @@ def render_relevance_chart(df_rel):
     tick_links = []
     
     for _, row in df.iterrows():
-        # Очистка имени
+        # Чистим имя домена
         raw_name = row['Домен'].replace(' (Вы)', '').strip()
         clean_domain = raw_name.replace('www.', '').split('/')[0]
         
-        # Формируем подпись: "1. domain.ru" (без #)
+        # Формат: "1. site.ru" (без #)
         label_text = f"{row['Позиция']}. {clean_domain}"
-        # Обрезаем, если слишком длинное
         if len(label_text) > 20: label_text = label_text[:18] + ".."
         
         url_target = f"https://{raw_name}"
         
-        # СТИЛЬ ССЫЛКИ: Серый цвет, жирный шрифт, аккуратное подчеркивание
-        link_style = "color: #4B5563; font-weight: 600; text-decoration: none; border-bottom: 2px solid #D1D5DB;"
+        # СТИЛЬ ССЫЛКИ: Серый (Slate-700), жирный, подчеркивание
+        link_style = "color: #334155; font-weight: 600; text-decoration: none; border-bottom: 2px solid #CBD5E1;"
         
         link_html = f"<a href='{url_target}' target='_blank' style='{link_style}'>{label_text}</a>"
         tick_links.append(link_html)
@@ -251,13 +249,12 @@ def render_relevance_chart(df_rel):
     # 2. Создаем график
     fig = go.Figure()
 
-    # --- ПАЛИТРА ---
-    COLOR_MAIN = '#4F46E5'  # Индиго (Indigo-600)
-    COLOR_WIDTH = '#0EA5E9' # Голубой (Sky-500)
-    COLOR_DEPTH = '#E11D48' # Малиновый (Rose-600)
+    # --- ПАЛИТРА (Premium) ---
+    COLOR_MAIN = '#4F46E5'  # Индиго
+    COLOR_WIDTH = '#0EA5E9' # Голубой
+    COLOR_DEPTH = '#E11D48' # Малиновый
     COLOR_TREND = '#15803d' # Зеленый (Forest Green)
 
-    # Единые настройки линий (сплошная, 3px, точки)
     COMMON_CONFIG = dict(
         mode='lines+markers',
         line=dict(width=3, shape='spline'), 
@@ -301,7 +298,7 @@ def render_relevance_chart(df_rel):
         opacity=0.8
     ))
 
-    # 3. Layout
+    # 3. Настройка Layout
     fig.update_layout(
         template="plotly_white",
         legend=dict(
@@ -315,7 +312,7 @@ def render_relevance_chart(df_rel):
             linecolor='#E5E7EB',
             tickmode='array',
             tickvals=x_indices,
-            ticktext=tick_links, # ССЫЛКИ
+            ticktext=tick_links, # Вставляем ссылки
             tickfont=dict(size=12),
             fixedrange=True,
             range=[-0.2, len(df) - 0.8]
@@ -328,7 +325,7 @@ def render_relevance_chart(df_rel):
             zeroline=False,
             fixedrange=True
         ),
-        margin=dict(l=10, r=10, t=50, b=30),
+        margin=dict(l=10, r=10, t=50, b=40),
         hovermode="x unified",
         height=380
     )
@@ -1761,24 +1758,20 @@ with tab_seo_main:
         st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=100, key="settings_excludes")
         st.text_area("Стоп-слова", DEFAULT_STOPS, height=100, key="settings_stops")
         if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-            # 1. Очищаем результаты SEO анализа
+            # === ОЧИСТКА ВСЕХ СТАРЫХ ДАННЫХ ===
             st.session_state.analysis_results = None
             st.session_state.analysis_done = False
             st.session_state.naming_table_df = None
             st.session_state.ideal_h1_result = None
-            
-            # 2. Очищаем результаты второй вкладки (Генератора), чтобы не висели старые данные
             st.session_state.gen_result_df = None
             st.session_state.unified_excel_data = None
             
-            # 3. Сбрасываем пагинацию таблиц
+            # Сброс пагинации таблиц
             for key in list(st.session_state.keys()):
                 if key.endswith('_page'): st.session_state[key] = 1
             
-            # 4. Ставим флаг запуска
+            # Запуск флага и перезагрузка страницы, чтобы интерфейс очистился
             st.session_state.start_analysis_flag = True
-            
-            # 5. Перезагружаем интерфейс, чтобы всё старое исчезло МГНОВЕННО
             st.rerun()
 
     with col_sidebar:
@@ -3350,6 +3343,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
