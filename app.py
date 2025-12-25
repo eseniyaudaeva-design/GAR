@@ -1813,21 +1813,21 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
 tab_seo_main, tab_wholesale_main = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор"])
 
 # ------------------------------------------
-# TAB 1: SEO ANALYSIS (UPDATED UI)
+# TAB 1: SEO ANALYSIS (UI FIX v2)
 # ------------------------------------------
 with tab_seo_main:
     col_main, col_sidebar = st.columns([65, 35])
     
-    # --- САЙДБАР (СНАЧАЛА НАСТРОЙКИ) ---
+    # ==================================================
+    # ПРАВАЯ КОЛОНКА (САЙДБАР)
+    # ==================================================
     with col_sidebar:
-        # 1. Блок сервиса (Кнопка обновления словарей)
-        with st.container(border=True):
-            st.markdown("##### 🛠️ Сервис")
-            if st.button("🧹 Обновить словари (Кэш)", key="clear_cache_btn", use_container_width=True, help="Нажмите, если вы изменили файлы JSON и хотите подтянуть новые данные без перезагрузки сервера."):
-                st.cache_data.clear()
-                st.rerun()
+        # [Кнопка кэша - оставляем как было или убираем, если не нужна, здесь оставил стандартную логику]
+        st.markdown("#####⚙️ Настройки API")
+        if st.button("🧹 Обновить словари (Кэш)", key="clear_cache_btn"):
+            st.cache_data.clear()
+            st.rerun()
 
-        st.markdown("##### ⚙️ Настройки API")
         if not ARSENKIN_TOKEN:
              new_arsenkin = st.text_input("Arsenkin Token", type="password", key="input_arsenkin")
              if new_arsenkin: st.session_state.arsenkin_token = new_arsenkin; ARSENKIN_TOKEN = new_arsenkin 
@@ -1835,36 +1835,48 @@ with tab_seo_main:
              new_yandex = st.text_input("Yandex Dict Key", type="password", key="input_yandex")
              if new_yandex: st.session_state.yandex_dict_key = new_yandex; YANDEX_DICT_KEY = new_yandex
         
-        st.markdown("##### ⚙️ Параметры поиска")
+        st.markdown("#####⚙️ Настройки поиска")
         st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
         st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
         st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
         st.selectbox("Кол-во конкурентов для анализа", [10, 20], index=0, key="settings_top_n")
         
-        st.markdown("##### 🎛️ Фильтры парсинга")
+        # ГАЛОЧКИ
         st.checkbox("Исключать <noindex>", True, key="settings_noindex")
         st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
         st.checkbox("Учитывать числа", False, key="settings_numbers")
         st.checkbox("Нормировать по длине", True, key="settings_norm")
         
-        # === НОВОЕ МЕСТО ДЛЯ СПИСКОВ (СКРЫТЫЙ СЛОЙ) ===
+        # --- ПЕРЕНЕСЕННЫЕ СПИСКИ (STOP / EXCLUDE) ---
         st.write("") # Отступ
         with st.expander("🚫 Списки исключений (Stop / Exclude)", expanded=False):
-            st.caption("⛔ Домены (исключить из анализа):")
-            st.text_area("Domains", DEFAULT_EXCLUDE, height=150, key="settings_excludes", label_visibility="collapsed", help="Список доменов, которые будут игнорироваться при сборе конкурентов.")
+            st.caption("Не учитывать домены (каждый с новой строки):")
+            st.text_area(
+                "hidden_label_1", 
+                value=DEFAULT_EXCLUDE, 
+                height=150, 
+                key="settings_excludes", 
+                label_visibility="collapsed"
+            )
             
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
             
-            st.caption("⛔ Стоп-слова (мусор):")
-            st.text_area("Stop-words", DEFAULT_STOPS, height=150, key="settings_stops", label_visibility="collapsed", help="Слова, которые будут удалены из текста перед анализом.")
-        # ==============================================
+            st.caption("Стоп-слова (мусор):")
+            st.text_area(
+                "hidden_label_2", 
+                value=DEFAULT_STOPS, 
+                height=150, 
+                key="settings_stops", 
+                label_visibility="collapsed"
+            )
+        # -------------------------------------------
 
-    # --- ОСНОВНАЯ КОЛОНКА ---
+    # ==================================================
+    # ЛЕВАЯ (ГЛАВНАЯ) КОЛОНКА
+    # ==================================================
     with col_main:
         st.title("SEO Анализатор")
         
-        # (Кнопка кэша убрана отсюда в сайдбар)
-
         my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
         if my_input_type == "Релевантная страница на вашем сайте":
             st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input")
@@ -1884,19 +1896,23 @@ with tab_seo_main:
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
+            # --- УЛУЧШЕННАЯ КНОПКА СБРОСА ---
             if st.session_state.get('analysis_done'):
-                col_reset, _ = st.columns([1, 4])
-                with col_reset:
-                    if st.button("🔄 Новый поиск (Сброс)", type="secondary", help="Сбросить все результаты и ввести новый список"):
-                        keys_to_clear = [
-                            'analysis_done', 'analysis_results', 'excluded_urls_auto', 
-                            'detected_anomalies', 'serp_trend_info', 'persistent_urls',
-                            'naming_table_df', 'ideal_h1_result'
-                        ]
-                        for k in keys_to_clear:
-                            if k in st.session_state: del st.session_state[k]
-                        st.rerun()
+                st.markdown("") # Небольшой отступ
+                # Кнопка на всю ширину, серая (secondary), чтобы не путать с кнопкой "Запустить"
+                if st.button("🗑️ СБРОСИТЬ РЕЗУЛЬТАТЫ И НАЧАТЬ НОВЫЙ ПОИСК", type="secondary", use_container_width=True, help="Очищает все результаты анализа и поля ввода"):
+                    keys_to_clear = [
+                        'analysis_done', 'analysis_results', 'excluded_urls_auto', 
+                        'detected_anomalies', 'serp_trend_info', 'persistent_urls',
+                        'naming_table_df', 'ideal_h1_result'
+                    ]
+                    for k in keys_to_clear:
+                        if k in st.session_state: del st.session_state[k]
+                    st.rerun()
+                st.markdown("") # Отступ снизу
+            # --------------------------------
 
+            # Логика отображения полей (2 колонки или 1)
             has_exclusions = st.session_state.get('excluded_urls_auto') and len(st.session_state.get('excluded_urls_auto')) > 5
             
             if has_exclusions:
@@ -1926,6 +1942,7 @@ with tab_seo_main:
                 )
                 st.session_state['persistent_urls'] = manual_val
 
+        # График
         if st.session_state.get('analysis_done') and st.session_state.get('analysis_results'):
             results = st.session_state.analysis_results
             if 'relevance_top' in results and not results['relevance_top'].empty:
@@ -1935,8 +1952,8 @@ with tab_seo_main:
                   render_relevance_chart(graph_data, unique_key="main")
                 st.markdown("<br>", unsafe_allow_html=True)
 
-        # (Списки Stop / Exclude отсюда УБРАНЫ)
-        
+        # !!! ЗДЕСЬ РАНЬШЕ БЫЛИ ТЕКСТОВЫЕ ПОЛЯ STOP/EXCLUDE - ОНИ УДАЛЕНЫ !!!
+
         st.markdown("### Запуск")
         if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
             st.session_state.analysis_results = None
@@ -1955,7 +1972,7 @@ with tab_seo_main:
             
             st.session_state.start_analysis_flag = True
             st.rerun()
-
+            
     with col_sidebar:
         st.markdown("#####⚙️ Настройки API")
         if not ARSENKIN_TOKEN:
@@ -3576,4 +3593,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
