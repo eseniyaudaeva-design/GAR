@@ -2146,35 +2146,6 @@ with tab_seo_main:
             else:
                 st.warning("Нет данных для отображения.")
 
-        # === ГРАФИК (ВСТАВЛЯЕМ ЗДЕСЬ) ===
-        if 'relevance_top' in results and not results['relevance_top'].empty:
-             st.markdown("### 📊 Графический анализ")
-             with st.expander("📈 Показать график релевантности (ТОП-10)", expanded=True):
-                  render_relevance_chart(results['relevance_top'], unique_key="main")
-                  # === БЛОК ПОДСКАЗОК ПО ГРАФИКУ ===
-             if 'serp_trend_info' in st.session_state:
-                 trend = st.session_state['serp_trend_info']
-                 anomalies = st.session_state.get('detected_anomalies', [])
-                 
-                 # Цвет плашки в зависимости от тренда
-                 trend_color = "blue"
-                 if trend['type'] == 'inverted': trend_color = "red"
-                 if trend['type'] == 'normal': trend_color = "green"
-                 
-                 st.markdown(f"""
-                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-top: 10px; background-color: #f9fafb;">
-                     <h5 style="margin-top:0;">🧠 AI-Анализ выдачи</h5>
-                     <p style="color: {trend_color}; font-weight: bold;">{trend['msg']}</p>
-                 </div>
-                 """, unsafe_allow_html=True)
-                 
-                 if anomalies:
-                     st.warning(f"⚠️ **Обнаружены аномалии ({len(anomalies)} шт.):** Некоторые сайты находятся высоко в топе, но имеют слабый контент (возможно, накрутка ПФ). Они были автоматически перенесены в список 'Исключенные'.")
-
-        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
-        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
-
-
     # ==========================================
     # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (ТЕПЕРЬ ПОСЛЕДНИЙ)
     # ==========================================
@@ -3487,6 +3458,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
