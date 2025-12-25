@@ -1795,6 +1795,239 @@ with tab_seo_main:
         st.checkbox("Учитывать числа", False, key="settings_numbers")
         st.checkbox("Нормировать по длине", True, key="settings_norm")
 
+# ==========================================
+    # БЛОК 1: ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ (ТЕПЕРЬ ПЕРВЫЙ)
+    # ==========================================
+    if st.session_state.analysis_done and st.session_state.analysis_results:
+        results = st.session_state.analysis_results
+        
+        d_score = results['my_score']['depth']
+        w_score = results['my_score']['width']
+        
+        # Ширина
+        w_color = "#2E7D32" if w_score >= 80 else ("#E65100" if w_score >= 50 else "#D32F2F")
+        
+        # Глубина (Цель = 80)
+        if 75 <= d_score <= 88:
+            d_color = "#2E7D32" # Зеленый (Отлично)
+            d_status = "ИДЕАЛ (Топ)"
+        elif 88 < d_score <= 100:
+            d_color = "#D32F2F" # Красный (Риск переспама)
+            d_status = "ПЕРЕСПАМ (Риск)"
+        elif 55 <= d_score < 75:
+            d_color = "#F9A825" # Желтый
+            d_status = "Средняя"
+        else:
+            d_color = "#D32F2F" # Красный
+            d_status = "Низкая"
+
+        st.success("Анализ готов!")
+        
+        st.markdown("""
+        <style>
+            details > summary { list-style: none; }
+            details > summary::-webkit-details-marker { display: none; }
+            .details-card {
+                background-color: #f8f9fa; border: 1px solid #e9ecef;
+                border-radius: 8px; margin-bottom: 10px;
+                overflow: hidden; transition: all 0.2s ease;
+            }
+            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
+            .card-summary {
+                padding: 12px 15px; cursor: pointer; font-weight: 700;
+                font-size: 15px; color: #111827; display: flex;
+                justify-content: space-between; align-items: center;
+                background-color: #ffffff;
+            }
+            .card-summary:hover { background-color: #f3f4f6; }
+            .card-content {
+                padding: 15px; border-top: 1px solid #e9ecef;
+                font-size: 14px; color: #374151; line-height: 1.6;
+                background-color: #fcfcfc;
+            }
+            .count-tag { 
+                background: #e5e7eb; color: #374151; padding: 2px 8px; 
+                border-radius: 10px; font-size: 12px; font-weight: 600;
+                min-width: 25px; text-align: center;
+            }
+            .arrow-icon {
+                font-size: 10px; margin-right: 8px; color: #9ca3af;
+                transition: transform 0.2s;
+            }
+            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
+            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
+                <div style='font-size: 12px; color: #666;'>ШИРИНА (Охват тем)</div>
+                <div style='font-size: 24px; font-weight: bold; color: {w_color};'>{w_score}/100</div>
+            </div>
+            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {d_color};'>
+                <div style='font-size: 12px; color: #666;'>ГЛУБИНА (Цель: ~80)</div>
+                <div style='font-size: 24px; font-weight: bold; color: {d_color};'>{d_score}/100 <span style='font-size:14px; font-weight:normal;'>({d_status})</span></div>
+            </div>
+        </div>
+        <br>
+        """, unsafe_allow_html=True)
+
+        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
+            if not st.session_state.get('orig_products'):
+                st.info("⚠️ Данные отсутствуют. Запустите анализ.")
+            else:
+                # Ряд 1
+                c1, c2, c3 = st.columns(3)
+                with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
+                with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
+                with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
+                
+                # Ряд 2
+                c4, c5, c6 = st.columns(3)
+                with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
+                with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
+                with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
+
+                st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+
+                # Блок стоп-слов
+                cs1, cs2 = st.columns([1, 3])
+                
+                if 'sensitive_words_input_final' not in st.session_state:
+                    current_list = st.session_state.get('categorized_sensitive', [])
+                    st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
+                
+                current_text_value = st.session_state['sensitive_words_input_final']
+                
+                with cs1:
+                    count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
+                    st.markdown(f"**⛔ Стоп-слова**")
+                    st.markdown(f"Исключено: **{count_excluded}**")
+                    st.caption("Эти слова автоматически удалены.")
+                
+                with cs2:
+                    new_sens_str = st.text_area(
+                        "hidden_label", height=100,
+                        key="sensitive_words_input_final",
+                        label_visibility="collapsed",
+                        placeholder="Слова для исключения..."
+                    )
+
+                    if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
+                        raw_input = st.session_state.get("sensitive_words_input_final", "")
+                        new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
+                        
+                        st.session_state.categorized_sensitive = sorted(list(new_stop_set))
+                        
+                        def apply_filter(orig_list_key, stop_set):
+                            original = st.session_state.get(orig_list_key, [])
+                            return [w for w in original if w.lower() not in stop_set]
+
+                        st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
+                        st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
+                        st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
+                        st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
+                        st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
+                        st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
+
+                        # Обновляем вкладку генератора
+                        all_prods = st.session_state.categorized_products
+                        count_prods = len(all_prods)
+                        if count_prods < 20:
+                            st.session_state.auto_tags_words = all_prods
+                            st.session_state.auto_promo_words = []
+                        else:
+                            half = int(math.ceil(count_prods / 2))
+                            st.session_state.auto_tags_words = all_prods[:half]
+                            st.session_state.auto_promo_words = all_prods[half:]
+
+                        st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
+                        st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
+
+                        st.toast("Фильтр обновлен!", icon="✅")
+                        time.sleep(0.5)
+                        st.rerun()
+
+        # --- УПУЩЕННАЯ СЕМАНТИКА ---
+        high = results.get('missing_semantics_high', [])
+        low = results.get('missing_semantics_low', [])
+        if high or low:
+            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
+                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
+                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+
+        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+        
+        # === ТАБЛИЦА №2 (Рекомендации по названию) ===
+        if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
+            df_naming = st.session_state.naming_table_df
+            
+            st.markdown("### 2. Рекомендации по названию товаров")
+            
+            # ФОРМУЛА
+            if 'ideal_h1_result' in st.session_state:
+                res_ideal = st.session_state.ideal_h1_result
+                if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
+                    example_name = res_ideal[0]
+                    report_list = res_ideal[1]
+                    formula_str = "Формула не определена"
+                    for line in report_list:
+                        if "структура" in line or "Схема" in line:
+                            formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
+                            break
+                    with st.container(border=True):
+                        st.markdown("#### 🧪 Идеальная формула названия")
+                        st.info(f"**{formula_str}**", icon="🧩")
+                        st.markdown(f"**Пример генерации:** _{example_name}_")
+                else:
+                    st.warning("⚠️ Данные устарели.")
+
+            # ТАБЛИЦА
+            st.markdown("##### Детальный анализ характеристик")
+            if not df_naming.empty:
+                col_ctrl1, col_ctrl2 = st.columns([1, 3])
+                with col_ctrl1:
+                    show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
+                
+                df_display = df_naming.copy()
+                if not show_tech:
+                    df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
+
+                if 'cat_sort' in df_display.columns:
+                    df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
+                
+                cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
+                existing_cols = [c for c in cols_to_show if c in df_display.columns]
+                df_display = df_display[existing_cols]
+
+                def style_rows(row):
+                    val = str(row.get('Добавить', ''))
+                    if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row)
+                    if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row)
+                    return [''] * len(row)
+
+                st.dataframe(
+                    df_display.style.apply(style_rows, axis=1),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
+                )
+            else:
+                st.warning("Нет данных для отображения.")
+
+        # === ГРАФИК (ВСТАВЛЯЕМ ЗДЕСЬ) ===
+        if 'relevance_top' in results and not results['relevance_top'].empty:
+             st.markdown("### 📊 Графический анализ")
+             with st.expander("📈 Показать график релевантности (ТОП-10)", expanded=True):
+                  render_relevance_chart(results['relevance_top'])
+
+        render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+        render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+
+
+    # ==========================================
+    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (ТЕПЕРЬ ПОСЛЕДНИЙ)
+    # ==========================================
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         
@@ -1824,21 +2057,16 @@ with tab_seo_main:
         candidates_pool = []
         
         current_source_val = st.session_state.get("competitor_source_radio")
-        needed_count = st.session_state.settings_top_n  # 10 или 20
+        needed_count = st.session_state.settings_top_n
         
-        # --- ЛОГИКА API ---
         if "API" in current_source_val:
             if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
-            # ЗАПРАШИВАЕМ 30 (Максимум Арсенкина)
             with st.spinner(f"API Arsenkin (Запрос Топ-30)..."):
                 raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
                 
                 if not raw_top: st.stop()
                 
-# Список исключений (Из поля ввода)
                 excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-                
-                # Агрегаторы добавляем ВСЕГДА (без кнопки)
                 agg_list = [
                     "avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex",
                     "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua",
@@ -1851,84 +2079,58 @@ with tab_seo_main:
                 excl.extend(agg_list)
                 for res in raw_top:
                     dom = urlparse(res['url']).netloc.lower()
-                    
-                    # Если это НАШ сайт - запоминаем позицию.
-                    # В пул кандидатов добавляем тоже, фильтровать "себя" будем в таблице релевантности (чтобы подсветить)
                     if my_domain and (my_domain in dom or dom in my_domain):
                         if my_serp_pos == 0 or res['pos'] < my_serp_pos: 
                             my_serp_pos = res['pos']
-                    
-                    # Фильтр мусорных доменов
                     is_garbage = False
                     for x in excl:
                         if x.lower() in dom:
                             is_garbage = True
                             break
-                    if is_garbage: 
-                        continue
-                        
+                    if is_garbage: continue
                     candidates_pool.append(res)
-                
-        # --- ЛОГИКА РУЧНОГО СПИСКА ---
         else:
             raw_input_urls = st.session_state.get("persistent_urls", "")
             candidates_pool = [{'url': u.strip(), 'pos': i+1} for i, u in enumerate(raw_input_urls.split('\n')) if u.strip()]
 
         if not candidates_pool: st.error("После фильтрации не осталось кандидатов."); st.stop()
         
-        # 3. СКАЧИВАНИЕ (Пытаемся скачать ВСЕХ кандидатов из пула)
+        # 3. СКАЧИВАНИЕ
         comp_data_valid = []
-        
         with st.status(f"🕵️ Глубокое сканирование (Кандидатов: {len(candidates_pool)})...", expanded=True) as status:
             with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
                 futures = {
                     executor.submit(parse_page, item['url'], settings, st.session_state.query_input): item 
                     for item in candidates_pool
                 }
-                
                 done_count = 0
                 for f in concurrent.futures.as_completed(futures):
                     original_item = futures[f]
                     try:
                         res = f.result()
                         if res:
-                            # Сохраняем позицию из выдачи, чтобы потом отсортировать
                             res['pos'] = original_item['pos']
                             comp_data_valid.append(res)
-                    except:
-                        pass
-                    
+                    except: pass
                     done_count += 1
                     status.update(label=f"Обработано: {done_count}/{len(candidates_pool)} | Успешно скачано: {len(comp_data_valid)}")
 
-            # 4. ФИНАЛЬНЫЙ ОТБОР
-            # Сортируем успешные по позиции в выдаче (от 1 до ...)
             comp_data_valid.sort(key=lambda x: x['pos'])
-            
-            # Берем ровно столько, сколько просил пользователь (10 или 20)
             final_competitors_data = comp_data_valid[:needed_count]
-            
-            # Формируем список URL-ов для отображения в text area
-            # И этот же список передаем в calculate_metrics как "original_results"
             final_targets_list = [{'url': d['url'], 'pos': d['pos']} for d in final_competitors_data]
             st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_competitors_data])
 
             if len(final_competitors_data) < needed_count:
-                st.warning(f"⚠️ Удалось собрать только {len(final_competitors_data)} валидных страниц (из {needed_count} требуемых).")
+                st.warning(f"⚠️ Удалось собрать только {len(final_competitors_data)} валидных страниц.")
             else:
                 st.success(f"✅ Анализ выполнен по Топ-{len(final_competitors_data)} конкурентам.")
 
         # 5. РАСЧЕТ МЕТРИК
         with st.spinner("Расчет метрик..."):
-            # 1. СУЩЕСТВУЮЩИЙ РАСЧЕТ (ГЛУБИНА)
             st.session_state.analysis_results = calculate_metrics(final_competitors_data, my_data, settings, my_serp_pos, final_targets_list)
             
-            # 2. Таблица рекомендаций
             naming_df = calculate_naming_metrics(final_competitors_data, my_data, settings)
             st.session_state.naming_table_df = naming_df 
-            
-            # 3. Эталонное название (ИСПРАВЛЕННОЕ СОХРАНЕНИЕ)
-            # Мы просто сохраняем результат функции как есть (это кортеж), без лишних скобок {}
             st.session_state.ideal_h1_result = analyze_ideal_name(final_competitors_data)
 
             st.session_state.analysis_done = True
@@ -1936,12 +2138,12 @@ with tab_seo_main:
             res = st.session_state.analysis_results
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             if not words_to_check:
-                st.session_state.categorized_products = []; st.session_state.categorized_services = []; st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
+                st.session_state.categorized_products = []; st.session_state.categorized_services = []
+                st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
             else:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 
-                # 1. Сохраняем ТЕКУЩИЕ (рабочие) списки
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
@@ -1950,15 +2152,13 @@ with tab_seo_main:
                 st.session_state.categorized_general = categorized['general']
                 st.session_state.categorized_sensitive = categorized['sensitive']
 
-                # 2. Сохраняем ОРИГИНАЛЫ (для восстановления при очистке стоп-листа)
                 st.session_state.orig_products = categorized['products'] + categorized['sensitive']
                 st.session_state.orig_services = categorized['services'] + categorized['sensitive']
                 st.session_state.orig_commercial = categorized['commercial'] + categorized['sensitive']
                 st.session_state.orig_geo = categorized['geo'] + categorized['sensitive']
                 st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
                 st.session_state.orig_general = categorized['general'] + categorized['sensitive']
-
-                # 3. Принудительно пишем в поле ввода
+                
                 st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
 
             all_found_products = st.session_state.categorized_products
@@ -1974,7 +2174,7 @@ with tab_seo_main:
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
-            st.rerun()
+            st.rerun()    
 
     if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
@@ -2035,6 +2235,7 @@ with tab_seo_main:
             details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
         </style>
         """, unsafe_allow_html=True)
+    
         # ----------------------------------------------
         st.markdown(f"""
         <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
@@ -3343,6 +3544,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
