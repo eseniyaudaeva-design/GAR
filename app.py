@@ -200,11 +200,10 @@ def render_clean_block(title, icon, words_list):
 def render_relevance_chart(df_rel):
     """
     Строит график релевантности (Plotly).
-    Стиль: Modern UI.
-    Особенности:
-    - Кликабельные домены на оси X (HTML links).
+    Стиль: Modern Flat UI.
     - Легенда сверху по центру.
-    - Современная цветовая гамма.
+    - Кликабельные ссылки на оси X.
+    - Современная палитра и заливка (Area chart).
     """
     if df_rel.empty:
         return
@@ -212,34 +211,31 @@ def render_relevance_chart(df_rel):
     # 1. Подготовка данных
     df = df_rel.sort_values(by='Позиция').copy()
     
-    # Очищаем домен для красивого отображения (убираем www.)
-    df['CleanDomain'] = df['Домен'].apply(lambda x: x.replace('www.', '').split('/')[0])
-    
-    # Формируем полные данные для оси X (индексы) и подписей (HTML ссылки)
+    # Генерация индексов для оси X
     x_indices = np.arange(len(df))
     
-    # Генерируем HTML-ссылки для оси X. 
-    # Target="_blank" открывает в новой вкладке.
+    # Подготовка ссылок для оси X
     tick_links = []
-    urls_list = [] # Для передачи в customdata
-    domains_list = [] # Для передачи в customdata
+    hover_names = []
     
-    labels_list = []
-    for idx, row in df.iterrows():
-        # Пытаемся очистить имя от "(Вы)"
-        clean_name = row['Домен'].replace(' (Вы)', '').strip()
-        # Формируем красивую подпись
-        label = f"#{row['Позиция']} {clean_name}"
-        if len(label) > 20: label = label[:18] + ".."
+    for _, row in df.iterrows():
+        # Очищаем имя (убираем "www." и "(Вы)")
+        raw_name = row['Домен'].replace(' (Вы)', '').strip()
+        clean_domain = raw_name.replace('www.', '').split('/')[0]
         
-        # HTML ссылка для оси X (стилизованная)
-        # Мы предполагаем, что clean_name это и есть домен. Добавляем https://
-        full_url = f"https://{clean_name}"
-        html_link = f"<a href='{full_url}' target='_blank' style='color: #4B5563; text-decoration: none; border-bottom: 1px dotted #9CA3AF;'>{label}</a>"
-        tick_links.append(html_link)
+        # Формируем подпись (например: "#1 site.ru")
+        label_text = f"#{row['Позиция']} {clean_domain}"
+        if len(label_text) > 20: 
+            label_text = label_text[:18] + ".."
+            
+        # Формируем ссылку. 
+        # Примечание: Мы используем домен как ссылку, т.к. полные URL не сохранены в этой таблице.
+        url_target = f"https://{raw_name}"
         
-        urls_list.append(full_url)
-        domains_list.append(clean_name)
+        # HTML-ссылка для оси X (подчеркнутая, кликабельная)
+        link_html = f"<a href='{url_target}' target='_blank' style='color: #4B5563; text-decoration: none; border-bottom: 1px dotted #6366f1;'>{label_text}</a>"
+        tick_links.append(link_html)
+        hover_names.append(clean_domain)
 
     # Метрики
     df['Total_Rel'] = (df['Ширина (балл)'] + df['Глубина (балл)']) / 2
@@ -252,93 +248,82 @@ def render_relevance_chart(df_rel):
     # 2. Создаем график
     fig = go.Figure()
 
-    # --- ЦВЕТОВАЯ ПАЛИТРА (MODERN) ---
-    COLOR_TOTAL = '#6366f1' # Indigo 500
-    COLOR_WIDTH = '#0ea5e9' # Sky 500
-    COLOR_DEPTH = '#f43f5e' # Rose 500
-    COLOR_TREND = '#10b981' # Emerald 500
+    # --- ПАЛИТРА (MODERN) ---
+    COLOR_MAIN = '#8b5cf6'  # Фиолетовый (Violet-500)
+    COLOR_WIDTH = '#3b82f6' # Голубой (Blue-500)
+    COLOR_DEPTH = '#f43f5e' # Розовый (Rose-500)
+    COLOR_TREND = '#10b981' # Изумрудный (Emerald-500)
 
-    # Линия: Общая релевантность (Главная)
+    # 1. ГЛАВНАЯ ЛИНИЯ (Общая) + Заливка
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Total_Rel'],
         mode='lines+markers',
-        name='Общая',
-        line=dict(color=COLOR_TOTAL, width=4, shape='spline'),
-        marker=dict(size=10, color=COLOR_TOTAL, line=dict(width=2, color='white')),
-        # Легкая заливка под графиком
-        fill='tozeroy',
-        fillcolor='rgba(99, 102, 241, 0.1)',
-        # Данные для тултипа
-        customdata=np.stack((domains_list, urls_list), axis=-1),
-        hovertemplate="<b>%{customdata[0]}</b><br>⭐ Общая: %{y:.1f}<extra></extra>"
+        name='Общая оценка',
+        line=dict(color=COLOR_MAIN, width=4, shape='spline'),
+        marker=dict(size=10, color=COLOR_MAIN, line=dict(width=2, color='white')),
+        fill='tozeroy', # Заливка области под графиком
+        fillcolor='rgba(139, 92, 246, 0.1)' # Прозрачный фиолетовый
     ))
 
-    # Линия: Ширина
+    # 2. ШИРИНА
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Ширина (балл)'],
         mode='lines',
         name='Ширина',
-        line=dict(color=COLOR_WIDTH, width=2.5, shape='spline'),
-        customdata=domains_list,
-        hovertemplate="🔷 Ширина: %{y}<extra></extra>"
+        line=dict(color=COLOR_WIDTH, width=2, shape='spline'),
+        opacity=0.9
     ))
 
-    # Линия: Глубина
+    # 3. ГЛУБИНА
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Глубина (балл)'],
         mode='lines',
         name='Глубина',
-        line=dict(color=COLOR_DEPTH, width=2.5, shape='spline'),
-        customdata=domains_list,
-        hovertemplate="🔻 Глубина: %{y}<extra></extra>"
+        line=dict(color=COLOR_DEPTH, width=2, shape='spline'),
+        opacity=0.9
     ))
 
-    # Линия: Тренд
+    # 4. ТРЕНД (Пунктир)
     fig.add_trace(go.Scatter(
         x=x_indices, y=df['Trend'],
         mode='lines',
         name='Тренд',
         line=dict(color=COLOR_TREND, width=2, shape='spline', dash='dash'),
-        opacity=0.7,
-        hoverinfo='skip' # Не показывать тултип для тренда
+        opacity=0.6,
+        hoverinfo='skip'
     ))
 
     # 3. Настройка Layout
     fig.update_layout(
-        template="plotly_white",
-        # Настройка легенды (сверху, по центру, горизонтально)
+        template="plotly_white", # Чистый белый фон
+        # Легенда СВЕРХУ ПО ЦЕНТРУ
         legend=dict(
             orientation="h",
-            yanchor="bottom", y=1.05,  # Чуть выше графика
-            xanchor="center", x=0.5,   # По центру
-            font=dict(size=12, color="#374151"),
-            bgcolor="rgba(0,0,0,0)"    # Прозрачный фон
+            yanchor="bottom", y=1.05,
+            xanchor="center", x=0.5,
+            font=dict(size=12, color="#374151")
         ),
         xaxis=dict(
             showgrid=False, 
             linecolor='#E5E7EB',
             tickmode='array',
             tickvals=x_indices,
-            ticktext=tick_links, # Вставляем HTML ссылки
+            ticktext=tick_links, # <--- Сюда вставляем ссылки
             tickfont=dict(size=11),
-            fixedrange=True,
-            range=[-0.3, len(df) - 0.7] # Немного воздуха по краям
+            fixedrange=True, # Отключаем зум по X
+            range=[-0.2, len(df) - 0.8]
         ),
         yaxis=dict(
-            range=[0, 115], # Чуть больше места сверху
+            range=[0, 115], 
             showgrid=True, 
             gridcolor='#F3F4F6', 
             gridwidth=1,
             zeroline=False,
-            fixedrange=True
+            fixedrange=True, # Отключаем зум по Y
+            tickfont=dict(color="#9CA3AF")
         ),
-        margin=dict(l=10, r=10, t=60, b=10), # Увеличили t (top) для легенды
-        hovermode="x unified", # Единый тултип
-        hoverlabel=dict(
-            bgcolor="white",
-            font_size=13,
-            font_family="Inter, sans-serif"
-        ),
+        margin=dict(l=10, r=10, t=50, b=20),
+        hovermode="x unified",
         height=380
     )
 
@@ -3338,6 +3323,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
