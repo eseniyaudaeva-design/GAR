@@ -2306,7 +2306,7 @@ with tab_seo_main:
             
 # === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
             # Берем данные из результатов (они уже лежат в results после calculate_metrics)
-            df_rel_check = results['relevance_top']
+            df_rel_check = st.session_state.analysis_results['relevance_top']
             
             # 1. Определяем, нужно ли применять авто-фильтр
             # Фильтруем, если:
@@ -3528,6 +3528,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
