@@ -332,65 +332,37 @@ def render_relevance_chart(df_rel, unique_key="default"):
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
 
 def analyze_serp_anomalies(df_rel):
-    """
-    Анализирует таблицу релевантности (Версия v4 - Leader Benchmark).
-    Сравнивает сайты с ЛУЧШИМ в топе, а не со средним.
-    """
-    if df_rel.empty:
-        return [], [], {"type": "none", "msg": ""}
-
-    # Исключаем "Ваш сайт", чтобы не портить статистику собой
-    df = df_rel[~df_rel['Домен'].str.contains("\(Вы\)", na=False)].copy()
+    if df_rel.empty: return [], [], {"type": "none", "msg": ""}
     
-    if df.empty:
-        return [], [], {"type": "none", "msg": ""}
+    # Убираем ваш сайт
+    df = df_rel[~df_rel['Домен'].str.contains("\(Вы\)", na=False)].copy()
+    if df.empty: return [], [], {"type": "none", "msg": ""}
 
-    # Считаем средний балл
     df['Total'] = (df['Ширина (балл)'] + df['Глубина (балл)']) / 2
     
-    # 1. ИЩЕМ ЛИДЕРА (Максимальный балл в топе)
+    # ЛОГИКА: МАКСИМУМ vs АУТСАЙДЕР
     max_score = df['Total'].max()
-    
-    # 2. УСТАНАВЛИВАЕМ ЖЕСТКИЙ ПОРОГ
-    # Если сайт набирает меньше 60% от баллов Лидера - это мусор.
-    # Пример: Лидер 95 баллов. Порог = 57. Сайт с 40 баллами улетает.
-    threshold = max(max_score * 0.60, 30) 
+    threshold = max(max_score * 0.55, 30) # 55% от лидера. Если лидер 100, то ниже 55 - бан.
     
     anomalies = []
     normal_urls = []
     
-    # Отладка (покажет в тосте, какие цифры получились)
-    debug_info = f"Лидер: {int(max_score)} | Порог отсечения: {int(threshold)}"
-    
     for _, row in df.iterrows():
-        # Достаем ссылку. Если поле URL пустое, собираем из домена (фоллбэк)
-        current_url = row.get('URL')
-        if not current_url or pd.isna(current_url):
-             current_url = f"https://{row['Домен']}" 
-
-        # АНАЛИЗ
+        # ВАЖНО: Если нет колонки URL, берем домен, но лучше чтобы была URL
+        current_url = row.get('URL', f"https://{row['Домен']}")
+        
         if row['Total'] < threshold:
             reason = f"Скор {int(row['Total'])} (Лидер {int(max_score)})"
             anomalies.append({'url': current_url, 'reason': reason, 'score': row['Total']})
         else:
             normal_urls.append(current_url)
 
-    # Уведомление
-    if anomalies:
-        st.toast(f"🧹 Фильтр: {debug_info}. Исключено: {len(anomalies)}", icon="🗑️")
-    
-    # Анализ тренда (для справки)
-    x = np.arange(len(df))
-    y = df['Total'].values
+    # Тренд
+    x = np.arange(len(df)); y = df['Total'].values
     slope = np.polyfit(x, y, 1)[0] if len(x) > 1 else 0
-
-    trend_status = {"type": "flat", "msg": "➡️ **Ровный топ:** Конкуренция плотная."}
-    if slope < -1.0:
-        trend_status = {"type": "normal", "msg": "📉 **Нормальный топ:** Топ-3 заметно сильнее остальных."}
-    elif slope > 1.0:
-        trend_status = {"type": "inverted", "msg": "📈 **Перевернутый топ:** Слабые сайты ранжируются выше сильных."}
-
-    return normal_urls, anomalies, trend_status
+    trend_msg = "📉 Нормальный топ" if slope < -1 else ("📈 Перевернутый топ" if slope > 1 else "➡️ Ровный топ")
+    
+    return normal_urls, anomalies, {"type": "info", "msg": trend_msg}
 
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ
@@ -2270,9 +2242,11 @@ with tab_seo_main:
             else:
                 st.success(f"✅ Анализ выполнен по Топ-{len(final_competitors_data)} конкурентам.")
 
-        # 5. РАСЧЕТ МЕТРИК
+# 5. РАСЧЕТ МЕТРИК
         with st.spinner("Расчет метрик..."):
-            st.session_state.analysis_results = calculate_metrics(final_competitors_data, my_data, settings, my_serp_pos, final_targets_list)
+            # Запускаем расчет
+            results = calculate_metrics(final_competitors_data, my_data, settings, my_serp_pos, final_targets_list)
+            st.session_state.analysis_results = results
             
             naming_df = calculate_naming_metrics(final_competitors_data, my_data, settings)
             st.session_state.naming_table_df = naming_df 
@@ -2280,6 +2254,30 @@ with tab_seo_main:
 
             st.session_state.analysis_done = True
             
+            # === ПРОВЕРКА НА АНОМАЛИИ И РАЗДЕЛЕНИЕ СПИСКОВ ПРЯМО ЗДЕСЬ ===
+            # Превращаем таблицу релевантности в DataFrame
+            df_rel_check = results['relevance_top']
+            
+            # Запускаем твой анализатор
+            good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
+            
+            # Сохраняем тренд
+            st.session_state['serp_trend_info'] = trend
+            
+            if bad_urls_dicts:
+                # Если есть плохие - сохраняем их и хорошие отдельно
+                st.session_state['detected_anomalies'] = bad_urls_dicts
+                st.session_state['persistent_urls'] = "\n".join(good_urls)
+                # Важно: берем именно URL из словаря
+                excluded_list = [item['url'] for item in bad_urls_dicts]
+                st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
+            else:
+                # Если все ок - просто обновляем список (чтобы убрать лишние пробелы и тд)
+                st.session_state['persistent_urls'] = "\n".join(good_urls)
+                if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+            # ==============================================================
+
+            # Логика семантики (без изменений)
             res = st.session_state.analysis_results
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             if not words_to_check:
@@ -2319,7 +2317,8 @@ with tab_seo_main:
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
-            st.rerun()    
+            # !!! ВОТ ЭТА СТРОЧКА ЗАСТАВИТ ИНТЕРФЕЙС ОБНОВИТЬСЯ И ПОКАЗАТЬ 2 КОЛОНКИ !!!
+            st.rerun()
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -3453,6 +3452,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
