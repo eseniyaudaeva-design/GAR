@@ -233,7 +233,7 @@ def render_relevance_chart(df_rel):
         url_target = f"https://{raw_name}"
         
         # СТИЛЬ ССЫЛКИ: Серый (Slate-700), жирный, подчеркивание
-        link_style = "color: #334155; font-weight: 600; text-decoration: none; border-bottom: 2px solid #CBD5E1;"
+        link_style = "color: #277EFF; font-weight: 600; text-decoration: none; border-bottom: 4px solid #CBD5E1;"
         
         link_html = f"<a href='{url_target}' target='_blank' style='{link_style}'>{label_text}</a>"
         tick_links.append(link_html)
@@ -3544,3 +3544,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
