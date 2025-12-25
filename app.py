@@ -2270,7 +2270,11 @@ with tab_seo_main:
             clean_data_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
             
             # 2. Отрезаем ровно столько, сколько просил юзер (10 или 20)
-            final_clean_data = clean_data_pool[:user_target_top_n]
+            if "API" in current_source_val:
+                final_clean_data = clean_data_pool[:user_target_top_n]
+            else:
+                final_clean_data = clean_data_pool # Берем всех выживших
+            
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
             
             # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Только по элите)
@@ -3470,6 +3474,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
