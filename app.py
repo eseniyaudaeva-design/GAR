@@ -730,7 +730,7 @@ with tab_seo_main:
 # 1. MY PAGE & QUERY
         st.markdown("### Данные для анализа")
         
-        # 1. Сначала выбор типа (чтобы не сдвигал поля ввода)
+        # Переключатель типов
         my_input_type = st.radio(
             "Тип вашей страницы", 
             ["URL на сайте", "Текст/HTML", "Без страницы"], 
@@ -739,19 +739,23 @@ with tab_seo_main:
             key="my_page_source_radio"
         )
 
-        # 2. Теперь инпуты ровно в ряд
         c_req1, c_req2 = st.columns(2)
         
+        # ЛЕВАЯ КОЛОНКА
         with c_req1:
             if my_input_type == "URL на сайте":
-                # Убрали label_visibility="collapsed", чтобы заголовок "Ваш URL" выравнивал высоту
-                st.text_input("Ваш URL", placeholder="https://site.ru/...", key="my_url_input")
+                # Важно: используем label, чтобы высота совпала с правой колонкой
+                st.text_input("Ссылка на вашу страницу", placeholder="https://site.ru/...", key="my_url_input")
             elif my_input_type == "Текст/HTML":
-                st.text_area("Код страницы", height=100, placeholder="<html>...", key="my_content_input")
+                st.text_area("Код страницы / Текст", height=100, key="my_content_input")
             else:
-                st.info("Режим без сравнения со своим сайтом")
+                # Пустой блок с заголовком, чтобы выровнять правую колонку, даже если тут пусто
+                st.markdown("<div style='height: 29px'></div>", unsafe_allow_html=True) 
+                st.info("Режим без сравнения")
         
+        # ПРАВАЯ КОЛОНКА
         with c_req2:
+            # У этого инпута есть label, поэтому у левого он тоже должен быть
             st.text_input("Поисковой запрос", placeholder="Например: купить никель", key="query_input")
 
         # 2. COMPETITOR SOURCE
@@ -2490,4 +2494,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
