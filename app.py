@@ -331,6 +331,59 @@ def render_relevance_chart(df_rel, unique_key="default"):
     # ДОБАВЛЕН UNIQUE_KEY
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
 
+def analyze_serp_anomalies(df_rel):
+    """
+    Анализирует таблицу релевантности и выявляет:
+    1. Аномалии (сайты в топе с плохим контентом).
+    2. Тренд выдачи (нормальный или "перевернутый").
+    """
+    if df_rel.empty:
+        return [], [], "Нет данных"
+
+    # Исключаем "Ваш сайт" из анализа трендов конкурентов
+    df = df_rel[~df_rel['Домен'].str.contains("\(Вы\)", na=False)].copy()
+    if df.empty:
+        return [], [], "Мало конкурентов"
+
+    df['Total'] = (df['Ширина (балл)'] + df['Глубина (балл)']) / 2
+    avg_score = df['Total'].mean()
+    median_score = df['Total'].median()
+    
+    # 1. ПОИСК АНОМАЛИЙ (Конкуренты, которые сильно хуже среднего)
+    # Критерий: Оценка ниже 60% от средней по топу ИЛИ ниже 40 баллов в абсолюте
+    threshold = max(avg_score * 0.65, 30) 
+    
+    anomalies = []
+    normal_urls = []
+    
+    for _, row in df.iterrows():
+        # Если сайт сильно проседает, но он в Топ-30
+        if row['Total'] < threshold:
+            reason = "Низкая релевантность (возможно ПФ)"
+            anomalies.append({'url': row.get('URL', row['Домен']), 'reason': reason, 'score': row['Total']})
+        else:
+            normal_urls.append(row.get('URL', row['Домен']))
+
+    # 2. АНАЛИЗ ТРЕНДА
+    # Строим линию тренда по Total Score
+    x = np.arange(len(df))
+    y = df['Total'].values
+    if len(x) > 1:
+        z = np.polyfit(x, y, 1) # z[0] - это наклон (slope)
+        slope = z[0]
+    else:
+        slope = 0
+
+    trend_status = {}
+    if slope < -1.5:
+        trend_status = {"type": "normal", "msg": "📉 **Классический топ:** Лидеры оптимизированы лучше, чем хвост выдачи. Логичная картина."}
+    elif slope > 1.5:
+        trend_status = {"type": "inverted", "msg": "📈 **Перевернутый топ:** Сайты внизу топа оптимизированы лучше лидеров. \n⚠️ **Вывод:** Топ-10 держится на поведенческих факторах, бренде или агрегаторах. Текстовая релевантность не является главным фактором ранжирования."}
+    else:
+        trend_status = {"type": "flat", "msg": "➡️ **Ровный топ:** У всех конкурентов примерно одинаковый уровень оптимизации. Конкуренция высокая."}
+
+    return normal_urls, anomalies, trend_status
+
 # ==========================================
 # ЗАГРУЗКА СЛОВАРЕЙ
 # ==========================================
@@ -1200,8 +1253,19 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         pos_to_show = my_serp_pos if my_serp_pos > 0 else 0
         my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
         my_full_url = my_data['url'] if (my_data and 'url' in my_data) else "#"
-        table_rel.append({ "Домен": my_label, "URL": my_full_url, "Позиция": pos_to_show, "Ширина (балл)":
-my_width_score_final, "Глубина (балл)": my_depth_score_final })
+        table_rel.append({ "Домен": my_label, "URL": my_full_url, "Позиция": pos_to_show, "Ширина (балл)": my_width_score_final, "Глубина (балл)": my_depth_score_final })
+        df_rel_for_analysis = pd.DataFrame(table_rel)
+        good_urls, bad_urls_dicts, trend_info = analyze_serp_anomalies(df_rel_for_analysis)
+        
+        # Сохраняем в session_state для UI
+        st.session_state['detected_anomalies'] = bad_urls_dicts
+        st.session_state['serp_trend_info'] = trend_info
+        
+        # Обновляем списки для полей ввода (чтобы UI перерисовался)
+        # Активные ссылки (Хорошие)
+        st.session_state['persistent_urls'] = "\n".join(good_urls)
+        # Исключенные (Плохие)
+        st.session_state['excluded_urls_auto'] = "\n".join([item['url'] for item in bad_urls_dicts])
 
     return { 
         "depth": pd.DataFrame(table_depth), 
@@ -3325,4 +3389,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
