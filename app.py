@@ -2315,8 +2315,12 @@ with tab_seo_main:
             st.session_state.analysis_done = True
             
 # === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
-            # Берем данные из результатов (они уже лежат в results после calculate_metrics)
-            df_rel_check = st.session_state.analysis_results['relevance_top']
+            # ИСПРАВЛЕНИЕ: Если это API-прогон, берем ПОЛНЫЕ данные (30 сайтов) для поиска аномалий.
+            # Иначе берем текущие результаты (для ручного режима).
+            if "API" in current_source_val and 'full_graph_data' in st.session_state:
+                df_rel_check = st.session_state['full_graph_data']
+            else:
+                df_rel_check = st.session_state.analysis_results['relevance_top']
             
             # 1. Определяем, нужно ли применять авто-фильтр
             # Фильтруем, если:
@@ -3548,6 +3552,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
