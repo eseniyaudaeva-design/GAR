@@ -1816,13 +1816,36 @@ with tab_seo_main:
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
-            manual_val = st.text_area(
-                "Список ссылок (каждая с новой строки)", 
-                height=200, 
-                key="manual_urls_widget", 
-                value=st.session_state.get('persistent_urls', "")
-            )
-            st.session_state['persistent_urls'] = manual_val
+            # Если анализ уже был проведен и есть разделение
+            if st.session_state.get('analysis_done') and 'excluded_urls_auto' in st.session_state:
+                c_url_1, c_url_2 = st.columns(2)
+                with c_url_1:
+                    manual_val = st.text_area(
+                        "✅ Активные конкуренты (Для анализа)", 
+                        height=200, 
+                        key="manual_urls_widget", 
+                        value=st.session_state.get('persistent_urls', ""),
+                        help="Эти ссылки участвуют в расчетах."
+                    )
+                    st.session_state['persistent_urls'] = manual_val
+                with c_url_2:
+                    excluded_val = st.text_area(
+                        "🚫 Авто-исключенные (Аномалии)", 
+                        height=200, 
+                        key="excluded_urls_widget", 
+                        value=st.session_state.get('excluded_urls_auto', ""),
+                        help="Эти конкуренты слишком слабые по контенту, хотя и в топе. Мы их отсеяли, чтобы не портить статистику."
+                    )
+                    st.session_state['excluded_urls_auto'] = excluded_val
+            else:
+                # Обычный вид до анализа
+                manual_val = st.text_area(
+                    "Список ссылок (каждая с новой строки)", 
+                    height=200, 
+                    key="manual_urls_widget", 
+                    value=st.session_state.get('persistent_urls', "")
+                )
+                st.session_state['persistent_urls'] = manual_val
 
     # ================= НОВОЕ МЕСТО ДЛЯ ГРАФИКА =================
     # Показываем график ТОЛЬКО если есть результаты анализа
@@ -2101,6 +2124,25 @@ with tab_seo_main:
              st.markdown("### 📊 Графический анализ")
              with st.expander("📈 Показать график релевантности (ТОП-10)", expanded=True):
                   render_relevance_chart(results['relevance_top'], unique_key="main")
+                  # === БЛОК ПОДСКАЗОК ПО ГРАФИКУ ===
+             if 'serp_trend_info' in st.session_state:
+                 trend = st.session_state['serp_trend_info']
+                 anomalies = st.session_state.get('detected_anomalies', [])
+                 
+                 # Цвет плашки в зависимости от тренда
+                 trend_color = "blue"
+                 if trend['type'] == 'inverted': trend_color = "red"
+                 if trend['type'] == 'normal': trend_color = "green"
+                 
+                 st.markdown(f"""
+                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-top: 10px; background-color: #f9fafb;">
+                     <h5 style="margin-top:0;">🧠 AI-Анализ выдачи</h5>
+                     <p style="color: {trend_color}; font-weight: bold;">{trend['msg']}</p>
+                 </div>
+                 """, unsafe_allow_html=True)
+                 
+                 if anomalies:
+                     st.warning(f"⚠️ **Обнаружены аномалии ({len(anomalies)} шт.):** Некоторые сайты находятся высоко в топе, но имеют слабый контент (возможно, накрутка ПФ). Они были автоматически перенесены в список 'Исключенные'.")
 
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
@@ -3389,5 +3431,6 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
