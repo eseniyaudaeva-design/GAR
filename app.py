@@ -671,7 +671,7 @@ DEFAULT_EXCLUDE_DOMAINS = {
     "profi.ru", "irecommend.ru", "otzovik.com", "ozon.ru", "ozon.by", 
     "market.yandex.ru", "youtube.com", "www.youtube.com", "gosuslugi.ru", 
     "www.gosuslugi.ru", "dzen.ru", "2gis.by", "wildberries.ru", "rutube.ru", 
-    "vk.com", "facebook.com"
+    "vk.com", "facebook.com", "chipdip.ru"
     }
 
 DEFAULT_EXCLUDE = "\n".join(DEFAULT_EXCLUDE_DOMAINS)
@@ -3487,6 +3487,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
