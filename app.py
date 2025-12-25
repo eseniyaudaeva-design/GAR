@@ -727,18 +727,32 @@ with tab_seo_main:
     with col_main:
         st.title("SEO Анализатор")
         
-        # 1. MY PAGE & QUERY
+# 1. MY PAGE & QUERY
         st.markdown("### Данные для анализа")
+        
+        # 1. Сначала выбор типа (чтобы не сдвигал поля ввода)
+        my_input_type = st.radio(
+            "Тип вашей страницы", 
+            ["URL на сайте", "Текст/HTML", "Без страницы"], 
+            horizontal=True, 
+            label_visibility="collapsed", 
+            key="my_page_source_radio"
+        )
+
+        # 2. Теперь инпуты ровно в ряд
         c_req1, c_req2 = st.columns(2)
+        
         with c_req1:
-            my_input_type = st.radio("Тип вашей страницы", ["URL на сайте", "Текст/HTML", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
             if my_input_type == "URL на сайте":
-                st.text_input("Ваш URL", placeholder="https://site.ru/...", label_visibility="collapsed", key="my_url_input")
+                # Убрали label_visibility="collapsed", чтобы заголовок "Ваш URL" выравнивал высоту
+                st.text_input("Ваш URL", placeholder="https://site.ru/...", key="my_url_input")
             elif my_input_type == "Текст/HTML":
-                st.text_area("Код", height=100, label_visibility="collapsed", placeholder="<html>...", key="my_content_input")
+                st.text_area("Код страницы", height=100, placeholder="<html>...", key="my_content_input")
+            else:
+                st.info("Режим без сравнения со своим сайтом")
         
         with c_req2:
-            st.text_input("Поисковой запрос", placeholder="Например: купить никель", label_visibility="visible", key="query_input")
+            st.text_input("Поисковой запрос", placeholder="Например: купить никель", key="query_input")
 
         # 2. COMPETITOR SOURCE
         st.markdown("### Поиск конкурентов")
@@ -2476,3 +2490,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
