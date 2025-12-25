@@ -195,9 +195,17 @@ def render_clean_block(title, icon, words_list):
         </div>
         """
     
-    st.markdown(html_code, unsafe_allow_html=True)
+        st.markdown(html_code, unsafe_allow_html=True)  # <-- Ориентируемся на эту строку
 
-        # =============================
+        # ВАЖНО: Следующие строки должны начинаться с того же уровня отступа!
+        # Уберите лишние пробелы перед render_paginated_table
+        
+        # === ВСТАВЛЯЕМ ГРАФИК ЗДЕСЬ (ВЫЗОВ, А НЕ ОПРЕДЕЛЕНИЕ) ===
+        if 'relevance_top' in results and not results['relevance_top'].empty:
+             st.markdown("### 📊 Графический анализ")
+             with st.expander("📈 Показать график релевантности (ТОП-10)", expanded=False):
+                  render_relevance_chart(results['relevance_top'])
+        # ========================================================
 
         render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
         render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
@@ -3284,6 +3292,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
