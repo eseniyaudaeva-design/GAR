@@ -2394,6 +2394,16 @@ with tab_seo_main:
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
+            # === ФИНАЛЬНЫЙ ШТРИХ: АВТО-ПЕРЕКЛЮЧЕНИЕ ===
+            # 1. Принудительно меняем радио-кнопку на "Ручной список"
+            st.session_state["competitor_source_radio"] = "Список url-адресов ваших конкурентов"
+            
+            # 2. Если мы запускали через API, убеждаемся, что в поле "Ручной ввод" попали ссылки
+            # (good_urls мы получили чуть выше из функции анализатора)
+            if "API" in current_source_val:
+                 st.session_state['persistent_urls'] = "\n".join(good_urls)
+                 # Если были исключенные, они уже записаны в 'excluded_urls_auto' выше
+            
             st.rerun()
 
 # ------------------------------------------
@@ -3528,6 +3538,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
