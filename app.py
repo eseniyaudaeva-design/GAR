@@ -310,10 +310,12 @@ def render_relevance_chart(df_rel, unique_key="default"):
             linecolor='#E5E7EB',
             tickmode='array',
             tickvals=x_indices,
-            ticktext=tick_links, # Вставляем ссылки
+            ticktext=tick_links, 
             tickfont=dict(size=12),
             fixedrange=True,
-            range=[-0.2, len(df) - 0.8]
+            # ИСПРАВЛЕНИЕ: Даем больше места слева и справа (-0.5 ... +0.5), чтобы крайние точки не резались
+            range=[-0.5, len(df) - 0.5],
+            automargin=True # Автоматический отступ, чтобы текст не наезжал
         ),
         yaxis=dict(
             range=[0, 115], 
@@ -2174,7 +2176,7 @@ with tab_seo_main:
         candidates_pool = []
         
         current_source_val = st.session_state.get("competitor_source_radio")
-        needed_count = st.session_state.settings_top_n
+        needed_count = 20
         
         if "API" in current_source_val:
             if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
@@ -3452,6 +3454,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
