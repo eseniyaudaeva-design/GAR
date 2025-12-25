@@ -3438,7 +3438,7 @@ with tab_wholesale_main:
         
         status_box.update(label="✅ Конвейер завершен! Данные готовы.", state="complete", expanded=False)
 
-    if 'unified_excel_data' in st.session_state:
+    if st.session_state.get('unified_excel_data') is not None:
         st.success("Файл успешно сгенерирован!")
         st.download_button(
             label="📥 СКАЧАТЬ ЕДИНЫЙ EXCEL",
@@ -3555,6 +3555,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
