@@ -2145,6 +2145,9 @@ with tab_seo_main:
                 )
             else:
                 st.warning("Нет данных для отображения.")
+                
+            render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+            render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
     # ==========================================
     # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (ТЕПЕРЬ ПОСЛЕДНИЙ)
@@ -3458,6 +3461,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
