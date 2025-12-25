@@ -1838,29 +1838,45 @@ with tab_seo_main:
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
-            # Если анализ уже был проведен и есть разделение
-            if st.session_state.get('analysis_done') and 'excluded_urls_auto' in st.session_state:
+            # 1. КНОПКА СБРОСА (Появляется, если есть результаты)
+            if st.session_state.get('analysis_done'):
+                col_reset, _ = st.columns([1, 4])
+                with col_reset:
+                    if st.button("🔄 Новый поиск (Сброс)", type="secondary", help="Сбросить все результаты и ввести новый список"):
+                        # Чистим вообще всё, чтобы начать с чистого листа
+                        keys_to_clear = [
+                            'analysis_done', 'analysis_results', 'excluded_urls_auto', 
+                            'detected_anomalies', 'serp_trend_info', 'persistent_urls',
+                            'naming_table_df', 'ideal_h1_result'
+                        ]
+                        for k in keys_to_clear:
+                            if k in st.session_state: del st.session_state[k]
+                        st.rerun()
+
+            # 2. ЛОГИКА ОТОБРАЖЕНИЯ (1 или 2 колонки)
+            # Если есть список исключенных - показываем 2 колонки
+            has_exclusions = st.session_state.get('excluded_urls_auto') and len(st.session_state.get('excluded_urls_auto')) > 5
+            
+            if has_exclusions:
                 c_url_1, c_url_2 = st.columns(2)
                 with c_url_1:
                     manual_val = st.text_area(
                         "✅ Активные конкуренты (Для анализа)", 
                         height=200, 
                         key="manual_urls_widget", 
-                        value=st.session_state.get('persistent_urls', ""),
-                        help="Эти ссылки участвуют в расчетах."
+                        value=st.session_state.get('persistent_urls', "")
                     )
                     st.session_state['persistent_urls'] = manual_val
                 with c_url_2:
-                    excluded_val = st.text_area(
-                        "🚫 Авто-исключенные (Аномалии)", 
+                    st.text_area(
+                        "🚫 Авто-исключенные (Вы можете вернуть их влево)", 
                         height=200, 
-                        key="excluded_urls_widget", 
+                        key="excluded_urls_widget_display", 
                         value=st.session_state.get('excluded_urls_auto', ""),
-                        help="Эти конкуренты слишком слабые по контенту, хотя и в топе. Мы их отсеяли, чтобы не портить статистику."
+                        help="Сюда попали слабые сайты. Если считаете, что сайт нормальный - скопируйте его и вставьте обратно в левое окно."
                     )
-                    st.session_state['excluded_urls_auto'] = excluded_val
             else:
-                # Обычный вид до анализа
+                # Обычный вид (1 колонка)
                 manual_val = st.text_area(
                     "Список ссылок (каждая с новой строки)", 
                     height=200, 
@@ -2288,17 +2304,55 @@ with tab_seo_main:
             st.session_state.ideal_h1_result = analyze_ideal_name(final_clean_data)
             st.session_state.analysis_done = True
             
-            # Обновление UI списков
-            if bad_urls_dicts:
+# === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
+            # Берем данные из результатов (они уже лежат в results после calculate_metrics)
+            df_rel_check = results['relevance_top']
+            
+            # 1. Определяем, нужно ли применять авто-фильтр
+            # Фильтруем, если:
+            # А) Источник API (всегда свежие данные)
+            # Б) Источник Ручной, НО это первый запуск (нет списка исключенных)
+            should_auto_filter = True
+            
+            is_manual_mode = "Ручной" in current_source_val
+            has_previous_exclusions = 'excluded_urls_auto' in st.session_state and len(st.session_state.get('excluded_urls_auto', '')) > 5
+            
+            if is_manual_mode and has_previous_exclusions:
+                should_auto_filter = False # Пользователь уточняет список, не мешаем ему
+            
+            # 2. Запускаем анализ (он нужен для графика и трендов в любом случае)
+            good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
+            st.session_state['serp_trend_info'] = trend
+            
+            # 3. Применяем решение
+            if should_auto_filter and bad_urls_dicts:
+                # РЕЖИМ 1: ПЕРВЫЙ ПРОГОН -> Жестко разделяем
                 st.session_state['detected_anomalies'] = bad_urls_dicts
-                # В "Активных" оставляем только тех, кто вошел в финальный расчет (Топ-10/20)
-                st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                st.session_state['persistent_urls'] = "\n".join(good_urls)
+                
                 excluded_list = [item['url'] for item in bad_urls_dicts]
                 st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
+                
+                st.toast(f"🧹 Авто-фильтр: Исключено {len(bad_urls_dicts)} слабых сайтов.", icon="🗑️")
+            
+            elif not should_auto_filter and bad_urls_dicts:
+                # РЕЖИМ 2: УТОЧНЕНИЕ ПОЛЬЗОВАТЕЛЯ -> Не трогаем списки
+                # Мы видим, что есть слабые сайты, но оставляем их, так как пользователь их вернул
+                
+                # Сохраняем текущий список как есть (все, что пришло на вход)
+                # Берем URL из входных данных (final_clean_data), чтобы сохранить порядок и состав
+                all_current_urls = [d['url'] for d in final_clean_data]
+                st.session_state['persistent_urls'] = "\n".join(all_current_urls)
+                
+                st.toast(f"🛡️ Ручной режим: Слабые сайты ({len(bad_urls_dicts)} шт.) оставлены в анализе.", icon="🔓")
+                
             else:
-                st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
-                if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
-                if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
+                # РЕЖИМ 3: Аномалий нет -> Просто сохраняем список
+                st.session_state['persistent_urls'] = "\n".join(good_urls)
+                if should_auto_filter: # Чистим хвосты только если мы в режиме авто
+                    if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+                    if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
+            # ==============================================================
 
             # Классификация семантики (по финальным данным)
             res = st.session_state.analysis_results
@@ -3474,6 +3528,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
