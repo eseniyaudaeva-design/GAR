@@ -1666,6 +1666,32 @@ def get_page_data_for_gen(url):
             
     return base_text, tags_data, page_header, None
 
+def call_gemini_safe(model, prompt, retries=3):
+    """
+    Обертка для вызова Gemini с защитой от ошибки 429 (лимиты).
+    """
+    base_wait = 10 # Пауза между обычными запросами (сек)
+    
+    for attempt in range(retries):
+        try:
+            # Небольшая пауза перед каждым запросом, чтобы не спамить
+            time.sleep(base_wait) 
+            
+            response = model.generate_content(prompt)
+            return response.text
+            
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str:
+                wait_time = 60 # Если поймали лимит - ждем минуту
+                st.warning(f"⏳ Превышен лимит API (429). Ждем {wait_time} сек и повторяем...")
+                time.sleep(wait_time)
+                # После ожидания цикл повторится
+            else:
+                return f"Error: {err_str}"
+                
+    return "Error: Timeout (Too many 429s)"
+
 def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
     if not genai: return ["Error: google-generativeai lib not installed"] * 5
@@ -3669,6 +3695,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
