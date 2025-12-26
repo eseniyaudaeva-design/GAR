@@ -19,6 +19,7 @@ import random
 import streamlit.components.v1 as components
 import copy
 import plotly.graph_objects as go
+import google.generativeai as genai
 
 # ==========================================
 # FIX FOR PYTHON 3.11+
@@ -1665,15 +1666,19 @@ def get_page_data_for_gen(url):
             
     return base_text, tags_data, page_header, None
 
-def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
+def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
+    if not genai: return ["Error: google-generativeai lib not installed"] * 5
     
-    # 1. Подготовка SEO-блока (Вставка переменных)
+    # Конфигурация Google API
+    genai.configure(api_key=api_key)
+    # Используем модель Gemini 1.5 Flash (быстрая и умная)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+
+    # 1. Подготовка SEO-блока
     seo_words = seo_words or []
     seo_instruction_block = ""
-    
     if seo_words:
-        # Превращаем список слов в строку через запятую
         seo_list_str = ", ".join(seo_words)
         seo_instruction_block = f"""
 --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
@@ -1683,31 +1688,29 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
 1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем {num_blocks} блокам.
 2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b>..."
 3. СТРОГИЙ ЗАПРЕТ: Используй тег <b> ТОЛЬКО для этих SEO-слов. Не выделяй жирным ничего другого.
-4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь.
+4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст.
 -------------------------------------------
 """
 
-    # 2. СИСТЕМНЫЙ ПРОМТ
+    # 2. Системный промт (System Instruction)
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
-        "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
+        "Твоя цель — писать глубокий, технически полезный текст для профессионалов. "
         "Ты выдаешь ТОЛЬКО HTML-код. "
-        "Стиль: Деловой, экспертный, но \"человечный\" и понятный. Избегай канцеляризмов и пространных рассуждений. "
-        "Факты и конкретика: Все суждения подкрепляй измеримыми фактами, цифрами, ссылками на ГОСТы, марки стали и другие нормативы. Используй поисковые инструменты для проверки и обогащения текста актуальной информацией. "
-        "Коммерческая направленность: Текст должен продавать. Говори от лица компании-производителя/поставщика. Вместо \"проверенный поставщик\" используй формулировки, подчеркивающие собственное производство и экспертизу. "
-        "Формула Главреда для B2B: В тексте должны быть ответы на вопросы: что это? какую проблему решает? кому подойдет? какие есть разновидности? Дополнительно раскрой информацию о стандартах производства, складских запасах и возможности изготовления под заказ. "
+        "Стиль: Деловой, экспертный, но понятный. Избегай канцеляризмов. "
+        "Факты: Подкрепляй суждения цифрами, ссылками на ГОСТы, марки стали. "
+        "Коммерция: Текст должен продавать. Говори от лица производителя. "
         "СТРОГИЕ ЗАПРЕТЫ: "
-        "1. Не используй упоминания Украины, украинских городов (Киев, Львов и др.), политические темы, валюту гривну. Контент строго для РФ. "
-        "2. НИКОГДА не используй ссылки на источники ни в тексте, ни в списках. Чисти текст от них полностью. "
-        "3. Имена собственные, названия городов пиши с заглавной буквы. Марки пиши в соответствии с марочниками. ГОСТ всегда заглавными."
+        "1. Не используй упоминания Украины, политические темы. Контент для РФ. "
+        "2. НИКОГДА не используй ссылки на источники [1]. Чисти текст от них полностью. "
+        "3. Имена собственные и города с большой буквы. ГОСТ заглавными."
     )
 
-    # 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ
-    # forced_header используем для первого заголовка H2, tag_name для контекста
+    # 3. Пользовательский промт
     user_prompt = f"""
     ИСХОДНЫЕ ДАННЫЕ:
     Название товара: "{tag_name}"
-    Базовый текст (фактура): \"\"\"{base_text[:3500]}\"\"\"
+    Базовый текст (фактура): \"\"\"{base_text[:4000]}\"\"\"
     
     {seo_instruction_block}
     
@@ -1715,60 +1718,44 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
     Напиши {num_blocks} HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||
     
     ОБЩИЕ ТРЕБОВАНИЯ:
-    1. ОБЪЕМ: Каждый блок должен содержать максимум 800 символов. Раскрывай тему подробно.
+    1. ОБЪЕМ: Каждый блок ~600-800 символов.
     2. ЧИСТОТА: Исключи любые ссылки на источники ( [1], [2] и т.д.).
-    3. ПОЛЬЗА: Текст должен быть технически грамотным и полезным для специалиста по закупкам. Избегай "воды".
+    3. ФОРМАТ: Только чистый HTML без Markdown.
     
-    ТРЕБОВАНИЯ К СТРУКТУРЕ КАЖДОГО БЛОКА:
-    Каждый из {num_blocks} блоков должен строго соблюдать следующий порядок элементов:
-    1. Заголовок (<h2> только для 1-го блока, <h3> для блоков 2-{num_blocks}).
-    2. Первый абзац текста (<p>) - развернутый, информативный.
-    3. Вводное предложение, подводящее к списку (например: "Основные характеристики:", "Сферы применения:").
-    4. Маркированный список (<ul> c <li>).
-    5. Второй (завершающий) абзац текста (<p>) - развернутый.
+    СТРУКТУРА КАЖДОГО БЛОКА:
+    1. Заголовок (<h2> только для 1-го блока, <h3> для остальных).
+    2. Текст (<p>).
+    3. Вводная фраза к списку.
+    4. Маркированный список (<ul><li>).
+    5. Завершающий текст (<p>).
     
     ТЕМЫ БЛОКОВ:
-    --- БЛОК 1 (Вводный) ---
-    - Заголовок: <h2>{forced_header}</h2>
-    - Описание товара, назначение, ключевые особенности.
+    - БЛОК 1: Заголовок <h2>{forced_header}</h2>. Описание, назначение.
+    - БЛОКИ 2-{num_blocks}: <h3> (Характеристики, Применение, Производство, Особенности).
     
-    --- ОСТАЛЬНЫЕ БЛОКИ (Технические детали) ---
-    - Заголовки: <h3> (Характеристики, Применение, Производство, Особенности, Сортамент и т.д.).
-    - Используй фактуру из "Базового текста".
-    
-    ФИНАЛЬНЫЕ УСЛОВИЯ:
-    - Никаких вводных слов типа "Вот ваш код".
-    - Никакого Markdown (```).
-    - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
+    ФИНАЛ: Только HTML, разделенный |||BLOCK_SEP|||.
     """
+
+    # Объединяем системный и пользовательский промт для надежности в Gemini
+    full_prompt = f"{system_instruction}\n\n{user_prompt}"
 
     for attempt in range(3):
         try:
-            response = client.chat.completions.create(
-                model="sonar-pro", 
-                messages=[
-                    {"role": "system", "content": system_instruction}, 
-                    {"role": "user", "content": user_prompt}
-                ], 
-                temperature=0.75 
-            )
-            content = response.choices[0].message.content
+            response = model.generate_content(full_prompt)
+            content = response.text
             
             # Очистка
-            content = re.sub(r'\[\d+\]', '', content) # Удаляем цитаты [1]
+            content = re.sub(r'\[\d+\]', '', content)
             content = content.replace("```html", "").replace("```", "").strip()
             
             blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
             
-            # Если сгенерировалось меньше блоков, дополняем пустыми
             while len(blocks) < num_blocks: blocks.append("")
-            
-            # Возвращаем ровно столько блоков, сколько просили (обычно 5)
             return blocks[:num_blocks]
         except Exception as e:
             time.sleep(2)
             
-    return ["API Error"] * num_blocks
+    return [f"API Error: {str(e)}"] * num_blocks
 
 # ==========================================
 # 7. UI TABS RESTRUCTURED
@@ -2487,8 +2474,8 @@ with tab_wholesale_main:
                 manual_html_source = None
 
         with col_key:
-            default_key = st.session_state.get('pplx_key_cache', "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")
-            pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
+            default_key = st.session_state.get('pplx_key_cache', "AIzaSyALrGas6cbkwNN9lko-Ag4_czO58NS4HIc")
+            pplx_api_key = st.text_input("Google AI API Key", value=default_key, type="password")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
 
     # ==========================================
@@ -3208,13 +3195,22 @@ with tab_wholesale_main:
             inner_html = render_tree_internal(tree, level=1)
             full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>"""
 
-        client = None
-        if openai and (use_text or use_tables or use_geo):
-            client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
+# === НАЧАЛО ИЗМЕНЕННОГО БЛОКА ===
+        
+        # Вместо openai client мы проверяем наличие ключа и библиотеки
+        has_ai_key = bool(pplx_api_key) and (genai is not None)
 
-# --- ОСНОВНОЙ ЦИКЛ ПО СТРАНИЦАМ ---
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
+        
+        # Конфигурируем модель Google один раз перед циклом
+        model_flash = None
+        if has_ai_key:
+            try:
+                genai.configure(api_key=pplx_api_key)
+                model_flash = genai.GenerativeModel('gemini-1.5-flash')
+            except Exception as e:
+                st.error(f"Ошибка настройки Google API: {e}")
         
         for idx, page in enumerate(target_pages):
             base_text_raw, tags_on_page, real_header_h2, err = get_page_data_for_gen(page['url'])
@@ -3225,95 +3221,62 @@ with tab_wholesale_main:
             # Загружаем статику
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # ========================================================
-            # 1. СНАЧАЛА ГЕНЕРИРУЕМ ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO)
-            # Чтобы понять, что не влезло и перенести это в текст
-            # ========================================================
-            
             # Копия глобального контекста для ЭТОЙ страницы
-            # Мы будем добавлять сюда слова, которые не получились в тегах
             current_page_seo_words = list(text_context_final_list)
             
-            # --- TAGS GENERATION (БЕЗ ЛИМИТОВ + FALLBACK) ---
+            # --- TAGS GENERATION (ВАШ СТАРЫЙ КОД) ---
             tags_html_parts = []
             if use_tags:
                 html_collector = []
                 for kw in global_tags_list:
-                    # 1. Если слова вообще нет в базе - оно уже в current_page_seo_words (благодаря глобальной проверке)
-                    if kw not in tags_map:
-                        continue 
-                        
+                    if kw not in tags_map: continue 
                     urls = tags_map[kw]
-                    # 2. Ищем ссылку, которая НЕ ведет на текущую страницу
                     valid_urls = [u for u in urls if u.rstrip('/') != page['url'].rstrip('/')]
-                    
                     if valid_urls:
-                        # УСПЕХ: Делаем тег
                         selected_url = random.choice(valid_urls)
                         cache_key = selected_url.rstrip('/')
-                        nm = url_name_cache.get(cache_key, kw) # Если имени нет, берем кейворд
+                        nm = url_name_cache.get(cache_key, kw)
                         html_collector.append(f'<a href="{selected_url}" class="tag-link">{nm}</a>')
                     else:
-                        # НЕУДАЧА: Ссылка есть, но она ведет на саму себя (valid_urls пуст)
-                        # Значит, тег мы не поставили. Чтобы слово не пропало -> кидаем в ТЕКСТ
-                        if kw not in current_page_seo_words:
-                            current_page_seo_words.append(kw)
+                        if kw not in current_page_seo_words: current_page_seo_words.append(kw)
 
                 if html_collector:
                     tags_html_parts = ['<div class="popular-tags">'] + html_collector + ['</div>']
                     row_data['Tags HTML'] = "\n".join(tags_html_parts)
-                else:
-                    row_data['Tags HTML'] = ""
+                else: row_data['Tags HTML'] = ""
 
-# --- PROMO GENERATION (ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ) ---
+            # --- PROMO GENERATION (ВАШ СТАРЫЙ КОД) ---
             if use_promo:
                 candidates = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
-                
-                # Берем ВСЕ найденные (без лимитов)
                 random.shuffle(candidates)
                 selected_promo = candidates
-                
                 if selected_promo:
-                    # КОНТЕЙНЕР:
-                    # flex-wrap: nowrap -> запрещает перенос на новую строку
-                    # overflow-x: auto -> включает скролл
                     promo_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display: flex; flex-wrap: nowrap; gap: 15px; overflow-x: auto; padding-bottom: 15px; scrollbar-width: thin;">'
-                    
                     for item in selected_promo:
-                        p_url = item['url']
-                        p_img = item['img']
-                        cache_key = p_url.rstrip('/')
-                        p_name = url_name_cache.get(cache_key, "Товар")
-                        
-                        # КАРТОЧКА: 
-                        # flex-shrink: 0 -> запрещает карточке сжиматься, заставляя контейнер скроллиться
+                        p_url = item['url']; p_img = item['img']
+                        cache_key = p_url.rstrip('/'); p_name = url_name_cache.get(cache_key, "Товар")
                         promo_html += f'<div class="promo-card" style="min-width: 220px; width: 220px; flex-shrink: 0; border: 1px solid #eee; padding: 10px; border-radius: 5px; text-align: center;">'
                         promo_html += f'<a href="{p_url}" style="text-decoration: none; color: #333;">'
                         promo_html += f'<div style="height: 150px; overflow: hidden; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">'
-                        promo_html += f'<img src="{p_img}" alt="{p_name}" style="max-height: 100%; max-width: 100%; object-fit: contain;">'
-                        promo_html += f'</div>'
-                        promo_html += f'<div style="font-size: 13px; font-weight: bold; line-height: 1.3;">{p_name}</div>'
-                        promo_html += f'</a></div>'
-
+                        promo_html += f'<img src="{p_img}" alt="{p_name}" style="max-height: 100%; max-width: 100%; object-fit: contain;"></div>'
+                        promo_html += f'<div style="font-size: 13px; font-weight: bold; line-height: 1.3;">{p_name}</div></a></div>'
                     promo_html += '</div></div>'
                     row_data['Promo HTML'] = promo_html
-                else:
-                    row_data['Promo HTML'] = ""
-
+                else: row_data['Promo HTML'] = ""
+            
             # ========================================================
-            # 2. ГЕНЕРИРУЕМ ТЕКСТ (С УЧЕТОМ ВСЕХ "ПОТЕРЯШЕК")
+            # 2. ГЕНЕРИРУЕМ ТЕКСТ (GEMINI)
             # ========================================================
-            if use_text and client:
+            if use_text and has_ai_key:
                 try:
-                    # current_page_seo_words теперь содержит:
-                    # 1. То, что ввел юзер руками
-                    # 2. То, что глобально не нашлось в базе
-                    # 3. То, что локально не смогло стать тегом (ссылка на себя)
+                    # Вызываем обновленную функцию (api_key вместо client)
                     blocks = generate_ai_content_blocks(
-                        client, base_text=base_text_raw if base_text_raw else "", 
-                        tag_name=page['name'], forced_header=header_for_ai,
+                        api_key=pplx_api_key, 
+                        base_text=base_text_raw if base_text_raw else "", 
+                        tag_name=page['name'], 
+                        forced_header=header_for_ai,
                         num_blocks=num_text_blocks_val, 
-                        seo_words=current_page_seo_words # <-- ПОЛНЫЙ СПИСОК
+                        seo_words=current_page_seo_words
                     )
                     row_data['Text_Block_1'] = blocks[0]
                     row_data['Text_Block_2'] = blocks[1]
@@ -3322,66 +3285,50 @@ with tab_wholesale_main:
                     row_data['Text_Block_5'] = blocks[4]
                 except Exception as e: row_data['Text_Error'] = str(e)
 
-            # --- AI TABLES (Контекст тот же, глобальный) ---
-            if use_tables and client:
+            # --- AI TABLES (GEMINI) ---
+            if use_tables and has_ai_key:
                 for t_i, t_topic in enumerate(table_prompts):
-                    sys_p_table = "You are an expert metallurgist and data analyst. Output ONLY raw HTML <table>. No markdown."
                     context_hint = ""
                     if tech_context_final_str:
                         context_hint = f"Используй технические данные (марки, ГОСТы): {tech_context_final_str}."
                     
-                    usr_p_table = f"""
-                    Задача: Составь подробную техническую таблицу для товара "{header_for_ai}".
-                    Тема таблицы: {t_topic}.
-                    {context_hint}
-                    
-                    ТРЕБОВАНИЯ:
-                    1. Только реальные технические данные.
-                    2. HTML <table>...</table>.
-                    3. Без Markdown.
+                    prompt_table = f"""
+                    Role: Expert metallurgist.
+                    Task: Create a technical HTML <table> for "{header_for_ai}".
+                    Topic: {t_topic}.
+                    Context: {context_hint}
+                    Requirements:
+                    1. Use real data only.
+                    2. Output raw HTML <table>...</table>.
+                    3. Add style="border-collapse: collapse; width: 100%;" to table.
+                    4. Add style="border: 1px solid black; padding: 5px;" to th/td.
+                    5. NO Markdown.
                     """
                     try:
-                        resp = client.chat.completions.create(
-                            model="sonar-pro", 
-                            messages=[
-                                {"role": "system", "content": sys_p_table},
-                                {"role": "user", "content": usr_p_table}
-                            ], 
-                            temperature=0.4
-                        )
-                        raw_html = resp.choices[0].message.content
-                        clean_html = raw_html.replace("```html", "").replace("```", "").strip()
-                        clean_html = re.sub(r'\[\d+\]', '', clean_html)
-                        
-                        soup_table = BeautifulSoup(clean_html, 'html.parser')
-                        table_tag = soup_table.find('table')
-                        if table_tag:
-                            table_tag['style'] = "border-collapse: collapse; width: 100%; border: 2px solid black;"
-                            for cell in table_tag.find_all(['th', 'td']):
-                                cell['style'] = "border: 2px solid black; padding: 5px;"
-                            final_table_html = str(table_tag)
-                        else: final_table_html = clean_html
-                        row_data[f'Table_{t_i+1}_HTML'] = final_table_html
+                        resp = model_flash.generate_content(prompt_table)
+                        clean_html = resp.text.replace("```html", "").replace("```", "").strip()
+                        if "<table" not in clean_html: clean_html = f"<table>{clean_html}</table>"
+                        row_data[f'Table_{t_i+1}_HTML'] = clean_html
                     except Exception as e:
                         row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
-            # --- SIDEBAR ---
+            # --- SIDEBAR (ВАШ СТАРЫЙ КОД) ---
             if use_sidebar:
                 row_data['Sidebar HTML'] = full_sidebar_code
 
-            # --- GEO ---
-            if use_geo and client and global_geo_list:
+            # --- GEO (GEMINI) ---
+            if use_geo and has_ai_key and global_geo_list:
                 selected_cities = global_geo_list
                 if len(selected_cities) > 20: selected_cities = random.sample(global_geo_list, 20)
                 cities_str = ", ".join(selected_cities)
-                geo_prompt = f"""Task: Write a short paragraph <p> about delivery options for "{header_for_ai}" to {cities_str}. Output HTML <p> only."""
+                
+                geo_prompt = f"""
+                Task: Write a short paragraph <p> about delivery options for "{header_for_ai}" to these cities: {cities_str}. 
+                Output: Raw HTML <p> only. Language: Russian. No Markdown.
+                """
                 try:
-                    resp_geo = client.chat.completions.create(
-                        model="sonar-pro", 
-                        messages=[{"role": "system", "content": "You are a logistic summary generator."}, {"role": "user", "content": geo_prompt}],
-                        temperature=0.4
-                    )
-                    clean_geo = resp_geo.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                    resp_geo = model_flash.generate_content(geo_prompt)
+                    clean_geo = resp_geo.text.replace("```html", "").replace("```", "").strip()
                     row_data['IP_PROP4819'] = clean_geo
                 except Exception as e: row_data['IP_PROP4819'] = f"Error: {e}"
 
@@ -3518,4 +3465,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
