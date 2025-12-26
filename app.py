@@ -1668,75 +1668,78 @@ def get_page_data_for_gen(url):
 def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * 5
     
-    # 1. Распределение ключей
+    # 1. Подготовка SEO-блока (Вставка переменных)
     seo_words = seo_words or []
-    buckets = [[] for _ in range(5)]
-    if seo_words and num_blocks > 0:
-        for i, word in enumerate(seo_words):
-            buckets[i % num_blocks].append(word)
+    seo_instruction_block = ""
+    
+    if seo_words:
+        # Превращаем список слов в строку через запятую
+        seo_list_str = ", ".join(seo_words)
+        seo_instruction_block = f"""
+--- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
+Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме: {seo_list_str}
 
-    vocab_strs = [", ".join(b) if b else "None" for b in buckets]
+ПРАВИЛА ВНЕДРЕНИЯ И ВЫДЕЛЕНИЯ:
+1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем {num_blocks} блокам.
+2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b>..."
+3. СТРОГИЙ ЗАПРЕТ: Используй тег <b> ТОЛЬКО для этих SEO-слов. Не выделяй жирным ничего другого.
+4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь.
+-------------------------------------------
+"""
 
     # 2. СИСТЕМНЫЙ ПРОМТ
     system_instruction = (
-        "You are a Senior Editor for a B2B industrial marketplace. "
-        "Your goal is to write natural, professional, and idiomatic Russian text. "
-        "Output raw HTML only."
+        "Ты — профессиональный технический копирайтер и верстальщик. "
+        "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
+        "Ты выдаешь ТОЛЬКО HTML-код. "
+        "Стиль: Деловой, экспертный, но \"человечный\" и понятный. Избегай канцеляризмов и пространных рассуждений. "
+        "Факты и конкретика: Все суждения подкрепляй измеримыми фактами, цифрами, ссылками на ГОСТы, марки стали и другие нормативы. Используй поисковые инструменты для проверки и обогащения текста актуальной информацией. "
+        "Коммерческая направленность: Текст должен продавать. Говори от лица компании-производителя/поставщика. Вместо \"проверенный поставщик\" используй формулировки, подчеркивающие собственное производство и экспертизу. "
+        "Формула Главреда для B2B: В тексте должны быть ответы на вопросы: что это? какую проблему решает? кому подойдет? какие есть разновидности? Дополнительно раскрой информацию о стандартах производства, складских запасах и возможности изготовления под заказ. "
+        "СТРОГИЕ ЗАПРЕТЫ: "
+        "1. Не используй упоминания Украины, украинских городов (Киев, Львов и др.), политические темы, валюту гривну. Контент строго для РФ. "
+        "2. НИКОГДА не используй ссылки на источники ни в тексте, ни в списках. Чисти текст от них полностью. "
+        "3. Имена собственные, названия городов пиши с заглавной буквы. Марки пиши в соответствии с марочниками. ГОСТ всегда заглавными."
     )
 
-    h_tag_instruction = f"1. Header: <h2>{forced_header}</h2> (Use this EXACT text)."
-    if num_blocks > 1:
-        h_tag_instruction += " For blocks 2-N use <h3> tags with relevant technical themes."
-
     # 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ
+    # forced_header используем для первого заголовка H2, tag_name для контекста
     user_prompt = f"""
-    INPUT DATA:
-    Product: "{tag_name}"
-    Source Info: \"\"\"{base_text[:3000]}\"\"\"
+    ИСХОДНЫЕ ДАННЫЕ:
+    Название товара: "{tag_name}"
+    Базовый текст (фактура): \"\"\"{base_text[:3500]}\"\"\"
     
-    TASK: Generate {num_blocks} HTML sections. Separator: |||BLOCK_SEP|||
+    {seo_instruction_block}
     
-    SECTION STRUCTURE:
-    {h_tag_instruction}
-    2. <p> (3-5 sentences). Meaningful commercial/technical text.
-    3. Short intro line.
-    4. <ul><li>...</li></ul> (Specs/Benefits).
-    5. <p> Summary.
-
-    MANDATORY VOCABULARY TO INSERT:
-    Section 1: {vocab_strs[0]}
-    Section 2: {vocab_strs[1]}
-    Section 3: {vocab_strs[2]}
-    Section 4: {vocab_strs[3]}
-    Section 5: {vocab_strs[4]}
+    ЗАДАЧА:
+    Напиши {num_blocks} HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||
     
-    CRITICAL RULES FOR VOCABULARY (READ CAREFULLY):
-    1. IDIOMATIC USE ONLY: Use words in their standard business context. Do not force them into sentences where they don't belong.
-       
-       --- EXAMPLES ---
-       Word: "согласиться"
-       BAD: "Вы можете согласиться купить товар." (Nonsense)
-       BAD: "Поставка с возможностью согласиться." (Robot style)
-       GOOD: "Оформляя заказ, покупатель <b>соглашается</b> с условиями публичной оферты." (Standard legal context)
-       GOOD: "Мы достигли <b>согласия</b> (noun) с производителями о лучших ценах." (Changed part of speech)
-
-       Word: "звонок"
-       BAD: "Сделайте звонок нам."
-       GOOD: "Закажите обратный <b>звонок</b> для консультации."
-       ----------------
+    ОБЩИЕ ТРЕБОВАНИЯ:
+    1. ОБЪЕМ: Каждый блок должен содержать максимум 800 символов. Раскрывай тему подробно.
+    2. ЧИСТОТА: Исключи любые ссылки на источники ( [1], [2] и т.д.).
+    3. ПОЛЬЗА: Текст должен быть технически грамотным и полезным для специалиста по закупкам. Избегай "воды".
     
-    2. CHANGE PARTS OF SPEECH: If the verb sounds bad, change it to a noun or adjective. 
-       (согласиться -> согласие, продать -> продажа).
-       
-    3. NO "AI" FILLERS: Ban phrases like "с возможностью", "путем использования", "является важным".
-       
-    4. HIGHLIGHT: Wrap the inserted keyword (in its changed form) in <b> tags.
-    5. QUANTITY: Exactly 1 time per section.
+    ТРЕБОВАНИЯ К СТРУКТУРЕ КАЖДОГО БЛОКА:
+    Каждый из {num_blocks} блоков должен строго соблюдать следующий порядок элементов:
+    1. Заголовок (<h2> только для 1-го блока, <h3> для блоков 2-{num_blocks}).
+    2. Первый абзац текста (<p>) - развернутый, информативный.
+    3. Вводное предложение, подводящее к списку (например: "Основные характеристики:", "Сферы применения:").
+    4. Маркированный список (<ul> c <li>).
+    5. Второй (завершающий) абзац текста (<p>) - развернутый.
     
-    CONSTRAINTS:
-    - Language: Russian (Native Business).
-    - Max length: 800 chars/section.
-    - NO citations ([1]). NO Markdown.
+    ТЕМЫ БЛОКОВ:
+    --- БЛОК 1 (Вводный) ---
+    - Заголовок: <h2>{forced_header}</h2>
+    - Описание товара, назначение, ключевые особенности.
+    
+    --- ОСТАЛЬНЫЕ БЛОКИ (Технические детали) ---
+    - Заголовки: <h3> (Характеристики, Применение, Производство, Особенности, Сортамент и т.д.).
+    - Используй фактуру из "Базового текста".
+    
+    ФИНАЛЬНЫЕ УСЛОВИЯ:
+    - Никаких вводных слов типа "Вот ваш код".
+    - Никакого Markdown (```).
+    - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
     """
 
     for attempt in range(3):
@@ -1751,17 +1754,21 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
             )
             content = response.choices[0].message.content
             
-            content = re.sub(r'\[\d+\]', '', content)
+            # Очистка
+            content = re.sub(r'\[\d+\]', '', content) # Удаляем цитаты [1]
             content = content.replace("```html", "").replace("```", "").strip()
             
             blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
             
-            while len(blocks) < 5: blocks.append("")
-            return blocks[:5]
+            # Если сгенерировалось меньше блоков, дополняем пустыми
+            while len(blocks) < num_blocks: blocks.append("")
+            
+            # Возвращаем ровно столько блоков, сколько просили (обычно 5)
+            return blocks[:num_blocks]
         except Exception as e:
             time.sleep(2)
             
-    return ["API Error"] * 5
+    return ["API Error"] * num_blocks
 
 # ==========================================
 # 7. UI TABS RESTRUCTURED
@@ -3511,3 +3518,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
