@@ -969,6 +969,10 @@ def parse_page(url, settings, query_context=""):
         return None
         
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
+    # Внутренняя функция округления (чтобы избежать NameError)
+    def math_round(number):
+        return int(number + 0.5)
+
     all_forms_map = defaultdict(set)
     global_forms_counter = defaultdict(Counter) 
     
@@ -1135,6 +1139,120 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Сайтов": doc_freqs[lemma],
             "Переспам": obs_max
         })
+
+    # =========================================================================
+    # 4. РАСЧЕТ БАЛЛОВ (WIDTH & DEPTH SCORING)
+    # =========================================================================
+    
+    total_needed = len(words_with_median_gt_0)
+    total_found = len(my_found_words_from_median)
+    
+    if total_needed > 0:
+        ratio = total_found / total_needed
+        my_width_score_final = int(min(100, ratio * 120))
+    else:
+        my_width_score_final = 0
+
+    S_WIDTH_CORE = words_with_median_gt_0 
+    
+    def calculate_raw_power(doc_tokens, doc_len):
+        if avg_dl == 0 or doc_len == 0: return 0
+        score = 0
+        counts = Counter(doc_tokens)
+        k1 = 1.2; b = 0.75
+        for word in S_WIDTH_CORE:
+            if word not in counts: continue
+            tf = counts[word]
+            idf = word_idf_map.get(word, 0)
+            term_weight = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (doc_len / avg_dl)))
+            score += term_weight
+        return score
+
+    comp_raw_scores = []
+    competitor_scores_map = {}
+    
+    for i, doc in enumerate(comp_docs):
+        c_found = len(set(doc['body']).intersection(S_WIDTH_CORE))
+        if total_needed > 0:
+            c_width_val = int(min(100, (c_found / total_needed) * 120))
+        else:
+            c_width_val = 0
+            
+        raw_val = calculate_raw_power(doc['body'], c_lens[i])
+        comp_raw_scores.append(raw_val)
+        competitor_scores_map[doc['url']] = {'width_final': c_width_val, 'raw_depth': raw_val}
+
+    if comp_raw_scores:
+        median_raw = np.median(comp_raw_scores)
+        ref_val = median_raw if median_raw > 0.1 else 1.0
+    else:
+        ref_val = 1.0
+    
+    k_norm = 80.0 / ref_val
+    my_raw_bm25 = calculate_raw_power(my_lemmas, my_len)
+    my_depth_score_final = int(round(min(100, my_raw_bm25 * k_norm)))
+
+    for url, data in competitor_scores_map.items():
+        data['depth_final'] = int(round(min(100, data['raw_depth'] * k_norm)))
+
+    # =========================================================================
+    # 5. СОРТИРОВКА И ВЫВОД
+    # =========================================================================
+    
+    missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
+    missing_semantics_low.sort(key=lambda x: x['weight'], reverse=True)
+    missing_semantics_low = missing_semantics_low[:500]
+
+    table_rel = []
+    my_site_found_in_selection = False
+    for item in original_results:
+        url = item['url']
+        if url not in competitor_scores_map: continue
+        row_domain = urlparse(url).netloc.lower().replace('www.', '')
+        is_my_site = False
+        if my_clean_domain and my_clean_domain != "local" and my_clean_domain in row_domain:
+            is_my_site = True
+            my_site_found_in_selection = True
+            display_name = f"{urlparse(url).netloc} (Вы)"
+        else:
+            display_name = urlparse(url).netloc
+        scores = competitor_scores_map[url]
+        table_rel.append({ 
+            "Домен": display_name, 
+            "URL": url,
+            "Позиция": item['pos'], 
+            "Ширина (балл)": scores['width_final'], 
+            "Глубина (балл)": scores['depth_final'] 
+        })
+        
+    if not my_site_found_in_selection:
+        pos_to_show = my_serp_pos if my_serp_pos > 0 else 0
+        my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
+        my_full_url = my_data['url'] if (my_data and 'url' in my_data) else "#"
+        table_rel.append({ "Домен": my_label, "URL": my_full_url, "Позиция": pos_to_show, "Ширина (балл)": my_width_score_final, "Глубина (балл)": my_depth_score_final })
+
+    df_rel_for_analysis = pd.DataFrame(table_rel)
+    good_urls, bad_urls_dicts, trend_info = analyze_serp_anomalies(df_rel_for_analysis)
+    
+    st.session_state['detected_anomalies'] = bad_urls_dicts
+    st.session_state['serp_trend_info'] = trend_info
+    
+    if bad_urls_dicts:
+        st.session_state['persistent_urls'] = "\n".join(good_urls)
+        st.session_state['excluded_urls_auto'] = "\n".join([item['url'] for item in bad_urls_dicts])
+        st.toast(f"🤖 Найдено {len(bad_urls_dicts)} слабых конкурентов! Они перенесены в исключения.", icon="⚠️")
+    else:
+        st.session_state['persistent_urls'] = "\n".join([r.get('URL', r['Домен']) for r in table_rel if "(Вы)" not in r['Домен']])
+        st.session_state['excluded_urls_auto'] = ""
+
+    return { 
+        "depth": pd.DataFrame(table_depth), 
+        "hybrid": pd.DataFrame(table_hybrid), 
+        "relevance_top": pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True), 
+        "my_score": {"width": my_width_score_final, "depth": my_depth_score_final}, 
+        "missing_semantics_high": missing_semantics_high, 
+        "missing_semantics_low": missing_semantics_low 
+    }
 
     # =========================================================================
     # 4. РАСЧЕТ БАЛЛОВ (WIDTH & DEPTH SCORING)
@@ -3865,6 +3983,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
