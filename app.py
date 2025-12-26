@@ -976,59 +976,116 @@ def math_round(number):
     return int(number + 0.5)
 
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
+    # Глобальные счетчики для "красоты" (Словоформы)
     all_forms_map = defaultdict(set)
-    global_forms_counter = defaultdict(Counter) 
     
-    # 1. ОБРАБОТКА МОЕГО САЙТА
-    if not my_data or not my_data.get('body_text'): 
-        my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
-        my_clean_domain = "local"
-    else:
-        my_lemmas, my_forms = process_text_detailed(my_data['body_text'], settings)
-        my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
-        my_len = len(my_lemmas)
-        for k, v in my_forms.items(): all_forms_map[k].update(v)
-        my_clean_domain = my_data['domain'].lower().replace('www.', '').split(':')[0]
-
-    # 2. ОБРАБОТКА КОНКУРЕНТОВ
-    comp_docs = []
-    for p in comp_data_full:
-        if not p.get('body_text'): continue
-        body, c_forms = process_text_detailed(p['body_text'], settings)
+    # === 1. ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ АНАЛИЗА ===
+    def analyze_doc_semantics(text_raw):
+        """
+        Возвращает:
+        1. lemma_counts: {lemma: count} - сколько раз лемма встретилась (сумма форм)
+        2. lemma_best_form: {lemma: best_form_str} - какая форма была самой частой
+        3. all_doc_lemmas: list of lemmas - для расчета длины и IDF
+        """
+        if not text_raw:
+            return Counter(), {}, []
+            
+        # 1. Разбиваем на слова
+        words = re.findall(r'[а-яА-ЯёЁ0-9a-zA-Z]+', text_raw.lower())
         
-        # Сбор живых форм для отображения
-        raw_words_for_stats = re.findall(r'[а-яА-ЯёЁ0-9a-zA-Z]+', p['body_text'].lower())
-        for rw in raw_words_for_stats:
-            if len(rw) < 2: continue
+        # 2. Подготовка стоп-слов
+        stops = set(w.lower().replace('ё', 'е') for w in settings['custom_stops'])
+        
+        doc_lemmas_list = []
+        lemma_to_forms_counter = defaultdict(Counter)
+        
+        for w in words:
+            if len(w) < 2: continue
+            if not settings['numbers'] and w.isdigit(): continue
+            w_clean = w.replace('ё', 'е')
+            if w_clean in stops: continue
+            
+            # Лемматизация
             if morph:
-                parsed = morph.parse(rw)[0]
-                if 'PREP' not in parsed.tag and 'CONJ' not in parsed.tag:
-                    rw_lemma = parsed.normal_form.replace('ё', 'е')
-                    global_forms_counter[rw_lemma][rw] += 1
+                p = morph.parse(w_clean)[0]
+                # Фильтр частей речи (предлоги, союзы и т.д.)
+                if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: 
+                    continue
+                normal_form = p.normal_form.replace('ё', 'е')
+            else:
+                normal_form = w_clean # Fallback если нет pymorphy
+            
+            doc_lemmas_list.append(normal_form)
+            lemma_to_forms_counter[normal_form][w] += 1
+            
+        # 3. Агрегация
+        lemma_counts = Counter(doc_lemmas_list)
+        lemma_best_form = {}
         
-        anchor, _ = process_text_detailed(p['anchor_text'], settings)
-        comp_docs.append({'body': body, 'anchor': anchor, 'url': p['url'], 'domain': p['domain']})
-        for k, v in c_forms.items(): all_forms_map[k].update(v)
+        for lem, counter_forms in lemma_to_forms_counter.items():
+            # Берем самую частую форму. Если частота одинаковая, берем просто первую (sort обеспечивает стабильность)
+            # most_common(1) возвращает [('форма', count)]
+            best_f = counter_forms.most_common(1)[0][0]
+            lemma_best_form[lem] = best_f
+            
+            # Сохраняем в глобальную карту форм (для колонки "Словоформы")
+            all_forms_map[lem].update(counter_forms.keys())
+            
+        return lemma_counts, lemma_best_form, doc_lemmas_list
 
-    if not comp_docs:
+    # === 2. ОБРАБОТКА МОЕГО САЙТА ===
+    if my_data and my_data.get('body_text'):
+        my_lemma_counts, _, my_lemmas_list = analyze_doc_semantics(my_data['body_text'])
+        # Анкоры обрабатываем отдельно для статистики, но не для главной логики медиан
+        my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings) 
+        my_len = len(my_lemmas_list)
+        my_clean_domain = my_data['domain'].lower().replace('www.', '').split(':')[0]
+    else:
+        my_lemma_counts, my_lemmas_list = Counter(), []
+        my_anchors = []
+        my_len = 0
+        my_clean_domain = "local"
+
+    # === 3. ОБРАБОТКА КОНКУРЕНТОВ ===
+    comp_stats = [] # Список словарей с детальной статистикой
+    
+    for p in comp_data_full:
+        if not p.get('body_text'): 
+            # Добавляем пустой, чтобы медиана считалась корректно (как 0)
+            comp_stats.append({'counts': Counter(), 'best_forms': {}, 'len': 0, 'url': p['url']})
+            continue
+            
+        l_counts, l_best, l_list = analyze_doc_semantics(p['body_text'])
+        
+        # Анкоры (упрощенно)
+        anc_lemmas, _ = process_text_detailed(p['anchor_text'], settings)
+        
+        comp_stats.append({
+            'counts': l_counts,      # {lemma: 5}
+            'best_forms': l_best,    # {lemma: "соглашайтесь"}
+            'len': len(l_list),      # Длина текста для нормировки
+            'body_list': l_list,     # Список лемм для IDF/BM25
+            'url': p['url']
+        })
+
+    if not comp_stats:
         return { "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}, "missing_semantics_high": [], "missing_semantics_low": [] }
 
-    # Метрики корпуса
-    c_lens = [len(d['body']) for d in comp_docs]
+    # === 4. ОБЩИЕ МЕТРИКИ (IDF и т.д.) ===
+    c_lens = [c['len'] for c in comp_stats]
     avg_dl = np.mean(c_lens) if c_lens else 1
-    N = len(comp_docs)
+    N = len(comp_stats)
     
-    vocab = set(my_lemmas)
-    for d in comp_docs: vocab.update(d['body'])
+    # Словарь всех слов (Я + Конкуренты)
+    vocab = set(my_lemma_counts.keys())
+    for c in comp_stats: vocab.update(c['counts'].keys())
     vocab = sorted(list(vocab))
     
+    # Doc Freq для IDF
     doc_freqs = Counter()
-    for d in comp_docs:
-        for w in set(d['body']): doc_freqs[w] += 1
-    
-    word_counts_per_doc = [Counter(d['body']) for d in comp_docs]
+    for c in comp_stats:
+        for lem in c['counts']: doc_freqs[lem] += 1
 
-    # IDF
     word_idf_map = {}
     for lemma in vocab:
         df = doc_freqs[lemma]
@@ -1037,134 +1094,234 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         word_idf_map[lemma] = max(idf, 0.01)
 
     # =========================================================================
-    # 3. РАСЧЕТ МЕДИАН И ФОРМИРОВАНИЕ ТАБЛИЦ
+    # 5. РАСЧЕТ МЕДИАН (НОВАЯ ЛОГИКА)
     # =========================================================================
     
     table_depth = []
     table_hybrid = []
+    missing_semantics_high = []
+    missing_semantics_low = []
     
-    # Списки упущенной семантики
-    missing_semantics_high = [] # ВАЖНЫЕ (Медиана >= 1, У нас = 0)
-    missing_semantics_low = []  # ДОПОЛНИТЕЛЬНЫЕ (Медиана = 0, Макс > 0, У нас = 0)
+    words_with_median_gt_0 = set() 
+    my_found_words_from_median = set() 
     
-    # --- ИСПРАВЛЕНИЕ: Возвращаем множество (set) вместо счетчика (int), чтобы не было NameError ---
-    words_with_median_gt_0 = set() # Общее кол-во слов с медианой >= 1
-    my_found_words_from_median = set() # Сколько из них есть у нас
-    
-    my_full_lemmas_set = set(my_lemmas) | set(my_anchors)
-
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
-        # Данные по конкурентам (массив вхождений)
-        if settings['norm'] and my_len > 0:
-            # Если включена нормировка: приводим кол-во слов конкурентов к длине ВАШЕГО текста
-            c_counts = []
-            for i in range(N):
-                raw_count = word_counts_per_doc[i][lemma]
-                comp_len = c_lens[i]
-                
-                if comp_len > 0:
-                    # Формула: (Сколько у него) * (Моя длина / Его длина)
-                    normalized_val = raw_count * (my_len / comp_len)
-                    c_counts.append(normalized_val)
+        # СБОР ДАННЫХ ПО САЙТАМ
+        # Формат элемента: (Normalized_Count, Best_Form_String)
+        sites_data = []
+        
+        for i, stat in enumerate(comp_stats):
+            raw_cnt = stat['counts'][lemma] # 0 если нет
+            
+            # Нормировка
+            val = raw_cnt
+            if settings['norm'] and my_len > 0 and stat['len'] > 0:
+                val = raw_cnt * (my_len / stat['len'])
+            
+            # Какую форму отображать?
+            # Если слово есть на сайте -> берем его самую частую форму
+            # Если слова нет (0) -> форма None (будем брать дефолтную)
+            form_str = stat['best_forms'].get(lemma, None) 
+            
+            sites_data.append( (val, form_str) )
+        
+        # СОРТИРОВКА
+        # Сортируем по количеству (val).
+        # Пример: [(0, None), (1, "соглашаюсь"), (5, "соглашайтесь")]
+        sites_data.sort(key=lambda x: x[0])
+        
+        if sites_data:
+            # Ищем середину
+            mid_idx = len(sites_data) // 2
+            
+            # Медианные данные
+            median_val = sites_data[mid_idx][0]
+            median_form_candidate = sites_data[mid_idx][1]
+            
+            # Если медиана выпала на сайт, где слова нет (median_val=0, form=None),
+            # то формой для отображения берем саму лемму (или самую популярную форму у лидеров)
+            if median_form_candidate is None:
+                # Пытаемся найти хоть какую-то форму у тех, у кого она есть
+                available_forms = [x[1] for x in sites_data if x[1] is not None]
+                if available_forms:
+                    # Берем самую "жирную" форму (у сайта с макс вхождением)
+                    display_word = sites_data[-1][1] 
                 else:
-                    c_counts.append(0)
-        else:
-            # Если выключена: берем как есть
-            c_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
-        
-# --- ФОРМУЛА: КЛАССИЧЕСКАЯ МЕДИАНА (ПОСЕРЕДИНЕ ТОПА) ---
-        # 1. Сортируем список всех конкурентов (включая нули)
-        sorted_counts = sorted(c_counts)
-        
-        if sorted_counts:
-            # 2. Берем число посередине (библиотечная функция делает это сама)
-            # Если кол-во нечетное (5) -> берет 3-е число.
-            # Если кол-во четное (10) -> берет среднее между 5-м и 6-м.
-            med_val = np.median(sorted_counts)
+                    display_word = lemma # Вообще ни у кого нет форм (странно, но бывает)
+            else:
+                display_word = median_form_candidate
             
-            # 3. Округляем (0.5 -> 1)
-            rec_median = math_round(med_val)
-            
-            # Мин/Макс
-            obs_min = math_round(sorted_counts[0])
-            obs_max = math_round(sorted_counts[-1])
+            rec_median = math_round(median_val)
+            obs_min = math_round(sites_data[0][0])
+            obs_max = math_round(sites_data[-1][0])
         else:
-            rec_median = 0
-            obs_min = 0
-            obs_max = 0
+            rec_median = 0; obs_min = 0; obs_max = 0; display_word = lemma
 
-        # --- МОЯ СТАТИСТИКА ---
-        my_tf_count = my_lemmas.count(lemma)
+        # МОЯ СТАТИСТИКА
+        my_tf = my_lemma_counts[lemma]
         
-        # --- ФИЛЬТР ДЛЯ ТАБЛИЦЫ ---
-        if obs_max == 0 and my_tf_count == 0:
-            continue
+        if obs_max == 0 and my_tf == 0: continue
 
-        # --- ЛОГИКА ШИРИНЫ (WIDTH) ---
+        # ЛОГИКА ШИРИНЫ
         if rec_median >= 1:
-            words_with_median_gt_0.add(lemma) # Добавляем в множество
-            if my_tf_count > 0:
+            words_with_median_gt_0.add(lemma)
+            if my_tf > 0:
                 my_found_words_from_median.add(lemma)
 
-        # --- ЛОГИКА УПУЩЕННОЙ СЕМАНТИКИ ---
-        if my_tf_count == 0:
-            # Живая форма для вывода
-            display_word = lemma
-            if global_forms_counter[lemma]:
-                display_word = global_forms_counter[lemma].most_common(1)[0][0]
-            
-            # Вес для сортировки
+        # УПУЩЕННАЯ СЕМАНТИКА
+        if my_tf == 0:
             weight = word_idf_map.get(lemma, 0) * (rec_median if rec_median > 0 else 1)
+            # В "Слово" пишем найденную медианную форму
             item = {'word': display_word, 'weight': weight}
 
-            # 1. ВАЖНЫЕ: Медиана >= 1
-            if rec_median >= 1:
-                missing_semantics_high.append(item)
-            # 2. ДОПОЛНИТЕЛЬНЫЕ: Все остальные
-            else:
-                missing_semantics_low.append(item)
+            if rec_median >= 1: missing_semantics_high.append(item)
+            else: missing_semantics_low.append(item)
 
-        # --- РЕКОМЕНДАЦИИ ---
-        diff = rec_median - my_tf_count
-        
-        if diff == 0:
-            status = "Норма"
-            action_text = "✅"
-            sort_val = 0
-        elif diff > 0:
-            status = "Недоспам"
-            action_text = f"+{diff}"
-            sort_val = diff
-        else: # diff < 0
-            status = "Переспам"
-            action_text = f"{diff}"
-            sort_val = abs(diff)
+        # РЕКОМЕНДАЦИИ
+        diff = rec_median - my_tf
+        if diff == 0: status = "Норма"; action_text = "✅"; sort_val = 0
+        elif diff > 0: status = "Недоспам"; action_text = f"+{diff}"; sort_val = diff
+        else: status = "Переспам"; action_text = f"{diff}"; sort_val = abs(diff)
 
-        forms_str = ", ".join(sorted(list(all_forms_map.get(lemma, set())))) if all_forms_map.get(lemma) else lemma
+        forms_str = ", ".join(sorted(list(all_forms_map.get(lemma, set()))))
 
-        # Заполнение таблицы "Глубина"
         table_depth.append({
-            "Слово": lemma,
+            "Слово": display_word, # <--- ТЕПЕРЬ ТУТ СТОИТ МЕДИАННАЯ ФОРМА (напр. "соглашаюсь")
             "Словоформы": forms_str,
-            "Вхождений у вас": my_tf_count,
+            "Вхождений у вас": my_tf,
             "Медиана": rec_median,
             "Минимум (конкур.)": obs_min,
             "Максимум (конкур.)": obs_max,
             "Статус": status,
             "Рекомендация": action_text,
-            "is_missing": (my_tf_count == 0),
+            "is_missing": (my_tf == 0),
             "sort_val": sort_val
         })
         
         table_hybrid.append({
-            "Слово": lemma,
+            "Слово": display_word, # Здесь тоже красивая форма
             "TF-IDF ТОП": round(word_idf_map.get(lemma, 0) * (rec_median / avg_dl if avg_dl > 0 else 0), 4),
-            "TF-IDF у вас": round(word_idf_map.get(lemma, 0) * (my_tf_count / my_len if my_len > 0 else 0), 4),
+            "TF-IDF у вас": round(word_idf_map.get(lemma, 0) * (my_tf / my_len if my_len > 0 else 0), 4),
             "Сайтов": doc_freqs[lemma],
             "Переспам": obs_max
         })
+
+    # =========================================================================
+    # 6. РАСЧЕТ БАЛЛОВ (BM25 / WIDTH)
+    # =========================================================================
+    
+    total_needed = len(words_with_median_gt_0)
+    total_found = len(my_found_words_from_median)
+    
+    if total_needed > 0:
+        ratio = total_found / total_needed
+        my_width_score_final = int(min(100, ratio * 120))
+    else:
+        my_width_score_final = 0
+
+    S_WIDTH_CORE = words_with_median_gt_0 
+    
+    def calculate_raw_power(doc_lemmas_list, doc_len):
+        if avg_dl == 0 or doc_len == 0: return 0
+        score = 0
+        counts = Counter(doc_lemmas_list)
+        k1 = 1.2; b = 0.75
+        for lemma in S_WIDTH_CORE:
+            if lemma not in counts: continue
+            tf = counts[lemma]
+            idf = word_idf_map.get(lemma, 0)
+            term_weight = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (doc_len / avg_dl)))
+            score += term_weight
+        return score
+
+    comp_raw_scores = []
+    competitor_scores_map = {}
+    
+    for i, stat in enumerate(comp_stats):
+        # stat['body_list'] - это список лемм
+        c_found = len(set(stat['body_list']).intersection(S_WIDTH_CORE))
+        if total_needed > 0:
+            c_width_val = int(min(100, (c_found / total_needed) * 120))
+        else:
+            c_width_val = 0
+            
+        raw_val = calculate_raw_power(stat['body_list'], stat['len'])
+        comp_raw_scores.append(raw_val)
+        competitor_scores_map[stat['url']] = {'width_final': c_width_val, 'raw_depth': raw_val}
+
+    if comp_raw_scores:
+        median_raw = np.median(comp_raw_scores)
+        ref_val = median_raw if median_raw > 0.1 else 1.0
+    else:
+        ref_val = 1.0
+    
+    k_norm = 80.0 / ref_val
+    my_raw_bm25 = calculate_raw_power(my_lemmas_list, my_len)
+    my_depth_score_final = int(round(min(100, my_raw_bm25 * k_norm)))
+
+    for url, data in competitor_scores_map.items():
+        data['depth_final'] = int(round(min(100, data['raw_depth'] * k_norm)))
+
+    # =========================================================================
+    # 7. СБОРКА ТАБЛИЦЫ РЕЛЕВАНТНОСТИ
+    # =========================================================================
+    
+    missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
+    missing_semantics_low.sort(key=lambda x: x['weight'], reverse=True)
+    missing_semantics_low = missing_semantics_low[:500]
+
+    table_rel = []
+    my_site_found_in_selection = False
+    for item in original_results:
+        url = item['url']
+        if url not in competitor_scores_map: continue
+        row_domain = urlparse(url).netloc.lower().replace('www.', '')
+        is_my_site = False
+        if my_clean_domain and my_clean_domain != "local" and my_clean_domain in row_domain:
+            is_my_site = True
+            my_site_found_in_selection = True
+            display_name = f"{urlparse(url).netloc} (Вы)"
+        else:
+            display_name = urlparse(url).netloc
+        scores = competitor_scores_map[url]
+        table_rel.append({ 
+            "Домен": display_name, 
+            "URL": url,
+            "Позиция": item['pos'], 
+            "Ширина (балл)": scores['width_final'], 
+            "Глубина (балл)": scores['depth_final'] 
+        })
+        
+    if not my_site_found_in_selection:
+        pos_to_show = my_serp_pos if my_serp_pos > 0 else 0
+        my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
+        my_full_url = my_data['url'] if (my_data and 'url' in my_data) else "#"
+        table_rel.append({ "Домен": my_label, "URL": my_full_url, "Позиция": pos_to_show, "Ширина (балл)": my_width_score_final, "Глубина (балл)": my_depth_score_final })
+
+    df_rel_for_analysis = pd.DataFrame(table_rel)
+    good_urls, bad_urls_dicts, trend_info = analyze_serp_anomalies(df_rel_for_analysis)
+    
+    st.session_state['detected_anomalies'] = bad_urls_dicts
+    st.session_state['serp_trend_info'] = trend_info
+    
+    if bad_urls_dicts:
+        st.session_state['persistent_urls'] = "\n".join(good_urls)
+        st.session_state['excluded_urls_auto'] = "\n".join([item['url'] for item in bad_urls_dicts])
+        st.toast(f"🤖 Найдено {len(bad_urls_dicts)} слабых конкурентов! Они перенесены в исключения.", icon="⚠️")
+    else:
+        st.session_state['persistent_urls'] = "\n".join([r.get('URL', r['Домен']) for r in table_rel if "(Вы)" not in r['Домен']])
+        st.session_state['excluded_urls_auto'] = ""
+
+    return { 
+        "depth": pd.DataFrame(table_depth), 
+        "hybrid": pd.DataFrame(table_hybrid), 
+        "relevance_top": pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True), 
+        "my_score": {"width": my_width_score_final, "depth": my_depth_score_final}, 
+        "missing_semantics_high": missing_semantics_high, 
+        "missing_semantics_low": missing_semantics_low 
+    }
 
     # =========================================================================
     # 4. РАСЧЕТ БАЛЛОВ (WIDTH & DEPTH SCORING)
@@ -3552,3 +3709,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
