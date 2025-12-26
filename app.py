@@ -1709,6 +1709,87 @@ def get_page_data_for_gen(url):
             
     return base_text, tags_data, page_header, None
 
+def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
+    if not base_text: return ["Error: No base text"] * 5
+    
+    # 1. Распределение ключей
+    seo_words = seo_words or []
+    buckets = [[] for _ in range(5)]
+    if seo_words and num_blocks > 0:
+        for i, word in enumerate(seo_words):
+            buckets[i % num_blocks].append(word)
+
+    vocab_strs = [", ".join(b) if b else "None" for b in buckets]
+
+    # 2. СИСТЕМНЫЙ ПРОМТ
+    system_instruction = (
+        "You are a Senior Editor for a B2B industrial marketplace. "
+        "Your goal is to write natural, professional, and idiomatic Russian text. "
+        "Output raw HTML only."
+    )
+
+    h_tag_instruction = f"1. Header: <h2>{forced_header}</h2> (Use this EXACT text)."
+    if num_blocks > 1:
+        h_tag_instruction += " For blocks 2-N use <h3> tags with relevant technical themes."
+
+    # 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ
+    user_prompt = f"""
+    INPUT DATA:
+    Product: "{tag_name}"
+    Source Info: \"\"\"{base_text[:3000]}\"\"\"
+    
+    TASK: Generate {num_blocks} HTML sections. Separator: |||BLOCK_SEP|||
+    
+    SECTION STRUCTURE:
+    {h_tag_instruction}
+    2. <p> (3-5 sentences). Meaningful commercial/technical text.
+    3. Short intro line.
+    4. <ul><li>...</li></ul> (Specs/Benefits).
+    5. <p> Summary.
+
+    MANDATORY VOCABULARY TO INSERT:
+    Section 1: {vocab_strs[0]}
+    Section 2: {vocab_strs[1]}
+    Section 3: {vocab_strs[2]}
+    Section 4: {vocab_strs[3]}
+    Section 5: {vocab_strs[4]}
+    
+    CRITICAL RULES FOR VOCABULARY (READ CAREFULLY):
+    1. IDIOMATIC USE ONLY: Use words in their standard business context. Do not force them into sentences where they don't belong.
+    2. CHANGE PARTS OF SPEECH: If the verb sounds bad, change it to a noun or adjective. 
+    3. NO "AI" FILLERS: Ban phrases like "с возможностью", "путем использования", "является важным".
+    4. HIGHLIGHT: Wrap the inserted keyword (in its changed form) in <b> tags.
+    5. QUANTITY: Exactly 1 time per section.
+    
+    CONSTRAINTS:
+    - Language: Russian (Native Business).
+    - Max length: 800 chars/section.
+    - NO citations ([1]). NO Markdown.
+    """
+
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model="sonar-pro", 
+                messages=[
+                    {"role": "system", "content": system_instruction}, 
+                    {"role": "user", "content": user_prompt}
+                ], 
+                temperature=0.75 
+            )
+            content = response.choices[0].message.content
+            
+            content = re.sub(r'\[\d+\]', '', content)
+            content = content.replace("```html", "").replace("```", "").strip()
+            
+            blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
+            
+            while len(blocks) < 5: blocks.append("")
+            return blocks[:5]
+        except Exception as e:
+            time.sleep(2)
+            
+    return ["API Error"] * 5
 # ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
@@ -3455,6 +3536,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
