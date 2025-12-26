@@ -1828,15 +1828,19 @@ with tab_seo_main:
             st.session_state['force_radio_switch'] = False
         # -----------------------------------------------
 
-# === ИЗМЕНЕНИЕ: ДОБАВЛЕН ЧЕКБОКС ФИЛЬТРАЦИИ ===
+        # === ВОТ ТУТ МЕНЯЕМ (ДОБАВЛЯЕМ ГАЛОЧКУ) ===
         source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
         
-        # Текст подсказки
-        filter_help = """После того как собираются конкуренты (30 шт), мы автоматически анализируем их контент.
-Если галочка включена: мы исключаем из итогового анализа "сомнительные" ссылки (низкая общая релевантность относительно лидера ТОПа) и показываем их в отдельном окне.
-Если галочка выключена: мы берем просто лучшие сайты по позиции (Топ-10 или Топ-20), ничего не исключая."""
+        filter_help = """
+        ✅ ЕСЛИ ГАЛОЧКА СТОИТ:
+        Скрипт берет 30 сайтов, находит среди них слабые/нерелевантные и ВЫКИДЫВАЕТ их. 
+        В анализ попадают только сильные. Слабые будут показаны в отдельном окне справа.
         
-        use_smart_filter = st.checkbox("⚡ Исключать нерелевантных конкурентов из анализа", value=True, help=filter_help, key="cb_smart_filter")
+        ⬜ ЕСЛИ ГАЛОЧКИ НЕТ:
+        Скрипт берет просто Топ-10 (или 20) сайтов по порядку из выдачи. 
+        Даже если там мусор — он попадет в анализ. Ничего не исключается.
+        """
+        use_smart_filter = st.checkbox("⚡ Исключать нерелевантных конкурентов (Умный фильтр)", value=True, help=filter_help, key="cb_smart_filter")
         
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
@@ -2283,45 +2287,53 @@ with tab_seo_main:
             st.session_state['serp_trend_info'] = trend
             
             # === ЛОГИКА ФИЛЬТРАЦИИ (НОВАЯ) ===
-            # Проверяем состояние чекбокса
+            # Читаем состояние галочки, которую мы добавили выше
             should_filter = st.session_state.get("cb_smart_filter", True)
             
             if should_filter:
-                # --- ВАРИАНТ А: ФИЛЬТРАЦИЯ ВКЛЮЧЕНА ---
+                # --- ВАРИАНТ А: ФИЛЬТРАЦИЯ ВКЛЮЧЕНА (КАК РАНЬШЕ) ---
                 # 1. Исключаем плохие сайты из пула
                 bad_urls_set = set(item['url'] for item in bad_urls_dicts)
                 clean_data_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
                 
-                # 2. Отрезаем Топ-N из ОСТАВШИХСЯ
+                # 2. Отрезаем Топ-N из ОСТАВШИХСЯ (сильных)
                 if "API" in current_source_val:
                     final_clean_data = clean_data_pool[:user_target_top_n]
                 else:
                     final_clean_data = clean_data_pool
                 
-                # Логика для отображения исключенных в UI
+                # Логика для отображения исключенных в UI (правое окошко)
                 if bad_urls_dicts:
                     st.session_state['detected_anomalies'] = bad_urls_dicts
                     excluded_list = [item['url'] for item in bad_urls_dicts]
                     st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
-                    st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                    
+                    # В левое окно записываем только хороших
+                    all_good_urls_ordered = [d['url'] for d in final_clean_data]
+                    st.session_state['persistent_urls'] = "\n".join(all_good_urls_ordered)
+                    
                     st.toast(f"🧹 Авто-фильтр: Исключено {len(bad_urls_dicts)} слабых сайтов.", icon="🗑️")
                 else:
                     # Если фильтр включен, но плохих нет - просто чистим списки
-                    st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                    current_urls = [d['url'] for d in final_clean_data]
+                    st.session_state['persistent_urls'] = "\n".join(current_urls)
                     if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
                     
             else:
-                # --- ВАРИАНТ Б: ФИЛЬТРАЦИЯ ВЫКЛЮЧЕНА ---
+                # --- ВАРИАНТ Б: ФИЛЬТРАЦИЯ ВЫКЛЮЧЕНА (ВСЕ ПОДРЯД) ---
                 # Берем просто первые N сайтов из того, что скачали (без исключений)
                 clean_data_pool = data_for_graph # Берем всех как "чистых"
                 
                 if "API" in current_source_val:
+                    # Просто режем первые 10 (или 20) по порядку
                     final_clean_data = clean_data_pool[:user_target_top_n]
                 else:
                     final_clean_data = clean_data_pool
                 
-                # Принудительно очищаем списки исключений, чтобы UI был одинарным
-                st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                # Принудительно очищаем списки исключений, чтобы UI был одинарным (без правого окна)
+                all_raw_urls = [d['url'] for d in final_clean_data]
+                st.session_state['persistent_urls'] = "\n".join(all_raw_urls)
+                
                 if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
                 if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
                 
@@ -3582,4 +3594,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
