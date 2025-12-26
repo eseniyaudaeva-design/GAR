@@ -1828,7 +1828,16 @@ with tab_seo_main:
             st.session_state['force_radio_switch'] = False
         # -----------------------------------------------
 
+# === ИЗМЕНЕНИЕ: ДОБАВЛЕН ЧЕКБОКС ФИЛЬТРАЦИИ ===
         source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
+        
+        # Текст подсказки
+        filter_help = """После того как собираются конкуренты (30 шт), мы автоматически анализируем их контент.
+Если галочка включена: мы исключаем из итогового анализа "сомнительные" ссылки (низкая общая релевантность относительно лидера ТОПа) и показываем их в отдельном окне.
+Если галочка выключена: мы берем просто лучшие сайты по позиции (Топ-10 или Топ-20), ничего не исключая."""
+        
+        use_smart_filter = st.checkbox("⚡ Исключать нерелевантных конкурентов из анализа", value=True, help=filter_help, key="cb_smart_filter")
+        
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
@@ -2258,7 +2267,7 @@ with tab_seo_main:
             data_for_graph = comp_data_valid[:download_limit]
             targets_for_graph = [{'url': d['url'], 'pos': d['pos']} for d in data_for_graph]
 
-        # 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
+# 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
         with st.spinner("Анализ и фильтрация..."):
             
             # --- ЭТАП 1: Черновой прогон (по всем 30 сайтам) ---
@@ -2268,27 +2277,59 @@ with tab_seo_main:
             # Сохраняем ПОЛНЫЕ данные для графика (чтобы на нем были все)
             st.session_state['full_graph_data'] = results_full['relevance_top']
             
-            # Анализ аномалий по полному списку
+            # Анализ аномалий по полному списку (нужен в любом случае для инфо)
             df_rel_check = results_full['relevance_top']
             good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
             st.session_state['serp_trend_info'] = trend
             
-            # --- ЭТАП 2: Отбор чистовых (Топ-10/20 без мусора) ---
+            # === ЛОГИКА ФИЛЬТРАЦИИ (НОВАЯ) ===
+            # Проверяем состояние чекбокса
+            should_filter = st.session_state.get("cb_smart_filter", True)
             
-            # 1. Берем данные тех сайтов, которые НЕ в списке плохих
-            bad_urls_set = set(item['url'] for item in bad_urls_dicts)
-            clean_data_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
-            
-            # 2. Отрезаем ровно столько, сколько просил юзер (10 или 20)
-            if "API" in current_source_val:
-                final_clean_data = clean_data_pool[:user_target_top_n]
+            if should_filter:
+                # --- ВАРИАНТ А: ФИЛЬТРАЦИЯ ВКЛЮЧЕНА ---
+                # 1. Исключаем плохие сайты из пула
+                bad_urls_set = set(item['url'] for item in bad_urls_dicts)
+                clean_data_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
+                
+                # 2. Отрезаем Топ-N из ОСТАВШИХСЯ
+                if "API" in current_source_val:
+                    final_clean_data = clean_data_pool[:user_target_top_n]
+                else:
+                    final_clean_data = clean_data_pool
+                
+                # Логика для отображения исключенных в UI
+                if bad_urls_dicts:
+                    st.session_state['detected_anomalies'] = bad_urls_dicts
+                    excluded_list = [item['url'] for item in bad_urls_dicts]
+                    st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
+                    st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                    st.toast(f"🧹 Авто-фильтр: Исключено {len(bad_urls_dicts)} слабых сайтов.", icon="🗑️")
+                else:
+                    # Если фильтр включен, но плохих нет - просто чистим списки
+                    st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                    if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+                    
             else:
-                final_clean_data = clean_data_pool # Берем всех выживших
-            
+                # --- ВАРИАНТ Б: ФИЛЬТРАЦИЯ ВЫКЛЮЧЕНА ---
+                # Берем просто первые N сайтов из того, что скачали (без исключений)
+                clean_data_pool = data_for_graph # Берем всех как "чистых"
+                
+                if "API" in current_source_val:
+                    final_clean_data = clean_data_pool[:user_target_top_n]
+                else:
+                    final_clean_data = clean_data_pool
+                
+                # Принудительно очищаем списки исключений, чтобы UI был одинарным
+                st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+                if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
+                
+                st.toast(f"🛡️ Фильтр выключен. Взяты топ-{len(final_clean_data)} сайтов как есть.", icon="ℹ️")
+
+            # --- ЭТАП 2: ФИНАЛЬНЫЙ РАСЧЕТ ---
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
             
-            # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Только по элите)
-            # Медианы и TF-IDF пересчитаются строго по этому списку
             results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
             st.session_state.analysis_results = results_final
             
@@ -3541,3 +3582,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
