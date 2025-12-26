@@ -2423,7 +2423,7 @@ with tab_wholesale_main:
                 manual_html_source = None
 
         with col_key:
-            # Восстановлен ключ Perplexity по умолчанию
+            # === ЗАМЕНА: Жестко прописываем ваш ключ по умолчанию ===
             default_key = st.session_state.get('pplx_key_cache', "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")
             pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
@@ -3306,7 +3306,7 @@ with tab_wholesale_main:
             if use_sidebar:
                 row_data['Sidebar HTML'] = full_sidebar_code
 
-            # --- GEO ---
+# --- GEO ---
             if use_geo and client and global_geo_list:
                 selected_cities = global_geo_list
                 if len(selected_cities) > 20: selected_cities = random.sample(global_geo_list, 20)
@@ -3314,7 +3314,7 @@ with tab_wholesale_main:
                 geo_prompt = f"""Task: Write a short paragraph <p> about delivery options for "{header_for_ai}" to {cities_str}. Output HTML <p> only."""
                 try:
                     resp_geo = client.chat.completions.create(
-                        model="sonar-pro", 
+                        model="sonar-pro", # === УБЕДИТЕСЬ, ЧТО ТУТ sonar-pro ===
                         messages=[{"role": "system", "content": "You are a logistic summary generator."}, {"role": "user", "content": geo_prompt}],
                         temperature=0.4
                     )
@@ -3455,5 +3455,6 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
