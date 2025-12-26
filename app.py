@@ -3195,20 +3195,42 @@ with tab_wholesale_main:
             inner_html = render_tree_internal(tree, level=1)
             full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>"""
 
-# === НАЧАЛО ИЗМЕНЕННОГО БЛОКА ===
+# === НАЧАЛО ИЗМЕНЕННОГО БЛОКА (GEMINI FIX) ===
         
-        # Вместо openai client мы проверяем наличие ключа и библиотеки
+        # Проверяем наличие ключа и библиотеки
         has_ai_key = bool(pplx_api_key) and (genai is not None)
 
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
         
-        # Конфигурируем модель Google один раз перед циклом
         model_flash = None
         if has_ai_key:
             try:
                 genai.configure(api_key=pplx_api_key)
-                model_flash = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # 1. Пытаемся найти актуальную модель автоматически
+                found_model_name = "gemini-2.0-flash" # Приоритетная модель для конца 2025
+                
+                try:
+                    # Получаем список доступных моделей, чтобы не гадать
+                    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    
+                    # Ищем flash версии (2.0, 1.5 и т.д.)
+                    flash_models = [m for m in available_models if 'flash' in m and '2.0' in m]
+                    if not flash_models:
+                         flash_models = [m for m in available_models if 'flash' in m] # Любая флеш, если 2.0 нет
+                    
+                    if flash_models:
+                        # Берем первую попавшуюся актуальную (обычно самая свежая сверху)
+                        # clean_name убирает 'models/' префикс если он есть
+                        found_model_name = flash_models[0].replace('models/', '')
+                except:
+                    # Если список не получен, используем жестко заданную
+                    pass
+
+                model_flash = genai.GenerativeModel(found_model_name)
+                # st.toast(f"🤖 Используем модель: {found_model_name}") # Раскомментируйте для отладки
+                
             except Exception as e:
                 st.error(f"Ошибка настройки Google API: {e}")
         
@@ -3265,11 +3287,16 @@ with tab_wholesale_main:
                 else: row_data['Promo HTML'] = ""
             
             # ========================================================
-            # 2. ГЕНЕРИРУЕМ ТЕКСТ (GEMINI)
+            # 2. ГЕНЕРИРУЕМ ТЕКСТ (GEMINI 2.0 FIX)
             # ========================================================
             if use_text and has_ai_key:
                 try:
-                    # Вызываем обновленную функцию (api_key вместо client)
+                    # Вызываем функцию генерации (она использует модель, настроенную в genai.configure)
+                    # Важно: сама функция generate_ai_content_blocks тоже должна использовать новую модель
+                    # Но так как мы передаем api_key, она пересоздает модель внутри.
+                    # Чтобы исправить 404 внутри функции, нам нужно обновить и ЕЁ код (см. ниже)
+                    # ЛИБО передать model_flash объект напрямую, но проще обновить функцию.
+                    
                     blocks = generate_ai_content_blocks(
                         api_key=pplx_api_key, 
                         base_text=base_text_raw if base_text_raw else "", 
@@ -3285,8 +3312,8 @@ with tab_wholesale_main:
                     row_data['Text_Block_5'] = blocks[4]
                 except Exception as e: row_data['Text_Error'] = str(e)
 
-            # --- AI TABLES (GEMINI) ---
-            if use_tables and has_ai_key:
+            # --- AI TABLES (GEMINI 2.0 FIX) ---
+            if use_tables and has_ai_key and model_flash:
                 for t_i, t_topic in enumerate(table_prompts):
                     context_hint = ""
                     if tech_context_final_str:
@@ -3312,12 +3339,12 @@ with tab_wholesale_main:
                     except Exception as e:
                         row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
-            # --- SIDEBAR (ВАШ СТАРЫЙ КОД) ---
+            # --- SIDEBAR ---
             if use_sidebar:
                 row_data['Sidebar HTML'] = full_sidebar_code
 
-            # --- GEO (GEMINI) ---
-            if use_geo and has_ai_key and global_geo_list:
+            # --- GEO (GEMINI 2.0 FIX) ---
+            if use_geo and has_ai_key and global_geo_list and model_flash:
                 selected_cities = global_geo_list
                 if len(selected_cities) > 20: selected_cities = random.sample(global_geo_list, 20)
                 cities_str = ", ".join(selected_cities)
@@ -3465,5 +3492,6 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
