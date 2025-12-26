@@ -968,13 +968,6 @@ def parse_page(url, settings, query_context=""):
     except Exception:
         return None
         
-def math_round(number):
-    """
-    Математическое округление до целого.
-    0.5 всегда округляется вверх (2.5 -> 3, 3.5 -> 4).
-    """
-    return int(number + 0.5)
-
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     # Внутренняя функция округления
     def math_round(number):
@@ -1132,8 +1125,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Словоформы": forms_str,
             "Вхождений у вас": my_tf_count,
             
-            # !!!!!!!! ВОТ ЗДЕСЬ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ !!!!!!!!
-            # Мы выводим ABSOLUTE (2), а не TARGET (17)
+            # !!!!!!!! ЗДЕСЬ ТЕПЕРЬ АБСОЛЮТНАЯ МЕДИАНА (2, а не 17) !!!!!!!!
             "Медиана": rec_median_absolute, 
             
             "Минимум (конкур.)": obs_min,
@@ -2257,13 +2249,16 @@ with tab_seo_main:
             
             # 1. Берем данные тех сайтов, которые НЕ в списке плохих
             bad_urls_set = set(item['url'] for item in bad_urls_dicts)
-            clean_data_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
             
-            # 2. Отрезаем ровно столько, сколько просил юзер (10 или 20)
+            # === ИСПРАВЛЕННАЯ ЛОГИКА ФИЛЬТРАЦИИ ===
+            # Если это API - мы фильтруем и режем топ.
+            # Если это РУЧНОЙ режим - мы НЕ фильтруем (доверяем пользователю).
             if "API" in current_source_val:
+                clean_data_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
                 final_clean_data = clean_data_pool[:user_target_top_n]
             else:
-                final_clean_data = clean_data_pool # Берем всех выживших
+                # В ручном режиме используем ВСЕХ скачанных, не фильтруем "слабых"
+                final_clean_data = data_for_graph 
             
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
             
@@ -2969,7 +2964,7 @@ with tab_wholesale_main:
                 
                 if not has_match:
                     missing_words_log.add(kw)
-                    
+
         # 3. Проверяем САЙДБАР (Тоже умный поиск)
         if use_sidebar and global_sidebar_list:
             for kw in global_sidebar_list:
