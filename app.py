@@ -1790,6 +1790,7 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
             time.sleep(2)
             
     return ["API Error"] * 5
+
 # ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
@@ -2506,7 +2507,8 @@ with tab_wholesale_main:
         with col_key:
             # === ЗАМЕНА: Жестко прописываем ваш ключ по умолчанию ===
             default_key = st.session_state.get('pplx_key_cache', "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")
-            pplx_api_key = st.text_input("AI API Key", value=default_key, type="password")
+            # Добавил .strip() для надежности
+            pplx_api_key = st.text_input("AI API Key", value=default_key, type="password").strip()
             if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
 
     # ==========================================
@@ -3358,9 +3360,10 @@ with tab_wholesale_main:
                     2. HTML <table>...</table>.
                     3. Без Markdown.
                     """
+                    
                     try:
                         resp = client.chat.completions.create(
-                            model="sonar-pro", 
+                            model="sonar-pro",  # <--- ВАЖНО: sonar-pro
                             messages=[
                                 {"role": "system", "content": sys_p_table},
                                 {"role": "user", "content": usr_p_table}
@@ -3371,6 +3374,7 @@ with tab_wholesale_main:
                         clean_html = raw_html.replace("```html", "").replace("```", "").strip()
                         clean_html = re.sub(r'\[\d+\]', '', clean_html)
                         
+                        # Добавляем стили для Excel (чтобы были рамки)
                         soup_table = BeautifulSoup(clean_html, 'html.parser')
                         table_tag = soup_table.find('table')
                         if table_tag:
@@ -3379,6 +3383,7 @@ with tab_wholesale_main:
                                 cell['style'] = "border: 2px solid black; padding: 5px;"
                             final_table_html = str(table_tag)
                         else: final_table_html = clean_html
+                        
                         row_data[f'Table_{t_i+1}_HTML'] = final_table_html
                     except Exception as e:
                         row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
@@ -3536,7 +3541,3 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
-
-
-
-
