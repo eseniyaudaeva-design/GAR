@@ -1673,7 +1673,184 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     # Конфигурация Google API
     genai.configure(api_key=api_key)
     # Используем модель Gemini 1.5 Flash (быстрая и умная)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+Эта ошибка возникает потому, что в декабре 2025 года (текущая дата в вашем сценарии) модель gemini-1.5-flash уже считается устаревшей или перенесена в архив, и API Google возвращает 404.
+Вам нужно использовать более актуальную версию модели, например gemini-2.0-flash (которая вышла во второй половине 2025 года).
+Вот исправленный код. Я заменил название модели на gemini-2.0-flash и добавил механизм автоматического поиска доступной модели, если вдруг и это имя изменится.
+Замените весь блок инициализации и цикла (тот же самый фрагмент, что мы меняли в прошлый раз) на этот код:
+code
+Python
+# === НАЧАЛО ИЗМЕНЕННОГО БЛОКА (GEMINI FIX) ===
+        
+        # Проверяем наличие ключа и библиотеки
+        has_ai_key = bool(pplx_api_key) and (genai is not None)
+
+        progress_bar = status_box.progress(0)
+        total_steps = len(target_pages)
+        
+        model_flash = None
+        if has_ai_key:
+            try:
+                genai.configure(api_key=pplx_api_key)
+                
+                # 1. Пытаемся найти актуальную модель автоматически
+                found_model_name = "gemini-2.0-flash" # Приоритетная модель для конца 2025
+                
+                try:
+                    # Получаем список доступных моделей, чтобы не гадать
+                    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    
+                    # Ищем flash версии (2.0, 1.5 и т.д.)
+                    flash_models = [m for m in available_models if 'flash' in m and '2.0' in m]
+                    if not flash_models:
+                         flash_models = [m for m in available_models if 'flash' in m] # Любая флеш, если 2.0 нет
+                    
+                    if flash_models:
+                        # Берем первую попавшуюся актуальную (обычно самая свежая сверху)
+                        # clean_name убирает 'models/' префикс если он есть
+                        found_model_name = flash_models[0].replace('models/', '')
+                except:
+                    # Если список не получен, используем жестко заданную
+                    pass
+
+                model_flash = genai.GenerativeModel(found_model_name)
+                # st.toast(f"🤖 Используем модель: {found_model_name}") # Раскомментируйте для отладки
+                
+            except Exception as e:
+                st.error(f"Ошибка настройки Google API: {e}")
+        
+        for idx, page in enumerate(target_pages):
+            base_text_raw, tags_on_page, real_header_h2, err = get_page_data_for_gen(page['url'])
+            header_for_ai = real_header_h2 if real_header_h2 else page['name']
+            
+            row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
+            
+            # Загружаем статику
+            for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
+            
+            # Копия глобального контекста для ЭТОЙ страницы
+            current_page_seo_words = list(text_context_final_list)
+            
+            # --- TAGS GENERATION (ВАШ СТАРЫЙ КОД) ---
+            tags_html_parts = []
+            if use_tags:
+                html_collector = []
+                for kw in global_tags_list:
+                    if kw not in tags_map: continue 
+                    urls = tags_map[kw]
+                    valid_urls = [u for u in urls if u.rstrip('/') != page['url'].rstrip('/')]
+                    if valid_urls:
+                        selected_url = random.choice(valid_urls)
+                        cache_key = selected_url.rstrip('/')
+                        nm = url_name_cache.get(cache_key, kw)
+                        html_collector.append(f'<a href="{selected_url}" class="tag-link">{nm}</a>')
+                    else:
+                        if kw not in current_page_seo_words: current_page_seo_words.append(kw)
+
+                if html_collector:
+                    tags_html_parts = ['<div class="popular-tags">'] + html_collector + ['</div>']
+                    row_data['Tags HTML'] = "\n".join(tags_html_parts)
+                else: row_data['Tags HTML'] = ""
+
+            # --- PROMO GENERATION (ВАШ СТАРЫЙ КОД) ---
+            if use_promo:
+                candidates = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
+                random.shuffle(candidates)
+                selected_promo = candidates
+                if selected_promo:
+                    promo_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display: flex; flex-wrap: nowrap; gap: 15px; overflow-x: auto; padding-bottom: 15px; scrollbar-width: thin;">'
+                    for item in selected_promo:
+                        p_url = item['url']; p_img = item['img']
+                        cache_key = p_url.rstrip('/'); p_name = url_name_cache.get(cache_key, "Товар")
+                        promo_html += f'<div class="promo-card" style="min-width: 220px; width: 220px; flex-shrink: 0; border: 1px solid #eee; padding: 10px; border-radius: 5px; text-align: center;">'
+                        promo_html += f'<a href="{p_url}" style="text-decoration: none; color: #333;">'
+                        promo_html += f'<div style="height: 150px; overflow: hidden; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">'
+                        promo_html += f'<img src="{p_img}" alt="{p_name}" style="max-height: 100%; max-width: 100%; object-fit: contain;"></div>'
+                        promo_html += f'<div style="font-size: 13px; font-weight: bold; line-height: 1.3;">{p_name}</div></a></div>'
+                    promo_html += '</div></div>'
+                    row_data['Promo HTML'] = promo_html
+                else: row_data['Promo HTML'] = ""
+            
+            # ========================================================
+            # 2. ГЕНЕРИРУЕМ ТЕКСТ (GEMINI 2.0 FIX)
+            # ========================================================
+            if use_text and has_ai_key:
+                try:
+                    # Вызываем функцию генерации (она использует модель, настроенную в genai.configure)
+                    # Важно: сама функция generate_ai_content_blocks тоже должна использовать новую модель
+                    # Но так как мы передаем api_key, она пересоздает модель внутри.
+                    # Чтобы исправить 404 внутри функции, нам нужно обновить и ЕЁ код (см. ниже)
+                    # ЛИБО передать model_flash объект напрямую, но проще обновить функцию.
+                    
+                    blocks = generate_ai_content_blocks(
+                        api_key=pplx_api_key, 
+                        base_text=base_text_raw if base_text_raw else "", 
+                        tag_name=page['name'], 
+                        forced_header=header_for_ai,
+                        num_blocks=num_text_blocks_val, 
+                        seo_words=current_page_seo_words
+                    )
+                    row_data['Text_Block_1'] = blocks[0]
+                    row_data['Text_Block_2'] = blocks[1]
+                    row_data['Text_Block_3'] = blocks[2]
+                    row_data['Text_Block_4'] = blocks[3]
+                    row_data['Text_Block_5'] = blocks[4]
+                except Exception as e: row_data['Text_Error'] = str(e)
+
+            # --- AI TABLES (GEMINI 2.0 FIX) ---
+            if use_tables and has_ai_key and model_flash:
+                for t_i, t_topic in enumerate(table_prompts):
+                    context_hint = ""
+                    if tech_context_final_str:
+                        context_hint = f"Используй технические данные (марки, ГОСТы): {tech_context_final_str}."
+                    
+                    prompt_table = f"""
+                    Role: Expert metallurgist.
+                    Task: Create a technical HTML <table> for "{header_for_ai}".
+                    Topic: {t_topic}.
+                    Context: {context_hint}
+                    Requirements:
+                    1. Use real data only.
+                    2. Output raw HTML <table>...</table>.
+                    3. Add style="border-collapse: collapse; width: 100%;" to table.
+                    4. Add style="border: 1px solid black; padding: 5px;" to th/td.
+                    5. NO Markdown.
+                    """
+                    try:
+                        resp = model_flash.generate_content(prompt_table)
+                        clean_html = resp.text.replace("```html", "").replace("```", "").strip()
+                        if "<table" not in clean_html: clean_html = f"<table>{clean_html}</table>"
+                        row_data[f'Table_{t_i+1}_HTML'] = clean_html
+                    except Exception as e:
+                        row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
+
+            # --- SIDEBAR ---
+            if use_sidebar:
+                row_data['Sidebar HTML'] = full_sidebar_code
+
+            # --- GEO (GEMINI 2.0 FIX) ---
+            if use_geo and has_ai_key and global_geo_list and model_flash:
+                selected_cities = global_geo_list
+                if len(selected_cities) > 20: selected_cities = random.sample(global_geo_list, 20)
+                cities_str = ", ".join(selected_cities)
+                
+                geo_prompt = f"""
+                Task: Write a short paragraph <p> about delivery options for "{header_for_ai}" to these cities: {cities_str}. 
+                Output: Raw HTML <p> only. Language: Russian. No Markdown.
+                """
+                try:
+                    resp_geo = model_flash.generate_content(geo_prompt)
+                    clean_geo = resp_geo.text.replace("```html", "").replace("```", "").strip()
+                    row_data['IP_PROP4819'] = clean_geo
+                except Exception as e: row_data['IP_PROP4819'] = f"Error: {e}"
+
+            final_data.append(row_data)
+            progress_bar.progress((idx + 1) / total_steps)
+ВАЖНОЕ ДОПОЛНЕНИЕ:
+Вы также должны поправить название модели ВНУТРИ функции generate_ai_content_blocks (которую мы меняли в шаге 2 ранее). Найдите там строку:
+model = genai.GenerativeModel('gemini-1.5-flash')[1][4][5]
+И замените её на:
+model = genai.GenerativeModel('gemini-2.0-flash')
 
     # 1. Подготовка SEO-блока
     seo_words = seo_words or []
@@ -3492,6 +3669,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
