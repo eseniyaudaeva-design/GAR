@@ -1905,36 +1905,30 @@ with tab_seo_main:
         </style>
         """, unsafe_allow_html=True)
 
-st.markdown("""
+# Найти в коде место, где начинаются результаты (примерно после d_status = "Низкая")
+        st.success("Анализ готов!")
+        
+        # --- СТИЛИ (ОБЯЗАТЕЛЬНО С ЭТИМИ ОТСТУПАМИ) ---
+        st.markdown("""
         <style>
-            /* Убираем все стандартные стрелки браузера и Streamlit */
             details.custom-card summary::-webkit-details-marker { display: none !important; }
             details.custom-card summary { list-style: none !important; display: block !important; }
-            
             .custom-card {
                 background: #ffffff !important;
                 border: 1px solid #e2e8f0 !important;
                 border-radius: 10px !important;
                 margin-bottom: 12px !important;
                 overflow: hidden !important;
-                font-family: 'Inter', sans-serif !important;
             }
-            
             .custom-card.disabled { background: #f8fafc !important; }
-
             .custom-card-header {
                 padding: 12px 16px !important;
                 display: flex !important;
                 justify-content: space-between !important;
                 align-items: center !important;
                 cursor: pointer !important;
-                user-select: none !important;
             }
-
             .header-left { display: flex !important; align-items: center !important; gap: 10px !important; }
-            .header-right { display: flex !important; align-items: center !important; }
-
-            /* Наша кастомная стрелка */
             .card-arrow {
                 width: 0; height: 0; 
                 border-top: 5px solid transparent;
@@ -1944,10 +1938,7 @@ st.markdown("""
                 display: inline-block !important;
             }
             details[open] .card-arrow { transform: rotate(90deg); border-left-color: #277EFF; }
-
-            .card-icon { font-size: 18px !important; }
             .card-title { font-weight: 600 !important; color: #1e293b !important; font-size: 14px !important; }
-            
             .card-count {
                 background: #f1f5f9 !important;
                 color: #475569 !important;
@@ -1957,7 +1948,6 @@ st.markdown("""
                 font-weight: 700 !important;
                 border: 1px solid #e2e8f0 !important;
             }
-
             .custom-card-content {
                 padding: 12px 16px !important;
                 font-size: 13px !important;
@@ -1967,6 +1957,20 @@ st.markdown("""
                 background: #fafafa !important;
             }
         </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
+            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
+                <div style='font-size: 12px; color: #666;'>ШИРИНА (Охват тем)</div>
+                <div style='font-size: 24px; font-weight: bold; color: {w_color};'>{w_score}/100</div>
+            </div>
+            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {d_color};'>
+                <div style='font-size: 12px; color: #666;'>ГЛУБИНА (Цель: ~80)</div>
+                <div style='font-size: 24px; font-weight: bold; color: {d_color};'>{d_score}/100 <span style='font-size:14px; font-weight:normal;'>({d_status})</span></div>
+            </div>
+        </div>
+        <br>
         """, unsafe_allow_html=True)
 
         with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
@@ -3391,5 +3395,6 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
