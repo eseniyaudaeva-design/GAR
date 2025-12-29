@@ -169,38 +169,32 @@ def render_clean_block(title, icon, words_list):
     
     if count > 0:
         content_html = ", ".join(unique_words)
+        # Карточка раскрывается
         html_code = f"""
-        <details class="custom-card">
-            <summary class="custom-card-header">
-                <div class="header-left">
-                    <span class="card-arrow"></span>
-                    <span class="card-icon">{icon}</span>
-                    <span class="card-title">{title}</span>
+        <details class="details-card">
+            <summary class="card-summary">
+                <div>
+                    <span class="arrow-icon">▶</span>
+                    {icon} {title}
                 </div>
-                <div class="header-right">
-                    <span class="card-count">{count}</span>
-                </div>
+                <span class="count-tag">{count}</span>
             </summary>
-            <div class="custom-card-content">
+            <div class="card-content">
                 {content_html}
             </div>
         </details>
         """
     else:
+        # Если пусто - карточка неактивна (без контента)
         html_code = f"""
-        <div class="custom-card disabled">
-            <div class="custom-card-header">
-                <div class="header-left">
-                    <span class="card-arrow" style="opacity:0"></span>
-                    <span class="card-icon">{icon}</span>
-                    <span class="card-title" style="color:#9ca3af">{title}</span>
-                </div>
-                <div class="header-right">
-                    <span class="card-count">0</span>
-                </div>
+        <div class="details-card">
+            <div class="card-summary" style="cursor: default; color: #9ca3af;">
+                <div>{icon} {title}</div>
+                <span class="count-tag">0</span>
             </div>
         </div>
         """
+    
     st.markdown(html_code, unsafe_allow_html=True)
 
 def render_relevance_chart(df_rel, unique_key="default"):
@@ -1573,7 +1567,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             st.rerun()
     with c_info: st.markdown(f"<div style='text-align: center; margin-top: 10px;'><b>{current_page}</b> / {total_pages}</div>", unsafe_allow_html=True)
     with c_btn_next:
-        if st.button("➡️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
+        if st.button("⬅️", key=f"{key_prefix}_next", disabled=(current_page >= total_pages), use_container_width=True):
             st.session_state[f'{key_prefix}_page'] += 1
             st.rerun()
     st.markdown("---")
@@ -1905,60 +1899,6 @@ with tab_seo_main:
         </style>
         """, unsafe_allow_html=True)
 
-# Найти в коде место, где начинаются результаты (примерно после d_status = "Низкая")
-        st.success("Анализ готов!")
-        
-        # --- СТИЛИ (ОБЯЗАТЕЛЬНО С ЭТИМИ ОТСТУПАМИ) ---
-        st.markdown("""
-        <style>
-            details.custom-card summary::-webkit-details-marker { display: none !important; }
-            details.custom-card summary { list-style: none !important; display: block !important; }
-            .custom-card {
-                background: #ffffff !important;
-                border: 1px solid #e2e8f0 !important;
-                border-radius: 10px !important;
-                margin-bottom: 12px !important;
-                overflow: hidden !important;
-            }
-            .custom-card.disabled { background: #f8fafc !important; }
-            .custom-card-header {
-                padding: 12px 16px !important;
-                display: flex !important;
-                justify-content: space-between !important;
-                align-items: center !important;
-                cursor: pointer !important;
-            }
-            .header-left { display: flex !important; align-items: center !important; gap: 10px !important; }
-            .card-arrow {
-                width: 0; height: 0; 
-                border-top: 5px solid transparent;
-                border-bottom: 5px solid transparent;
-                border-left: 8px solid #94a3b8;
-                transition: transform 0.2s ease;
-                display: inline-block !important;
-            }
-            details[open] .card-arrow { transform: rotate(90deg); border-left-color: #277EFF; }
-            .card-title { font-weight: 600 !important; color: #1e293b !important; font-size: 14px !important; }
-            .card-count {
-                background: #f1f5f9 !important;
-                color: #475569 !important;
-                padding: 2px 10px !important;
-                border-radius: 20px !important;
-                font-size: 12px !important;
-                font-weight: 700 !important;
-                border: 1px solid #e2e8f0 !important;
-            }
-            .custom-card-content {
-                padding: 12px 16px !important;
-                font-size: 13px !important;
-                line-height: 1.6 !important;
-                color: #475569 !important;
-                border-top: 1px solid #f1f5f9 !important;
-                background: #fafafa !important;
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
         st.markdown(f"""
         <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
             <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
@@ -1977,11 +1917,13 @@ with tab_seo_main:
             if not st.session_state.get('orig_products'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
             else:
+                # Ряд 1
                 c1, c2, c3 = st.columns(3)
                 with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
                 with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
                 with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
                 
+                # Ряд 2
                 c4, c5, c6 = st.columns(3)
                 with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
                 with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
@@ -2903,43 +2845,21 @@ with tab_wholesale_main:
                 
                 if matches: tags_map[kw] = matches
 
-# --- База Промо (images_db.xlsx) ---
+        # --- База Промо (images_db.xlsx) ---
         p_img_map = {}
-        promo_matched_pool = []
-        urls_to_fetch_names = set()
         if use_promo and df_db_promo is not None:
-            # 1. Сначала заполняем общий словарь (чтобы не было ошибки NameError ниже)
             for _, row in df_db_promo.iterrows():
-                u = str(row.iloc[0]).strip().lower()
-                img = str(row.iloc[1]).strip()
-                if u and u != 'nan' and img and img != 'nan':
-                    p_img_map[u.rstrip('/')] = img
-            
-            # 2. Теперь фильтруем СТРОГО по списку слов из настроек
-            for kw in global_promo_list:
-                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                roots = [tr]
-                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
-                
-                matches_for_kw = []
-                for u, img in p_img_map.items():
-                    if any(root in u for root in roots):
-                        matches_for_kw.append({'url': u, 'img': img})
-                
-                if matches_for_kw:
-                    random.shuffle(matches_for_kw)
-                    # Берем по 2 товара на каждое слово
-                    for m in matches_for_kw[:2]:
-                        if m['url'] not in [p['url'] for p in promo_matched_pool]:
-                            promo_matched_pool.append(m)
-                            urls_to_fetch_names.add(m['url'])
-
+                u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
+                if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
+        
         # --- База Сайдбара (menu_structure.txt) ---
         all_menu_urls = []
         if use_sidebar:
+            # Сначала из UI
             if sidebar_content:
                 s_io = io.StringIO(sidebar_content)
                 all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
+            # Иначе с диска
             elif os.path.exists("data/menu_structure.txt"):
                 with open("data/menu_structure.txt", "r", encoding="utf-8") as f:
                     all_menu_urls = [l.strip() for l in f.readlines() if l.strip()]
@@ -2948,34 +2868,24 @@ with tab_wholesale_main:
         # 🔥 ЛОГИКА ПОИСКА ПОТЕРЯННЫХ СЛОВ (ОБНОВЛЕННАЯ)
         # =========================================================
         missing_words_log = set()
+        
+        # 1. Проверяем ТЕГИ
         if use_tags:
             for kw in global_tags_list:
-                if kw not in tags_map: missing_words_log.add(kw)
-        
-        if use_promo:
-            for kw in global_promo_list:
-                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                roots = [tr]
-                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
-                has_match = False
-                # Здесь p_img_map теперь существует, ошибки не будет
-                for u in p_img_map.keys():
-                    if any(r in u for r in roots):
-                        has_match = True
-                        break
-                if not has_match: missing_words_log.add(kw)
+                if kw not in tags_map: 
+                    missing_words_log.add(kw)
         
         # 2. Проверяем ПРОМО (Тоже умный поиск)
         if use_promo:
             for kw in global_promo_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                # Формируем корни для поиска
                 roots = [tr]
                 if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
                 
                 has_match = False
-                # ЗАМЕНА ТУТ: вместо p_img_map.keys() используем img_list
-                for entry in img_list: 
-                    if any(r in entry['url'] for r in roots):
+                for u in p_img_map.keys():
+                    if any(r in u for r in roots):
                         has_match = True
                         break
                 
@@ -3100,13 +3010,19 @@ with tab_wholesale_main:
                 # Ищем в keys() карты картинок
                 for u in p_img_map.keys():
                     if any(r in u for r in roots): matches.append(u)
-
-                for m in matches:
-                    if m not in used_urls:
-                        urls_to_fetch_names.add(m)
-                        # Теперь переменная существует, ошибки не будет
-                        promo_items_pool.append({'url': m, 'img': p_img_map[m]})
-                        used_urls.add(m)
+                
+                # === [ИСПРАВЛЕНИЕ] Ограничиваем: 1 слово = 1 ссылка ===
+                if matches:
+                    random.shuffle(matches) # Перемешиваем, чтобы было разнообразие
+                    
+                    found_for_this_kw = False
+                    for m in matches:
+                        if m not in used_urls:
+                            urls_to_fetch_names.add(m)
+                            promo_items_pool.append({'url': m, 'img': p_img_map[m]})
+                            used_urls.add(m)
+                            found_for_this_kw = True
+                            break # <-- ГЛАВНЫЙ ФИКС: Берем только ОДНУ ссылку на ОДНО слово
 
         sidebar_matched_urls = []
         if use_sidebar:
@@ -3234,48 +3150,34 @@ with tab_wholesale_main:
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             current_page_seo_words = list(text_context_final_list)
             
-# --- ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO) ---
+            # --- ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO) ---
+            # (Здесь оставляем вашу существующую логику тегов и промо, или просто инициализируем пустыми)
             row_data['Tags HTML'] = "" 
             row_data['Promo HTML'] = ""
             
             if use_tags:
                 html_collector = []
-                # Берем ТОЛЬКО те слова, которые пользователь ввел в поле "Список (Товары + Услуги)"
                 for kw in global_tags_list:
-                    # Ищем совпадения в базе ссылок именно для этого ключевого слова
                     if kw in tags_map:
-                        # Исключаем текущую страницу, чтобы не ссылаться на самого себя
                         valid = [u for u in tags_map[kw] if u.rstrip('/') != page['url'].rstrip('/')]
                         if valid:
                             sel = random.choice(valid)
                             nm = url_name_cache.get(sel.rstrip('/'), kw)
                             html_collector.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
-                
-                # Формируем контейнер тегов
+                        else:
+                             if kw not in current_page_seo_words: current_page_seo_words.append(kw)
                 if html_collector:
                     row_data['Tags HTML'] = '<div class="popular-tags">' + "\n".join(html_collector) + '</div>'
 
             if use_promo:
-                # Берем товары из нашего отфильтрованного пула (исключая текущую страницу)
-                cands = [p for p in promo_matched_pool if p['url'] != page['url'].rstrip('/')]
+                cands = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
                 random.shuffle(cands)
                 if cands:
-                    p_html = f'<div class="promo-section"><h3 style="margin-bottom:15px; font-size:1.1rem; font-weight:700;">{promo_title}</h3>'
-                    # flex-wrap: nowrap и overflow-x: auto делают скролл в одну линию
-                    p_html += '<div class="promo-grid-scroll" style="display:flex; gap:15px; overflow-x:auto; flex-wrap:nowrap; padding-bottom:15px; -webkit-overflow-scrolling:touch;">'
-                    for item in cands[:12]:
-                        p_name = url_name_cache.get(item['url'], "Товар")
-                        p_html += f'''
-                        <div class="promo-card-item" style="flex: 0 0 220px; min-width:220px; border:1px solid #eee; border-radius:8px; padding:10px; text-align:center; background:#fff;">
-                            <a href="{item["url"]}" style="text-decoration:none; color:#333;">
-                                <div style="height:120px; display:flex; align-items:center; justify-content:center; margin-bottom:10px;">
-                                    <img src="{item["img"]}" style="max-height:100px; max-width:100%; object-fit:contain;">
-                                </div>
-                                <div style="font-size:13px; font-weight:600; line-height:1.2; height:3em; overflow:hidden;">{p_name}</div>
-                            </a>
-                        </div>'''
+                    p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
+                    for item in cands:
+                        p_name = url_name_cache.get(item['url'].rstrip('/'), "Товар")
+                        p_html += f'<div class="promo-card" style="min-width:220px;"><a href="{item["url"]}"><img src="{item["img"]}" style="max-height:100px;"><br>{p_name}</a></div>'
                     p_html += '</div></div>'
-                    p_html += '<style>.promo-grid-scroll::-webkit-scrollbar {height:6px;} .promo-grid-scroll::-webkit-scrollbar-thumb {background:#ccc; border-radius:10px;}</style>'
                     row_data['Promo HTML'] = p_html
 
             # --- НЕЙРОСЕТЬ (PERPLEXITY) ---
@@ -3374,53 +3276,22 @@ with tab_wholesale_main:
         if has_tables: active_tabs.append("🧩 Таблицы")
         if has_visual: active_tabs.append("🎨 Визуал")
 
+        # Стили
         st.markdown("""
         <style>
-            .preview-box { border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+            .preview-box { border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; background: #fff; margin-bottom: 20px; }
             .preview-label { font-size: 12px; font-weight: bold; color: #888; text-transform: uppercase; margin-bottom: 5px; }
-            
-            /* Стили тегов */
             .popular-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-            .tag-link { background: #f0f2f5; color: #277EFF; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; font-weight: 500; border: 1px solid #e2e8f0; }
-            .tag-link:hover { background: #e2e8f0; }
-            
-            /* Стили Таблиц */
-            table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 15px; }
+            .tag-link { background: #f0f2f5; color: #333; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 13px; }
+            table { width: 100%; border-collapse: collapse; font-size: 14px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f8fafc; font-weight: bold; }
-            
-        /* Важно для скролла в превью Streamlit */
-        .promo-grid-scroll { 
-            display: flex !important; 
-            flex-wrap: nowrap !important; 
-            overflow-x: auto !important; 
-            gap: 15px; 
-            -webkit-overflow-scrolling: touch;
-        }
-        .promo-card-item { 
-            flex: 0 0 220px !important; 
-            width: 220px !important; 
-            border: 1px solid #eee; 
-            border-radius: 8px; 
-            padding: 10px; 
-            background: #fff;
-        }
-            /* Стили скроллбара для Chrome/Safari */
-            .promo-grid::-webkit-scrollbar { height: 6px; }
-            .promo-grid::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
-            .promo-grid::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
-            .promo-grid::-webkit-scrollbar-thumb:hover { background: #277EFF; }
-            
-            .promo-card { 
-                flex: 0 0 220px !important; /* Фиксированная ширина карточки */
-                background: white;
-                transition: transform 0.2s;
-            }
-            .promo-card:hover { transform: translateY(-5px); }
-            
-            /* Сайдбар */
+            th { background-color: #f2f2f2; font-weight: bold; }
             .sidebar-wrapper ul { list-style-type: none; padding-left: 10px; }
             .level-1-header { font-weight: bold; margin-top: 10px; color: #277EFF; }
+            /* Стили для карточек Промо */
+            .promo-grid { display: flex !important; flex-wrap: wrap; gap: 10px; }
+            .promo-card { width: 23%; box-sizing: border-box; }
+            .promo-card img { max-width: 100%; height: auto; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -3472,12 +3343,3 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
-
-
-
-
-
-
-
-
-
