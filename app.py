@@ -2903,41 +2903,43 @@ with tab_wholesale_main:
                 
                 if matches: tags_map[kw] = matches
 
-        # --- База Промо (images_db.xlsx) ---
+# --- База Промо (images_db.xlsx) ---
+        p_img_map = {}
         promo_matched_pool = []
         urls_to_fetch_names = set()
         if use_promo and df_db_promo is not None:
-            status_box.write("🔍 Фильтруем базу картинок...")
-            img_list = [] # Создаем этот список
+            # 1. Сначала заполняем общий словарь (чтобы не было ошибки NameError ниже)
             for _, row in df_db_promo.iterrows():
-                u, i = str(row.iloc[0]).strip().lower(), str(row.iloc[1]).strip()
-                if u and i and u != 'nan': 
-                    img_list.append({'url': u.rstrip('/'), 'img': i})
+                u = str(row.iloc[0]).strip().lower()
+                img = str(row.iloc[1]).strip()
+                if u and u != 'nan' and img and img != 'nan':
+                    p_img_map[u.rstrip('/')] = img
             
+            # 2. Теперь фильтруем СТРОГО по списку слов из настроек
             for kw in global_promo_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                 roots = [tr]
                 if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
                 
-                matches = [entry for entry in img_list if any(r in entry['url'] for r in roots)]
-                if matches:
-                    random.shuffle(matches)
-                    count = 0
-                    for m in matches:
+                matches_for_kw = []
+                for u, img in p_img_map.items():
+                    if any(root in u for root in roots):
+                        matches_for_kw.append({'url': u, 'img': img})
+                
+                if matches_for_kw:
+                    random.shuffle(matches_for_kw)
+                    # Берем по 2 товара на каждое слово
+                    for m in matches_for_kw[:2]:
                         if m['url'] not in [p['url'] for p in promo_matched_pool]:
                             promo_matched_pool.append(m)
                             urls_to_fetch_names.add(m['url'])
-                            count += 1
-                        if count >= 2: break # Берем по 2 товара на каждое слово
-        
+
         # --- База Сайдбара (menu_structure.txt) ---
         all_menu_urls = []
         if use_sidebar:
-            # Сначала из UI
             if sidebar_content:
                 s_io = io.StringIO(sidebar_content)
                 all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
-            # Иначе с диска
             elif os.path.exists("data/menu_structure.txt"):
                 with open("data/menu_structure.txt", "r", encoding="utf-8") as f:
                     all_menu_urls = [l.strip() for l in f.readlines() if l.strip()]
@@ -2946,12 +2948,22 @@ with tab_wholesale_main:
         # 🔥 ЛОГИКА ПОИСКА ПОТЕРЯННЫХ СЛОВ (ОБНОВЛЕННАЯ)
         # =========================================================
         missing_words_log = set()
-        
-        # 1. Проверяем ТЕГИ
         if use_tags:
             for kw in global_tags_list:
-                if kw not in tags_map: 
-                    missing_words_log.add(kw)
+                if kw not in tags_map: missing_words_log.add(kw)
+        
+        if use_promo:
+            for kw in global_promo_list:
+                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                roots = [tr]
+                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
+                has_match = False
+                # Здесь p_img_map теперь существует, ошибки не будет
+                for u in p_img_map.keys():
+                    if any(r in u for r in roots):
+                        has_match = True
+                        break
+                if not has_match: missing_words_log.add(kw)
         
         # 2. Проверяем ПРОМО (Тоже умный поиск)
         if use_promo:
@@ -3244,10 +3256,12 @@ with tab_wholesale_main:
                     row_data['Tags HTML'] = '<div class="popular-tags">' + "\n".join(html_collector) + '</div>'
 
             if use_promo:
+                # Берем товары из нашего отфильтрованного пула (исключая текущую страницу)
                 cands = [p for p in promo_matched_pool if p['url'] != page['url'].rstrip('/')]
                 random.shuffle(cands)
                 if cands:
                     p_html = f'<div class="promo-section"><h3 style="margin-bottom:15px; font-size:1.1rem; font-weight:700;">{promo_title}</h3>'
+                    # flex-wrap: nowrap и overflow-x: auto делают скролл в одну линию
                     p_html += '<div class="promo-grid-scroll" style="display:flex; gap:15px; overflow-x:auto; flex-wrap:nowrap; padding-bottom:15px; -webkit-overflow-scrolling:touch;">'
                     for item in cands[:12]:
                         p_name = url_name_cache.get(item['url'], "Товар")
@@ -3262,7 +3276,6 @@ with tab_wholesale_main:
                         </div>'''
                     p_html += '</div></div>'
                     p_html += '<style>.promo-grid-scroll::-webkit-scrollbar {height:6px;} .promo-grid-scroll::-webkit-scrollbar-thumb {background:#ccc; border-radius:10px;}</style>'
-                    row_data['Promo HTML'] = p_html
                     row_data['Promo HTML'] = p_html
 
             # --- НЕЙРОСЕТЬ (PERPLEXITY) ---
@@ -3363,7 +3376,7 @@ with tab_wholesale_main:
 
         st.markdown("""
         <style>
-            .preview-box { border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; background: #fff; margin-bottom: 20px; }
+            .preview-box { border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
             .preview-label { font-size: 12px; font-weight: bold; color: #888; text-transform: uppercase; margin-bottom: 5px; }
             
             /* Стили тегов */
@@ -3376,7 +3389,7 @@ with tab_wholesale_main:
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
             th { background-color: #f8fafc; font-weight: bold; }
             
-            /* Стили Промо-карусели */
+        /* Важно для скролла в превью Streamlit */
         .promo-grid-scroll { 
             display: flex !important; 
             flex-wrap: nowrap !important; 
@@ -3392,7 +3405,6 @@ with tab_wholesale_main:
             padding: 10px; 
             background: #fff;
         }
-            }
             /* Стили скроллбара для Chrome/Safari */
             .promo-grid::-webkit-scrollbar { height: 6px; }
             .promo-grid::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
@@ -3460,6 +3472,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
