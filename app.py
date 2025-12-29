@@ -2222,45 +2222,58 @@ with tab_seo_main:
             
 # === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
             
-            # 1. Определяем набор данных для проверки аномалий
+            # 1. Берем данные для проверки (полный список или топ)
             if "API" in current_source_val and 'full_graph_data' in st.session_state:
                 df_rel_check = st.session_state['full_graph_data']
             else:
                 df_rel_check = st.session_state.analysis_results['relevance_top']
             
-            # 2. Запускаем анализ (он нужен для графика, трендов и списка плохих url)
+            # 2. Ищем аномалии (кто слабый, кто сильный)
             good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
             st.session_state['serp_trend_info'] = trend
             
-            # 3. Применяем решение на основе ЧЕК-БОКСА
-            should_auto_filter = st.session_state.settings_auto_filter
+            # 3. ГЛАВНОЕ: Проверяем состояние вашей галочки
+            is_filter_enabled = st.session_state.get("settings_auto_filter", True)
             
-            if should_auto_filter and bad_urls_dicts:
-                # ВАРИАНТ А: Фильтр ВКЛЮЧЕН и есть кого фильтровать
-                st.session_state['detected_anomalies'] = bad_urls_dicts
-                
-                # Хорошие -> в активные
-                st.session_state['persistent_urls'] = "\n".join(good_urls)
-                
-                # Плохие -> в исключенные
-                excluded_list = [item['url'] for item in bad_urls_dicts]
-                st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
-                
-                st.toast(f"🧹 Авто-фильтр: Исключено {len(bad_urls_dicts)} слабых сайтов.", icon="🗑️")
-            
+            # СЦЕНАРИЙ А: Галочка СТОИТ (Фильтруем)
+            if is_filter_enabled:
+                if bad_urls_dicts:
+                    # Есть кого фильтровать -> Разделяем списки
+                    st.session_state['detected_anomalies'] = bad_urls_dicts
+                    
+                    # Хорошие -> в левое окно
+                    st.session_state['persistent_urls'] = "\n".join(good_urls)
+                    
+                    # Плохие -> в правое окно
+                    excluded_list = [item['url'] for item in bad_urls_dicts]
+                    st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
+                    
+                    st.toast(f"🧹 Фильтр ВКЛ: Исключено {len(bad_urls_dicts)} слабых сайтов", icon="🗑️")
+                else:
+                    # Аномалий нет -> Оставляем всех
+                    all_urls = [d['url'] for d in final_clean_data]
+                    st.session_state['persistent_urls'] = "\n".join(all_urls)
+                    
+                    # Чистим хвосты (если раньше были исключенные)
+                    if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+                    if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
+                    
+                    st.toast("✅ Фильтр ВКЛ: Все сайты прошли проверку", icon="🛡️")
+
+            # СЦЕНАРИЙ Б: Галочка СНЯТА (Не фильтруем)
             else:
-                # ВАРИАНТ Б: Фильтр ВЫКЛЮЧЕН (или фильтровать некого)
-                # Берем ВСЕХ (и хороших, и плохих), кто участвовал в финальном расчете
-                # Важно: берем из final_clean_data, чтобы сохранить порядок
-                all_current_urls = [d['url'] for d in final_clean_data]
-                st.session_state['persistent_urls'] = "\n".join(all_current_urls)
+                # Принудительно оставляем ВСЕХ (и сильных, и слабых)
+                all_urls = [d['url'] for d in final_clean_data]
+                st.session_state['persistent_urls'] = "\n".join(all_urls)
                 
-                # Очищаем список исключенных, так как пользователь решил их не выкидывать
+                # Принудительно ОЧИЩАЕМ список исключенных
                 if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
                 if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
                 
-                if not should_auto_filter and bad_urls_dicts:
-                    st.toast(f"🛡️ Фильтр отключен. {len(bad_urls_dicts)} слабых сайтов оставлены.", icon="ℹ️")
+                if bad_urls_dicts:
+                    st.toast(f"🛑 Фильтр ВЫКЛ: {len(bad_urls_dicts)} слабых сайтов оставлены в анализе", icon="👀")
+                else:
+                    st.toast("🛑 Фильтр ВЫКЛ: Все сайты на месте", icon="👀")
             # ==============================================================
 
             # Классификация семантики (по финальным данным)
@@ -3471,6 +3484,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
