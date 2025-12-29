@@ -2907,11 +2907,12 @@ with tab_wholesale_main:
         promo_matched_pool = []
         urls_to_fetch_names = set()
         if use_promo and df_db_promo is not None:
-            status_box.write("🔍 Фильтруем базу картинок по списку промо-слов...")
-            img_list = []
+            status_box.write("🔍 Фильтруем базу картинок...")
+            img_list = [] # Создаем этот список
             for _, row in df_db_promo.iterrows():
                 u, i = str(row.iloc[0]).strip().lower(), str(row.iloc[1]).strip()
-                if u and i and u != 'nan': img_list.append({'url': u.rstrip('/'), 'img': i})
+                if u and i and u != 'nan': 
+                    img_list.append({'url': u.rstrip('/'), 'img': i})
             
             for kw in global_promo_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
@@ -3459,6 +3460,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
