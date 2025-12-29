@@ -2904,11 +2904,30 @@ with tab_wholesale_main:
                 if matches: tags_map[kw] = matches
 
         # --- База Промо (images_db.xlsx) ---
-        p_img_map = {}
+        promo_matched_pool = []
+        urls_to_fetch_names = set()
         if use_promo and df_db_promo is not None:
+            status_box.write("🔍 Фильтруем базу картинок по списку промо-слов...")
+            img_list = []
             for _, row in df_db_promo.iterrows():
-                u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
-                if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
+                u, i = str(row.iloc[0]).strip().lower(), str(row.iloc[1]).strip()
+                if u and i and u != 'nan': img_list.append({'url': u.rstrip('/'), 'img': i})
+            
+            for kw in global_promo_list:
+                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                roots = [tr]
+                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
+                
+                matches = [entry for entry in img_list if any(r in entry['url'] for r in roots)]
+                if matches:
+                    random.shuffle(matches)
+                    count = 0
+                    for m in matches:
+                        if m['url'] not in [p['url'] for p in promo_matched_pool]:
+                            promo_matched_pool.append(m)
+                            urls_to_fetch_names.add(m['url'])
+                            count += 1
+                        if count >= 2: break # Берем по 2 товара на каждое слово
         
         # --- База Сайдбара (menu_structure.txt) ---
         all_menu_urls = []
@@ -3224,26 +3243,25 @@ with tab_wholesale_main:
                     row_data['Tags HTML'] = '<div class="popular-tags">' + "\n".join(html_collector) + '</div>'
 
             if use_promo:
-                # Фильтруем пул товаров: убираем те, что не найдены в базе или являются текущей страницей
-                cands = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
+                cands = [p for p in promo_matched_pool if p['url'] != page['url'].rstrip('/')]
                 random.shuffle(cands)
                 if cands:
-                    # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: flex-wrap: nowrap для прокрутки в одну строку
-                    p_html = f'<div class="promo-section"><h3>{promo_title}</h3>'
-                    p_html += '<div class="promo-grid" style="display:flex; gap:15px; overflow-x:auto; flex-wrap:nowrap; padding-bottom:15px; -webkit-overflow-scrolling:touch;">'
-                    for item in cands:
-                        p_name = url_name_cache.get(item['url'].rstrip('/'), "Товар")
-                        # Добавляем flex: 0 0 auto, чтобы карточки не сжимались
+                    p_html = f'<div class="promo-section"><h3 style="margin-bottom:15px; font-size:1.1rem; font-weight:700;">{promo_title}</h3>'
+                    p_html += '<div class="promo-grid-scroll" style="display:flex; gap:15px; overflow-x:auto; flex-wrap:nowrap; padding-bottom:15px; -webkit-overflow-scrolling:touch;">'
+                    for item in cands[:12]:
+                        p_name = url_name_cache.get(item['url'], "Товар")
                         p_html += f'''
-                        <div class="promo-card" style="flex: 0 0 220px; min-width:220px; border:1px solid #eee; padding:10px; border-radius:8px; text-align:center;">
+                        <div class="promo-card-item" style="flex: 0 0 220px; min-width:220px; border:1px solid #eee; border-radius:8px; padding:10px; text-align:center; background:#fff;">
                             <a href="{item["url"]}" style="text-decoration:none; color:#333;">
                                 <div style="height:120px; display:flex; align-items:center; justify-content:center; margin-bottom:10px;">
-                                    <img src="{item["img"]}" style="max-height:100%; max-width:100%; object-fit:contain;">
+                                    <img src="{item["img"]}" style="max-height:100px; max-width:100%; object-fit:contain;">
                                 </div>
-                                <div style="font-size:14px; font-weight:600; line-height:1.2; height:3.6em; overflow:hidden;">{p_name}</div>
+                                <div style="font-size:13px; font-weight:600; line-height:1.2; height:3em; overflow:hidden;">{p_name}</div>
                             </a>
                         </div>'''
                     p_html += '</div></div>'
+                    p_html += '<style>.promo-grid-scroll::-webkit-scrollbar {height:6px;} .promo-grid-scroll::-webkit-scrollbar-thumb {background:#ccc; border-radius:10px;}</style>'
+                    row_data['Promo HTML'] = p_html
                     row_data['Promo HTML'] = p_html
 
             # --- НЕЙРОСЕТЬ (PERPLEXITY) ---
@@ -3358,13 +3376,21 @@ with tab_wholesale_main:
             th { background-color: #f8fafc; font-weight: bold; }
             
             /* Стили Промо-карусели */
-            .promo-grid { 
-                display: flex !important; 
-                flex-wrap: nowrap !important; /* ЗАПРЕТ ПЕРЕНОСА */
-                gap: 15px; 
-                overflow-x: auto !important; /* ВКЛЮЧЕНИЕ СКРОЛЛА */
-                padding: 10px 5px 20px 5px;
-                scrollbar-width: thin; /* Тонкий скролл для Firefox */
+        .promo-grid-scroll { 
+            display: flex !important; 
+            flex-wrap: nowrap !important; 
+            overflow-x: auto !important; 
+            gap: 15px; 
+            -webkit-overflow-scrolling: touch;
+        }
+        .promo-card-item { 
+            flex: 0 0 220px !important; 
+            width: 220px !important; 
+            border: 1px solid #eee; 
+            border-radius: 8px; 
+            padding: 10px; 
+            background: #fff;
+        }
             }
             /* Стили скроллбара для Chrome/Safari */
             .promo-grid::-webkit-scrollbar { height: 6px; }
@@ -3433,6 +3459,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
