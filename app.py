@@ -170,30 +170,34 @@ def render_clean_block(title, icon, words_list):
     if count > 0:
         content_html = ", ".join(unique_words)
         html_code = f"""
-        <details class="details-card">
-            <summary class="card-summary">
-                <div class="summary-left">
-                    <span class="arrow-icon">▶</span>
+        <details class="custom-card">
+            <summary class="custom-card-header">
+                <div class="header-left">
+                    <span class="card-arrow"></span>
                     <span class="card-icon">{icon}</span>
                     <span class="card-title">{title}</span>
                 </div>
-                <span class="count-tag">{count}</span>
+                <div class="header-right">
+                    <span class="card-count">{count}</span>
+                </div>
             </summary>
-            <div class="card-content">
+            <div class="custom-card-content">
                 {content_html}
             </div>
         </details>
         """
     else:
         html_code = f"""
-        <div class="details-card disabled">
-            <div class="card-summary">
-                <div class="summary-left">
-                    <span class="arrow-icon" style="visibility:hidden">▶</span>
+        <div class="custom-card disabled">
+            <div class="custom-card-header">
+                <div class="header-left">
+                    <span class="card-arrow" style="opacity:0"></span>
                     <span class="card-icon">{icon}</span>
-                    <span class="card-title" style="color: #9ca3af;">{title}</span>
+                    <span class="card-title" style="color:#9ca3af">{title}</span>
                 </div>
-                <span class="count-tag">0</span>
+                <div class="header-right">
+                    <span class="card-count">0</span>
+                </div>
             </div>
         </div>
         """
@@ -1901,57 +1905,66 @@ with tab_seo_main:
         </style>
         """, unsafe_allow_html=True)
 
-# --- СТИЛИ И КАРТОЧКИ ---
-        st.markdown("""
+st.markdown("""
         <style>
-            .details-card {
-                background-color: #ffffff;
-                border: 1px solid #e5e7eb;
-                border-radius: 8px;
-                margin-bottom: 8px;
-                width: 100%;
+            /* Убираем все стандартные стрелки браузера и Streamlit */
+            details.custom-card summary::-webkit-details-marker { display: none !important; }
+            details.custom-card summary { list-style: none !important; display: block !important; }
+            
+            .custom-card {
+                background: #ffffff !important;
+                border: 1px solid #e2e8f0 !important;
+                border-radius: 10px !important;
+                margin-bottom: 12px !important;
+                overflow: hidden !important;
+                font-family: 'Inter', sans-serif !important;
             }
-            .details-card.disabled { background-color: #f9fafb; }
-            .card-summary {
-                padding: 10px 14px;
-                cursor: pointer;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                list-style: none;
+            
+            .custom-card.disabled { background: #f8fafc !important; }
+
+            .custom-card-header {
+                padding: 12px 16px !important;
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                cursor: pointer !important;
+                user-select: none !important;
             }
-            .card-summary::-webkit-details-marker { display: none; }
-            .summary-left {
-                display: flex;
-                align-items: center;
-                gap: 8px;
+
+            .header-left { display: flex !important; align-items: center !important; gap: 10px !important; }
+            .header-right { display: flex !important; align-items: center !important; }
+
+            /* Наша кастомная стрелка */
+            .card-arrow {
+                width: 0; height: 0; 
+                border-top: 5px solid transparent;
+                border-bottom: 5px solid transparent;
+                border-left: 8px solid #94a3b8;
+                transition: transform 0.2s ease;
+                display: inline-block !important;
             }
-            .arrow-icon {
-                font-size: 10px;
-                color: #9ca3af;
-                transition: transform 0.2s;
-                display: inline-block;
-                width: 10px;
+            details[open] .card-arrow { transform: rotate(90deg); border-left-color: #277EFF; }
+
+            .card-icon { font-size: 18px !important; }
+            .card-title { font-weight: 600 !important; color: #1e293b !important; font-size: 14px !important; }
+            
+            .card-count {
+                background: #f1f5f9 !important;
+                color: #475569 !important;
+                padding: 2px 10px !important;
+                border-radius: 20px !important;
+                font-size: 12px !important;
+                font-weight: 700 !important;
+                border: 1px solid #e2e8f0 !important;
             }
-            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
-            .card-title { font-weight: 600; font-size: 14px; color: #1f2937; }
-            .count-tag {
-                background: #f3f4f6;
-                color: #4b5563;
-                padding: 2px 8px;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: 700;
-                min-width: 24px;
-                text-align: center;
-            }
-            .card-content {
-                padding: 12px 14px;
-                border-top: 1px solid #f3f4f6;
-                font-size: 13px;
-                color: #4b5563;
-                background-color: #fafafa;
-                border-radius: 0 0 8px 8px;
+
+            .custom-card-content {
+                padding: 12px 16px !important;
+                font-size: 13px !important;
+                line-height: 1.6 !important;
+                color: #475569 !important;
+                border-top: 1px solid #f1f5f9 !important;
+                background: #fafafa !important;
             }
         </style>
         """, unsafe_allow_html=True)
@@ -1960,13 +1973,11 @@ with tab_seo_main:
             if not st.session_state.get('orig_products'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
             else:
-                # Ряд 1
                 c1, c2, c3 = st.columns(3)
                 with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
                 with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
                 with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
                 
-                # Ряд 2
                 c4, c5, c6 = st.columns(3)
                 with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
                 with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
@@ -3380,4 +3391,5 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
