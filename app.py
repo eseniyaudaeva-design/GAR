@@ -19,6 +19,8 @@ import random
 import streamlit.components.v1 as components
 import copy
 import plotly.graph_objects as go
+import pickle
+import datetime
 
 # ==========================================
 # FIX FOR PYTHON 3.11+
@@ -1693,7 +1695,7 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
 # ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
-tab_seo_main, tab_wholesale_main = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор"])
+tab_seo_main, tab_wholesale_main, tab_projects = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор", "📁 Проекты"])
 
 # ------------------------------------------
 # TAB 1: SEO ANALYSIS (KEPT AS IS)
@@ -3343,3 +3345,117 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
+# ==========================================
+# TAB 3: PROJECT MANAGER (SAVE/LOAD)
+# ==========================================
+with tab_projects:
+    st.header("📁 Управление проектами")
+    st.markdown("Здесь вы можете сохранить текущее состояние анализа в файл или загрузить ранее сохраненный проект.")
+
+    col_save, col_load = st.columns(2)
+
+    # --- БЛОК СОХРАНЕНИЯ ---
+    with col_save:
+        with st.container(border=True):
+            st.subheader("💾 Сохранить проект")
+            
+            if not st.session_state.get('analysis_done'):
+                st.warning("⚠️ Сначала проведите анализ (Вкладка SEO), чтобы было что сохранять.")
+            else:
+                st.info("Будут сохранены: все таблицы, списки семантики, настройки, ссылки конкурентов и результаты генерации.")
+                
+                # Генерируем имя файла
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+                query_slug = transliterate_text(st.session_state.get('query_input', 'project'))[:20]
+                default_filename = f"GAR_PRO_{query_slug}_{timestamp}.pkl"
+                
+                # Собираем СЛЕПОК состояния
+                project_snapshot = {
+                    "meta": {
+                        "version": "2.6",
+                        "date": str(datetime.datetime.now())
+                    },
+                    "state": {}
+                }
+                
+                # Список ключей, которые критически важно сохранить
+                keys_to_save = [
+                    # 1. Результаты анализа
+                    'analysis_results', 'analysis_done', 'naming_table_df', 'ideal_h1_result',
+                    'detected_anomalies', 'serp_trend_info', 'full_graph_data',
+                    
+                    # 2. Семантика (Текущая и Оригинальная)
+                    'categorized_products', 'categorized_services', 'categorized_commercial',
+                    'categorized_dimensions', 'categorized_geo', 'categorized_general', 'categorized_sensitive',
+                    'orig_products', 'orig_services', 'orig_commercial', 
+                    'orig_dimensions', 'orig_geo', 'orig_general',
+                    'sensitive_words_input_final', 'auto_tags_words', 'auto_promo_words',
+                    
+                    # 3. Вводные данные и Настройки виджетов
+                    'my_url_input', 'query_input', 'my_content_input', 'my_page_source_radio',
+                    'competitor_source_radio', 'persistent_urls', 'excluded_urls_auto',
+                    'settings_excludes', 'settings_stops', 'arsenkin_token', 'yandex_dict_key',
+                    'settings_ua', 'settings_search_engine', 'settings_region', 'settings_top_n',
+                    'settings_noindex', 'settings_alt', 'settings_numbers', 'settings_norm',
+                    
+                    # 4. Результаты генерации (если были)
+                    'gen_result_df', 'unified_excel_data'
+                ]
+                
+                # Заполняем словарь
+                for k in keys_to_save:
+                    if k in st.session_state:
+                        project_snapshot["state"][k] = st.session_state[k]
+
+                # Сериализация
+                try:
+                    pickle_data = pickle.dumps(project_snapshot)
+                    
+                    st.download_button(
+                        label="📥 Скачать файл проекта (.pkl)",
+                        data=pickle_data,
+                        file_name=default_filename,
+                        mime="application/octet-stream",
+                        type="primary",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Ошибка при упаковке данных: {e}")
+
+    # --- БЛОК ЗАГРУЗКИ ---
+    with col_load:
+        with st.container(border=True):
+            st.subheader("📂 Загрузить проект")
+            
+            uploaded_file = st.file_uploader("Выберите файл .pkl", type=["pkl"], key="project_loader")
+            
+            if uploaded_file is not None:
+                try:
+                    # Загружаем объект
+                    loaded_data = pickle.load(uploaded_file)
+                    
+                    # Проверка валидности
+                    if isinstance(loaded_data, dict) and "state" in loaded_data:
+                        st.success(f"Проект от {loaded_data['meta'].get('date', 'Unknown')} распознан!")
+                        
+                        if st.button("🚀 ВОССТАНОВИТЬ СОСТОЯНИЕ", type="primary", use_container_width=True):
+                            # Восстановление
+                            state_dict = loaded_data["state"]
+                            count_restored = 0
+                            for k, v in state_dict.items():
+                                st.session_state[k] = v
+                                count_restored += 1
+                            
+                            # Принудительные флаги для UI
+                            st.session_state['analysis_done'] = True
+                            
+                            # Уведомление и перезагрузка
+                            st.toast(f"✅ Успешно восстановлено {count_restored} параметров!", icon="🎉")
+                            time.sleep(1)
+                            st.rerun()
+                    else:
+                        st.error("❌ Неверный формат файла проекта.")
+                except Exception as e:
+                    st.error(f"❌ Ошибка чтения файла: {e}")
+
