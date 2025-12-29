@@ -1793,8 +1793,17 @@ with tab_seo_main:
     # ===========================================================
 
         st.markdown("### Списки (Stop / Exclude)")
-        st.text_area("Не учитывать домены", DEFAULT_EXCLUDE, height=100, key="settings_excludes")
-        st.text_area("Стоп-слова", DEFAULT_STOPS, height=100, key="settings_stops")
+        
+        # 1. Сначала инициализируем значения в памяти, если их там нет
+        if "settings_excludes" not in st.session_state:
+            st.session_state.settings_excludes = DEFAULT_EXCLUDE
+        if "settings_stops" not in st.session_state:
+            st.session_state.settings_stops = DEFAULT_STOPS
+
+        # 2. Рисуем виджеты БЕЗ передачи значения (value), 
+        # так как Streamlit сам подтянет его из st.session_state по ключу (key)
+        st.text_area("Не учитывать домены", height=100, key="settings_excludes")
+        st.text_area("Стоп-слова", height=100, key="settings_stops")
         if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
             # === ОЧИСТКА ВСЕХ СТАРЫХ ДАННЫХ ===
             st.session_state.analysis_results = None
@@ -3464,4 +3473,5 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
