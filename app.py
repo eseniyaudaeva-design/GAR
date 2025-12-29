@@ -3355,6 +3355,30 @@ with tab_projects:
 
     col_save, col_load = st.columns(2)
 
+    # --- ФУНКЦИЯ ВОССТАНОВЛЕНИЯ (CALLBACK) ---
+    def restore_state_callback(data_to_restore):
+        """
+        Эта функция запускается ДО перерисовки интерфейса.
+        Поэтому здесь можно безопасно обновлять session_state.
+        """
+        try:
+            state_dict = data_to_restore["state"]
+            restored_count = 0
+            
+            # 1. Обновляем session_state
+            for k, v in state_dict.items():
+                st.session_state[k] = v
+                restored_count += 1
+            
+            # 2. Принудительные флаги
+            st.session_state['analysis_done'] = True
+            
+            # 3. Уведомление (появится после перезагрузки)
+            st.toast(f"✅ Успешно восстановлено {restored_count} параметров!", icon="🎉")
+            
+        except Exception as e:
+            st.error(f"Ошибка внутри callback: {e}")
+
     # --- БЛОК СОХРАНЕНИЯ ---
     with col_save:
         with st.container(border=True):
@@ -3365,12 +3389,10 @@ with tab_projects:
             else:
                 st.info("Будут сохранены: все таблицы, списки семантики, настройки, ссылки конкурентов и результаты генерации.")
                 
-                # Генерируем имя файла
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
                 query_slug = transliterate_text(st.session_state.get('query_input', 'project'))[:20]
                 default_filename = f"GAR_PRO_{query_slug}_{timestamp}.pkl"
                 
-                # Собираем СЛЕПОК состояния
                 project_snapshot = {
                     "meta": {
                         "version": "2.6",
@@ -3379,39 +3401,29 @@ with tab_projects:
                     "state": {}
                 }
                 
-                # Список ключей, которые критически важно сохранить
+                # Ключи для сохранения
                 keys_to_save = [
-                    # 1. Результаты анализа
                     'analysis_results', 'analysis_done', 'naming_table_df', 'ideal_h1_result',
                     'detected_anomalies', 'serp_trend_info', 'full_graph_data',
-                    
-                    # 2. Семантика (Текущая и Оригинальная)
                     'categorized_products', 'categorized_services', 'categorized_commercial',
                     'categorized_dimensions', 'categorized_geo', 'categorized_general', 'categorized_sensitive',
                     'orig_products', 'orig_services', 'orig_commercial', 
                     'orig_dimensions', 'orig_geo', 'orig_general',
                     'sensitive_words_input_final', 'auto_tags_words', 'auto_promo_words',
-                    
-                    # 3. Вводные данные и Настройки виджетов
                     'my_url_input', 'query_input', 'my_content_input', 'my_page_source_radio',
                     'competitor_source_radio', 'persistent_urls', 'excluded_urls_auto',
                     'settings_excludes', 'settings_stops', 'arsenkin_token', 'yandex_dict_key',
                     'settings_ua', 'settings_search_engine', 'settings_region', 'settings_top_n',
                     'settings_noindex', 'settings_alt', 'settings_numbers', 'settings_norm',
-                    
-                    # 4. Результаты генерации (если были)
                     'gen_result_df', 'unified_excel_data'
                 ]
                 
-                # Заполняем словарь
                 for k in keys_to_save:
                     if k in st.session_state:
                         project_snapshot["state"][k] = st.session_state[k]
 
-                # Сериализация
                 try:
                     pickle_data = pickle.dumps(project_snapshot)
-                    
                     st.download_button(
                         label="📥 Скачать файл проекта (.pkl)",
                         data=pickle_data,
@@ -3432,28 +3444,22 @@ with tab_projects:
             
             if uploaded_file is not None:
                 try:
-                    # Загружаем объект
                     loaded_data = pickle.load(uploaded_file)
                     
-                    # Проверка валидности
                     if isinstance(loaded_data, dict) and "state" in loaded_data:
-                        st.success(f"Проект от {loaded_data['meta'].get('date', 'Unknown')} распознан!")
+                        date_str = loaded_data['meta'].get('date', 'Неизвестно')
+                        st.success(f"Проект распознан! (Дата: {date_str})")
                         
-                        if st.button("🚀 ВОССТАНОВИТЬ СОСТОЯНИЕ", type="primary", use_container_width=True):
-                            # Восстановление
-                            state_dict = loaded_data["state"]
-                            count_restored = 0
-                            for k, v in state_dict.items():
-                                st.session_state[k] = v
-                                count_restored += 1
-                            
-                            # Принудительные флаги для UI
-                            st.session_state['analysis_done'] = True
-                            
-                            # Уведомление и перезагрузка
-                            st.toast(f"✅ Успешно восстановлено {count_restored} параметров!", icon="🎉")
-                            time.sleep(1)
-                            st.rerun()
+                        # ИСПОЛЬЗУЕМ ON_CLICK И ARGS
+                        # Это главное исправление: функция restore_state_callback вызовется ДО того,
+                        # как Streamlit начнет отрисовывать виджеты заново.
+                        st.button(
+                            "🚀 ВОССТАНОВИТЬ СОСТОЯНИЕ", 
+                            type="primary", 
+                            use_container_width=True,
+                            on_click=restore_state_callback,
+                            args=(loaded_data,)
+                        )
                     else:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
