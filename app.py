@@ -1839,17 +1839,24 @@ with tab_seo_main:
         st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
         st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
         
-        # ИЗМЕНЕНИЕ: Убрали 30, оставили только 10 и 20
+# ИЗМЕНЕНИЕ: Убрали 30, оставили только 10 и 20
         st.selectbox("Кол-во конкурентов для анализа", [10, 20], index=0, key="settings_top_n")
         
-        st.checkbox("Исключать <noindex>", True, key="settings_noindex")
-        st.checkbox("Учитывать Alt/Title", False, key="settings_alt")
-        st.checkbox("Учитывать числа", False, key="settings_numbers")
-        st.checkbox("Нормировать по длине", True, key="settings_norm")
-                # --- НОВЫЙ ЧЕК-БОКС ---
-        st.checkbox("Авто-фильтр слабых сайтов", True, key="settings_auto_filter", help="Если включено: сайты с низкой релевантностью будут автоматически перенесены в список исключенных (справа). Если выключено: все сайты останутся в активном списке.")
+        # --- ИСПРАВЛЕНИЕ ОШИБКИ SESSION STATE ---
+        # 1. Инициализируем значения в памяти, если их там нет (например, при первом запуске)
+        if "settings_noindex" not in st.session_state: st.session_state.settings_noindex = True
+        if "settings_alt" not in st.session_state: st.session_state.settings_alt = False
+        if "settings_numbers" not in st.session_state: st.session_state.settings_numbers = False
+        if "settings_norm" not in st.session_state: st.session_state.settings_norm = True
+        if "settings_auto_filter" not in st.session_state: st.session_state.settings_auto_filter = True
 
-# ==========================================
+        # 2. Рисуем чек-боксы БЕЗ параметра value (значение подтянется само по key)
+        st.checkbox("Исключать <noindex>", key="settings_noindex")
+        st.checkbox("Учитывать Alt/Title", key="settings_alt")
+        st.checkbox("Учитывать числа", key="settings_numbers")
+        st.checkbox("Нормировать по длине", key="settings_norm")
+        st.checkbox("Авто-фильтр слабых сайтов", key="settings_auto_filter", help="Если включено: сайты с низкой релевантностью будут автоматически перенесены в список исключенных (справа). Если выключено: все сайты останутся в активном списке.")
+        # ----------------------------------------
     # БЛОК 1: ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ (ТЕПЕРЬ ПЕРВЫЙ)
     # ==========================================
     if st.session_state.analysis_done and st.session_state.analysis_results:
@@ -3464,6 +3471,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
