@@ -169,13 +169,13 @@ def render_clean_block(title, icon, words_list):
     
     if count > 0:
         content_html = ", ".join(unique_words)
-        # Карточка раскрывается
         html_code = f"""
         <details class="details-card">
             <summary class="card-summary">
-                <div>
+                <div class="summary-left">
                     <span class="arrow-icon">▶</span>
-                    {icon} {title}
+                    <span class="card-icon">{icon}</span>
+                    <span class="card-title">{title}</span>
                 </div>
                 <span class="count-tag">{count}</span>
             </summary>
@@ -185,16 +185,18 @@ def render_clean_block(title, icon, words_list):
         </details>
         """
     else:
-        # Если пусто - карточка неактивна (без контента)
         html_code = f"""
-        <div class="details-card">
-            <div class="card-summary" style="cursor: default; color: #9ca3af;">
-                <div>{icon} {title}</div>
+        <div class="details-card disabled">
+            <div class="card-summary">
+                <div class="summary-left">
+                    <span class="arrow-icon" style="visibility:hidden">▶</span>
+                    <span class="card-icon">{icon}</span>
+                    <span class="card-title" style="color: #9ca3af;">{title}</span>
+                </div>
                 <span class="count-tag">0</span>
             </div>
         </div>
         """
-    
     st.markdown(html_code, unsafe_allow_html=True)
 
 def render_relevance_chart(df_rel, unique_key="default"):
@@ -1899,18 +1901,59 @@ with tab_seo_main:
         </style>
         """, unsafe_allow_html=True)
 
-        st.markdown(f"""
-        <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
-            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
-                <div style='font-size: 12px; color: #666;'>ШИРИНА (Охват тем)</div>
-                <div style='font-size: 24px; font-weight: bold; color: {w_color};'>{w_score}/100</div>
-            </div>
-            <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {d_color};'>
-                <div style='font-size: 12px; color: #666;'>ГЛУБИНА (Цель: ~80)</div>
-                <div style='font-size: 24px; font-weight: bold; color: {d_color};'>{d_score}/100 <span style='font-size:14px; font-weight:normal;'>({d_status})</span></div>
-            </div>
-        </div>
-        <br>
+# --- СТИЛИ И КАРТОЧКИ ---
+        st.markdown("""
+        <style>
+            .details-card {
+                background-color: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                margin-bottom: 8px;
+                width: 100%;
+            }
+            .details-card.disabled { background-color: #f9fafb; }
+            .card-summary {
+                padding: 10px 14px;
+                cursor: pointer;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                list-style: none;
+            }
+            .card-summary::-webkit-details-marker { display: none; }
+            .summary-left {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .arrow-icon {
+                font-size: 10px;
+                color: #9ca3af;
+                transition: transform 0.2s;
+                display: inline-block;
+                width: 10px;
+            }
+            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
+            .card-title { font-weight: 600; font-size: 14px; color: #1f2937; }
+            .count-tag {
+                background: #f3f4f6;
+                color: #4b5563;
+                padding: 2px 8px;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 700;
+                min-width: 24px;
+                text-align: center;
+            }
+            .card-content {
+                padding: 12px 14px;
+                border-top: 1px solid #f3f4f6;
+                font-size: 13px;
+                color: #4b5563;
+                background-color: #fafafa;
+                border-radius: 0 0 8px 8px;
+            }
+        </style>
         """, unsafe_allow_html=True)
 
         with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
@@ -3337,3 +3380,4 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
