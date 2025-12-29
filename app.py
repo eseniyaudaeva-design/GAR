@@ -1804,30 +1804,37 @@ with tab_seo_main:
         # так как Streamlit сам подтянет его из st.session_state по ключу (key)
         st.text_area("Не учитывать домены", height=100, key="settings_excludes")
         st.text_area("Стоп-слова", height=100, key="settings_stops")
-# --- НОВАЯ ЛОГИКА КНОПКИ (CALLBACK) ---
+# --- БРОНЕБОЙНАЯ ЛОГИКА КНОПКИ (CALLBACK) ---
         def run_analysis_callback():
-            # 1. Список ключей для очистки (результаты старого анализа)
+            # 1. СПАСАЕМ ГАЛОЧКУ: Запоминаем текущее состояние перед любой очисткой
+            # Если ты её снял, тут будет False.
+            saved_filter_state = st.session_state.get('settings_auto_filter', True)
+
+            # 2. ЧИСТКА: Удаляем результаты старого анализа
             keys_to_clear = [
                 'analysis_results', 'analysis_done', 'naming_table_df',
                 'ideal_h1_result', 'gen_result_df', 'unified_excel_data',
                 'detected_anomalies', 'serp_trend_info',
-                'excluded_urls_auto' # Очищаем исключенных, так как новый старт
+                'excluded_urls_auto'
             ]
             
-            # 2. Удаляем ключи, если они есть
             for k in keys_to_clear:
                 if k in st.session_state:
                     del st.session_state[k]
 
-            # 3. Сбрасываем пагинацию
+            # 3. ВОССТАНОВЛЕНИЕ: Принудительно записываем твой выбор обратно в память
+            # Даже если он случайно удалился выше, мы его перезапишем тем, что спасли в шаге 1.
+            st.session_state.settings_auto_filter = saved_filter_state
+
+            # 4. Сброс пагинации
             for k in list(st.session_state.keys()):
                 if k.endswith('_page'):
                     st.session_state[k] = 1
             
-            # 4. Поднимаем флаг запуска (анализ начнется после перезагрузки)
+            # 5. Поднимаем флаг запуска
             st.session_state.start_analysis_flag = True
 
-        # Сама кнопка теперь без if, она вызывает функцию
+        # Сама кнопка
         st.button(
             "ЗАПУСТИТЬ АНАЛИЗ", 
             type="primary", 
@@ -3494,6 +3501,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
