@@ -3202,33 +3202,47 @@ with tab_wholesale_main:
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             current_page_seo_words = list(text_context_final_list)
             
-            # --- ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO) ---
-            # (Здесь оставляем вашу существующую логику тегов и промо, или просто инициализируем пустыми)
+# --- ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO) ---
             row_data['Tags HTML'] = "" 
             row_data['Promo HTML'] = ""
             
             if use_tags:
                 html_collector = []
+                # Берем ТОЛЬКО те слова, которые пользователь ввел в поле "Список (Товары + Услуги)"
                 for kw in global_tags_list:
+                    # Ищем совпадения в базе ссылок именно для этого ключевого слова
                     if kw in tags_map:
+                        # Исключаем текущую страницу, чтобы не ссылаться на самого себя
                         valid = [u for u in tags_map[kw] if u.rstrip('/') != page['url'].rstrip('/')]
                         if valid:
                             sel = random.choice(valid)
                             nm = url_name_cache.get(sel.rstrip('/'), kw)
                             html_collector.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
-                        else:
-                             if kw not in current_page_seo_words: current_page_seo_words.append(kw)
+                
+                # Формируем контейнер тегов
                 if html_collector:
                     row_data['Tags HTML'] = '<div class="popular-tags">' + "\n".join(html_collector) + '</div>'
 
             if use_promo:
+                # Фильтруем пул товаров: убираем те, что не найдены в базе или являются текущей страницей
                 cands = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
                 random.shuffle(cands)
                 if cands:
-                    p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
+                    # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: flex-wrap: nowrap для прокрутки в одну строку
+                    p_html = f'<div class="promo-section"><h3>{promo_title}</h3>'
+                    p_html += '<div class="promo-grid" style="display:flex; gap:15px; overflow-x:auto; flex-wrap:nowrap; padding-bottom:15px; -webkit-overflow-scrolling:touch;">'
                     for item in cands:
                         p_name = url_name_cache.get(item['url'].rstrip('/'), "Товар")
-                        p_html += f'<div class="promo-card" style="min-width:220px;"><a href="{item["url"]}"><img src="{item["img"]}" style="max-height:100px;"><br>{p_name}</a></div>'
+                        # Добавляем flex: 0 0 auto, чтобы карточки не сжимались
+                        p_html += f'''
+                        <div class="promo-card" style="flex: 0 0 220px; min-width:220px; border:1px solid #eee; padding:10px; border-radius:8px; text-align:center;">
+                            <a href="{item["url"]}" style="text-decoration:none; color:#333;">
+                                <div style="height:120px; display:flex; align-items:center; justify-content:center; margin-bottom:10px;">
+                                    <img src="{item["img"]}" style="max-height:100%; max-width:100%; object-fit:contain;">
+                                </div>
+                                <div style="font-size:14px; font-weight:600; line-height:1.2; height:3.6em; overflow:hidden;">{p_name}</div>
+                            </a>
+                        </div>'''
                     p_html += '</div></div>'
                     row_data['Promo HTML'] = p_html
 
@@ -3328,22 +3342,46 @@ with tab_wholesale_main:
         if has_tables: active_tabs.append("🧩 Таблицы")
         if has_visual: active_tabs.append("🎨 Визуал")
 
-        # Стили
         st.markdown("""
         <style>
             .preview-box { border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; background: #fff; margin-bottom: 20px; }
             .preview-label { font-size: 12px; font-weight: bold; color: #888; text-transform: uppercase; margin-bottom: 5px; }
+            
+            /* Стили тегов */
             .popular-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-            .tag-link { background: #f0f2f5; color: #333; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 13px; }
-            table { width: 100%; border-collapse: collapse; font-size: 14px; }
+            .tag-link { background: #f0f2f5; color: #277EFF; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; font-weight: 500; border: 1px solid #e2e8f0; }
+            .tag-link:hover { background: #e2e8f0; }
+            
+            /* Стили Таблиц */
+            table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 15px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; font-weight: bold; }
+            th { background-color: #f8fafc; font-weight: bold; }
+            
+            /* Стили Промо-карусели */
+            .promo-grid { 
+                display: flex !important; 
+                flex-wrap: nowrap !important; /* ЗАПРЕТ ПЕРЕНОСА */
+                gap: 15px; 
+                overflow-x: auto !important; /* ВКЛЮЧЕНИЕ СКРОЛЛА */
+                padding: 10px 5px 20px 5px;
+                scrollbar-width: thin; /* Тонкий скролл для Firefox */
+            }
+            /* Стили скроллбара для Chrome/Safari */
+            .promo-grid::-webkit-scrollbar { height: 6px; }
+            .promo-grid::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+            .promo-grid::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
+            .promo-grid::-webkit-scrollbar-thumb:hover { background: #277EFF; }
+            
+            .promo-card { 
+                flex: 0 0 220px !important; /* Фиксированная ширина карточки */
+                background: white;
+                transition: transform 0.2s;
+            }
+            .promo-card:hover { transform: translateY(-5px); }
+            
+            /* Сайдбар */
             .sidebar-wrapper ul { list-style-type: none; padding-left: 10px; }
             .level-1-header { font-weight: bold; margin-top: 10px; color: #277EFF; }
-            /* Стили для карточек Промо */
-            .promo-grid { display: flex !important; flex-wrap: wrap; gap: 10px; }
-            .promo-card { width: 23%; box-sizing: border-box; }
-            .promo-card img { max-width: 100%; height: auto; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -3395,6 +3433,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
