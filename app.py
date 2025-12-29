@@ -2953,16 +2953,16 @@ with tab_wholesale_main:
                     missing_words_log.add(kw)
         
         # 2. Проверяем ПРОМО (Тоже умный поиск)
-        if use_promo:
+            if use_promo:
             for kw in global_promo_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                # Формируем корни для поиска
                 roots = [tr]
                 if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
                 
+                # Ищем хотя бы одно совпадение в загруженном списке img_list
                 has_match = False
-                for u in p_img_map.keys():
-                    if any(r in u for r in roots):
+                for entry in img_list: # Используем созданный выше список
+                    if any(r in entry['url'] for r in roots):
                         has_match = True
                         break
                 
@@ -3459,6 +3459,7 @@ with tab_wholesale_main:
                         if has_sidebar:
                             st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
                             st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+
 
 
 
