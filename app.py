@@ -1805,7 +1805,11 @@ with tab_seo_main:
         st.text_area("Не учитывать домены", height=100, key="settings_excludes")
         st.text_area("Стоп-слова", height=100, key="settings_stops")
         if st.button("ЗАПУСТИТЬ АНАЛИЗ", type="primary", use_container_width=True, key="start_analysis_btn"):
-            # === ОЧИСТКА ВСЕХ СТАРЫХ ДАННЫХ ===
+            # 1. ЗАЩИТА НАСТРОЙКИ: Запоминаем, как стояла галочка
+            # (чтобы она не сбросилась при очистке)
+            saved_filter_state = st.session_state.get("settings_auto_filter", True)
+
+            # 2. ОЧИСТКА СТАРЫХ РЕЗУЛЬТАТОВ
             st.session_state.analysis_results = None
             st.session_state.analysis_done = False
             st.session_state.naming_table_df = None
@@ -1813,16 +1817,23 @@ with tab_seo_main:
             st.session_state.gen_result_df = None
             st.session_state.unified_excel_data = None
 
+            # Удаляем списки исключенных (чтобы начать с чистого листа),
+            # НО ТОЛЬКО ЕСЛИ ВКЛЮЧЕН ФИЛЬТР.
+            # Если фильтр выключен, мы не хотим терять текущий список (если вдруг он важен),
+            # но по логике нового старта лучше очистить "автоматические" списки.
             if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
             if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
             if 'serp_trend_info' in st.session_state: del st.session_state['serp_trend_info']
-            # ---------------------------------------------------------------
             
+            # 3. ВОССТАНОВЛЕНИЕ НАСТРОЙКИ
+            # Если вдруг очистка удалила ключ, мы его возвращаем
+            st.session_state.settings_auto_filter = saved_filter_state
+
             # Сброс пагинации таблиц
             for key in list(st.session_state.keys()):
                 if key.endswith('_page'): st.session_state[key] = 1
             
-            # Запуск флага и перезагрузка страницы, чтобы интерфейс очистился
+            # Запуск флага и перезагрузка
             st.session_state.start_analysis_flag = True
             st.rerun()
 
@@ -3484,6 +3495,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
