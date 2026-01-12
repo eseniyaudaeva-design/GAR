@@ -1755,27 +1755,27 @@ with tab_seo_main:
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
-            # --- НОВЫЙ ДИЗАЙН: СТАТУСНАЯ ПАНЕЛЬ ---
             if st.session_state.get('analysis_done'):
-                # 1. Считаем статистику
+                # 1. Считаем цифры
                 active_urls = st.session_state.get('persistent_urls', "").split('\n')
                 active_count = len([u for u in active_urls if u.strip()])
                 
                 excluded_urls = st.session_state.get('excluded_urls_auto', "").split('\n')
                 excluded_count = len([u for u in excluded_urls if u.strip()])
                 
-                total_scanned = active_count + excluded_count
+                # Получаем настройку пользователя (10 или 20)
+                target_top = st.session_state.get('settings_top_n', 10)
                 
-                # 2. Рисуем красивые метрики
-                st.markdown("### 🚦 Результат фильтрации")
-                m1, m2, m3, m4 = st.columns([2, 2, 2, 4])
-                with m1: st.metric("Всего найдено", total_scanned)
-                with m2: st.metric("✅ В работе", active_count)
-                with m3: st.metric("🗑️ Отсеяно", excluded_count, delta=-excluded_count, delta_color="inverse")
-                with m4:
-                    st.markdown("<br>", unsafe_allow_html=True) # Отступ
-                    if st.button("🔄 Сбросить и начать заново", type="secondary", use_container_width=True):
-                        # Полная очистка
+                # 2. КОМПАКТНАЯ ШАПКА (Вместо огромных метрик)
+                col_info, col_btn = st.columns([7, 2])
+                with col_info:
+                    if excluded_count > 0:
+                        st.markdown(f"⚡ **Фильтр:** Найдено всего **{active_count + excluded_count}**, отсеяно **{excluded_count}**. В списке кандидатов: **{active_count}**.")
+                    else:
+                        st.markdown(f"✅ **Фильтр:** Все **{active_count}** сайтов прошли проверку качества.")
+                
+                with col_btn:
+                    if st.button("🔄 Сброс", type="secondary", use_container_width=True, help="Сбросить анализ"):
                         keys_to_clear = [
                             'analysis_done', 'analysis_results', 'excluded_urls_auto', 
                             'detected_anomalies', 'serp_trend_info', 'persistent_urls',
@@ -1785,47 +1785,49 @@ with tab_seo_main:
                             if k in st.session_state: del st.session_state[k]
                         st.rerun()
 
-                # 3. Разделение на колонки (Активные / Исключенные)
+                # 3. СПИСКИ (Активные / Исключенные)
                 has_exclusions = excluded_count > 0
                 
+                # Формируем честный заголовок
+                if active_count > target_top:
+                    header_active = f"✅ Кандидаты ({active_count} шт) — Берем первые {target_top}"
+                    help_text = f"В списке {active_count} сайтов, но анализ будет по Топ-{target_top}. Лишние {active_count - target_top} снизу — это запас."
+                else:
+                    header_active = f"✅ Активные конкуренты ({active_count} шт)"
+                    help_text = "С этих сайтов мы берем информацию."
+
                 if has_exclusions:
-                    st.info("👇 **Вы можете управлять отбором:** Если система ошиблась, просто скопируйте ссылку из правого окна и вставьте в левое (или наоборот).", icon="✨")
                     c_url_1, c_url_2 = st.columns(2)
                     with c_url_1:
-                        st.markdown(f"**✅ Активные конкуренты ({active_count})**")
-                        st.caption("С этих сайтов мы берем ключевые слова и структуру.")
-                        manual_val = st.text_area(
-                            "label_active", 
+                        st.text_area(
+                            header_active, 
                             height=200, 
                             key="manual_urls_widget", 
                             value=st.session_state.get('persistent_urls', ""),
-                            label_visibility="collapsed"
+                            help=help_text
                         )
-                        st.session_state['persistent_urls'] = manual_val
+                        st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
                     with c_url_2:
-                        st.markdown(f"**🗑️ Авто-исключенные ({excluded_count})**")
-                        st.caption("Слабые сайты. Они НЕ влияют на рекомендации.")
                         st.text_area(
-                            "label_excluded", 
+                            f"🗑️ Мусор / Слабые ({excluded_count})", 
                             height=200, 
                             key="excluded_urls_widget_display", 
                             value=st.session_state.get('excluded_urls_auto', ""),
-                            label_visibility="collapsed"
+                            help="Эти сайты исключены из расчетов, так как они портят статистику."
                         )
                 else:
-                    # Если исключенных нет, показываем одно широкое окно
-                    st.success("🎉 Все найденные сайты прошли проверку качества! Фильтр пуст.", icon="🛡️")
-                    manual_val = st.text_area(
-                        "Список ссылок (Активные)", 
+                    # Если исключенных нет - одно окно
+                    st.text_area(
+                        header_active, 
                         height=200, 
                         key="manual_urls_widget", 
-                        value=st.session_state.get('persistent_urls', "")
+                        value=st.session_state.get('persistent_urls', ""),
+                        help=help_text
                     )
-                    st.session_state['persistent_urls'] = manual_val
+                    st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
             else:
                 # --- СТАРТОВЫЙ ЭКРАН (До анализа) ---
-                # Обычный вид (1 колонка), когда еще ничего не запущено
                 manual_val = st.text_area(
                     "Список ссылок (каждая с новой строки)", 
                     height=200, 
@@ -3563,6 +3565,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
