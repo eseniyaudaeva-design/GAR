@@ -1859,7 +1859,7 @@ with tab_seo_main:
                             label_visibility="collapsed"
                         )
 
-            else:
+                else:
                 # --- СТАРТОВЫЙ ЭКРАН (До анализа) ---
                 st.info("Вставьте список ссылок (каждая с новой строки) или оставьте пустым, чтобы ввести позже.")
                 manual_val = st.text_area(
@@ -3631,6 +3631,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
