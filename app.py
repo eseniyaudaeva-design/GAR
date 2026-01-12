@@ -1776,7 +1776,7 @@ with tab_seo_main:
                     if excluded_count > 0:
                         st.success(f"**Готово!** Мы нашли {active_count + excluded_count} сайтов, отсеяли {excluded_count} слабых. Осталось: **{active_count}**.")
                     else:
-                        st.success(f"**Готово!** Все {active_count} сайтов качественные.")
+                        st.success(f"**Готово!** Все ссылки проанализированы и учитываются при расчете рекомендаций ({active_count}).")
                 
                 with col_reset:
                     if st.button("🔄 Сброс", key="reset_btn_simple", help="Начать новый поиск", use_container_width=True):
@@ -3594,6 +3594,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
