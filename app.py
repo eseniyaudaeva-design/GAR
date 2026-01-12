@@ -1747,6 +1747,12 @@ with tab_seo_main:
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
+            # --- ВСТАВИТЬ ЭТОТ БЛОК ТУТ ---
+            # Проверяем, есть ли отложенное обновление от фильтра
+            if 'temp_update_urls' in st.session_state:
+                st.session_state['persistent_urls'] = st.session_state['temp_update_urls']
+                del st.session_state['temp_update_urls']
+
             # Кнопка сброса
             if st.session_state.get('analysis_done'):
                 col_reset, _ = st.columns([1, 4])
@@ -2303,15 +2309,15 @@ with tab_seo_main:
                 st.session_state.pop('excluded_urls_auto', None)
                 st.session_state.pop('detected_anomalies', None)
 
-            # === ФИНАЛЬНАЯ ЗАПИСЬ (САМОЕ ВАЖНОЕ) ===
-            # Мы просто обновляем переменную в памяти.
-            # Виджет обновится САМ при следующем любом действии пользователя.
-            # Мы НЕ вызываем st.rerun(), чтобы не ломать поток.
+# === ФИНАЛЬНАЯ ЗАПИСЬ (ИСПРАВЛЕННАЯ) ===
+            # Сохраняем во ВРЕМЕННУЮ переменную, чтобы не сломать виджет
+            st.session_state['temp_update_urls'] = final_clean_text
             
-            st.session_state['persistent_urls'] = final_clean_text
-            
-            # Принудительно переключаем радио-кнопку (это безопасно, т.к. состояние)
+            # Ставим флаг переключения радио-кнопки
             st.session_state['force_radio_switch'] = True
+            
+            # Перезагружаем страницу, чтобы применить изменения СВЕРХУ
+            st.rerun()
 
             # Классификация семантики (по финальным данным)
             res = st.session_state.analysis_results
@@ -3518,6 +3524,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
