@@ -1755,22 +1755,21 @@ with tab_seo_main:
         
         if source_type == "Ручной список":
             
-            # === ИСПРАВЛЕННАЯ ЛОГИКА ОТОБРАЖЕНИЯ ===
+            # --- ЛОГИКА ОТОБРАЖЕНИЯ СПИСКОВ ---
             
             # 1. Получаем данные из памяти
             active_text = st.session_state.get('persistent_urls', "")
             excluded_text = st.session_state.get('excluded_urls_auto', "")
             
-            # 2. Если есть исключенные, ГАРАНТИРОВАННО убираем их из активных (Визуальный фильтр)
+            # 2. Если есть исключенные, визуально убираем их из левого окна (чтобы не было дублей)
             if excluded_text.strip():
                 excl_set = set(u.strip() for u in excluded_text.split('\n') if u.strip())
-                # Пересобираем активный список, исключая то, что справа
                 clean_lines = [line for line in active_text.split('\n') if line.strip() not in excl_set]
-                active_text = "\n".join(clean_lines)
-                # Обновляем память, чтобы было синхронно
-                st.session_state['persistent_urls'] = active_text
+                active_text_display = "\n".join(clean_lines)
+            else:
+                active_text_display = active_text
 
-            # 3. Кнопка сброса (Компактная)
+            # 3. Кнопка сброса (Маленькая справа)
             if st.session_state.get('analysis_done'):
                 c_head, c_btn = st.columns([3, 1])
                 with c_btn:
@@ -1784,31 +1783,41 @@ with tab_seo_main:
             if excluded_text.strip():
                 c_url_1, c_url_2 = st.columns(2)
                 with c_url_1:
-                    st.caption("✅ Активные конкуренты")
-                    manual_val = st.text_area("hidden_active", height=200, key="manual_urls_widget", value=active_text, label_visibility="collapsed")
-                    st.session_state['persistent_urls'] = manual_val
+                    st.caption("✅ Активные конкуренты (В работе)")
+                    # Важно: value=active_text_display (без дублей), но key сохраняет в persistent_urls
+                    st.text_area("hidden_active", height=200, key="manual_urls_widget", value=active_text_display, label_visibility="collapsed")
+                    # Синхронизация при ручном редактировании
+                    st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
                 with c_url_2:
                     st.caption("🚫 Исключенные (Агрегаторы/Слабые)")
                     st.text_area("hidden_excluded", height=200, key="excluded_urls_widget_display", value=excluded_text, label_visibility="collapsed")
             else:
                 st.text_area("Список ссылок (каждая с новой строки)", height=200, key="manual_urls_widget", value=active_text)
-                st.session_state['persistent_urls'] = active_text
+                st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
-        # График
+        # ================= ГРАФИК РЕЛЕВАНТНОСТИ (ПОЛНЫЙ) =================
         if st.session_state.get('analysis_done') and st.session_state.get('analysis_results'):
             results = st.session_state.analysis_results
-            if 'relevance_top' in results and not results['relevance_top'].empty:
+            # Проверяем наличие полных данных для графика
+            if 'full_graph_data' in st.session_state and not st.session_state['full_graph_data'].empty:
+                graph_source = st.session_state['full_graph_data']
+            elif 'relevance_top' in results:
+                graph_source = results['relevance_top']
+            else:
+                graph_source = None
+
+            if graph_source is not None and not graph_source.empty:
                 st.markdown("<br>", unsafe_allow_html=True)
-                with st.expander("📊 График релевантности (Нажмите, чтобы раскрыть)", expanded=False):
-                    st.info("График показывает только сайты из списка 'Активные конкуренты'.", icon="ℹ️")
-                    graph_data = results['relevance_top']
-                    render_relevance_chart(graph_data, unique_key="main")
+                with st.expander("📊 График релевантности (Все просканированные)", expanded=False):
+                    st.info("График отображает ВСЕ успешно скачанные сайты (Активные + Исключенные), чтобы вы видели общую картину топа.", icon="ℹ️")
+                    render_relevance_chart(graph_source, unique_key="main")
                 st.markdown("<br>", unsafe_allow_html=True)
+        # ================================================================
 
         # Кнопка запуска
         def run_analysis_callback():
             saved_filter_state = st.session_state.get('settings_auto_filter', True)
-            keys_to_clear = ['analysis_results', 'analysis_done', 'naming_table_df', 'ideal_h1_result', 'gen_result_df', 'unified_excel_data', 'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto']
+            keys_to_clear = ['analysis_results', 'analysis_done', 'naming_table_df', 'ideal_h1_result', 'gen_result_df', 'unified_excel_data', 'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto', 'full_graph_data']
             for k in keys_to_clear:
                 if k in st.session_state: del st.session_state[k]
             st.session_state.settings_auto_filter = saved_filter_state
@@ -1853,7 +1862,7 @@ with tab_seo_main:
             st.text_area("hidden_lbl_2", height=150, key="settings_stops", label_visibility="collapsed")
 
     # ==========================================
-    # ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ (ОСТАЕТСЯ КАК БЫЛО)
+    # ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ (БЕЗ ИЗМЕНЕНИЙ)
     # ==========================================
     if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
@@ -3384,6 +3393,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
