@@ -3463,11 +3463,10 @@ with tab_projects:
 
     col_save, col_load = st.columns(2)
 
-    # --- ФУНКЦИЯ ВОССТАНОВЛЕНИЯ (CALLBACK) ---
+# --- ФУНКЦИЯ ВОССТАНОВЛЕНИЯ (CALLBACK) ---
     def restore_state_callback(data_to_restore):
         """
         Эта функция запускается ДО перерисовки интерфейса.
-        Поэтому здесь можно безопасно обновлять session_state.
         """
         try:
             state_dict = data_to_restore["state"]
@@ -3478,10 +3477,27 @@ with tab_projects:
                 st.session_state[k] = v
                 restored_count += 1
             
+            # === ГЛАВНЫЙ ФИКС СИНХРОНИЗАЦИИ ===
+            # Принудительно записываем данные в ключи виджетов, 
+            # чтобы они не перезаписали данные пустотой при ререндере.
+            
+            # Восстанавливаем Активные
+            if 'persistent_urls' in st.session_state:
+                st.session_state['manual_urls_widget'] = st.session_state['persistent_urls']
+            
+            # Восстанавливаем Исключенные
+            if 'excluded_urls_auto' in st.session_state:
+                st.session_state['excluded_urls_widget_display'] = st.session_state['excluded_urls_auto']
+                
+            # Восстанавливаем настройки списков (если они были перенесены в сайдбар)
+            if 'settings_excludes' in st.session_state:
+                st.session_state['settings_excludes_widget'] = st.session_state['settings_excludes'] # Если у виджета есть key, отличный от переменной
+            # ==================================
+            
             # 2. Принудительные флаги
             st.session_state['analysis_done'] = True
             
-            # 3. Уведомление (появится после перезагрузки)
+            # 3. Уведомление
             st.toast(f"✅ Успешно восстановлено {restored_count} параметров!", icon="🎉")
             
         except Exception as e:
@@ -3572,6 +3588,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
