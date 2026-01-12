@@ -1861,16 +1861,16 @@ with tab_seo_main:
 
                 else:
                 # --- СТАРТОВЫЙ ЭКРАН (До анализа) ---
-                st.info("Вставьте список ссылок (каждая с новой строки) или оставьте пустым, чтобы ввести позже.")
-                manual_val = st.text_area(
-                    "Поле ввода", 
-                    height=200, 
-                    key="manual_urls_widget", 
-                    value=st.session_state.get('persistent_urls', ""),
-                    label_visibility="collapsed",
-                    placeholder="https://site1.ru\nhttps://site2.ru..."
-                )
-                st.session_state['persistent_urls'] = manual_val
+                    st.info("Вставьте список ссылок (каждая с новой строки) или оставьте пустым, чтобы ввести позже.")
+                    manual_val = st.text_area(
+                        "Поле ввода", 
+                        height=200, 
+                        key="manual_urls_widget", 
+                        value=st.session_state.get('persistent_urls', ""),
+                        label_visibility="collapsed",
+                        placeholder="https://site1.ru\nhttps://site2.ru..."
+                    )
+                    st.session_state['persistent_urls'] = manual_val
 
 # ================= НОВОЕ МЕСТО ДЛЯ ГРАФИКА =================
     # Показываем график ТОЛЬКО если есть результаты анализа
@@ -3631,6 +3631,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
