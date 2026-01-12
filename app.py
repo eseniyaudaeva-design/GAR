@@ -2307,16 +2307,25 @@ with tab_seo_main:
             
             # --- ЭТАП 2: ФОРМИРОВАНИЕ ЧИСТОВОГО СПИСКА ---
             
-            bad_urls_set = set(item['url'] for item in bad_urls_dicts)
+            # 1. Формируем "Грубый" список плохих ссылок (без слэшей и пробелов) для надежного сравнения
+            bad_urls_raw = [item['url'] for item in bad_urls_dicts]
+            bad_urls_normalized = set(u.strip().rstrip('/') for u in bad_urls_raw)
+            
             is_api_mode = "API" in current_source_val
             is_filter_on = st.session_state.settings_auto_filter
             
             final_clean_data = []
 
+            # ФУНКЦИЯ ФИЛЬТРАЦИИ (ROBUST)
+            def is_url_bad(url_to_check):
+                # Проверяем нормализованную версию
+                norm = url_to_check.strip().rstrip('/')
+                return norm in bad_urls_normalized
+
             if is_api_mode:
                 # API режим
                 if is_filter_on:
-                    clean_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
+                    clean_pool = [d for d in data_for_graph if not is_url_bad(d['url'])]
                 else:
                     clean_pool = data_for_graph
                 final_clean_data = clean_pool[:user_target_top_n]
@@ -2324,21 +2333,17 @@ with tab_seo_main:
                 # Обновляем память
                 clean_txt = "\n".join([d['url'] for d in final_clean_data])
                 st.session_state['persistent_urls'] = clean_txt
-                
-                # !!! ИСПРАВЛЕНИЕ ОШИБКИ !!!
-                # Удаляем ключ виджета, чтобы при перезагрузке он пересоздался с новыми данными
-                if 'manual_urls_widget' in st.session_state:
-                    del st.session_state['manual_urls_widget']
+                if 'manual_urls_widget' in st.session_state: del st.session_state['manual_urls_widget']
                 
             else:
                 # === РУЧНОЙ РЕЖИМ ===
                 if is_filter_on:
-                    # 1. Оставляем только хорошие
-                    final_clean_data = [d for d in data_for_graph if d['url'] not in bad_urls_set]
+                    # 1. Оставляем только хорошие (используя надежную проверку)
+                    final_clean_data = [d for d in data_for_graph if not is_url_bad(d['url'])]
                     
                     # 2. Собираем мусор
-                    weak_urls_list = [item['url'] for item in bad_urls_dicts]
-                    total_excluded = weak_urls_list + dead_urls_list
+                    # Берем оригинальные URL из bad_urls_dicts для отображения
+                    total_excluded = bad_urls_raw + dead_urls_list
                     
                     # Генерируем чистый текст
                     clean_txt = "\n".join([d['url'] for d in final_clean_data])
@@ -2347,14 +2352,13 @@ with tab_seo_main:
                     st.session_state['detected_anomalies'] = bad_urls_dicts 
                     st.session_state['persistent_urls'] = clean_txt
                     
-                    # !!! ИСПРАВЛЕНИЕ ОШИБКИ !!!
-                    # Не присваиваем, а удаляем старый ключ. При реране он возьмет данные из persistent_urls
+                    # Сбрасываем виджет
                     if 'manual_urls_widget' in st.session_state:
                         del st.session_state['manual_urls_widget']
                     
                     st.session_state['excluded_urls_auto'] = "\n".join(total_excluded)
                     
-                    st.toast(f"🧹 Фильтр: {len(weak_urls_list)} слабых + {len(dead_urls_list)} недоступных", icon="🗑️")
+                    st.toast(f"🧹 Фильтр: {len(bad_urls_raw)} слабых + {len(dead_urls_list)} недоступных", icon="🗑️")
                     
                 else:
                     # Фильтр ВЫКЛ
@@ -2363,7 +2367,6 @@ with tab_seo_main:
                     clean_txt = "\n".join([d['url'] for d in final_clean_data])
                     st.session_state['persistent_urls'] = clean_txt
                     
-                    # !!! ИСПРАВЛЕНИЕ ОШИБКИ !!!
                     if 'manual_urls_widget' in st.session_state:
                         del st.session_state['manual_urls_widget']
                     
@@ -3605,6 +3608,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
