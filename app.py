@@ -2275,41 +2275,69 @@ with tab_seo_main:
             data_for_graph = comp_data_valid[:download_limit]
             targets_for_graph = [{'url': d['url'], 'pos': d['pos']} for d in data_for_graph]
 
-        # 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
+# 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
         with st.spinner("Анализ и фильтрация..."):
             
-            # --- ЭТАП 1: Черновой прогон (по всем 30 сайтам) ---
-            # Это нужно, чтобы построить график и найти аномалии
+            # --- ЭТАП 1: Черновой прогон (по всем сайтам) ---
+            # Строим график и ищем аномалии
             results_full = calculate_metrics(data_for_graph, my_data, settings, my_serp_pos, targets_for_graph)
             
-            # Сохраняем ПОЛНЫЕ данные для графика (чтобы на нем были все)
+            # Сохраняем ПОЛНЫЕ данные для графика
             st.session_state['full_graph_data'] = results_full['relevance_top']
             
-            # Анализ аномалий по полному списку
+            # Анализ аномалий
             df_rel_check = results_full['relevance_top']
             good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
             st.session_state['serp_trend_info'] = trend
             
-            # --- ЭТАП 2: Отбор чистовых (Топ-10/20 без мусора) ---
+            # --- ЭТАП 2: ФОРМИРОВАНИЕ ЧИСТОВОГО СПИСКА ---
             
-            # 1. Берем данные тех сайтов, которые НЕ в списке плохих
             bad_urls_set = set(item['url'] for item in bad_urls_dicts)
+            is_api_mode = "API" in current_source_val
+            is_filter_on = st.session_state.settings_auto_filter
             
-            # === ИСПРАВЛЕННАЯ ЛОГИКА ФИЛЬТРАЦИИ ===
-            # Если это API - мы фильтруем и режем топ.
-            # Если это РУЧНОЙ режим - мы НЕ фильтруем (доверяем пользователю).
-            if "API" in current_source_val:
-                clean_data_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
-                final_clean_data = clean_data_pool[:user_target_top_n]
+            final_clean_data = []
+
+            # ЛОГИКА ОТБОРА (ИСПРАВЛЕННАЯ)
+            if is_api_mode:
+                # Для API всегда режем по лимиту пользователя (10 или 20)
+                # Если фильтр ВКЛ - берем только хороших. Если ВЫКЛ - берем всех подряд.
+                if is_filter_on:
+                    clean_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
+                else:
+                    clean_pool = data_for_graph
+                
+                final_clean_data = clean_pool[:user_target_top_n]
+                
             else:
-                # В ручном режиме используем ВСЕХ скачанных, не фильтруем "слабых"
-                final_clean_data = data_for_graph 
-            
+                # === РУЧНОЙ РЕЖИМ (ИСПРАВЛЕНО) ===
+                if is_filter_on:
+                    # Фильтр ВКЛ: Убираем плохих, остальные оставляем (даже если их больше 10)
+                    # Вы сами их ввели, значит хотите видеть их все, кроме мусора.
+                    final_clean_data = [d for d in data_for_graph if d['url'] not in bad_urls_set]
+                    
+                    # ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ СПИСКОВ (Чтобы убрать дубли)
+                    st.session_state['detected_anomalies'] = bad_urls_dicts
+                    st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                    st.session_state['excluded_urls_auto'] = "\n".join([item['url'] for item in bad_urls_dicts])
+                    
+                    st.toast(f"🧹 Фильтр сработал: Удалено {len(bad_urls_dicts)} слабых сайтов", icon="🗑️")
+                    
+                else:
+                    # Фильтр ВЫКЛ: Берем ВСЕХ, игнорируем лимит Top-N
+                    final_clean_data = data_for_graph
+                    
+                    # Чистим списки исключений (так как фильтр выключен)
+                    st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                    if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+                    if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
+                    
+                    st.toast(f"🛑 Фильтр выключен: Анализируем все {len(final_clean_data)} ссылок", icon="📊")
+
+            # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Строго по отобранным)
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
-            
-            # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Только по элите)
-            # Медианы и TF-IDF пересчитаются строго по этому списку
             results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
+            
             st.session_state.analysis_results = results_final
             
             # --- Остальная логика (нейминг, семантика) ---
@@ -2318,65 +2346,10 @@ with tab_seo_main:
             st.session_state.ideal_h1_result = analyze_ideal_name(final_clean_data)
             st.session_state.analysis_done = True
             
-# === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
-            
-            # 1. Берем данные для проверки (полный список или топ)
-            if "API" in current_source_val and 'full_graph_data' in st.session_state:
-                df_rel_check = st.session_state['full_graph_data']
-            else:
-                df_rel_check = st.session_state.analysis_results['relevance_top']
-            
-            # 2. Ищем аномалии (кто слабый, кто сильный)
-            good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
-            st.session_state['serp_trend_info'] = trend
-            
-            # 3. ГЛАВНОЕ: Проверяем состояние вашей галочки
-            is_filter_enabled = st.session_state.get("settings_auto_filter", True)
-            
-            # СЦЕНАРИЙ А: Галочка СТОИТ (Фильтруем)
-            if is_filter_enabled:
-                if bad_urls_dicts:
-                    # Есть кого фильтровать -> Разделяем списки
-                    st.session_state['detected_anomalies'] = bad_urls_dicts
-                    
-                    # Хорошие -> в левое окно
-                    st.session_state['persistent_urls'] = "\n".join(good_urls)
-                    
-                    # Плохие -> в правое окно
-                    excluded_list = [item['url'] for item in bad_urls_dicts]
-                    st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
-                    
-                    st.toast(f"🧹 Фильтр ВКЛ: Исключено {len(bad_urls_dicts)} слабых сайтов", icon="🗑️")
-                else:
-                    # Аномалий нет -> Оставляем всех
-                    all_urls = [d['url'] for d in final_clean_data]
-                    st.session_state['persistent_urls'] = "\n".join(all_urls)
-                    
-                    # Чистим хвосты (если раньше были исключенные)
-                    if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
-                    if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
-                    
-                    st.toast("✅ Фильтр ВКЛ: Все сайты прошли проверку", icon="🛡️")
-
-            # СЦЕНАРИЙ Б: Галочка СНЯТА (Не фильтруем)
-            else:
-                # Принудительно оставляем ВСЕХ (и сильных, и слабых)
-                all_urls = [d['url'] for d in final_clean_data]
-                st.session_state['persistent_urls'] = "\n".join(all_urls)
-                
-                # Принудительно ОЧИЩАЕМ список исключенных
-                if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
-                if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
-                
-                if bad_urls_dicts:
-                    st.toast(f"🛑 Фильтр ВЫКЛ: {len(bad_urls_dicts)} слабых сайтов оставлены в анализе", icon="👀")
-                else:
-                    st.toast("🛑 Фильтр ВЫКЛ: Все сайты на месте", icon="👀")
-            # ==============================================================
-
-            # Классификация семантики (по финальным данным)
+            # Классификация семантики
             res = st.session_state.analysis_results
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
+            
             if not words_to_check:
                 st.session_state.categorized_products = []; st.session_state.categorized_services = []
                 st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
@@ -2384,6 +2357,7 @@ with tab_seo_main:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 
+                # Сохраняем словари
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
@@ -2401,6 +2375,7 @@ with tab_seo_main:
                 
                 st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
 
+            # Автозаполнение генератора
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
             if count_prods < 20:
@@ -2414,12 +2389,8 @@ with tab_seo_main:
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
-# === ФИНАЛЬНЫЙ ШТРИХ: АВТО-ПЕРЕКЛЮЧЕНИЕ ===
-            # 1. Принудительно меняем радио-кнопку на "Ручной список"
+            # Переключаем радиокнопку, чтобы обновить UI
             st.session_state['force_radio_switch'] = True
-            
-            # 2. (СТРОКУ С ПЕРЕЗАПИСЬЮ УДАЛИЛИ - ОНА ЛИШНЯЯ И ВРЕДНАЯ)
-            # Список ссылок уже сформирован в блоке "УМНАЯ ФИЛЬТРАЦИЯ" выше.
             
             st.rerun()
 
@@ -3595,6 +3566,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
