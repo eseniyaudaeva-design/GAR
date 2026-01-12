@@ -2256,22 +2256,32 @@ with tab_seo_main:
                     # 1. Сохраняем информацию об аномалиях
                     st.session_state['detected_anomalies'] = bad_urls_dicts
                     
-                    # 2. Формируем список ПЛОХИХ (строго)
-                    excluded_set = set(item['url'] for item in bad_urls_dicts)
-                    excluded_list = [item['url'] for item in bad_urls_dicts]
-                    st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
+                    # 2. Формируем список ПЛОХИХ (с очисткой от пробелов)
+                    excluded_urls_clean = [str(item['url']).strip() for item in bad_urls_dicts]
+                    excluded_set = set(excluded_urls_clean)
                     
-                    # 3. Формируем список ХОРОШИХ (строго: Все кандидаты МИНУС Плохие)
-                    # good_urls - это список URL из analyze_serp_anomalies, который уже очищен,
-                    # но для надежности пройдемся еще раз по множеству.
-                    clean_good_urls = [u for u in good_urls if u not in excluded_set]
-                    st.session_state['persistent_urls'] = "\n".join(clean_good_urls)
+                    st.session_state['excluded_urls_auto'] = "\n".join(excluded_urls_clean)
                     
-                    st.toast(f"🧹 Фильтр ВКЛ: Исключено {len(bad_urls_dicts)} слабых сайтов", icon="🗑️")
+                    # 3. Формируем список ХОРОШИХ (строго проверяем наличие в плохом списке)
+                    clean_active_list = []
+                    seen_active = set()
+                    
+                    # Проходим по списку good_urls и сверяем с excluded_set
+                    for u in good_urls:
+                        u_clean = str(u).strip()
+                        # Добавляем, только если ссылка не пустая и её НЕТ в списке исключенных
+                        if u_clean and u_clean not in excluded_set:
+                            if u_clean not in seen_active:
+                                clean_active_list.append(u_clean)
+                                seen_active.add(u_clean)
+                    
+                    st.session_state['persistent_urls'] = "\n".join(clean_active_list)
+                    
+                    st.toast(f"🧹 Фильтр ВКЛ: Исключено {len(excluded_set)}. Осталось: {len(clean_active_list)}", icon="🗑️")
                 else:
                     # Аномалий нет -> Оставляем всех
-                    all_urls = [d['url'] for d in final_clean_data]
-                    st.session_state['persistent_urls'] = "\n".join(all_urls)
+                    clean_all = [str(u).strip() for u in good_urls if str(u).strip()]
+                    st.session_state['persistent_urls'] = "\n".join(clean_all)
                     
                     # Чистим хвосты
                     if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
