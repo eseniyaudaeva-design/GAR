@@ -1837,7 +1837,7 @@ with tab_seo_main:
             if 'relevance_top' in results and not results['relevance_top'].empty:
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                with st.expander("📊 График релевантности (Нажмите, чтобы раскрыть)", expanded=False):
+                with st.expander("📊 График релевантности", expanded=False):
                     st.info(
                         """
                         **Логика расширенного анализа**  
@@ -3572,6 +3572,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
