@@ -1754,27 +1754,30 @@ with tab_seo_main:
         source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
+
         if source_type == "Ручной список":
             # === ЗАЩИТА ОТ ОШИБОК (Инициализация переменных) ===
-            # Объявляем переменные заранее, чтобы скрипт не падал, даже если анализ не готов
             excluded_count = 0
             active_count = 0
             excluded_urls_raw = ""
             
-            # Если анализ уже был проведен
+            # --- ЛОГИКА ОТОБРАЖЕНИЯ ---
             if st.session_state.get('analysis_done'):
-                # 1. Подготовка данных из памяти
-                active_urls_raw = st.session_state.get('persistent_urls', "")
-                active_urls_list = [u.strip() for u in active_urls_raw.split('\n') if u.strip()]
-                active_count = len(active_urls_list)
+                # 1. АНАЛИЗ ГОТОВ: Показываем результаты
+                
+                # Подготовка данных из памяти
+                active_urls = st.session_state.get('persistent_urls', "").split('\n')
+                active_urls = [u.strip() for u in active_urls if u.strip()]
+                active_count = len(active_urls)
                 
                 excluded_urls_raw = st.session_state.get('excluded_urls_auto', "")
-                excluded_urls_list = [u.strip() for u in excluded_urls_raw.split('\n') if u.strip()]
+                excluded_urls_list = excluded_urls_raw.split('\n')
+                excluded_urls_list = [u.strip() for u in excluded_urls_list if u.strip()]
                 excluded_count = len(excluded_urls_list)
                 
                 target_top = st.session_state.get('settings_top_n', 10)
                 
-                # 2. Заголовок-статус
+                # Шапка со статусом
                 col_status, col_reset = st.columns([5, 1])
                 is_filter_active = st.session_state.get('settings_auto_filter', True)
 
@@ -1799,7 +1802,7 @@ with tab_seo_main:
                             if k in st.session_state: del st.session_state[k]
                         st.rerun()
 
-                # 3. ГЛАВНОЕ ОКНО (Только активные)
+                # Главное окно (Активные)
                 if active_count > target_top:
                     lbl = f"👇 Ваши конкуренты (Система анализирует первые {target_top} строк)"
                     help_txt = f"В списке {active_count} ссылок. В анализ попадут верхние {target_top}. Остальные {active_count-target_top} — запасные."
@@ -1815,12 +1818,13 @@ with tab_seo_main:
                     lbl, 
                     height=250, 
                     key="manual_urls_widget",
+                    # value=... НЕ ИСПОЛЬЗУЕМ, чтобы избежать конфликтов
                     help=help_txt
                 )
                 # Синхронизация: то, что юзер поменял руками, сохраняем в переменную
                 st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
-                # 4. МУСОР (Спрятан)
+                # Окно исключенных (в экспандере)
                 if excluded_count > 0:
                     with st.expander(f"🗑️ Исключенные сайты ({excluded_count})", expanded=True):
                         st.caption("Эти сайты были автоматически отсеяны (недоступны или слабый контент). Если нужно вернуть сайт в работу — скопируйте его отсюда в верхнее окно.")
@@ -1837,7 +1841,7 @@ with tab_seo_main:
                         )
 
             else:
-                # --- СТАРТОВЫЙ ЭКРАН (До анализа) ---
+                # 2. СТАРТОВЫЙ ЭКРАН (До анализа)
                 st.info("Вставьте список ссылок (каждая с новой строки) или оставьте пустым, чтобы ввести позже.")
                 
                 # Инициализация виджета
@@ -1853,34 +1857,6 @@ with tab_seo_main:
                 )
                 # Синхронизация
                 st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
-                # ==========================
-
-                # 3. МУСОР (Спрятан)
-                # Показываем только если есть что показать
-                if excluded_count > 0:
-                    with st.expander(f"🗑️ Исключенные сайты ({excluded_count})", expanded=False):
-                        st.caption("Эти сайты были автоматически отсеяны как нерелевантные или слабые. Если нужно вернуть сайт в работу — скопируйте его отсюда в верхнее окно.")
-                        st.text_area(
-                            "Список исключенных", 
-                            height=150, 
-                            key="excluded_urls_widget_display", 
-                            value=st.session_state.get('excluded_urls_auto', ""),
-                            label_visibility="collapsed"
-                        )
-
-                else:
-                # --- СТАРТОВЫЙ ЭКРАН (До анализа) ---
-                    st.info("Вставьте список ссылок (каждая с новой строки) или оставьте пустым, чтобы ввести позже.")
-                    manual_val = st.text_area(
-                        "Поле ввода", 
-                        height=200, 
-                        key="manual_urls_widget", 
-                        value=st.session_state.get('persistent_urls', ""),
-                        label_visibility="collapsed",
-                        placeholder="https://site1.ru\nhttps://site2.ru..."
-                    )
-                    st.session_state['persistent_urls'] = manual_val
-
 # ================= НОВОЕ МЕСТО ДЛЯ ГРАФИКА =================
     # Показываем график ТОЛЬКО если есть результаты анализа
         if st.session_state.get('analysis_done') and st.session_state.get('analysis_results'):
@@ -3642,6 +3618,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
