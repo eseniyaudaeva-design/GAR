@@ -1793,7 +1793,7 @@ with tab_seo_main:
                     "Список ссылок (каждая с новой строки)", 
                     height=200, 
                     key="persistent_urls"
-                )
+                    )
                 st.session_state['persistent_urls'] = manual_val
 
         # ГРАФИК
@@ -3527,6 +3527,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
