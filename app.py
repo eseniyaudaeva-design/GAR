@@ -2198,12 +2198,13 @@ with tab_seo_main:
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ==========================================
-    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (NO CRASH FIX)
+    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (NO-SLICE FIX)
     # ==========================================
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         
-        # 1. СИНХРОНИЗАЦИЯ
+        # 1. ЗАХВАТ ДАННЫХ
+        # Берем данные прямо из виджета, чтобы ничего не потерять
         if "manual_urls_widget" in st.session_state and st.session_state.manual_urls_widget:
             st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
@@ -2234,17 +2235,18 @@ with tab_seo_main:
         current_source_val = st.session_state.get("competitor_source_radio")
         user_target_top_n = st.session_state.settings_top_n
         
-        # Флаг источника
-        actual_data_source = 'manual' if "Список url-адресов" in current_source_val else 'api'
+        # ЖЕЛЕЗНОЕ ОПРЕДЕЛЕНИЕ РЕЖИМА
+        # Если выбрана радиокнопка "Список url-адресов..." -> ЭТО РУЧНОЙ РЕЖИМ
+        is_manual_mode = "Список url-адресов" in current_source_val
         
         # Агрегаторы
         agg_list = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
         default_aggs = ["avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex", "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua", "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis"]
         agg_list.extend(default_aggs)
         
-        if actual_data_source == 'api':
-            # API
-            if not ARSENKIN_TOKEN: st.error("Нет токена."); st.stop()
+        if not is_manual_mode:
+            # API (Арсенкин)
+            if not ARSENKIN_TOKEN: st.error("Нет токена Arsenkin."); st.stop()
             with st.spinner(f"API Arsenkin..."):
                 raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
                 if not raw_top: st.stop()
@@ -2252,17 +2254,20 @@ with tab_seo_main:
                     dom = urlparse(res['url']).netloc.lower()
                     if my_domain and (my_domain in dom or dom in my_domain):
                         if my_serp_pos == 0 or res['pos'] < my_serp_pos: my_serp_pos = res['pos']
+                    
                     is_garbage = False
                     for x in agg_list:
                         if x.lower() in dom: is_garbage = True; break
+                    
                     if not is_garbage: candidates_pool.append(res)
         else:
-            # MANUAL (Берем ВСЕ строки + ID)
+            # РУЧНОЙ РЕЖИМ
+            # Берем ВСЁ, что ввел пользователь. Ничего не фильтруем на входе.
             raw_input_urls = st.session_state.get("persistent_urls", "")
             lines = [u.strip() for u in raw_input_urls.split('\n') if u.strip()]
             candidates_pool = [{'url': u, 'pos': i+1, 'id': i} for i, u in enumerate(lines)]
 
-        if not candidates_pool: st.error("Список пуст."); st.stop()
+        if not candidates_pool: st.error("Список ссылок пуст."); st.stop()
         
         # 3. СКАЧИВАНИЕ
         results_map = {} 
@@ -2291,7 +2296,7 @@ with tab_seo_main:
                     done_count += 1
                     status.update(label=f"Сканирование: {done_count}/{len(candidates_pool)}")
 
-            # Метрики для фильтрации
+            # Метрики для фильтрации (слабый контент)
             downloaded_list = list(results_map.values())
             temp_targets = [{'url': d['url'], 'pos': d['pos']} for d in downloaded_list]
             temp_metrics = calculate_metrics(downloaded_list, my_data, settings, my_serp_pos, temp_targets)
@@ -2307,7 +2312,7 @@ with tab_seo_main:
             excluded_list_final = []
             is_filter_on = st.session_state.settings_auto_filter
             
-            # Проход по исходному списку
+            # Проходим по ИСХОДНОМУ списку (гарантия сохранения количества)
             for cand in candidates_pool:
                 c_id = cand.get('id', -1)
                 c_url = cand['url']
@@ -2315,7 +2320,7 @@ with tab_seo_main:
                 
                 # 1. Данные есть?
                 page_data = None
-                if actual_data_source == 'manual':
+                if is_manual_mode:
                     page_data = results_map.get(c_id)
                 else:
                     for k, v in results_map.items():
@@ -2331,6 +2336,7 @@ with tab_seo_main:
                             if ag in u_norm: 
                                 reason = "Агрегатор"
                                 break
+                        
                         if not reason and (u_norm in weak_urls_norm):
                             reason = "Слабый контент"
                 
@@ -2339,8 +2345,10 @@ with tab_seo_main:
                 else:
                     final_active_data.append(page_data)
 
-            # Обрезка (ТОЛЬКО API)
-            if actual_data_source == 'api':
+            # === КЛЮЧЕВОЙ МОМЕНТ ===
+            # Если режим РУЧНОЙ -> МЫ НЕ ОБРЕЗАЕМ СПИСОК НИКОГДА.
+            # Если режим API -> Обрезаем до Top-N.
+            if not is_manual_mode:
                  final_active_data = final_active_data[:user_target_top_n]
             
             # --- СОХРАНЕНИЕ ---
@@ -2351,10 +2359,9 @@ with tab_seo_main:
             st.session_state['excluded_urls_auto'] = excluded_txt
             st.session_state['detected_anomalies'] = bad_urls_dicts
             
-            # === УСТРАНЕНИЕ ОШИБКИ STREAMLIT ===
-            # Вместо st.session_state['key'] = value (что вызывает краш),
-            # мы УДАЛЯЕМ ключи. При перезагрузке (st.rerun) виджеты
-            # заново инициализируются и возьмут данные из persistent_urls.
+            # === ПРАВИЛЬНОЕ ОБНОВЛЕНИЕ ВИДЖЕТОВ ===
+            # Удаляем ключи, чтобы Streamlit пересоздал их с новыми значениями при реране.
+            # Это единственный способ избежать конфликта состояния и ошибки API.
             if 'manual_urls_widget' in st.session_state:
                 del st.session_state['manual_urls_widget']
             if 'excluded_urls_widget_display' in st.session_state:
@@ -2366,7 +2373,7 @@ with tab_seo_main:
             
             status.update(label=f"✅ Готово! Актив: {act_n}, Исключено: {out_n}", state="complete")
             
-            # Финальный расчет (только для активных)
+            # Финальный расчет
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_active_data]
             results_final = calculate_metrics(final_active_data, my_data, settings, my_serp_pos, final_clean_targets)
             st.session_state.analysis_results = results_final
@@ -3590,6 +3597,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
