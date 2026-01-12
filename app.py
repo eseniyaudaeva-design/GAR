@@ -2336,27 +2336,33 @@ with tab_seo_main:
                 if 'manual_urls_widget' in st.session_state: del st.session_state['manual_urls_widget']
                 
             else:
-                # === РУЧНОЙ РЕЖИМ ===
+else:
+                # === РУЧНОЙ РЕЖИМ (ФИНАЛЬНЫЙ ФИКС ВИЗУАЛА) ===
                 if is_filter_on:
-                    # 1. Оставляем только хорошие (используя надежную проверку)
+                    # 1. Оставляем только хорошие
                     final_clean_data = [d for d in data_for_graph if not is_url_bad(d['url'])]
                     
-                    # 2. Собираем мусор
-                    # Берем оригинальные URL из bad_urls_dicts для отображения
+                    # 2. Собираем мусор (слабые + мертвые)
                     total_excluded = bad_urls_raw + dead_urls_list
                     
                     # Генерируем чистый текст
                     clean_txt = "\n".join([d['url'] for d in final_clean_data])
+                    excluded_txt = "\n".join(total_excluded)
                     
                     # СОХРАНЯЕМ В ПАМЯТЬ
                     st.session_state['detected_anomalies'] = bad_urls_dicts 
                     st.session_state['persistent_urls'] = clean_txt
+                    st.session_state['excluded_urls_auto'] = excluded_txt
                     
-                    # Сбрасываем виджет
+                    # !!! СБРОС КЭША ВИДЖЕТОВ (ЧТОБЫ ОНИ ОБНОВИЛИСЬ) !!!
+                    
+                    # Сбрасываем верхнее окно (Активные)
                     if 'manual_urls_widget' in st.session_state:
                         del st.session_state['manual_urls_widget']
-                    
-                    st.session_state['excluded_urls_auto'] = "\n".join(total_excluded)
+                        
+                    # Сбрасываем нижнее окно (Исключенные) - ВОТ ЭТОГО НЕ ХВАТАЛО
+                    if 'excluded_urls_widget_display' in st.session_state:
+                        del st.session_state['excluded_urls_widget_display']
                     
                     st.toast(f"🧹 Фильтр: {len(bad_urls_raw)} слабых + {len(dead_urls_list)} недоступных", icon="🗑️")
                     
@@ -2367,18 +2373,22 @@ with tab_seo_main:
                     clean_txt = "\n".join([d['url'] for d in final_clean_data])
                     st.session_state['persistent_urls'] = clean_txt
                     
+                    # Сбрасываем верхнее окно
                     if 'manual_urls_widget' in st.session_state:
                         del st.session_state['manual_urls_widget']
                     
+                    # Обработка исключенных (только мертвые)
                     if dead_urls_list:
                         st.session_state['excluded_urls_auto'] = "\n".join(dead_urls_list)
+                        # Сбрасываем нижнее окно, если оно есть
+                        if 'excluded_urls_widget_display' in st.session_state:
+                            del st.session_state['excluded_urls_widget_display']
                     else:
                         if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
                     
                     if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
                     
                     st.toast(f"🛑 Анализ без фильтра: {len(final_clean_data)} сайтов", icon="📊")
-
             # 3. ФИНАЛЬНЫЙ РАСЧЕТ
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
             results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
@@ -3608,6 +3618,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
