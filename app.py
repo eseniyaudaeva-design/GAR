@@ -2198,12 +2198,12 @@ with tab_seo_main:
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ==========================================
-    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (SYNC FIX v8)
+    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (NO CRASH FIX)
     # ==========================================
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         
-        # 1. ЗАХВАТ ДАННЫХ ИЗ ВИДЖЕТА
+        # 1. СИНХРОНИЗАЦИЯ
         if "manual_urls_widget" in st.session_state and st.session_state.manual_urls_widget:
             st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
@@ -2243,7 +2243,8 @@ with tab_seo_main:
         agg_list.extend(default_aggs)
         
         if actual_data_source == 'api':
-            if not ARSENKIN_TOKEN: st.error("Нет токена Arsenkin."); st.stop()
+            # API
+            if not ARSENKIN_TOKEN: st.error("Нет токена."); st.stop()
             with st.spinner(f"API Arsenkin..."):
                 raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
                 if not raw_top: st.stop()
@@ -2256,12 +2257,12 @@ with tab_seo_main:
                         if x.lower() in dom: is_garbage = True; break
                     if not is_garbage: candidates_pool.append(res)
         else:
-            # РУЧНОЙ РЕЖИМ
+            # MANUAL (Берем ВСЕ строки + ID)
             raw_input_urls = st.session_state.get("persistent_urls", "")
             lines = [u.strip() for u in raw_input_urls.split('\n') if u.strip()]
             candidates_pool = [{'url': u, 'pos': i+1, 'id': i} for i, u in enumerate(lines)]
 
-        if not candidates_pool: st.error("Список ссылок пуст."); st.stop()
+        if not candidates_pool: st.error("Список пуст."); st.stop()
         
         # 3. СКАЧИВАНИЕ
         results_map = {} 
@@ -2338,7 +2339,7 @@ with tab_seo_main:
                 else:
                     final_active_data.append(page_data)
 
-            # Обрезка (только API)
+            # Обрезка (ТОЛЬКО API)
             if actual_data_source == 'api':
                  final_active_data = final_active_data[:user_target_top_n]
             
@@ -2350,19 +2351,22 @@ with tab_seo_main:
             st.session_state['excluded_urls_auto'] = excluded_txt
             st.session_state['detected_anomalies'] = bad_urls_dicts
             
-            # === ГЛАВНОЕ ИСПРАВЛЕНИЕ ===
-            # Мы ПРИНУДИТЕЛЬНО записываем значения в ключи виджетов.
-            # Это заставит Streamlit показать новый текст, а не старый кэш.
-            st.session_state['manual_urls_widget'] = clean_txt
-            st.session_state['excluded_urls_widget_display'] = excluded_txt
+            # === УСТРАНЕНИЕ ОШИБКИ STREAMLIT ===
+            # Вместо st.session_state['key'] = value (что вызывает краш),
+            # мы УДАЛЯЕМ ключи. При перезагрузке (st.rerun) виджеты
+            # заново инициализируются и возьмут данные из persistent_urls.
+            if 'manual_urls_widget' in st.session_state:
+                del st.session_state['manual_urls_widget']
+            if 'excluded_urls_widget_display' in st.session_state:
+                del st.session_state['excluded_urls_widget_display']
             
             in_n = len(candidates_pool)
             act_n = len(final_active_data)
             out_n = len(excluded_list_final)
             
-            status.update(label="✅ Готово! Перезагрузка...", state="complete")
+            status.update(label=f"✅ Готово! Актив: {act_n}, Исключено: {out_n}", state="complete")
             
-            # Финальный расчет
+            # Финальный расчет (только для активных)
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_active_data]
             results_final = calculate_metrics(final_active_data, my_data, settings, my_serp_pos, final_clean_targets)
             st.session_state.analysis_results = results_final
@@ -3586,6 +3590,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
