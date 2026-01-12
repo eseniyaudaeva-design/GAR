@@ -1931,11 +1931,10 @@ with tab_seo_main:
             st.session_state.settings_stops = DEFAULT_STOPS
 
         # Спрячем большие поля в аккуратный спойлер, чтобы не загромождать интерфейс
-        with st.expander("Списки)", expanded=False):
-            st.text_area("Домены-агрегаторы и мусорные слова (каждое с новой строки).")
+        with st.expander("Списки", expanded=False):
             
             st.text_area(
-                "Не учитывать домены", 
+                "Домены-агрегаторы и мусорные слова (каждое с новой строки).", 
                 height=150, 
                 key="settings_excludes",
                 help="Сайты из этого списка будут мгновенно удаляться из анализа."
@@ -3573,6 +3572,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
