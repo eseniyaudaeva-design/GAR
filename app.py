@@ -2336,7 +2336,6 @@ with tab_seo_main:
                 if 'manual_urls_widget' in st.session_state: del st.session_state['manual_urls_widget']
                 
             else:
-else:
                 # === РУЧНОЙ РЕЖИМ (ФИНАЛЬНЫЙ ФИКС ВИЗУАЛА) ===
                 if is_filter_on:
                     # 1. Оставляем только хорошие
@@ -3618,6 +3617,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
