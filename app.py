@@ -957,7 +957,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     all_forms_map = defaultdict(set)
     global_forms_counter = defaultdict(Counter) 
     
-    # 1. ОБРАБОТКА МОЕГО САЙТА
+    # 1. ОБРАБОТКА МОЕГО САЙТА (для расчета личных баллов)
     if not my_data or not my_data.get('body_text'): 
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
         my_clean_domain = "local"
@@ -968,16 +968,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for k, v in my_forms.items(): all_forms_map[k].update(v)
         my_clean_domain = my_data['domain'].lower().replace('www.', '').split(':')[0]
 
-    # 2. ОБРАБОТКА КОНКУРЕНТОВ
+    # 2. ОБРАБОТКА КОНКУРЕНТОВ (Формирование базы для Медианы)
     comp_docs = []
     for p in comp_data_full:
         if not p.get('body_text'): continue
         
-        # ЗАЩИТА: Исключаем свой сайт из списка конкурентов, если он туда попал
-        p_domain = p['domain'].lower().replace('www.', '').split(':')[0]
-        if my_clean_domain != "local" and p_domain == my_clean_domain:
-            continue
-
+        # --- ИЗМЕНЕНИЕ: УБРАНА ПРОВЕРКА "ЕСЛИ ЭТО МОЙ САЙТ - ПРОПУСТИТЬ" ---
+        # Теперь, если ваш сайт есть в выдаче (Топ-10/20), он попадет в comp_docs 
+        # и будет влиять на медиану, как вы и просили.
+        
         body, c_forms = process_text_detailed(p['body_text'], settings)
         
         # Сбор реальных форм для отображения
@@ -1021,7 +1020,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         word_idf_map[lemma] = max(idf, 0.01)
 
     # =========================================================================
-    # 3. РАСЧЕТ МЕДИАН (ЖЕСТКОЕ РАЗДЕЛЕНИЕ)
+    # 3. РАСЧЕТ МЕДИАН
     # =========================================================================
     
     table_depth = []
@@ -1035,12 +1034,10 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
-        # 1. СОБИРАЕМ СЫРЫЕ ДАННЫЕ (БЕЗ НОРМИРОВКИ)
-        # Это ровно то, сколько раз слово встречается на сайтах.
+        # 1. СОБИРАЕМ СЫРЫЕ ДАННЫЕ
         raw_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         sorted_raw = sorted(raw_counts)
         
-        # Считаем АБСОЛЮТНУЮ медиану (для отображения в таблице)
         if sorted_raw:
             rec_median_absolute = math_round(np.median(sorted_raw))
             obs_min = math_round(sorted_raw[0])
@@ -1048,15 +1045,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         else:
             rec_median_absolute = 0; obs_min = 0; obs_max = 0
 
-        # 2. СЧИТАЕМ ЦЕЛЕВУЮ МЕДИАНУ (ДЛЯ РЕКОМЕНДАЦИЙ)
-        # Здесь мы учитываем разницу в длине текстов, если включена галочка
+        # 2. СЧИТАЕМ ЦЕЛЕВУЮ МЕДИАНУ
         if settings['norm'] and my_len > 0:
             norm_counts = []
             for i in range(N):
                 raw_cnt = raw_counts[i]
                 comp_len = c_lens[i]
                 if comp_len > 0:
-                    # Приводим к вашей длине
                     normalized_val = raw_cnt * (my_len / comp_len)
                     norm_counts.append(normalized_val)
                 else:
@@ -1067,7 +1062,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             else:
                 rec_median_target = 0
         else:
-            # Если галочка снята, целевая равна абсолютной
             rec_median_target = rec_median_absolute
 
         # --- МОЯ СТАТИСТИКА ---
@@ -1075,7 +1069,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         if obs_max == 0 and my_tf_count == 0: continue
 
-        # --- ШИРИНА (Считаем по целевой, чтобы не упускать важное) ---
+        # --- ШИРИНА ---
         if rec_median_target >= 1:
             words_with_median_gt_0.add(lemma)
             if my_tf_count > 0:
@@ -1092,7 +1086,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             if rec_median_target >= 1: missing_semantics_high.append(item)
             else: missing_semantics_low.append(item)
 
-        # --- РЕКОМЕНДАЦИИ (ВАЖНО: сравниваем с TARGET) ---
+        # --- РЕКОМЕНДАЦИИ ---
         diff = rec_median_target - my_tf_count
         
         if diff == 0: status = "Норма"; action_text = "✅"; sort_val = 0
@@ -1105,14 +1099,11 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Слово": display_word,
             "Словоформы": forms_str,
             "Вхождений у вас": my_tf_count,
-            
-            # !!!!!!!! ЗДЕСЬ ТЕПЕРЬ АБСОЛЮТНАЯ МЕДИАНА (2, а не 17) !!!!!!!!
             "Медиана": rec_median_absolute, 
-            
             "Минимум (конкур.)": obs_min,
             "Максимум (конкур.)": obs_max,
             "Статус": status,
-            "Рекомендация": action_text, # А здесь учтена нормировка
+            "Рекомендация": action_text,
             "is_missing": (my_tf_count == 0),
             "sort_val": sort_val
         })
@@ -1126,7 +1117,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         })
 
     # =========================================================================
-    # 4. ФИНАЛИЗАЦИЯ
+    # 4. ФИНАЛИЗАЦИЯ (БАЛЛЫ)
     # =========================================================================
     
     total_needed = len(words_with_median_gt_0)
@@ -1177,27 +1168,34 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     my_raw_bm25 = calculate_raw_power(my_lemmas, my_len)
     my_depth_score_final = int(round(min(100, my_raw_bm25 * k_norm)))
 
+    # Досчитываем глубину всем конкурентам
     for url, data in competitor_scores_map.items():
         data['depth_final'] = int(round(min(100, data['raw_depth'] * k_norm)))
 
-    # Сборка таблицы
+    # Сборка таблицы релевантности
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low = missing_semantics_low[:500]
 
     table_rel = []
     my_site_found_in_selection = False
+    
+    # 1. Проходимся по ИСХОДНОМУ списку из выдачи (Top N)
     for item in original_results:
         url = item['url']
         if url not in competitor_scores_map: continue
+        
         row_domain = urlparse(url).netloc.lower().replace('www.', '')
         is_my_site = False
+        
+        # Проверяем, не наш ли это сайт
         if my_clean_domain and my_clean_domain != "local" and my_clean_domain in row_domain:
             is_my_site = True
             my_site_found_in_selection = True
             display_name = f"{urlparse(url).netloc} (Вы)"
         else:
             display_name = urlparse(url).netloc
+            
         scores = competitor_scores_map[url]
         table_rel.append({ 
             "Домен": display_name, 
@@ -1207,22 +1205,33 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Глубина (балл)": scores['depth_final'] 
         })
         
+    # 2. Если нашего сайта НЕ было в Топ N, добавляем его вручную в конец
     if not my_site_found_in_selection:
         pos_to_show = my_serp_pos if my_serp_pos > 0 else 0
         my_label = f"{my_data['domain']} (Вы)" if (my_data and my_data.get('domain')) else "Ваш сайт"
         my_full_url = my_data['url'] if (my_data and 'url' in my_data) else "#"
-        table_rel.append({ "Домен": my_label, "URL": my_full_url, "Позиция": pos_to_show, "Ширина (балл)": my_width_score_final, "Глубина (балл)": my_depth_score_final })
+        table_rel.append({ 
+            "Домен": my_label, 
+            "URL": my_full_url, 
+            "Позиция": pos_to_show, 
+            "Ширина (балл)": my_width_score_final, 
+            "Глубина (балл)": my_depth_score_final 
+        })
 
+    # Анализ аномалий
     df_rel_for_analysis = pd.DataFrame(table_rel)
     good_urls, bad_urls_dicts, trend_info = analyze_serp_anomalies(df_rel_for_analysis)
     
     st.session_state['detected_anomalies'] = bad_urls_dicts
     st.session_state['serp_trend_info'] = trend_info
     
+    # Сохраняем "чистые" урлы (для следующего запуска)
     if bad_urls_dicts:
+        # Если были исключения, то persistent_urls - это только хорошие
         st.session_state['persistent_urls'] = "\n".join(good_urls)
         st.session_state['excluded_urls_auto'] = "\n".join([item['url'] for item in bad_urls_dicts])
     else:
+        # Если всех оставили, сохраняем всех (кроме себя, чтобы не дублировать в инпуте, если это ручной режим)
         st.session_state['persistent_urls'] = "\n".join([r.get('URL', r['Домен']) for r in table_rel if "(Вы)" not in r['Домен']])
         st.session_state['excluded_urls_auto'] = ""
 
@@ -3521,6 +3530,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
