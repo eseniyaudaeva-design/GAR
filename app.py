@@ -2278,14 +2278,21 @@ with tab_seo_main:
 # 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
         with st.spinner("Анализ и фильтрация..."):
             
-            # --- ЭТАП 1: Черновой прогон (по всем сайтам) ---
-            # Строим график и ищем аномалии
-            results_full = calculate_metrics(data_for_graph, my_data, settings, my_serp_pos, targets_for_graph)
+            # === ШАГ 0: Поиск "потерянных" (мертвых) сайтов ===
+            # Сравниваем список исходных кандидатов и тех, кто реально скачался
+            successful_urls_set = set(d['url'] for d in data_for_graph)
+            dead_urls_list = []
             
-            # Сохраняем ПОЛНЫЕ данные для графика
+            # Проверяем каждого кандидата: скачался он или нет?
+            for cand in candidates_pool:
+                if cand['url'] not in successful_urls_set:
+                    dead_urls_list.append(cand['url'])
+            
+            # --- ЭТАП 1: Черновой прогон ---
+            results_full = calculate_metrics(data_for_graph, my_data, settings, my_serp_pos, targets_for_graph)
             st.session_state['full_graph_data'] = results_full['relevance_top']
             
-            # Анализ аномалий
+            # Анализ аномалий (среди ЖИВЫХ сайтов)
             df_rel_check = results_full['relevance_top']
             good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
             st.session_state['serp_trend_info'] = trend
@@ -2298,55 +2305,62 @@ with tab_seo_main:
             
             final_clean_data = []
 
-            # ЛОГИКА ОТБОРА (ИСПРАВЛЕННАЯ)
             if is_api_mode:
-                # Для API всегда режем по лимиту пользователя (10 или 20)
-                # Если фильтр ВКЛ - берем только хороших. Если ВЫКЛ - берем всех подряд.
+                # API режим (как раньше)
                 if is_filter_on:
                     clean_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
                 else:
                     clean_pool = data_for_graph
-                
                 final_clean_data = clean_pool[:user_target_top_n]
                 
             else:
-                # === РУЧНОЙ РЕЖИМ (ИСПРАВЛЕНО) ===
+                # === РУЧНОЙ РЕЖИМ (ИСПРАВЛЕННЫЙ УЧЕТ) ===
                 if is_filter_on:
-                    # Фильтр ВКЛ: Убираем плохих, остальные оставляем (даже если их больше 10)
-                    # Вы сами их ввели, значит хотите видеть их все, кроме мусора.
+                    # 1. Живые и хорошие
                     final_clean_data = [d for d in data_for_graph if d['url'] not in bad_urls_set]
                     
-                    # ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ СПИСКОВ (Чтобы убрать дубли)
-                    st.session_state['detected_anomalies'] = bad_urls_dicts
-                    st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
-                    st.session_state['excluded_urls_auto'] = "\n".join([item['url'] for item in bad_urls_dicts])
+                    # 2. Формируем ПОЛНЫЙ список исключений:
+                    # Слабые по контенту + Мертвые технически
+                    weak_urls_list = [item['url'] for item in bad_urls_dicts]
+                    total_excluded = weak_urls_list + dead_urls_list
                     
-                    st.toast(f"🧹 Фильтр сработал: Удалено {len(bad_urls_dicts)} слабых сайтов", icon="🗑️")
+                    # Сохраняем
+                    st.session_state['detected_anomalies'] = bad_urls_dicts # для логов
+                    st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
+                    st.session_state['excluded_urls_auto'] = "\n".join(total_excluded)
+                    
+                    st.toast(f"🧹 Фильтр: {len(weak_urls_list)} слабых + {len(dead_urls_list)} недоступных", icon="🗑️")
                     
                 else:
-                    # Фильтр ВЫКЛ: Берем ВСЕХ, игнорируем лимит Top-N
+                    # Фильтр ВЫКЛ: Берем ВСЕ ЖИВЫЕ
                     final_clean_data = data_for_graph
                     
-                    # Чистим списки исключений (так как фильтр выключен)
+                    # Активные = Живые
                     st.session_state['persistent_urls'] = "\n".join([d['url'] for d in final_clean_data])
-                    if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+                    
+                    # В исключенные кидаем ТОЛЬКО мертвые (так как они физически не могут участвовать)
+                    if dead_urls_list:
+                        st.session_state['excluded_urls_auto'] = "\n".join(dead_urls_list)
+                    else:
+                        if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
+                    
                     if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
                     
-                    st.toast(f"🛑 Фильтр выключен: Анализируем все {len(final_clean_data)} ссылок", icon="📊")
+                    st.toast(f"🛑 Анализируем {len(final_clean_data)} сайтов (Мертвых: {len(dead_urls_list)})", icon="📊")
 
-            # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Строго по отобранным)
+            # 3. ФИНАЛЬНЫЙ РАСЧЕТ
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
             results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
             
             st.session_state.analysis_results = results_final
             
-            # --- Остальная логика (нейминг, семантика) ---
+            # --- Остальная логика ---
             naming_df = calculate_naming_metrics(final_clean_data, my_data, settings)
             st.session_state.naming_table_df = naming_df 
             st.session_state.ideal_h1_result = analyze_ideal_name(final_clean_data)
             st.session_state.analysis_done = True
             
-            # Классификация семантики
+            # Семантика
             res = st.session_state.analysis_results
             words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
             
@@ -2357,7 +2371,6 @@ with tab_seo_main:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 
-                # Сохраняем словари
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
@@ -2375,7 +2388,7 @@ with tab_seo_main:
                 
                 st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
 
-            # Автозаполнение генератора
+            # Автозаполнение
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
             if count_prods < 20:
@@ -2389,9 +2402,7 @@ with tab_seo_main:
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
-            # Переключаем радиокнопку, чтобы обновить UI
             st.session_state['force_radio_switch'] = True
-            
             st.rerun()
 
 # ------------------------------------------
@@ -3566,6 +3577,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
