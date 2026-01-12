@@ -1855,19 +1855,6 @@ with tab_seo_main:
                 
                 st.markdown("<br>", unsafe_allow_html=True)
     # ===========================================================
-
-        st.markdown("### Списки (Stop / Exclude)")
-        
-        # 1. Сначала инициализируем значения в памяти, если их там нет
-        if "settings_excludes" not in st.session_state:
-            st.session_state.settings_excludes = DEFAULT_EXCLUDE
-        if "settings_stops" not in st.session_state:
-            st.session_state.settings_stops = DEFAULT_STOPS
-
-        # 2. Рисуем виджеты БЕЗ передачи значения (value), 
-        # так как Streamlit сам подтянет его из st.session_state по ключу (key)
-        st.text_area("Не учитывать домены", height=100, key="settings_excludes")
-        st.text_area("Стоп-слова", height=100, key="settings_stops")
 # --- БРОНЕБОЙНАЯ ЛОГИКА КНОПКИ (CALLBACK) ---
         def run_analysis_callback():
             # 1. СПАСАЕМ ГАЛОЧКУ: Запоминаем текущее состояние перед любой очисткой
@@ -1933,6 +1920,34 @@ with tab_seo_main:
         st.checkbox("Учитывать числа", key="settings_numbers")
         st.checkbox("Нормировать по длине", key="settings_norm")
         st.checkbox("Авто-фильтр слабых сайтов", key="settings_auto_filter", help="Если включено: сайты с низкой релевантностью будут автоматически перенесены в список исключенных (справа). Если выключено: все сайты останутся в активном списке.")
+        
+        # === НОВЫЙ БЛОК: СПИСКИ В САЙДБАРЕ ===
+        st.markdown("---")
+        
+        # Инициализация значений в памяти (чтобы не было ошибок при первом запуске)
+        if "settings_excludes" not in st.session_state:
+            st.session_state.settings_excludes = DEFAULT_EXCLUDE
+        if "settings_stops" not in st.session_state:
+            st.session_state.settings_stops = DEFAULT_STOPS
+
+        # Спрячем большие поля в аккуратный спойлер, чтобы не загромождать интерфейс
+        with st.expander("⛔ Списки (Stop / Exclude)", expanded=False):
+            st.caption("Домены-агрегаторы и мусорные слова (каждое с новой строки).")
+            
+            st.text_area(
+                "Не учитывать домены", 
+                height=150, 
+                key="settings_excludes",
+                help="Сайты из этого списка будут мгновенно удаляться из анализа."
+            )
+            
+            st.text_area(
+                "Стоп-слова (удаляются из текста)", 
+                height=150, 
+                key="settings_stops",
+                help="Эти слова не будут учитываться при подсчете частотности (например: руб, шт, цена)."
+            )
+        # =====================================
         # ----------------------------------------
     # БЛОК 1: ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ (ТЕПЕРЬ ПЕРВЫЙ)
     # ==========================================
@@ -3558,6 +3573,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
