@@ -1756,47 +1756,38 @@ with tab_seo_main:
         
         if source_type == "Ручной список":
             if st.session_state.get('analysis_done'):
-                # 1. Подготовка данных
+                # 1. Подготовка данных из переменных
                 active_urls = st.session_state.get('persistent_urls', "").split('\n')
-                # Чистим пустые строки
                 active_urls = [u.strip() for u in active_urls if u.strip()]
                 active_count = len(active_urls)
                 
-                excluded_urls = st.session_state.get('excluded_urls_auto', "").split('\n')
-                excluded_urls = [u.strip() for u in excluded_urls if u.strip()]
-                excluded_count = len(excluded_urls)
+                excluded_urls_raw = st.session_state.get('excluded_urls_auto', "")
+                excluded_urls_list = excluded_urls_raw.split('\n')
+                excluded_urls_list = [u.strip() for u in excluded_urls_list if u.strip()]
+                excluded_count = len(excluded_urls_list)
                 
                 target_top = st.session_state.get('settings_top_n', 10)
                 
-                # --- НОВЫЙ ДИЗАЙН: МАКСИМАЛЬНАЯ ПРОСТОТА ---
-
-# 1. Заголовок-статус
+                # 2. Заголовок-статус
                 col_status, col_reset = st.columns([5, 1])
-                
-                # Проверяем состояние галочки
                 is_filter_active = st.session_state.get('settings_auto_filter', True)
 
                 with col_status:
                     if excluded_count > 0:
-                        # Если есть исключенные (Ваш текущий вид)
                         st.success(f"✅ **Готово!** Мы нашли {active_count + excluded_count} сайтов, отсеяли {excluded_count} слабых. Осталось: **{active_count}**.", icon="🚀")
-                    
                     elif is_filter_active:
-                        # НОВОЕ: Фильтр ВКЛЮЧЕН, но список чист (все сайты хорошие)
                         st.success(f"🛡️ **Фильтр активен:** Слабых сайтов не найдено. Все {active_count} ссылок прошли проверку качества.", icon="✅")
-                    
                     else:
-                        # Фильтр ВЫКЛЮЧЕН
                         st.info(f"⚙️ **Фильтр выключен:** Анализируем все {active_count} ссылок.", icon="ℹ️")
 
                 with col_reset:
                     if st.button("🔄 Сброс", key="reset_btn_simple", help="Начать новый поиск", use_container_width=True):
-                        keys_to_clear = ['analysis_done', 'analysis_results', 'excluded_urls_auto', 'detected_anomalies', 'serp_trend_info', 'persistent_urls', 'naming_table_df', 'ideal_h1_result']
+                        keys_to_clear = ['analysis_done', 'analysis_results', 'excluded_urls_auto', 'detected_anomalies', 'serp_trend_info', 'persistent_urls', 'naming_table_df', 'ideal_h1_result', 'manual_urls_widget', 'excluded_urls_widget_display']
                         for k in keys_to_clear:
                             if k in st.session_state: del st.session_state[k]
                         st.rerun()
 
-# 2. ГЛАВНОЕ ОКНО (Только активные)
+                # 3. ГЛАВНОЕ ОКНО (Только активные)
                 if active_count > target_top:
                     lbl = f"👇 Ваши конкуренты (Система анализирует первые {target_top} строк)"
                     help_txt = f"В списке {active_count} ссылок. В анализ попадут верхние {target_top}. Остальные {active_count-target_top} — запасные."
@@ -1804,21 +1795,54 @@ with tab_seo_main:
                     lbl = f"👇 Ваши конкуренты (Топ-{active_count})"
                     help_txt = "Все ссылки из этого списка участвуют в анализе."
 
-                # === ИСПРАВЛЕНИЕ ОШИБКИ ===
-                # 1. Если виджет еще пустой (например, при старте), заполняем его данными из памяти
+                # === ВАЖНАЯ ИНИЦИАЛИЗАЦИЯ (АКТИВНЫЕ) ===
                 if "manual_urls_widget" not in st.session_state:
                     st.session_state.manual_urls_widget = st.session_state.get('persistent_urls', "")
 
-                # 2. Рисуем виджет БЕЗ параметра value (он сам возьмет значение по ключу key)
                 st.text_area(
                     lbl, 
                     height=250, 
-                    key="manual_urls_widget", 
-                    # value=...  <-- ЭТУ СТРОКУ МЫ УДАЛИЛИ
+                    key="manual_urls_widget",
+                    # value=... НЕ ИСПОЛЬЗУЕМ, берется из session_state
                     help=help_txt
                 )
+                # Синхронизация обратно в переменную
+                st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
+
+                # 4. МУСОР (Спрятан)
+                if excluded_count > 0:
+                    with st.expander(f"🗑️ Исключенные сайты ({excluded_count})", expanded=True):
+                        st.caption("Эти сайты были автоматически отсеяны. Если нужно вернуть сайт в работу — скопируйте его отсюда в верхнее окно.")
+                        
+                        # === ВАЖНАЯ ИНИЦИАЛИЗАЦИЯ (ИСКЛЮЧЕННЫЕ) - ВОТ ЭТОГО НЕ ХВАТАЛО ===
+                        # Если память виджета пуста (после сброса скриптом), заполняем её данными из переменной
+                        if "excluded_urls_widget_display" not in st.session_state:
+                            st.session_state.excluded_urls_widget_display = excluded_urls_raw
+
+                        st.text_area(
+                            "Список исключенных", 
+                            height=150, 
+                            key="excluded_urls_widget_display",
+                            # value=... НЕ ИСПОЛЬЗУЕМ
+                            label_visibility="collapsed"
+                        )
+
+            else:
+                # --- СТАРТОВЫЙ ЭКРАН (До анализа) ---
+                st.info("Вставьте список ссылок (каждая с новой строки) или оставьте пустым, чтобы ввести позже.")
                 
-                # 3. Сохраняем то, что ввел юзер, обратно в память
+                # Инициализация для старта
+                if "manual_urls_widget" not in st.session_state:
+                    st.session_state.manual_urls_widget = st.session_state.get('persistent_urls', "")
+                    
+                st.text_area(
+                    "Поле ввода", 
+                    height=200, 
+                    key="manual_urls_widget", 
+                    label_visibility="collapsed",
+                    placeholder="https://site1.ru\nhttps://site2.ru..."
+                )
+                # Синхронизация
                 st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
                 # ==========================
 
@@ -3607,6 +3631,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
