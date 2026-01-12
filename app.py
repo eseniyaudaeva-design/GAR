@@ -2256,34 +2256,44 @@ with tab_seo_main:
                     # 1. Сохраняем информацию об аномалиях
                     st.session_state['detected_anomalies'] = bad_urls_dicts
                     
-                    # 2. Формируем список ПЛОХИХ (с очисткой от пробелов)
-                    excluded_urls_clean = [str(item['url']).strip() for item in bad_urls_dicts]
+                    # 2. Формируем список ПЛОХИХ (с жесткой зачисткой мусора)
+                    # .strip() удаляет пробелы и переносы в начале и конце
+                    excluded_urls_clean = [str(item['url']).strip() for item in bad_urls_dicts if item.get('url')]
+                    # Создаем множество для мгновенного поиска
                     excluded_set = set(excluded_urls_clean)
                     
                     st.session_state['excluded_urls_auto'] = "\n".join(excluded_urls_clean)
                     
-                    # 3. Формируем список ХОРОШИХ (строго проверяем наличие в плохом списке)
+                    # 3. Формируем список ХОРОШИХ (Убираем всё, что есть в excluded_set)
                     clean_active_list = []
-                    seen_active = set()
+                    seen_urls = set() # Чтобы не было дублей внутри самого списка
                     
-                    # Проходим по списку good_urls и сверяем с excluded_set
                     for u in good_urls:
                         u_clean = str(u).strip()
-                        # Добавляем, только если ссылка не пустая и её НЕТ в списке исключенных
+                        
+                        # ГЛАВНАЯ ПРОВЕРКА:
+                        # Если чистого URL нет в списке исключенных -> добавляем
                         if u_clean and u_clean not in excluded_set:
-                            if u_clean not in seen_active:
+                            if u_clean not in seen_urls:
                                 clean_active_list.append(u_clean)
-                                seen_active.add(u_clean)
+                                seen_urls.add(u_clean)
                     
                     st.session_state['persistent_urls'] = "\n".join(clean_active_list)
                     
                     st.toast(f"🧹 Фильтр ВКЛ: Исключено {len(excluded_set)}. Осталось: {len(clean_active_list)}", icon="🗑️")
                 else:
-                    # Аномалий нет -> Оставляем всех
-                    clean_all = [str(u).strip() for u in good_urls if str(u).strip()]
-                    st.session_state['persistent_urls'] = "\n".join(clean_all)
+                    # Аномалий нет -> Оставляем всех, но тоже чистим
+                    all_clean = []
+                    seen_all = set()
+                    for u in good_urls:
+                        u_clean = str(u).strip()
+                        if u_clean and u_clean not in seen_all:
+                            all_clean.append(u_clean)
+                            seen_all.add(u_clean)
+
+                    st.session_state['persistent_urls'] = "\n".join(all_clean)
                     
-                    # Чистим хвосты
+                    # Чистим хвосты правого окна
                     if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
                     if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
                     
@@ -3510,5 +3520,6 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
