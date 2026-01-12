@@ -2253,13 +2253,10 @@ with tab_seo_main:
             
             if is_filter_enabled:
                 # --- 1. Функция "Ядерной" нормализации ---
-                # Превращает любую ссылку (https://Site.ru/page/) в чистый ключ (site.ru/page)
                 def get_strict_key(u):
                     if not u: return ""
                     s = str(u).lower().strip()
-                    # Убираем протоколы и www, чтобы https://site.ru == http://www.site.ru
                     s = s.replace("https://", "").replace("http://", "").replace("www.", "")
-                    # Убираем слеш в конце, чтобы site.ru/ == site.ru
                     return s.rstrip('/')
 
                 if bad_urls_dicts:
@@ -2273,34 +2270,31 @@ with tab_seo_main:
                     for item in bad_urls_dicts:
                         raw_u = item.get('url', '')
                         if raw_u:
-                            # Добавляем "чистый ключ" в черный список
                             blacklist_keys.add(get_strict_key(raw_u))
-                            # Для отображения в правом окне берем оригинал, просто без пробелов
                             excluded_display_list.append(str(raw_u).strip())
                     
-                    st.session_state['excluded_urls_auto'] = "\n".join(excluded_display_list)
+                    # Сохраняем для отображения в правом окне
+                    st.session_state['excluded_urls_for_display'] = "\n".join(excluded_display_list)
                     
                     # --- 3. Собираем БЕЛЫЙ СПИСОК (Проверка по ключам) ---
                     clean_active_list = []
-                    seen_keys = set() # Чтобы внутри списка не было дублей
+                    seen_keys = set()
                     
                     for u in good_urls:
-                        # Делаем ключ из текущей "хорошей" ссылки
                         key = get_strict_key(u)
-                        
-                        # ГЛАВНАЯ ПРОВЕРКА:
-                        # Если ключа НЕТ в черном списке -> добавляем
                         if key and key not in blacklist_keys:
                             if key not in seen_keys:
                                 clean_active_list.append(str(u).strip())
                                 seen_keys.add(key)
                     
-                    st.session_state['persistent_urls'] = "\n".join(clean_active_list)
+                    final_clean_text = "\n".join(clean_active_list)
+                    st.session_state['persistent_urls'] = final_clean_text
+                    # Теперь мы не обновляем старый виджет, а просто сохраняем данные
                     
                     st.toast(f"🧹 Фильтр: Исключено {len(blacklist_keys)}. Активных: {len(clean_active_list)}", icon="🗑️")
                 
                 else:
-                    # Если плохих нет, просто чистим дубли внутри списка
+                    # Если плохих нет, просто чистим дубли
                     clean_active = []
                     seen = set()
                     for u in good_urls:
@@ -2309,7 +2303,8 @@ with tab_seo_main:
                             clean_active.append(str(u).strip())
                             seen.add(key)
 
-                    st.session_state['persistent_urls'] = "\n".join(clean_active)
+                    final_clean_text = "\n".join(clean_active)
+                    st.session_state['persistent_urls'] = final_clean_text
                     
                     # Чистим хвосты
                     if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
@@ -2318,16 +2313,13 @@ with tab_seo_main:
                     st.toast("✅ Фильтр: Все сайты прошли проверку", icon="🛡️")
 
             else:
-                # СЦЕНАРИЙ Б: Галочка СНЯТА (Ничего не фильтруем, просто чистим дубли)
+                # СЦЕНАРИЙ Б: Галочка СНЯТА (Ничего не фильтруем)
                 clean_all = []
                 seen_all = set()
                 
-                # Здесь тоже нужна функция, чтобы объявить её внутри scope, если вдруг блок выше не выполнился
                 def get_strict_key_simple(u):
                     return str(u).lower().strip().replace("https://", "").replace("http://", "").replace("www.", "").rstrip('/')
 
-                # Берем ВСЕХ (и хороших, и плохих, т.к. фильтр выключен)
-                # Объединяем списки, чтобы ничего не потерять
                 combined_pool = good_urls + [x['url'] for x in (bad_urls_dicts or [])]
                 
                 for u in combined_pool:
@@ -2336,7 +2328,8 @@ with tab_seo_main:
                         clean_all.append(str(u).strip())
                         seen_all.add(key)
                 
-                st.session_state['persistent_urls'] = "\n".join(clean_all)
+                final_clean_text = "\n".join(clean_all)
+                st.session_state['persistent_urls'] = final_clean_text
                 
                 # Очищаем правое окно
                 if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
@@ -2346,6 +2339,10 @@ with tab_seo_main:
                     st.toast(f"🛑 Фильтр ВЫКЛ: {len(bad_urls_dicts)} слабых сайтов оставлены в списке", icon="👀")
                 else:
                     st.toast("🛑 Фильтр ВЫКЛ: Все сайты на месте", icon="👀")
+            # ==============================================================
+
+            # Классификация семантики (по финальным данным)
+            # ... (остальной код после этого блока остается без изменений) ...
             # ==============================================================
 
             # Классификация семантики (по финальным данным)
@@ -3553,6 +3550,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
