@@ -2198,13 +2198,12 @@ with tab_seo_main:
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ==========================================
-    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (NO-SLICE FIX)
+    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (PRODUCTION FIX)
     # ==========================================
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         
-        # 1. ЗАХВАТ ДАННЫХ
-        # Берем данные прямо из виджета, чтобы ничего не потерять
+        # 1. ЗАХВАТ ВВОДА (Чтобы не потерять то, что вы только что вставили)
         if "manual_urls_widget" in st.session_state and st.session_state.manual_urls_widget:
             st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
@@ -2235,8 +2234,8 @@ with tab_seo_main:
         current_source_val = st.session_state.get("competitor_source_radio")
         user_target_top_n = st.session_state.settings_top_n
         
-        # ЖЕЛЕЗНОЕ ОПРЕДЕЛЕНИЕ РЕЖИМА
-        # Если выбрана радиокнопка "Список url-адресов..." -> ЭТО РУЧНОЙ РЕЖИМ
+        # ОПРЕДЕЛЕНИЕ РЕЖИМА (Строгое)
+        # Если радиокнопка на "Список" - это ручной режим.
         is_manual_mode = "Список url-адресов" in current_source_val
         
         # Агрегаторы
@@ -2245,8 +2244,8 @@ with tab_seo_main:
         agg_list.extend(default_aggs)
         
         if not is_manual_mode:
-            # API (Арсенкин)
-            if not ARSENKIN_TOKEN: st.error("Нет токена Arsenkin."); st.stop()
+            # API Режим
+            if not ARSENKIN_TOKEN: st.error("Нет токена."); st.stop()
             with st.spinner(f"API Arsenkin..."):
                 raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
                 if not raw_top: st.stop()
@@ -2254,15 +2253,12 @@ with tab_seo_main:
                     dom = urlparse(res['url']).netloc.lower()
                     if my_domain and (my_domain in dom or dom in my_domain):
                         if my_serp_pos == 0 or res['pos'] < my_serp_pos: my_serp_pos = res['pos']
-                    
                     is_garbage = False
                     for x in agg_list:
                         if x.lower() in dom: is_garbage = True; break
-                    
                     if not is_garbage: candidates_pool.append(res)
         else:
-            # РУЧНОЙ РЕЖИМ
-            # Берем ВСЁ, что ввел пользователь. Ничего не фильтруем на входе.
+            # MANUAL Режим (Берем все строки и даем ID)
             raw_input_urls = st.session_state.get("persistent_urls", "")
             lines = [u.strip() for u in raw_input_urls.split('\n') if u.strip()]
             candidates_pool = [{'url': u, 'pos': i+1, 'id': i} for i, u in enumerate(lines)]
@@ -2286,7 +2282,7 @@ with tab_seo_main:
                         if res:
                             res['pos'] = original_item['pos']
                             res['original_id'] = original_item.get('id', -1)
-                            
+                            # Сохраняем в словарь
                             c_id = original_item.get('id', -1)
                             if c_id != -1:
                                 results_map[c_id] = res
@@ -2296,7 +2292,7 @@ with tab_seo_main:
                     done_count += 1
                     status.update(label=f"Сканирование: {done_count}/{len(candidates_pool)}")
 
-            # Метрики для фильтрации (слабый контент)
+            # Метрики (для определения слабого контента)
             downloaded_list = list(results_map.values())
             temp_targets = [{'url': d['url'], 'pos': d['pos']} for d in downloaded_list]
             temp_metrics = calculate_metrics(downloaded_list, my_data, settings, my_serp_pos, temp_targets)
@@ -2307,18 +2303,20 @@ with tab_seo_main:
             def norm_u(u): return str(u).lower().strip().replace("https://","").replace("http://","").replace("www.","").rstrip('/')
             weak_urls_norm = set(norm_u(item['url']) for item in bad_urls_dicts)
             
-            # --- РАСПРЕДЕЛЕНИЕ ---
+            # --- РАСПРЕДЕЛЕНИЕ (ИНВЕНТАРИЗАЦИЯ) ---
             final_active_data = []
             excluded_list_final = []
             is_filter_on = st.session_state.settings_auto_filter
             
-            # Проходим по ИСХОДНОМУ списку (гарантия сохранения количества)
+            status.write("---")
+            
+            # Проходим по исходному списку (чтобы порядок и количество совпадали)
             for cand in candidates_pool:
                 c_id = cand.get('id', -1)
                 c_url = cand['url']
                 u_norm = norm_u(c_url)
                 
-                # 1. Данные есть?
+                # 1. Ищем данные
                 page_data = None
                 if is_manual_mode:
                     page_data = results_map.get(c_id)
@@ -2326,7 +2324,7 @@ with tab_seo_main:
                     for k, v in results_map.items():
                         if v['url'] == c_url: page_data = v; break
 
-                # 2. Фильтрация
+                # 2. Причина исключения
                 reason = None
                 if not page_data:
                     reason = "Недоступен"
@@ -2336,18 +2334,17 @@ with tab_seo_main:
                             if ag in u_norm: 
                                 reason = "Агрегатор"
                                 break
-                        
                         if not reason and (u_norm in weak_urls_norm):
                             reason = "Слабый контент"
                 
+                # 3. Финал
                 if reason:
                     excluded_list_final.append(c_url)
+                    status.write(f"❌ {urlparse(c_url).netloc} -> Исключен ({reason})")
                 else:
                     final_active_data.append(page_data)
 
-            # === КЛЮЧЕВОЙ МОМЕНТ ===
-            # Если режим РУЧНОЙ -> МЫ НЕ ОБРЕЗАЕМ СПИСОК НИКОГДА.
-            # Если режим API -> Обрезаем до Top-N.
+            # !!! КЛЮЧЕВОЙ МОМЕНТ: Обрезаем ТОЛЬКО если это API режим !!!
             if not is_manual_mode:
                  final_active_data = final_active_data[:user_target_top_n]
             
@@ -2359,20 +2356,20 @@ with tab_seo_main:
             st.session_state['excluded_urls_auto'] = excluded_txt
             st.session_state['detected_anomalies'] = bad_urls_dicts
             
-            # === ПРАВИЛЬНОЕ ОБНОВЛЕНИЕ ВИДЖЕТОВ ===
-            # Удаляем ключи, чтобы Streamlit пересоздал их с новыми значениями при реране.
-            # Это единственный способ избежать конфликта состояния и ошибки API.
+            # === ПРИНУДИТЕЛЬНЫЙ СБРОС ВИДЖЕТОВ ===
+            # Используем .pop(), это безопаснее del и не вызовет ошибку, если ключа нет
             if 'manual_urls_widget' in st.session_state:
-                del st.session_state['manual_urls_widget']
+                st.session_state.pop('manual_urls_widget')
             if 'excluded_urls_widget_display' in st.session_state:
-                del st.session_state['excluded_urls_widget_display']
+                st.session_state.pop('excluded_urls_widget_display')
             
             in_n = len(candidates_pool)
             act_n = len(final_active_data)
             out_n = len(excluded_list_final)
             
             status.update(label=f"✅ Готово! Актив: {act_n}, Исключено: {out_n}", state="complete")
-            
+            st.toast(f"Баланс: {in_n} = {act_n} + {out_n}", icon="✅")
+
             # Финальный расчет
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_active_data]
             results_final = calculate_metrics(final_active_data, my_data, settings, my_serp_pos, final_clean_targets)
@@ -3597,6 +3594,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
