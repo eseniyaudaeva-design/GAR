@@ -306,11 +306,16 @@ def render_relevance_chart(df_rel, unique_key="default"):
             tickmode='array',
             tickvals=x_indices,
             ticktext=tick_links, 
-            tickfont=dict(size=11), # Чуть уменьшил шрифт, чтобы 30 штук влезли
+            
+            # --- ИЗМЕНЕНИЕ 1: Мелкий шрифт, чтобы влезли все ---
+            tickfont=dict(size=9), 
+            
             fixedrange=True,
-            dtick=1,                # <--- ОБЯЗАТЕЛЬНО: Показывает каждую точку
-            range=[-0.5, len(df) - 0.5],
-            automargin=True
+            dtick=1, # Показываем каждый шаг
+            
+            # Чуть-чуть запаса справа все равно нужно, чтобы точку не резало
+            range=[-0.5, len(df)], 
+            automargin=False # Отключаем авто, задаем вручную ниже
         ),
         yaxis=dict(
             range=[0, 115], 
@@ -320,9 +325,10 @@ def render_relevance_chart(df_rel, unique_key="default"):
             zeroline=False,
             fixedrange=True
         ),
-        margin=dict(l=10, r=10, t=50, b=40),
+        # --- ИЗМЕНЕНИЕ 2: Большой отступ снизу (b=100) и справа (r=20) ---
+        margin=dict(l=10, r=20, t=50, b=100),
         hovermode="x unified",
-        height=380
+        height=400 # Чуть выше график, чтобы не сплющило
     )
     
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
@@ -3495,6 +3501,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
