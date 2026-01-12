@@ -2249,6 +2249,8 @@ with tab_seo_main:
             st.session_state['serp_trend_info'] = trend
             
 # СЦЕНАРИЙ А: Галочка СТОИТ (Фильтруем)
+            is_filter_enabled = st.session_state.get("settings_auto_filter", True)
+            
             if is_filter_enabled:
                 if bad_urls_dicts:
                     # 1. Сохраняем информацию об аномалиях
@@ -3498,4 +3500,5 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
