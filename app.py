@@ -1756,83 +1756,76 @@ with tab_seo_main:
         
         if source_type == "Ручной список":
             if st.session_state.get('analysis_done'):
-                # 1. Считаем цифры
+                # 1. Подготовка данных
                 active_urls = st.session_state.get('persistent_urls', "").split('\n')
-                active_count = len([u for u in active_urls if u.strip()])
+                # Чистим пустые строки
+                active_urls = [u.strip() for u in active_urls if u.strip()]
+                active_count = len(active_urls)
                 
                 excluded_urls = st.session_state.get('excluded_urls_auto', "").split('\n')
-                excluded_count = len([u for u in excluded_urls if u.strip()])
+                excluded_urls = [u.strip() for u in excluded_urls if u.strip()]
+                excluded_count = len(excluded_urls)
                 
-                # Получаем настройку пользователя (10 или 20)
                 target_top = st.session_state.get('settings_top_n', 10)
                 
-                # 2. КОМПАКТНАЯ ШАПКА (Вместо огромных метрик)
-                col_info, col_btn = st.columns([7, 2])
-                with col_info:
+                # --- НОВЫЙ ДИЗАЙН: МАКСИМАЛЬНАЯ ПРОСТОТА ---
+
+                # 1. Заголовок-статус (Одна строка)
+                col_status, col_reset = st.columns([5, 1])
+                with col_status:
                     if excluded_count > 0:
-                        st.markdown(f"⚡ **Фильтр:** Найдено всего **{active_count + excluded_count}**, отсеяно **{excluded_count}**. В списке кандидатов: **{active_count}**.")
+                        st.success(f"✅ **Готово!** Мы нашли {active_count + excluded_count} сайтов, отсеяли {excluded_count} слабых. Осталось: **{active_count}**.", icon="🚀")
                     else:
-                        st.markdown(f"✅ **Фильтр:** Все **{active_count}** сайтов прошли проверку качества.")
+                        st.success(f"✅ **Готово!** Все {active_count} сайтов качественные.", icon="🚀")
                 
-                with col_btn:
-                    if st.button("🔄 Сброс", type="secondary", use_container_width=True, help="Сбросить анализ"):
-                        keys_to_clear = [
-                            'analysis_done', 'analysis_results', 'excluded_urls_auto', 
-                            'detected_anomalies', 'serp_trend_info', 'persistent_urls',
-                            'naming_table_df', 'ideal_h1_result'
-                        ]
+                with col_reset:
+                    if st.button("🔄 Сброс", key="reset_btn_simple", help="Начать новый поиск", use_container_width=True):
+                        keys_to_clear = ['analysis_done', 'analysis_results', 'excluded_urls_auto', 'detected_anomalies', 'serp_trend_info', 'persistent_urls', 'naming_table_df', 'ideal_h1_result']
                         for k in keys_to_clear:
                             if k in st.session_state: del st.session_state[k]
                         st.rerun()
 
-                # 3. СПИСКИ (Активные / Исключенные)
-                has_exclusions = excluded_count > 0
-                
-                # Формируем честный заголовок
+                # 2. ГЛАВНОЕ ОКНО (Только активные)
+                # Логика подписи: Если ссылок больше чем надо, пишем "Берем первые N".
                 if active_count > target_top:
-                    header_active = f"✅ Кандидаты ({active_count} шт) — Берем первые {target_top}"
-                    help_text = f"В списке {active_count} сайтов, но анализ будет по Топ-{target_top}. Лишние {active_count - target_top} снизу — это запас."
+                    lbl = f"👇 Ваши конкуренты (Система анализирует первые {target_top} строк)"
+                    help_txt = f"В списке {active_count} ссылок. В анализ попадут верхние {target_top}. Остальные {active_count-target_top} — запасные (будут использованы, если вы удалите кого-то сверху)."
                 else:
-                    header_active = f"✅ Активные конкуренты ({active_count} шт)"
-                    help_text = "С этих сайтов мы берем информацию."
+                    lbl = f"👇 Ваши конкуренты (Топ-{active_count})"
+                    help_txt = "Все ссылки из этого списка участвуют в анализе."
 
-                if has_exclusions:
-                    c_url_1, c_url_2 = st.columns(2)
-                    with c_url_1:
+                st.text_area(
+                    lbl, 
+                    height=250, 
+                    key="manual_urls_widget", 
+                    value=st.session_state.get('persistent_urls', ""),
+                    help=help_txt
+                )
+                # Синхронизация
+                st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
+
+                # 3. МУСОР (Спрятан)
+                # Показываем только если есть что показать
+                if excluded_count > 0:
+                    with st.expander(f"🗑️ Посмотреть исключенные сайты ({excluded_count})", expanded=False):
+                        st.caption("Эти сайты были автоматически отсеяны как нерелевантные или слабые. Если нужно вернуть сайт в работу — скопируйте его отсюда в верхнее окно.")
                         st.text_area(
-                            header_active, 
-                            height=200, 
-                            key="manual_urls_widget", 
-                            value=st.session_state.get('persistent_urls', ""),
-                            help=help_text
-                        )
-                        st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
-                    with c_url_2:
-                        st.text_area(
-                            f"🗑️ Мусор / Слабые ({excluded_count})", 
-                            height=200, 
+                            "Список исключенных", 
+                            height=150, 
                             key="excluded_urls_widget_display", 
                             value=st.session_state.get('excluded_urls_auto', ""),
-                            help="Эти сайты исключены из расчетов, так как они портят статистику."
+                            label_visibility="collapsed"
                         )
-                else:
-                    # Если исключенных нет - одно окно
-                    st.text_area(
-                        header_active, 
-                        height=200, 
-                        key="manual_urls_widget", 
-                        value=st.session_state.get('persistent_urls', ""),
-                        help=help_text
-                    )
-                    st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
             else:
                 # --- СТАРТОВЫЙ ЭКРАН (До анализа) ---
+                st.info("Вставьте список ссылок (каждая с новой строки) или оставьте пустым, чтобы ввести позже.")
                 manual_val = st.text_area(
-                    "Список ссылок (каждая с новой строки)", 
+                    "Поле ввода", 
                     height=200, 
                     key="manual_urls_widget", 
                     value=st.session_state.get('persistent_urls', ""),
+                    label_visibility="collapsed",
                     placeholder="https://site1.ru\nhttps://site2.ru..."
                 )
                 st.session_state['persistent_urls'] = manual_val
@@ -3565,6 +3558,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
