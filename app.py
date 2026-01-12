@@ -1756,20 +1756,20 @@ with tab_seo_main:
         
         if source_type == "Ручной список":
             # === ЗАЩИТА ОТ ОШИБОК (Инициализация переменных) ===
-            # Объявляем переменные заранее, чтобы скрипт не падал при ошибках отступов
+            # Объявляем переменные заранее, чтобы скрипт не падал, даже если анализ не готов
             excluded_count = 0
             active_count = 0
             excluded_urls_raw = ""
             
+            # Если анализ уже был проведен
             if st.session_state.get('analysis_done'):
-                # 1. Подготовка данных из переменных
-                active_urls = st.session_state.get('persistent_urls', "").split('\n')
-                active_urls = [u.strip() for u in active_urls if u.strip()]
-                active_count = len(active_urls)
+                # 1. Подготовка данных из памяти
+                active_urls_raw = st.session_state.get('persistent_urls', "")
+                active_urls_list = [u.strip() for u in active_urls_raw.split('\n') if u.strip()]
+                active_count = len(active_urls_list)
                 
                 excluded_urls_raw = st.session_state.get('excluded_urls_auto', "")
-                excluded_urls_list = excluded_urls_raw.split('\n')
-                excluded_urls_list = [u.strip() for u in excluded_urls_list if u.strip()]
+                excluded_urls_list = [u.strip() for u in excluded_urls_raw.split('\n') if u.strip()]
                 excluded_count = len(excluded_urls_list)
                 
                 target_top = st.session_state.get('settings_top_n', 10)
@@ -1788,7 +1788,13 @@ with tab_seo_main:
 
                 with col_reset:
                     if st.button("🔄 Сброс", key="reset_btn_simple", help="Начать новый поиск", use_container_width=True):
-                        keys_to_clear = ['analysis_done', 'analysis_results', 'excluded_urls_auto', 'detected_anomalies', 'serp_trend_info', 'persistent_urls', 'naming_table_df', 'ideal_h1_result', 'manual_urls_widget', 'excluded_urls_widget_display']
+                        # Полная очистка
+                        keys_to_clear = [
+                            'analysis_done', 'analysis_results', 'excluded_urls_auto', 
+                            'detected_anomalies', 'serp_trend_info', 'persistent_urls', 
+                            'naming_table_df', 'ideal_h1_result', 
+                            'manual_urls_widget', 'excluded_urls_widget_display'
+                        ]
                         for k in keys_to_clear:
                             if k in st.session_state: del st.session_state[k]
                         st.rerun()
@@ -1801,7 +1807,7 @@ with tab_seo_main:
                     lbl = f"👇 Ваши конкуренты (Топ-{active_count})"
                     help_txt = "Все ссылки из этого списка участвуют в анализе."
 
-                # Инициализация виджета
+                # Инициализация виджета (если память виджета пуста, берем из переменной)
                 if "manual_urls_widget" not in st.session_state:
                     st.session_state.manual_urls_widget = st.session_state.get('persistent_urls', "")
 
@@ -1811,13 +1817,13 @@ with tab_seo_main:
                     key="manual_urls_widget",
                     help=help_txt
                 )
-                # Синхронизация
+                # Синхронизация: то, что юзер поменял руками, сохраняем в переменную
                 st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
                 # 4. МУСОР (Спрятан)
                 if excluded_count > 0:
                     with st.expander(f"🗑️ Исключенные сайты ({excluded_count})", expanded=True):
-                        st.caption("Эти сайты были автоматически отсеяны. Если нужно вернуть сайт в работу — скопируйте его отсюда в верхнее окно.")
+                        st.caption("Эти сайты были автоматически отсеяны (недоступны или слабый контент). Если нужно вернуть сайт в работу — скопируйте его отсюда в верхнее окно.")
                         
                         # Инициализация виджета исключенных
                         if "excluded_urls_widget_display" not in st.session_state:
@@ -2316,8 +2322,8 @@ with tab_seo_main:
 # 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
         with st.spinner("Анализ и фильтрация..."):
             
-            # --- ЭТАП 1: Черновой прогон ---
-            # data_for_graph содержит только ТЕХНИЧЕСКИ ЖИВЫЕ сайты, которые удалось скачать
+            # === ЭТАП 1: Черновой прогон ---
+            # data_for_graph содержит только ТЕХНИЧЕСКИ ЖИВЫЕ сайты
             results_full = calculate_metrics(data_for_graph, my_data, settings, my_serp_pos, targets_for_graph)
             st.session_state['full_graph_data'] = results_full['relevance_top']
             
@@ -2328,21 +2334,21 @@ with tab_seo_main:
             
             # --- ЭТАП 2: ФОРМИРОВАНИЕ ЧИСТОВОГО СПИСКА ---
             
-            # Создаем "Нормализованный" список плохих для сравнения (убираем слэши)
+            # Создаем список плохих для сравнения
             bad_urls_raw = [item['url'] for item in bad_urls_dicts]
+            # Нормализация для сравнения (удаляем слэши)
             bad_urls_normalized = set(u.strip().rstrip('/') for u in bad_urls_raw)
             
-            # Функция проверки на "Слабость"
             def is_weak(url):
                 return url.strip().rstrip('/') in bad_urls_normalized
 
             is_api_mode = "API" in current_source_val
             is_filter_on = st.session_state.settings_auto_filter
             
-            final_clean_data = [] # Здесь будут объекты {url, body...}
+            final_clean_data = [] 
 
             if is_api_mode:
-                # === API РЕЖИМ (Как раньше) ===
+                # === API РЕЖИМ ===
                 if is_filter_on:
                     clean_pool = [d for d in data_for_graph if not is_weak(d['url'])]
                 else:
@@ -2352,32 +2358,34 @@ with tab_seo_main:
                 # Обновляем память
                 clean_txt = "\n".join([d['url'] for d in final_clean_data])
                 st.session_state['persistent_urls'] = clean_txt
-                # Сброс кэша
-                if 'manual_urls_widget' in st.session_state: del st.session_state['manual_urls_widget']
+                
+                # СБРОС КЭША ВИДЖЕТА (чтобы обновился при реране)
+                if 'manual_urls_widget' in st.session_state: 
+                    del st.session_state['manual_urls_widget']
                 
             else:
-                # === РУЧНОЙ РЕЖИМ (МАТЕМАТИЧЕСКИ ТОЧНЫЙ) ===
+                # === РУЧНОЙ РЕЖИМ (МАТЕМАТИЧЕСКИЙ ПОДХОД) ===
                 
-                # 1. Определяем "Активных"
+                # 1. Определяем "Активных" (Final Clean Data)
                 if is_filter_on:
                     # Если фильтр ВКЛ: берем живых и НЕ слабых
                     final_clean_data = [d for d in data_for_graph if not is_weak(d['url'])]
                 else:
-                    # Если фильтр ВЫКЛ: берем всех живых
+                    # Если фильтр ВЫКЛ: берем всех живых (игнорируя лимит)
                     final_clean_data = data_for_graph
                 
                 # 2. Вычисляем "Исключенных" методом вычитания
-                # Логика: Исключенные = (Все, что ввел юзер) - (Те, что попали в финал)
+                # Исключенные = (Все, что ввел юзер) - (Те, что остались активными)
                 
-                # Собираем множество финальных URL (нормализованных)
+                # Множество финальных URL (нормализованных)
                 final_urls_set = set(d['url'].strip().rstrip('/') for d in final_clean_data)
                 
                 excluded_list_final = []
                 
-                # Проходим по ИСХОДНОМУ списку (candidates_pool - это всё, что ввел юзер)
+                # Проходим по ИСХОДНОМУ списку (candidates_pool - всё, что ввел юзер)
                 for cand in candidates_pool:
                     cand_norm = cand['url'].strip().rstrip('/')
-                    # Если ссылки нет в финальном списке - значит она исключена (по любой причине)
+                    # Если ссылки нет в финале - она исключена (по любой причине: 404, слабая, капча)
                     if cand_norm not in final_urls_set:
                         excluded_list_final.append(cand['url'])
                 
@@ -2389,7 +2397,7 @@ with tab_seo_main:
                 st.session_state['excluded_urls_auto'] = excluded_txt
                 st.session_state['detected_anomalies'] = bad_urls_dicts
                 
-                # 4. СБРОС КЭША ВИДЖЕТОВ (ОБЯЗАТЕЛЬНО)
+                # 4. СБРОС КЭША ВИДЖЕТОВ (ОБЯЗАТЕЛЬНО ДЛЯ ОБНОВЛЕНИЯ UI)
                 if 'manual_urls_widget' in st.session_state:
                     del st.session_state['manual_urls_widget']
                 if 'excluded_urls_widget_display' in st.session_state:
@@ -2401,9 +2409,9 @@ with tab_seo_main:
                 total_out = len(excluded_list_final)
                 
                 if is_filter_on:
-                    st.toast(f"✅ Обработано: {total_in}. Активных: {total_active}. Отсеяно: {total_out}.", icon="🧹")
+                    st.toast(f"✅ Ввод: {total_in}. Актив: {total_active}. Отсев: {total_out}.", icon="🧹")
                 else:
-                    st.toast(f"📊 Фильтр выкл. Активных: {total_active}. Недоступных: {total_out}.", icon="ℹ️")
+                    st.toast(f"📊 Фильтр выкл. Актив: {total_active}. Недоступно: {total_out}.", icon="ℹ️")
 
             # 3. ФИНАЛЬНЫЙ РАСЧЕТ МЕТРИК
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
@@ -3523,21 +3531,21 @@ with tab_projects:
                 st.session_state[k] = v
                 restored_count += 1
             
-            # === ГЛАВНЫЙ ФИКС СИНХРОНИЗАЦИИ ===
-            # Принудительно записываем данные в ключи виджетов, 
-            # чтобы они не перезаписали данные пустотой при ререндере.
+            # === ФИКС СИНХРОНИЗАЦИИ (ОБРАТНЫЙ) ===
+            # При загрузке файла мы должны УДАЛИТЬ кэш виджетов,
+            # чтобы при следующем реране виджеты "подсосали" данные из переменных.
+            # Если мы попытаемся записать st.session_state['manual_urls_widget'] = ...,
+            # это вызовет конфликт, если виджет уже был на экране.
             
-            # Восстанавливаем Активные
-            if 'persistent_urls' in st.session_state:
-                st.session_state['manual_urls_widget'] = st.session_state['persistent_urls']
+            if 'manual_urls_widget' in st.session_state:
+                del st.session_state['manual_urls_widget']
             
-            # Восстанавливаем Исключенные
-            if 'excluded_urls_auto' in st.session_state:
-                st.session_state['excluded_urls_widget_display'] = st.session_state['excluded_urls_auto']
+            if 'excluded_urls_widget_display' in st.session_state:
+                del st.session_state['excluded_urls_widget_display']
                 
-            # Восстанавливаем настройки списков (если они были перенесены в сайдбар)
             if 'settings_excludes' in st.session_state:
-                st.session_state['settings_excludes_widget'] = st.session_state['settings_excludes'] # Если у виджета есть key, отличный от переменной
+                # Настройки списков обычно не конфликтуют, но на всякий случай
+                pass 
             # ==================================
             
             # 2. Принудительные флаги
@@ -3634,6 +3642,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
