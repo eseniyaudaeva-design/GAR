@@ -2310,43 +2310,51 @@ with tab_seo_main:
                     clean_pool = data_for_graph
                 final_clean_data = clean_pool[:user_target_top_n]
                 
-                # Для API режима тоже обновляем виджет, чтобы при переключении на ручной там был чистый список
+                # Обновляем память
                 clean_txt = "\n".join([d['url'] for d in final_clean_data])
                 st.session_state['persistent_urls'] = clean_txt
-                st.session_state['manual_urls_widget'] = clean_txt # !!! ФИКС ВИЗУАЛА !!!
+                
+                # !!! ИСПРАВЛЕНИЕ ОШИБКИ !!!
+                # Удаляем ключ виджета, чтобы при перезагрузке он пересоздался с новыми данными
+                if 'manual_urls_widget' in st.session_state:
+                    del st.session_state['manual_urls_widget']
                 
             else:
-                # === РУЧНОЙ РЕЖИМ (ФИКС ДУБЛЕЙ) ===
+                # === РУЧНОЙ РЕЖИМ ===
                 if is_filter_on:
                     # 1. Оставляем только хорошие
                     final_clean_data = [d for d in data_for_graph if d['url'] not in bad_urls_set]
                     
-                    # 2. Собираем мусор (слабые + мертвые)
+                    # 2. Собираем мусор
                     weak_urls_list = [item['url'] for item in bad_urls_dicts]
                     total_excluded = weak_urls_list + dead_urls_list
                     
                     # Генерируем чистый текст
                     clean_txt = "\n".join([d['url'] for d in final_clean_data])
                     
-                    # СОХРАНЯЕМ И СИНХРОНИЗИРУЕМ ВИДЖЕТ
+                    # СОХРАНЯЕМ В ПАМЯТЬ
                     st.session_state['detected_anomalies'] = bad_urls_dicts 
                     st.session_state['persistent_urls'] = clean_txt
                     
-                    # !!! ВОТ ЭТА СТРОКА УБИВАЕТ ДУБЛИ !!!
-                    # Мы говорим текстовому полю: "Забудь старое, вот новый список"
-                    st.session_state['manual_urls_widget'] = clean_txt 
+                    # !!! ИСПРАВЛЕНИЕ ОШИБКИ !!!
+                    # Не присваиваем, а удаляем старый ключ. При реране он возьмет данные из persistent_urls
+                    if 'manual_urls_widget' in st.session_state:
+                        del st.session_state['manual_urls_widget']
                     
                     st.session_state['excluded_urls_auto'] = "\n".join(total_excluded)
                     
                     st.toast(f"🧹 Фильтр: {len(weak_urls_list)} слабых + {len(dead_urls_list)} недоступных", icon="🗑️")
                     
                 else:
-                    # Фильтр ВЫКЛ: Берем все живые
+                    # Фильтр ВЫКЛ
                     final_clean_data = data_for_graph
                     
                     clean_txt = "\n".join([d['url'] for d in final_clean_data])
                     st.session_state['persistent_urls'] = clean_txt
-                    st.session_state['manual_urls_widget'] = clean_txt # !!! ФИКС ВИЗУАЛА !!!
+                    
+                    # !!! ИСПРАВЛЕНИЕ ОШИБКИ !!!
+                    if 'manual_urls_widget' in st.session_state:
+                        del st.session_state['manual_urls_widget']
                     
                     if dead_urls_list:
                         st.session_state['excluded_urls_auto'] = "\n".join(dead_urls_list)
@@ -2363,7 +2371,7 @@ with tab_seo_main:
             
             st.session_state.analysis_results = results_final
             
-            # --- Остальная логика (без изменений) ---
+            # --- Остальная логика без изменений ---
             naming_df = calculate_naming_metrics(final_clean_data, my_data, settings)
             st.session_state.naming_table_df = naming_df 
             st.session_state.ideal_h1_result = analyze_ideal_name(final_clean_data)
@@ -2397,7 +2405,7 @@ with tab_seo_main:
                 
                 st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
 
-            # Автозаполнение генератора
+            # Автозаполнение
             all_found_products = st.session_state.categorized_products
             count_prods = len(all_found_products)
             if count_prods < 20:
@@ -3586,6 +3594,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
