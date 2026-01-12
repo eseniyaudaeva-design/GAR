@@ -2299,6 +2299,7 @@ with tab_seo_main:
         with st.spinner("Анализ и фильтрация..."):
             
             # --- ЭТАП 1: Черновой прогон ---
+            # data_for_graph содержит ВСЕ технически доступные сайты
             results_full = calculate_metrics(data_for_graph, my_data, settings, my_serp_pos, targets_for_graph)
             st.session_state['full_graph_data'] = results_full['relevance_top']
             
@@ -2307,59 +2308,59 @@ with tab_seo_main:
             good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
             st.session_state['serp_trend_info'] = trend
             
-            # --- ЭТАП 2: СТРОГАЯ СОРТИРОВКА ПО ID ---
+            # --- ЭТАП 2: СТРОГАЯ СОРТИРОВКА (МАТЕМАТИКА ВВОДА) ---
             
-            # Чтобы не путаться в строках (http/https/www), мы будем фильтровать по ID (pos),
-            # который присвоили каждой ссылке при вводе.
+            # Нормализация для сравнения (удаляет http, www, слэши)
+            def norm_u(u):
+                return str(u).lower().strip().replace("https://","").replace("http://","").replace("www.","").rstrip('/')
+
+            # Список слабых сайтов (нормализованный)
+            weak_urls_norm = set(norm_u(item['url']) for item in bad_urls_dicts)
             
-            # 1. Собираем ID "Плохих" сайтов
-            bad_ids = set()
-            for item in bad_urls_dicts:
-                # Находим этот url в data_for_graph, чтобы узнать его pos
-                for d in data_for_graph:
-                    if d['url'] == item['url']:
-                        bad_ids.add(d['pos'])
-                        break
-            
-            is_api_mode = "API" in current_source_val
+            # ОПРЕДЕЛЕНИЕ РЕЖИМА
+            # Если мы работаем с candidates_pool, который пришел из persistent_urls -> Это Ручной режим.
+            # Игнорируем радиокнопку, чтобы избежать ошибок состояния.
+            is_manual_input = (len(candidates_pool) > 0 and 'persistent_urls' in st.session_state and len(st.session_state.persistent_urls) > 0)
             is_filter_on = st.session_state.settings_auto_filter
             
             final_clean_data = []
 
-            # === ЛОГИКА ОТБОРА АКТИВНЫХ ===
-            if is_api_mode:
-                # API: Фильтруем и РЕЖЕМ по топ-N
+            # === 1. ОПРЕДЕЛЯЕМ АКТИВНЫЕ САЙТЫ ===
+            if not is_manual_input: # API Mode
                 pool = data_for_graph
                 if is_filter_on:
-                    pool = [d for d in pool if d['pos'] not in bad_ids]
+                    pool = [d for d in pool if norm_u(d['url']) not in weak_urls_norm]
                 final_clean_data = pool[:user_target_top_n]
-                
             else:
-                # РУЧНОЙ: ЗАПРЕТ НА ОБРЕЗАНИЕ СПИСКА
-                pool = data_for_graph # Все, что скачалось
+                # MANUAL Mode: БЕРЕМ ВСЕХ, КРОМЕ СЛАБЫХ
+                pool = data_for_graph 
                 
                 if is_filter_on:
-                    # Убираем только тех, чей ID попал в плохие
-                    final_clean_data = [d for d in pool if d['pos'] not in bad_ids]
+                    # Фильтр: убираем слабых
+                    final_clean_data = [d for d in pool if norm_u(d['url']) not in weak_urls_norm]
                 else:
-                    # Берем всех
+                    # Без фильтра: берем всех
                     final_clean_data = pool
 
-            # === ЛОГИКА ИСКЛЮЧЕННЫХ (ПО ID) ===
-            # Исключенные = (Все ID из ввода) - (ID, которые попали в финал)
+            # === 2. ВЫЧИСЛЯЕМ ИСКЛЮЧЕННЫЕ (МЕТОД ВЫЧИТАНИЯ) ===
+            # Исключенные = (Все, что вы ввели) - (Те, что попали в финал)
             
-            # Собираем ID победителей
-            active_ids_set = set(d['pos'] for d in final_clean_data)
+            # Создаем карту активных URL для быстрой проверки
+            # Используем norm_u, чтобы найти ссылку даже если она чуть изменилась (http->https)
+            final_active_norm_set = set(norm_u(d['url']) for d in final_clean_data)
             
             excluded_list_final = []
             
-            # Проходим по ИСХОДНОМУ списку ввода (candidates_pool)
-            # У каждого кандидата есть 'pos'. Если этого 'pos' нет в активных -> он исключен.
+            # Проходим по ИСХОДНОМУ СПИСКУ ввода
+            # Это гарантирует, что сумма Актив + Исключенные всегда равна Вводу.
             for cand in candidates_pool:
-                if cand['pos'] not in active_ids_set:
+                c_norm = norm_u(cand['url'])
+                
+                # Если ссылка не попала в Активные (по любой причине) -> Она Исключена
+                if c_norm not in final_active_norm_set:
                     excluded_list_final.append(cand['url'])
             
-            # === СОХРАНЕНИЕ ===
+            # === 3. СОХРАНЕНИЕ ===
             clean_txt = "\n".join([d['url'] for d in final_clean_data])
             excluded_txt = "\n".join(excluded_list_final)
             
@@ -2367,7 +2368,7 @@ with tab_seo_main:
             st.session_state['excluded_urls_auto'] = excluded_txt
             st.session_state['detected_anomalies'] = bad_urls_dicts
             
-            # СБРОС КЭША ВИДЖЕТОВ (Чтобы интерфейс обновился)
+            # === 4. СБРОС КЭША ВИДЖЕТОВ (ЧТОБЫ ИНТЕРФЕЙС ОБНОВИЛСЯ) ===
             if 'manual_urls_widget' in st.session_state: del st.session_state['manual_urls_widget']
             if 'excluded_urls_widget_display' in st.session_state: del st.session_state['excluded_urls_widget_display']
             
@@ -3609,6 +3610,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
