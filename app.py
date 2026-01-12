@@ -1844,22 +1844,19 @@ with tab_seo_main:
         )
 
     with col_sidebar:
-        st.markdown("#####⚙️ Настройки API")
         if not ARSENKIN_TOKEN:
              new_arsenkin = st.text_input("Arsenkin Token", type="password", key="input_arsenkin")
              if new_arsenkin: st.session_state.arsenkin_token = new_arsenkin; ARSENKIN_TOKEN = new_arsenkin 
         if not YANDEX_DICT_KEY:
              new_yandex = st.text_input("Yandex Dict Key", type="password", key="input_yandex")
              if new_yandex: st.session_state.yandex_dict_key = new_yandex; YANDEX_DICT_KEY = new_yandex
-        st.markdown("#####⚙️ Настройки поиска")
+        st.markdown("⚙️ Настройки поиска")
         st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
         st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
         st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
         
-# ИЗМЕНЕНИЕ: Убрали 30, оставили только 10 и 20
         st.selectbox("Кол-во конкурентов для анализа", [10, 20], index=0, key="settings_top_n")
         
-        # --- ИСПРАВЛЕНИЕ ОШИБКИ SESSION STATE ---
         # 1. Инициализируем значения в памяти, если их там нет (например, при первом запуске)
         if "settings_noindex" not in st.session_state: st.session_state.settings_noindex = True
         if "settings_alt" not in st.session_state: st.session_state.settings_alt = False
@@ -1867,7 +1864,6 @@ with tab_seo_main:
         if "settings_norm" not in st.session_state: st.session_state.settings_norm = True
         if "settings_auto_filter" not in st.session_state: st.session_state.settings_auto_filter = True
 
-        # 2. Рисуем чек-боксы БЕЗ параметра value (значение подтянется само по key)
         st.checkbox("Исключать <noindex>", key="settings_noindex")
         st.checkbox("Учитывать Alt/Title", key="settings_alt")
         st.checkbox("Учитывать числа", key="settings_numbers")
@@ -3501,6 +3497,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
