@@ -2198,13 +2198,12 @@ with tab_seo_main:
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ==========================================
-    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (FIXED v3)
+    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (ULTIMATE FIX v4)
     # ==========================================
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         
-        # 1. СИНХРОНИЗАЦИЯ: Берем данные ПРЯМО из виджета
-        # Это гарантирует, что то, что вы видите глазами, попадет в код.
+        # 1. ПРИНУДИТЕЛЬНЫЙ ЗАХВАТ ДАННЫХ ИЗ ВИДЖЕТА
         if "manual_urls_widget" in st.session_state and st.session_state.manual_urls_widget:
             st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
@@ -2234,50 +2233,40 @@ with tab_seo_main:
         candidates_pool = []
         current_source_val = st.session_state.get("competitor_source_radio")
         user_target_top_n = st.session_state.settings_top_n
-        
-        # Флаг ручного режима
         is_manual_run = "Список url-адресов" in current_source_val
         
-        # Агрегаторы (для API режима)
+        # Агрегаторы
         agg_list = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-        default_aggs = [
-            "avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex",
-            "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua",
-            "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis"
-        ]
+        default_aggs = ["avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex", "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua", "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis"]
         agg_list.extend(default_aggs)
         
         if not is_manual_run:
-            # --- РЕЖИМ API ---
+            # API режим
             if not ARSENKIN_TOKEN: st.error("Нет токена Arsenkin."); st.stop()
             with st.spinner(f"API Arsenkin..."):
                 raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
                 if not raw_top: st.stop()
-                
                 for res in raw_top:
                     dom = urlparse(res['url']).netloc.lower()
                     if my_domain and (my_domain in dom or dom in my_domain):
                         if my_serp_pos == 0 or res['pos'] < my_serp_pos: my_serp_pos = res['pos']
                     
-                    # В API режиме МЫ УДАЛЯЕМ агрегаторы сразу
                     is_garbage = False
                     for x in agg_list:
                         if x.lower() in dom: is_garbage = True; break
                     
                     if not is_garbage: candidates_pool.append(res)
         else:
-            # --- РЕЖИМ РУЧНОЙ (ЖЕЛЕЗНЫЙ) ---
+            # РУЧНОЙ РЕЖИМ (ПРЯМАЯ ИНВЕНТАРИЗАЦИЯ)
             raw_input_urls = st.session_state.get("persistent_urls", "")
-            # Берем каждую строку. Присваиваем уникальный ID, чтобы не потерять.
             lines = [u.strip() for u in raw_input_urls.split('\n') if u.strip()]
+            # Присваиваем ID каждому URL
             candidates_pool = [{'url': u, 'pos': i+1, 'id': i} for i, u in enumerate(lines)]
 
-        if not candidates_pool: st.error("Список пуст."); st.stop()
+        if not candidates_pool: st.error("Список ссылок пуст."); st.stop()
         
         # 3. СКАЧИВАНИЕ
-        comp_data_valid = []
-        # Сохраняем набор ID, которые успешно скачались
-        downloaded_ids = set()
+        results_map = {} # Словарь {id: данные_страницы}
         
         with st.status(f"🕵️ Обработка {len(candidates_pool)} ссылок...", expanded=True) as status:
             with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
@@ -2290,83 +2279,97 @@ with tab_seo_main:
                     original_item = futures[f]
                     try:
                         res = f.result()
+                        # Если скачалось успешно - сохраняем в словарь по ID
                         if res:
                             res['pos'] = original_item['pos']
-                            res['original_id'] = original_item.get('id', -1) # Передаем ID дальше
-                            res['original_url'] = original_item['url']
+                            res['original_id'] = original_item.get('id', -1)
                             
-                            comp_data_valid.append(res)
-                            downloaded_ids.add(original_item.get('id', -1))
-                    except: pass
+                            # Сохраняем результат
+                            c_id = original_item.get('id', -1)
+                            if c_id != -1:
+                                results_map[c_id] = res
+                            else:
+                                # Fallback для API режима (где нет ID)
+                                results_map[res['url']] = res
+                    except: 
+                        pass # Ошибка скачивания, в словарь не попадет
+                    
                     done_count += 1
-                    status.update(label=f"Проверено: {done_count}/{len(candidates_pool)} | Скачано: {len(comp_data_valid)}")
+                    status.update(label=f"Проверка доступности: {done_count}/{len(candidates_pool)}")
 
-            comp_data_valid.sort(key=lambda x: x['pos'])
-            data_for_graph = comp_data_valid 
-            targets_for_graph = [{'url': d['url'], 'pos': d['pos']} for d in data_for_graph]
-
-        # 4. АНАЛИЗ И РАСПРЕДЕЛЕНИЕ
-        with st.spinner("Математическое распределение..."):
+            # --- ПОДГОТОВКА К ФИЛЬТРАЦИИ ---
+            # Собираем список всех успешно скачанных для расчета метрик
+            downloaded_list = list(results_map.values())
             
-            # Считаем метрики для всех скачанных
-            results_full = calculate_metrics(data_for_graph, my_data, settings, my_serp_pos, targets_for_graph)
-            st.session_state['full_graph_data'] = results_full['relevance_top']
+            # Предварительный расчет "слабых" сайтов
+            # Нам нужно прогнать метрики, чтобы понять, кого считать "слабым" по контенту
+            temp_targets = [{'url': d['url'], 'pos': d['pos']} for d in downloaded_list]
+            temp_metrics = calculate_metrics(downloaded_list, my_data, settings, my_serp_pos, temp_targets)
             
-            # Анализ слабых сайтов
-            df_rel_check = results_full['relevance_top']
-            good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
+            # Получаем список слабых (по URL)
+            _, bad_urls_dicts, trend = analyze_serp_anomalies(temp_metrics['relevance_top'])
             st.session_state['serp_trend_info'] = trend
             
-            # Собираем "Черную метку" для слабых сайтов по URL
             def norm_u(u): return str(u).lower().strip().replace("https://","").replace("http://","").replace("www.","").rstrip('/')
             weak_urls_norm = set(norm_u(item['url']) for item in bad_urls_dicts)
             
+            # --- ИНВЕНТАРИЗАЦИЯ (РАСПРЕДЕЛЕНИЕ) ---
             final_active_data = []
-            final_active_ids = set()
+            excluded_list_final = []
             
             is_filter_on = st.session_state.settings_auto_filter
             
-            # --- ЛОГИКА ФИЛЬТРАЦИИ ---
-            for page in data_for_graph:
-                u_norm = norm_u(page['url'])
-                page_id = page.get('original_id', -1)
+            status.write("---")
+            status.write("**📝 Журнал обработки:**")
+            
+            # Проходим строго по исходному списку
+            for cand in candidates_pool:
+                c_id = cand.get('id', -1)
+                c_url = cand['url']
+                u_norm = norm_u(c_url)
                 
-                should_exclude = False
+                # 1. Проверяем, скачался ли сайт?
+                if is_manual_run:
+                    page_data = results_map.get(c_id)
+                else:
+                    # В API режиме ищем по URL (так как ID нет)
+                    # (Для API это не критично, там старая логика работает, но здесь унифицируем)
+                    page_data = None
+                    for k, v in results_map.items():
+                        if v['url'] == c_url: page_data = v; break
+
+                if not page_data:
+                    # САЙТ НЕ СКАЧАЛСЯ (Ошибка 404, Таймаут, Блокировка)
+                    excluded_list_final.append(c_url)
+                    status.write(f"❌ {urlparse(c_url).netloc} — **Недоступен/Ошибка** (в исключенные)")
+                    continue
                 
-                # 1. Проверка на Агрегатор (даже в ручном режиме мы их помечаем для исключения, но не удаляем бесследно)
+                # 2. Проверяем на Агрегатор
                 is_aggregator = False
                 for ag in agg_list:
                     if ag in u_norm: is_aggregator = True; break
                 
-                # 2. Проверка на Слабый контент
+                if is_aggregator and is_filter_on:
+                    excluded_list_final.append(c_url)
+                    status.write(f"🗑️ {urlparse(c_url).netloc} — **Агрегатор** (в исключенные)")
+                    continue
+                    
+                # 3. Проверяем на Слабый контент
                 is_weak = u_norm in weak_urls_norm
+                if is_weak and is_filter_on:
+                    excluded_list_final.append(c_url)
+                    status.write(f"📉 {urlparse(c_url).netloc} — **Слабый контент** (в исключенные)")
+                    continue
                 
-                if is_filter_on:
-                    if is_aggregator or is_weak: should_exclude = True
-                
-                if not should_exclude:
-                    final_active_data.append(page)
-                    if page_id != -1: final_active_ids.add(page_id)
+                # 4. Если всё ок -> Активный
+                final_active_data.append(page_data)
+                # status.write(f"✅ {urlparse(c_url).netloc} — **ОК**") # Можно раскомментировать для полного лога
 
-            # Если API режим -> режем Топ. Если Ручной -> НЕ РЕЖЕМ.
+            # Если API режим -> режем Топ
             if not is_manual_run:
                  final_active_data = final_active_data[:user_target_top_n]
-                 # Обновляем набор ID после обрезки
-                 final_active_ids = set(p.get('original_id') for p in final_active_data)
-
-            # --- ФИНАЛЬНАЯ СБОРКА СПИСКОВ (МЕТОД ВЫЧИТАНИЯ ПО ID) ---
-            excluded_list_final = []
             
-            # Проходим по ИСХОДНОМУ списку (где было 15 штук)
-            for cand in candidates_pool:
-                c_id = cand.get('id', -1)
-                c_url = cand['url']
-                
-                # Если ID этого кандидата нет в финальном активном списке -> он исключен
-                if c_id not in final_active_ids:
-                    excluded_list_final.append(c_url)
-            
-            # Сохранение
+            # --- СОХРАНЕНИЕ ---
             clean_txt = "\n".join([d['url'] for d in final_active_data])
             excluded_txt = "\n".join(excluded_list_final)
             
@@ -2374,23 +2377,28 @@ with tab_seo_main:
             st.session_state['excluded_urls_auto'] = excluded_txt
             st.session_state['detected_anomalies'] = bad_urls_dicts
             
-            # Удаляем кэш виджетов, чтобы они перерисовались
+            # Чистим виджеты
             if 'manual_urls_widget' in st.session_state: del st.session_state['manual_urls_widget']
             if 'excluded_urls_widget_display' in st.session_state: del st.session_state['excluded_urls_widget_display']
             
+            # Лог итогов
             in_n = len(candidates_pool)
             act_n = len(final_active_data)
             out_n = len(excluded_list_final)
             
-            st.toast(f"Проверка: Ввод {in_n} = Актив {act_n} + Исключено {out_n}", icon="✅")
+            status.write("---")
+            status.write(f"**ИТОГО:** Вход: {in_n} | Актив: {act_n} | Исключено: {out_n}")
+            status.update(label="✅ Анализ завершен!", state="complete")
+            
+            st.toast(f"Баланс: {in_n} = {act_n} (Актив) + {out_n} (Исключено)", icon="⚖️")
 
-            # Финальный расчет метрик
+            # 5. ФИНАЛЬНЫЙ РАСЧЕТ МЕТРИК (Чистовые данные)
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_active_data]
             results_final = calculate_metrics(final_active_data, my_data, settings, my_serp_pos, final_clean_targets)
             
             st.session_state.analysis_results = results_final
             
-            # --- (Далее стандартный код, без изменений) ---
+            # --- (Далее стандартный код) ---
             naming_df = calculate_naming_metrics(final_active_data, my_data, settings)
             st.session_state.naming_table_df = naming_df 
             st.session_state.ideal_h1_result = analyze_ideal_name(final_active_data)
@@ -3610,6 +3618,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
