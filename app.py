@@ -1226,14 +1226,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     st.session_state['serp_trend_info'] = trend_info
     
     # Сохраняем "чистые" урлы (для следующего запуска)
-    if bad_urls_dicts:
-        # Если были исключения, то persistent_urls - это только хорошие
-        st.session_state['persistent_urls'] = "\n".join(good_urls)
-        st.session_state['excluded_urls_auto'] = "\n".join([item['url'] for item in bad_urls_dicts])
-    else:
-        # Если всех оставили, сохраняем всех (кроме себя, чтобы не дублировать в инпуте, если это ручной режим)
-        st.session_state['persistent_urls'] = "\n".join([r.get('URL', r['Домен']) for r in table_rel if "(Вы)" not in r['Домен']])
-        st.session_state['excluded_urls_auto'] = ""
 
     return { 
         "depth": pd.DataFrame(table_depth), 
@@ -3526,6 +3518,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
