@@ -2299,7 +2299,7 @@ with tab_seo_main:
         with st.spinner("Анализ и фильтрация..."):
             
             # --- ЭТАП 1: Черновой прогон ---
-            # Считаем метрики для всех, кто технически открылся
+            # data_for_graph содержит только скачанные сайты
             results_full = calculate_metrics(data_for_graph, my_data, settings, my_serp_pos, targets_for_graph)
             st.session_state['full_graph_data'] = results_full['relevance_top']
             
@@ -2308,92 +2308,97 @@ with tab_seo_main:
             good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
             st.session_state['serp_trend_info'] = trend
             
-            # --- ЭТАП 2: ЖЕЛЕЗНАЯ СОРТИРОВКА (МАТЕМАТИКА) ---
+            # --- ЭТАП 2: ФОРМИРОВАНИЕ СПИСКОВ ---
             
-            # 1. Функция для "умного" сравнения ссылок (игнорирует http, www, слэши)
-            def normalize_url_strict(u):
-                u = str(u).lower().strip()
-                u = u.replace("https://", "").replace("http://", "").replace("www.", "")
-                return u.rstrip('/')
+            # 1. Определяем "Плохие" URL (по мнению алгоритма)
+            # Используем нормализацию для сравнения
+            bad_urls_norm = set(u.strip().rstrip('/').lower().replace('https://','').replace('http://','').replace('www.','') for u in [x['url'] for x in bad_urls_dicts])
+            
+            def is_weak_logic(url_str):
+                norm = url_str.strip().rstrip('/').lower().replace('https://','').replace('http://','').replace('www.','')
+                return norm in bad_urls_norm
 
-            # 2. Собираем список "Плохих" по мнению алгоритма (Слабые контентом)
-            weak_urls_norm_set = set(normalize_url_strict(item['url']) for item in bad_urls_dicts)
-            
             is_api_mode = "API" in current_source_val
             is_filter_on = st.session_state.settings_auto_filter
             
-            final_clean_data = [] 
+            final_clean_data = []
 
-            # 3. ОПРЕДЕЛЯЕМ АКТИВНЫЕ САЙТЫ
             if is_api_mode:
-                # API режим: просто фильтруем список
+                # API режим
                 if is_filter_on:
-                    # Оставляем тех, кого нет в списке слабых
-                    clean_pool = [d for d in data_for_graph if normalize_url_strict(d['url']) not in weak_urls_norm_set]
+                    clean_pool = [d for d in data_for_graph if not is_weak_logic(d['url'])]
                 else:
                     clean_pool = data_for_graph
                 final_clean_data = clean_pool[:user_target_top_n]
                 
-                # Сохраняем (для API исключенные не так важны в интерфейсе, но сохраним для порядка)
+                # Сохраняем
                 clean_txt = "\n".join([d['url'] for d in final_clean_data])
                 st.session_state['persistent_urls'] = clean_txt
-                # Сброс кэша виджета
+                # Сброс кэша
                 if 'manual_urls_widget' in st.session_state: del st.session_state['manual_urls_widget']
                 
             else:
-                # === РУЧНОЙ РЕЖИМ (СТРОГОЕ СООТВЕТСТВИЕ) ===
+                # === РУЧНОЙ РЕЖИМ (МАТЕМАТИКА ВВОДА) ===
                 
-                # А. Формируем список "Хороших" объектов данных
+                # 1. Отбираем "Активных" (Технически живые + Прошли фильтр)
                 if is_filter_on:
-                    # Берем только тех, кто скачался И не слабый
-                    final_clean_data = [d for d in data_for_graph if normalize_url_strict(d['url']) not in weak_urls_norm_set]
+                    final_clean_data = [d for d in data_for_graph if not is_weak_logic(d['url'])]
                 else:
-                    # Берем всех, кто скачался
                     final_clean_data = data_for_graph
                 
-                # Б. Математика исключений (Ввод - Активные = Исключенные)
+                # 2. Магия восстановления: Находим, какие ИСХОДНЫЕ ссылки стали "Активными"
+                # Создаем множество нормализованных финальных URL
+                active_norm_set = set()
+                for d in final_clean_data:
+                    u = d['url'].strip().rstrip('/').lower().replace('https://','').replace('http://','').replace('www.','')
+                    active_norm_set.add(u)
                 
-                # Создаем множество "Активных" (нормализованное) для быстрой проверки
-                # Используем URL из final_clean_data, так как это те, что реально пойдут в работу
-                active_norm_set = set(normalize_url_strict(d['url']) for d in final_clean_data)
+                excluded_lines = []
                 
-                excluded_list_final = []
-                
-                # Проходим по ИСХОДНОМУ списку ввода (candidates_pool)
-                # Это гарантирует, что ни одна введенная ссылка не потеряется
+                # Проходим по ИСХОДНОМУ СПИСКУ, который ввел юзер
                 for cand in candidates_pool:
-                    c_norm = normalize_url_strict(cand['url'])
+                    raw_input = cand['url'] # То, что ввел юзер
+                    # Пытаемся понять, попала ли эта ссылка в финал (даже если был редирект)
                     
-                    # Если введенной ссылки нет в списке активных -> она исключена
-                    # (Неважно почему: не скачалась, слабая, стоп-домен - она летит в исключенные)
-                    if c_norm not in active_norm_set:
-                        excluded_list_final.append(cand['url'])
+                    # Нормализуем ввод
+                    input_norm = raw_input.strip().rstrip('/').lower().replace('https://','').replace('http://','').replace('www.','')
+                    
+                    # Проверяем совпадение
+                    # (Ищем: содержится ли корень введенной ссылки в корне финальной, или наоборот)
+                    is_found = False
+                    for active_u in active_norm_set:
+                        if input_norm == active_u or input_norm in active_u or active_u in input_norm:
+                            is_found = True
+                            break
+                    
+                    if not is_found:
+                        excluded_lines.append(raw_input)
                 
-                # В. Сохранение
+                # 3. Сохранение
                 clean_txt = "\n".join([d['url'] for d in final_clean_data])
-                excluded_txt = "\n".join(excluded_list_final)
+                excluded_txt = "\n".join(excluded_lines)
                 
                 st.session_state['persistent_urls'] = clean_txt
                 st.session_state['excluded_urls_auto'] = excluded_txt
                 st.session_state['detected_anomalies'] = bad_urls_dicts
                 
-                # Г. Сброс кэша виджетов (чтобы обновились поля)
+                # 4. СБРОС КЭША ВИДЖЕТОВ (ОБЯЗАТЕЛЬНО)
                 if 'manual_urls_widget' in st.session_state:
                     del st.session_state['manual_urls_widget']
                 if 'excluded_urls_widget_display' in st.session_state:
                     del st.session_state['excluded_urls_widget_display']
                 
-                # Д. Уведомление с точными цифрами
+                # Уведомление
                 total_in = len(candidates_pool)
                 total_active = len(final_clean_data)
-                total_out = len(excluded_list_final)
+                total_out = len(excluded_lines)
                 
                 if is_filter_on:
                     st.toast(f"✅ Ввод: {total_in}. Актив: {total_active}. Исключено: {total_out}.", icon="🧹")
                 else:
                     st.toast(f"📊 Ввод: {total_in}. Актив: {total_active}. Недоступно: {total_out}.", icon="ℹ️")
 
-            # 4. ФИНАЛЬНЫЙ РАСЧЕТ МЕТРИК
+            # 3. ФИНАЛЬНЫЙ РАСЧЕТ МЕТРИК
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
             results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
             
@@ -3621,6 +3626,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
