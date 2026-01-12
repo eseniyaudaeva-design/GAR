@@ -306,11 +306,11 @@ def render_relevance_chart(df_rel, unique_key="default"):
             tickmode='array',
             tickvals=x_indices,
             ticktext=tick_links, 
-            tickfont=dict(size=12),
+            tickfont=dict(size=11), # Чуть уменьшил шрифт, чтобы 30 штук влезли
             fixedrange=True,
-            dtick=1,  # <--- ДОБАВИТЬ ВОТ ЭТУ СТРОКУ (Показывать каждый шаг)
+            dtick=1,                # <--- ОБЯЗАТЕЛЬНО: Показывает каждую точку
             range=[-0.5, len(df) - 0.5],
-            automargin=True 
+            automargin=True
         ),
         yaxis=dict(
             range=[0, 115], 
@@ -1787,6 +1787,7 @@ with tab_seo_main:
             if 'relevance_top' in results and not results['relevance_top'].empty:
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander("📊 График релевантности (Нажмите, чтобы раскрыть)", expanded=False):
+                  # ИСПРАВЛЕНИЕ: Берем full_graph_data - там лежат все 30 сайтов без пропусков
                   graph_data = st.session_state.get('full_graph_data', results['relevance_top'])
                   render_relevance_chart(graph_data, unique_key="main")
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -3494,6 +3495,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
