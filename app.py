@@ -223,7 +223,9 @@ def render_relevance_chart(df_rel, unique_key="default"):
         
         # Формат: "1. site.ru" (без #)
         label_text = f"{row['Позиция']}. {clean_domain}"
-        if len(label_text) > 20: label_text = label_text[:18] + ".."
+        
+        # Обрезаем слишком длинные, но оставляем запас, так как шрифт теперь крупнее
+        if len(label_text) > 25: label_text = label_text[:23] + ".."
         
         url_target = row.get('URL', f"https://{raw_name}")
         
@@ -291,31 +293,33 @@ def render_relevance_chart(df_rel, unique_key="default"):
         opacity=0.8
     ))
 
-    # 3. Настройка Layout
+    # 3. Настройка Layout (ИСПРАВЛЕННАЯ ЧАСТЬ)
     fig.update_layout(
         template="plotly_white",
         legend=dict(
             orientation="h",
-            yanchor="bottom", y=1.05,
+            yanchor="bottom", y=1.02,
             xanchor="center", x=0.5,
-            font=dict(size=12, color="#111827", family="Inter, sans-serif")
+            font=dict(size=14, color="#111827", family="Inter, sans-serif") # Легенда тоже чуть крупнее
         ),
         xaxis=dict(
-            showgrid=False, 
+            showgrid=True, # Включим сетку по X, чтобы видеть привязку к точкам
+            gridcolor='#F3F4F6',
             linecolor='#E5E7EB',
             tickmode='array',
             tickvals=x_indices,
             ticktext=tick_links, 
             
-            # --- ИЗМЕНЕНИЕ 1: Мелкий шрифт, чтобы влезли все ---
-            tickfont=dict(size=9), 
+            # --- ИЗМЕНЕНИЕ 1: Шрифт 12 и поворот ---
+            tickfont=dict(size=12), 
+            tickangle=-45, # Поворачиваем текст, чтобы влезло 30 штук
             
             fixedrange=True,
-            dtick=1, # Показываем каждый шаг
+            dtick=1, 
             
-            # Чуть-чуть запаса справа все равно нужно, чтобы точку не резало
-            range=[-0.5, len(df)], 
-            automargin=False # Отключаем авто, задаем вручную ниже
+            # Добавляем запас слева и справа (по 0.5 деления), чтобы крайние точки не резались
+            range=[-0.5, len(df) - 0.5], 
+            automargin=False 
         ),
         yaxis=dict(
             range=[0, 115], 
@@ -325,12 +329,15 @@ def render_relevance_chart(df_rel, unique_key="default"):
             zeroline=False,
             fixedrange=True
         ),
-        # --- ИЗМЕНЕНИЕ 2: Большой отступ снизу (b=100) и справа (r=20) ---
-        margin=dict(l=10, r=20, t=50, b=100),
+        # --- ИЗМЕНЕНИЕ 2: Большой отступ снизу (b=160) под подписи ---
+        margin=dict(l=20, r=20, t=60, b=160),
         hovermode="x unified",
-        height=400 # Чуть выше график, чтобы не сплющило
+        
+        # --- ИЗМЕНЕНИЕ 3: Высота графика больше, чтобы компенсировать отступ ---
+        height=550 
     )
     
+    # use_container_width=True растягивает график на всю ширину страницы
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
 
 def analyze_serp_anomalies(df_rel):
@@ -3501,6 +3508,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
