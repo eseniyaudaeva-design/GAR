@@ -2198,12 +2198,12 @@ with tab_seo_main:
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ==========================================
-    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (FORCE UPDATE v6)
+    # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ (SILENT FIX v7)
     # ==========================================
     if st.session_state.get('start_analysis_flag'):
         st.session_state.start_analysis_flag = False
         
-        # 1. ЗАХВАТ ДАННЫХ ИЗ ВИДЖЕТА (То, что вы ввели глазами)
+        # 1. ЗАХВАТ ДАННЫХ
         if "manual_urls_widget" in st.session_state and st.session_state.manual_urls_widget:
             st.session_state['persistent_urls'] = st.session_state.manual_urls_widget
 
@@ -2269,7 +2269,7 @@ with tab_seo_main:
         # 3. СКАЧИВАНИЕ
         results_map = {} 
         
-        with st.status(f"🕵️ Обработка {len(candidates_pool)} ссылок...", expanded=True) as status:
+        with st.status(f"🕵️ Сканирование {len(candidates_pool)} ссылок...", expanded=True) as status:
             with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
                 futures = {
                     executor.submit(parse_page, item['url'], settings, st.session_state.query_input): item 
@@ -2309,9 +2309,6 @@ with tab_seo_main:
             excluded_list_final = []
             is_filter_on = st.session_state.settings_auto_filter
             
-            status.write("---")
-            status.write("**📝 Протокол распределения:**")
-            
             # Проходим по ИСХОДНОМУ списку (гарантия сохранения количества)
             for cand in candidates_pool:
                 c_id = cand.get('id', -1)
@@ -2344,10 +2341,8 @@ with tab_seo_main:
                 # 3. Распределение
                 if reason:
                     excluded_list_final.append(c_url)
-                    status.write(f"❌ {urlparse(c_url).netloc} -> Исключен ({reason})")
                 else:
                     final_active_data.append(page_data)
-                    # status.write(f"✅ {urlparse(c_url).netloc} -> Актив")
 
             # Обрезка ТОЛЬКО для API
             if actual_data_source == 'api':
@@ -2361,18 +2356,19 @@ with tab_seo_main:
             st.session_state['excluded_urls_auto'] = excluded_txt
             st.session_state['detected_anomalies'] = bad_urls_dicts
             
-            # === ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ВИДЖЕТОВ ===
-            # Мы не удаляем ключи, а записываем в них новые значения.
-            # Streamlit при перезагрузке возьмет эти значения и покажет их.
-            st.session_state['manual_urls_widget'] = clean_txt
-            st.session_state['excluded_urls_widget_display'] = excluded_txt
+            # === ИСПРАВЛЕНИЕ ОШИБКИ API EXCEPTION ===
+            # Вместо прямой записи st.session_state['key'] = value,
+            # мы удаляем ключ виджета. При реране виджет создастся заново
+            # и возьмет значение из persistent_urls (которое мы обновили выше).
+            if 'manual_urls_widget' in st.session_state:
+                del st.session_state['manual_urls_widget']
+            if 'excluded_urls_widget_display' in st.session_state:
+                del st.session_state['excluded_urls_widget_display']
             
             in_n = len(candidates_pool)
             act_n = len(final_active_data)
             out_n = len(excluded_list_final)
             
-            status.write("---")
-            status.write(f"**ИТОГО:** Вход: {in_n} | Актив: {act_n} | Исключено: {out_n}")
             status.update(label="✅ Готово! Перезагрузка...", state="complete")
             
             # Финальный расчет (только для активных)
@@ -3599,6 +3595,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
