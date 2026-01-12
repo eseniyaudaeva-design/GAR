@@ -293,31 +293,28 @@ def render_relevance_chart(df_rel, unique_key="default"):
         opacity=0.8
     ))
 
-    # 3. Настройка Layout (ИСПРАВЛЕННАЯ ЧАСТЬ)
+# 3. Настройка Layout (КОМПАКТНАЯ ВЕРСИЯ)
     fig.update_layout(
         template="plotly_white",
         legend=dict(
             orientation="h",
-            yanchor="bottom", y=1.02,
+            yanchor="bottom", y=1.02, # Легенда прямо над графиком
             xanchor="center", x=0.5,
-            font=dict(size=14, color="#111827", family="Inter, sans-serif") # Легенда тоже чуть крупнее
+            font=dict(size=12, color="#111827", family="Inter, sans-serif")
         ),
         xaxis=dict(
-            showgrid=True, # Включим сетку по X, чтобы видеть привязку к точкам
+            showgrid=True,
             gridcolor='#F3F4F6',
             linecolor='#E5E7EB',
             tickmode='array',
             tickvals=x_indices,
             ticktext=tick_links, 
             
-            # --- ИЗМЕНЕНИЕ 1: Шрифт 12 и поворот ---
-            tickfont=dict(size=12), 
-            tickangle=-45, # Поворачиваем текст, чтобы влезло 30 штук
+            tickfont=dict(size=11), # Чуть меньше шрифт подписей
+            tickangle=-45, 
             
             fixedrange=True,
             dtick=1, 
-            
-            # Добавляем запас слева и справа (по 0.5 деления), чтобы крайние точки не резались
             range=[-0.5, len(df) - 0.5], 
             automargin=False 
         ),
@@ -329,12 +326,14 @@ def render_relevance_chart(df_rel, unique_key="default"):
             zeroline=False,
             fixedrange=True
         ),
-        # --- ИЗМЕНЕНИЕ 2: Большой отступ снизу (b=160) под подписи ---
-        margin=dict(l=20, r=20, t=60, b=160),
+        # === ВОТ ТУТ МЕНЯЕМ РАЗМЕРЫ ===
+        # l/r - бока, t - верх, b - низ (под подписи)
+        margin=dict(l=10, r=10, t=30, b=110),
+        
         hovermode="x unified",
         
-        # --- ИЗМЕНЕНИЕ 3: Высота графика больше, чтобы компенсировать отступ ---
-        height=550 
+        # Общая высота графика (было 550)
+        height=400 
     )
     
     # use_container_width=True растягивает график на всю ширину страницы
@@ -3524,6 +3523,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
