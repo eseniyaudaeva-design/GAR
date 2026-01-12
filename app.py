@@ -1755,47 +1755,44 @@ with tab_seo_main:
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
-            # 1. КНОПКА СБРОСА
+            # Кнопка сброса
             if st.session_state.get('analysis_done'):
                 col_reset, _ = st.columns([1, 4])
                 with col_reset:
-                    if st.button("🔄 Новый поиск (Сброс)", type="secondary", help="Сбросить все результаты и ввести новый список"):
-                        keys_to_clear = [
-                            'analysis_done', 'analysis_results', 'excluded_urls_auto', 
-                            'detected_anomalies', 'serp_trend_info', 'persistent_urls',
-                            'naming_table_df', 'ideal_h1_result'
-                        ]
+                    if st.button("🔄 Новый поиск (Сброс)", type="secondary"):
+                        keys_to_clear = ['analysis_done', 'analysis_results', 'persistent_urls', 'excluded_urls_auto', 'detected_anomalies']
                         for k in keys_to_clear:
                             if k in st.session_state: del st.session_state[k]
                         st.rerun()
 
-            # 2. ЛОГИКА ОТОБРАЖЕНИЯ (1 или 2 колонки)
+            # Инициализация переменной (если нет)
+            if 'persistent_urls' not in st.session_state:
+                st.session_state['persistent_urls'] = ""
+
             has_exclusions = st.session_state.get('excluded_urls_auto') and len(st.session_state.get('excluded_urls_auto')) > 5
             
             if has_exclusions:
                 c_url_1, c_url_2 = st.columns(2)
                 with c_url_1:
-                    manual_val = st.text_area(
+                    # ПРОСТО ВИДЖЕТ. Без value=..., так как мы используем key.
+                    # Значение само подтянется из st.session_state['persistent_urls']
+                    st.text_area(
                         "✅ Активные конкуренты (Для анализа)", 
                         height=200, 
-                        key="manual_urls_widget", 
-                        value=st.session_state.get('persistent_urls', "")
+                        key="persistent_urls" 
                     )
-                    st.session_state['persistent_urls'] = manual_val
                 with c_url_2:
                     st.text_area(
-                        "🚫 Авто-исключенные (Вы можете вернуть их влево)", 
+                        "🚫 Авто-исключенные", 
                         height=200, 
-                        key="excluded_urls_widget_display", 
                         value=st.session_state.get('excluded_urls_auto', ""),
-                        help="Сюда попали слабые сайты."
+                        disabled=True # Сделал неактивным, чтобы не путать
                     )
             else:
-                manual_val = st.text_area(
+                st.text_area(
                     "Список ссылок (каждая с новой строки)", 
                     height=200, 
-                    key="manual_urls_widget", 
-                    value=st.session_state.get('persistent_urls', "")
+                    key="persistent_urls"
                 )
                 st.session_state['persistent_urls'] = manual_val
 
@@ -2238,63 +2235,55 @@ with tab_seo_main:
             
 # === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
             
-            # 1. Берем данные для проверки (полный список или топ)
+            # 1. Берем данные
             if "API" in current_source_val and 'full_graph_data' in st.session_state:
                 df_rel_check = st.session_state['full_graph_data']
             else:
                 df_rel_check = st.session_state.analysis_results['relevance_top']
             
-            # 2. Ищем аномалии (кто слабый, кто сильный)
+            # 2. Анализ аномалий
             good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
             st.session_state['serp_trend_info'] = trend
             
-# СЦЕНАРИЙ А: Галочка СТОИТ (Фильтруем)
+            # Настройка фильтра
             is_filter_enabled = st.session_state.get("settings_auto_filter", True)
             
-            if is_filter_enabled:
-                # --- 1. Функция "Ядерной" нормализации ---
-                def get_strict_key(u):
-                    if not u: return ""
-                    s = str(u).lower().strip()
-                    s = s.replace("https://", "").replace("http://", "").replace("www.", "")
-                    return s.rstrip('/')
+            def get_strict_key(u):
+                if not u: return ""
+                return str(u).lower().strip().replace("https://", "").replace("http://", "").replace("www.", "").rstrip('/')
 
+            final_clean_text = ""
+            
+            # --- ЛОГИКА РАСПРЕДЕЛЕНИЯ (БЕЗ ПЕРЕРИСОВКИ) ---
+            if is_filter_enabled:
                 if bad_urls_dicts:
-                    # Сохраняем аномалии
+                    # 1. Сохраняем плохих
                     st.session_state['detected_anomalies'] = bad_urls_dicts
                     
-                    # --- 2. Собираем ЧЕРНЫЙ СПИСОК (Ключи) ---
                     blacklist_keys = set()
                     excluded_display_list = []
-                    
                     for item in bad_urls_dicts:
                         raw_u = item.get('url', '')
                         if raw_u:
                             blacklist_keys.add(get_strict_key(raw_u))
                             excluded_display_list.append(str(raw_u).strip())
                     
-                    # Сохраняем для отображения в правом окне
-                    st.session_state['excluded_urls_for_display'] = "\n".join(excluded_display_list)
+                    st.session_state['excluded_urls_auto'] = "\n".join(excluded_display_list)
                     
-                    # --- 3. Собираем БЕЛЫЙ СПИСОК (Проверка по ключам) ---
+                    # 2. Собираем хороших
                     clean_active_list = []
                     seen_keys = set()
-                    
                     for u in good_urls:
                         key = get_strict_key(u)
-                        if key and key not in blacklist_keys:
-                            if key not in seen_keys:
-                                clean_active_list.append(str(u).strip())
-                                seen_keys.add(key)
+                        if key and key not in blacklist_keys and key not in seen_keys:
+                            clean_active_list.append(str(u).strip())
+                            seen_keys.add(key)
                     
                     final_clean_text = "\n".join(clean_active_list)
-                    st.session_state['persistent_urls'] = final_clean_text
-                    # Теперь мы не обновляем старый виджет, а просто сохраняем данные
-                    
-                    st.toast(f"🧹 Фильтр: Исключено {len(blacklist_keys)}. Активных: {len(clean_active_list)}", icon="🗑️")
+                    st.toast(f"Фильтр сработал. Исключено: {len(blacklist_keys)}", icon="✂️")
                 
                 else:
-                    # Если плохих нет, просто чистим дубли
+                    # Плохих нет, просто убираем дубли
                     clean_active = []
                     seen = set()
                     for u in good_urls:
@@ -2302,48 +2291,36 @@ with tab_seo_main:
                         if key and key not in seen:
                             clean_active.append(str(u).strip())
                             seen.add(key)
-
                     final_clean_text = "\n".join(clean_active)
-                    st.session_state['persistent_urls'] = final_clean_text
                     
-                    # Чистим хвосты
-                    if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
-                    if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
-                    
-                    st.toast("✅ Фильтр: Все сайты прошли проверку", icon="🛡️")
+                    # Чистим старые ошибки, если они были
+                    st.session_state.pop('excluded_urls_auto', None)
+                    st.session_state.pop('detected_anomalies', None)
 
             else:
-                # СЦЕНАРИЙ Б: Галочка СНЯТА (Ничего не фильтруем)
+                # Фильтр выключен - берем всё
                 clean_all = []
                 seen_all = set()
-                
-                def get_strict_key_simple(u):
-                    return str(u).lower().strip().replace("https://", "").replace("http://", "").replace("www.", "").rstrip('/')
-
                 combined_pool = good_urls + [x['url'] for x in (bad_urls_dicts or [])]
-                
                 for u in combined_pool:
-                    key = get_strict_key_simple(u)
+                    key = get_strict_key(u)
                     if key and key not in seen_all:
                         clean_all.append(str(u).strip())
                         seen_all.add(key)
                 
                 final_clean_text = "\n".join(clean_all)
-                st.session_state['persistent_urls'] = final_clean_text
-                
-                # Очищаем правое окно
-                if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
-                if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
-                
-                if bad_urls_dicts:
-                    st.toast(f"🛑 Фильтр ВЫКЛ: {len(bad_urls_dicts)} слабых сайтов оставлены в списке", icon="👀")
-                else:
-                    st.toast("🛑 Фильтр ВЫКЛ: Все сайты на месте", icon="👀")
-            # ==============================================================
+                st.session_state.pop('excluded_urls_auto', None)
+                st.session_state.pop('detected_anomalies', None)
 
-            # Классификация семантики (по финальным данным)
-            # ... (остальной код после этого блока остается без изменений) ...
-            # ==============================================================
+            # === ФИНАЛЬНАЯ ЗАПИСЬ (САМОЕ ВАЖНОЕ) ===
+            # Мы просто обновляем переменную в памяти.
+            # Виджет обновится САМ при следующем любом действии пользователя.
+            # Мы НЕ вызываем st.rerun(), чтобы не ломать поток.
+            
+            st.session_state['persistent_urls'] = final_clean_text
+            
+            # Принудительно переключаем радио-кнопку (это безопасно, т.к. состояние)
+            st.session_state['force_radio_switch'] = True
 
             # Классификация семантики (по финальным данным)
             res = st.session_state.analysis_results
@@ -3550,6 +3527,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
