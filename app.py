@@ -308,9 +308,9 @@ def render_relevance_chart(df_rel, unique_key="default"):
             ticktext=tick_links, 
             tickfont=dict(size=12),
             fixedrange=True,
-            # ИСПРАВЛЕНИЕ: Даем больше места слева и справа (-0.5 ... +0.5), чтобы крайние точки не резались
+            dtick=1,  # <--- ДОБАВИТЬ ВОТ ЭТУ СТРОКУ (Показывать каждый шаг)
             range=[-0.5, len(df) - 0.5],
-            automargin=True # Автоматический отступ, чтобы текст не наезжал
+            automargin=True 
         ),
         yaxis=dict(
             range=[0, 115], 
@@ -2329,15 +2329,12 @@ with tab_seo_main:
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
-            # === ФИНАЛЬНЫЙ ШТРИХ: АВТО-ПЕРЕКЛЮЧЕНИЕ ===
+# === ФИНАЛЬНЫЙ ШТРИХ: АВТО-ПЕРЕКЛЮЧЕНИЕ ===
             # 1. Принудительно меняем радио-кнопку на "Ручной список"
             st.session_state['force_radio_switch'] = True
             
-            # 2. Если мы запускали через API, убеждаемся, что в поле "Ручной ввод" попали ссылки
-            # (good_urls мы получили чуть выше из функции анализатора)
-            if "API" in current_source_val:
-                 st.session_state['persistent_urls'] = "\n".join(good_urls)
-                 # Если были исключенные, они уже записаны в 'excluded_urls_auto' выше
+            # 2. (СТРОКУ С ПЕРЕЗАПИСЬЮ УДАЛИЛИ - ОНА ЛИШНЯЯ И ВРЕДНАЯ)
+            # Список ссылок уже сформирован в блоке "УМНАЯ ФИЛЬТРАЦИЯ" выше.
             
             st.rerun()
 
@@ -3497,6 +3494,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
