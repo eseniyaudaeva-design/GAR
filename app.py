@@ -1724,6 +1724,8 @@ tab_seo_main, tab_wholesale_main, tab_projects = st.tabs(["📊 SEO Анализ
 # ------------------------------------------
 with tab_seo_main:
     col_main, col_sidebar = st.columns([65, 35])
+    
+    # === ЛЕВАЯ КОЛОНКА (ОСНОВНАЯ) ===
     with col_main:
         st.title("SEO Анализатор")
         
@@ -1743,11 +1745,9 @@ with tab_seo_main:
         
         st.markdown("### Поиск конкурентов")
         
-        # --- ИСПРАВЛЕНИЕ: Обработка авто-переключения ---
+        # --- Обработка авто-переключения ---
         if st.session_state.get('force_radio_switch'):
-            # Меняем значение ДО отрисовки виджета
             st.session_state["competitor_source_radio"] = "Список url-адресов ваших конкурентов"
-            # Сбрасываем флаг, чтобы не переключало вечно
             st.session_state['force_radio_switch'] = False
         # -----------------------------------------------
 
@@ -1755,12 +1755,11 @@ with tab_seo_main:
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
-            # 1. КНОПКА СБРОСА (Появляется, если есть результаты)
+            # 1. КНОПКА СБРОСА
             if st.session_state.get('analysis_done'):
                 col_reset, _ = st.columns([1, 4])
                 with col_reset:
                     if st.button("🔄 Новый поиск (Сброс)", type="secondary", help="Сбросить все результаты и ввести новый список"):
-                        # Чистим вообще всё, чтобы начать с чистого листа
                         keys_to_clear = [
                             'analysis_done', 'analysis_results', 'excluded_urls_auto', 
                             'detected_anomalies', 'serp_trend_info', 'persistent_urls',
@@ -1771,7 +1770,6 @@ with tab_seo_main:
                         st.rerun()
 
             # 2. ЛОГИКА ОТОБРАЖЕНИЯ (1 или 2 колонки)
-            # Если есть список исключенных - показываем 2 колонки
             has_exclusions = st.session_state.get('excluded_urls_auto') and len(st.session_state.get('excluded_urls_auto')) > 5
             
             if has_exclusions:
@@ -1790,10 +1788,9 @@ with tab_seo_main:
                         height=200, 
                         key="excluded_urls_widget_display", 
                         value=st.session_state.get('excluded_urls_auto', ""),
-                        help="Сюда попали слабые сайты. Если считаете, что сайт нормальный - скопируйте его и вставьте обратно в левое окно."
+                        help="Сюда попали слабые сайты."
                     )
             else:
-                # Обычный вид (1 колонка)
                 manual_val = st.text_area(
                     "Список ссылок (каждая с новой строки)", 
                     height=200, 
@@ -1802,75 +1799,34 @@ with tab_seo_main:
                 )
                 st.session_state['persistent_urls'] = manual_val
 
-# ================= НОВОЕ МЕСТО ДЛЯ ГРАФИКА =================
-    # Показываем график ТОЛЬКО если есть результаты анализа
+        # ГРАФИК
         if st.session_state.get('analysis_done') and st.session_state.get('analysis_results'):
             results = st.session_state.analysis_results
             if 'relevance_top' in results and not results['relevance_top'].empty:
                 st.markdown("<br>", unsafe_allow_html=True)
-                
                 with st.expander("📊 График релевантности (Нажмите, чтобы раскрыть)", expanded=False):
-                    st.info(
-                        """
-                        **Логика расширенного анализа (Top-30)**  
-                        График строится по максимальной выборке из парсинга для **калибровки линии тренда** и точного выявления аномалий. Это позволяет системе отличить качественные ресурсы от случайных "выбросов" в выдаче.
-                        
-                        *Важно: Все рекомендации ниже (семантическое ядро, таблицы, структура) формируются строго по выбранному вами лимиту (Топ-10/20) на основе уже очищенных данных.*
-                        """, 
-                        icon="ℹ️"
-                    )
-                    # -----------------------------
-
-                    # ИСПРАВЛЕНИЕ: Берем full_graph_data - там лежат все 30 сайтов без пропусков
+                    st.info("**Логика расширенного анализа (Top-30)**\nГрафик строится по максимальной выборке...", icon="ℹ️")
                     graph_data = st.session_state.get('full_graph_data', results['relevance_top'])
                     render_relevance_chart(graph_data, unique_key="main")
-                
                 st.markdown("<br>", unsafe_allow_html=True)
-    # ===========================================================
 
-        st.markdown("### Списки (Stop / Exclude)")
-        
-        # 1. Сначала инициализируем значения в памяти, если их там нет
-        if "settings_excludes" not in st.session_state:
-            st.session_state.settings_excludes = DEFAULT_EXCLUDE
-        if "settings_stops" not in st.session_state:
-            st.session_state.settings_stops = DEFAULT_STOPS
-
-        # 2. Рисуем виджеты БЕЗ передачи значения (value), 
-        # так как Streamlit сам подтянет его из st.session_state по ключу (key)
-        st.text_area("Не учитывать домены", height=100, key="settings_excludes")
-        st.text_area("Стоп-слова", height=100, key="settings_stops")
-# --- БРОНЕБОЙНАЯ ЛОГИКА КНОПКИ (CALLBACK) ---
+        # --- КНОПКА ЗАПУСКА ---
         def run_analysis_callback():
-            # 1. СПАСАЕМ ГАЛОЧКУ: Запоминаем текущее состояние перед любой очисткой
-            # Если ты её снял, тут будет False.
             saved_filter_state = st.session_state.get('settings_auto_filter', True)
-
-            # 2. ЧИСТКА: Удаляем результаты старого анализа
             keys_to_clear = [
                 'analysis_results', 'analysis_done', 'naming_table_df',
                 'ideal_h1_result', 'gen_result_df', 'unified_excel_data',
                 'detected_anomalies', 'serp_trend_info',
                 'excluded_urls_auto'
             ]
-            
             for k in keys_to_clear:
-                if k in st.session_state:
-                    del st.session_state[k]
-
-            # 3. ВОССТАНОВЛЕНИЕ: Принудительно записываем твой выбор обратно в память
-            # Даже если он случайно удалился выше, мы его перезапишем тем, что спасли в шаге 1.
+                if k in st.session_state: del st.session_state[k]
             st.session_state.settings_auto_filter = saved_filter_state
-
-            # 4. Сброс пагинации
             for k in list(st.session_state.keys()):
-                if k.endswith('_page'):
-                    st.session_state[k] = 1
-            
-            # 5. Поднимаем флаг запуска
+                if k.endswith('_page'): st.session_state[k] = 1
             st.session_state.start_analysis_flag = True
 
-        # Сама кнопка
+        st.markdown("<br>", unsafe_allow_html=True) # Отступ перед кнопкой
         st.button(
             "ЗАПУСТИТЬ АНАЛИЗ", 
             type="primary", 
@@ -1879,6 +1835,7 @@ with tab_seo_main:
             on_click=run_analysis_callback 
         )
 
+    # === ПРАВАЯ КОЛОНКА (САЙДБАР) ===
     with col_sidebar:
         if not ARSENKIN_TOKEN:
              new_arsenkin = st.text_input("Arsenkin Token", type="password", key="input_arsenkin")
@@ -1886,14 +1843,14 @@ with tab_seo_main:
         if not YANDEX_DICT_KEY:
              new_yandex = st.text_input("Yandex Dict Key", type="password", key="input_yandex")
              if new_yandex: st.session_state.yandex_dict_key = new_yandex; YANDEX_DICT_KEY = new_yandex
+        
         st.markdown("⚙️ Настройки поиска")
         st.selectbox("User-Agent", ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "YandexBot/3.0"], key="settings_ua")
         st.selectbox("Поисковая система", ["Яндекс", "Google", "Яндекс + Google"], key="settings_search_engine")
         st.selectbox("Регион поиска", list(REGION_MAP.keys()), key="settings_region")
-        
         st.selectbox("Кол-во конкурентов для анализа", [10, 20], index=0, key="settings_top_n")
         
-        # 1. Инициализируем значения в памяти, если их там нет (например, при первом запуске)
+        # Инициализация чекбоксов
         if "settings_noindex" not in st.session_state: st.session_state.settings_noindex = True
         if "settings_alt" not in st.session_state: st.session_state.settings_alt = False
         if "settings_numbers" not in st.session_state: st.session_state.settings_numbers = False
@@ -1904,7 +1861,17 @@ with tab_seo_main:
         st.checkbox("Учитывать Alt/Title", key="settings_alt")
         st.checkbox("Учитывать числа", key="settings_numbers")
         st.checkbox("Нормировать по длине", key="settings_norm")
-        st.checkbox("Авто-фильтр слабых сайтов", key="settings_auto_filter", help="Если включено: сайты с низкой релевантностью будут автоматически перенесены в список исключенных (справа). Если выключено: все сайты останутся в активном списке.")
+        st.checkbox("Авто-фильтр слабых сайтов", key="settings_auto_filter", help="Сайты с низкой релевантностью будут автоматически перенесены в список исключенных.")
+        
+        # === [ИЗМЕНЕНИЕ] СПИСКИ ПЕРЕНЕСЕНЫ СЮДА ===
+        st.markdown("---")
+        st.markdown("🛑 **Исключения**")
+        
+        if "settings_excludes" not in st.session_state: st.session_state.settings_excludes = DEFAULT_EXCLUDE
+        if "settings_stops" not in st.session_state: st.session_state.settings_stops = DEFAULT_STOPS
+
+        st.text_area("Не учитывать домены", height=100, key="settings_excludes", help="Домены, которые парсер пропустит сразу.")
+        st.text_area("Стоп-слова", height=100, key="settings_stops", help="Слова, которые не попадут в анализ.")
         # ----------------------------------------
     # БЛОК 1: ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ (ТЕПЕРЬ ПЕРВЫЙ)
     # ==========================================
@@ -2281,21 +2248,22 @@ with tab_seo_main:
             good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
             st.session_state['serp_trend_info'] = trend
             
-            # 3. ГЛАВНОЕ: Проверяем состояние вашей галочки
-            is_filter_enabled = st.session_state.get("settings_auto_filter", True)
-            
-            # СЦЕНАРИЙ А: Галочка СТОИТ (Фильтруем)
+# СЦЕНАРИЙ А: Галочка СТОИТ (Фильтруем)
             if is_filter_enabled:
                 if bad_urls_dicts:
-                    # Есть кого фильтровать -> Разделяем списки
+                    # 1. Сохраняем информацию об аномалиях
                     st.session_state['detected_anomalies'] = bad_urls_dicts
                     
-                    # Хорошие -> в левое окно
-                    st.session_state['persistent_urls'] = "\n".join(good_urls)
-                    
-                    # Плохие -> в правое окно
+                    # 2. Формируем список ПЛОХИХ (строго)
+                    excluded_set = set(item['url'] for item in bad_urls_dicts)
                     excluded_list = [item['url'] for item in bad_urls_dicts]
                     st.session_state['excluded_urls_auto'] = "\n".join(excluded_list)
+                    
+                    # 3. Формируем список ХОРОШИХ (строго: Все кандидаты МИНУС Плохие)
+                    # good_urls - это список URL из analyze_serp_anomalies, который уже очищен,
+                    # но для надежности пройдемся еще раз по множеству.
+                    clean_good_urls = [u for u in good_urls if u not in excluded_set]
+                    st.session_state['persistent_urls'] = "\n".join(clean_good_urls)
                     
                     st.toast(f"🧹 Фильтр ВКЛ: Исключено {len(bad_urls_dicts)} слабых сайтов", icon="🗑️")
                 else:
@@ -2303,7 +2271,7 @@ with tab_seo_main:
                     all_urls = [d['url'] for d in final_clean_data]
                     st.session_state['persistent_urls'] = "\n".join(all_urls)
                     
-                    # Чистим хвосты (если раньше были исключенные)
+                    # Чистим хвосты
                     if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
                     if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
                     
@@ -2311,11 +2279,11 @@ with tab_seo_main:
 
             # СЦЕНАРИЙ Б: Галочка СНЯТА (Не фильтруем)
             else:
-                # Принудительно оставляем ВСЕХ (и сильных, и слабых)
+                # Принудительно оставляем ВСЕХ (и сильных, и слабых) в левом окне
                 all_urls = [d['url'] for d in final_clean_data]
                 st.session_state['persistent_urls'] = "\n".join(all_urls)
                 
-                # Принудительно ОЧИЩАЕМ список исключенных
+                # Принудительно ОЧИЩАЕМ список исключенных (чтобы правое окно было пустым)
                 if 'excluded_urls_auto' in st.session_state: del st.session_state['excluded_urls_auto']
                 if 'detected_anomalies' in st.session_state: del st.session_state['detected_anomalies']
                 
@@ -3530,3 +3498,4 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
