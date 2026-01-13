@@ -14,8 +14,8 @@ import inspect
 import time
 import json
 import io
+from google import genai
 import os
-import google.generativeai as genai
 import requests
 proxy_url = "http://QYnojH:Uekp4k@196.18.3.35:8000" 
 
@@ -1878,6 +1878,7 @@ def get_page_data_for_gen(url):
 
 def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * num_blocks
+    # Проверка библиотеки (теперь это модуль google.genai)
     if not genai: return ["Error: google-genai lib not installed"] * num_blocks
     
     # 1. ПОДГОТОВКА СПИСКА СЛОВ
@@ -1955,23 +1956,34 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     """
     
     try:
-        genai.configure(api_key=api_key)
-        # === ИСПОЛЬЗУЕМ gemini-2.0-flash ===
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        # === ОБНОВЛЕННАЯ ЛОГИКА ДЛЯ google-genai ===
+        # 1. Создаем клиента (новая библиотека)
+        client = genai.Client(api_key=api_key)
         
+        # 2. Собираем полный промпт
         full_prompt = system_instruction + "\n\n" + user_prompt
         
-        response = model.generate_content(full_prompt)
+        # 3. Отправляем запрос (используем модель 2.5, на которую есть квоты)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=full_prompt
+        )
+        
+        # 4. Получаем текст
         content = response.text
         
+        # Чистка от мусора
         content = re.sub(r'\[\d+\]', '', content)
         content = content.replace("```html", "").replace("```", "").strip()
         
+        # Разбиваем на блоки
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
         
+        # Добиваем пустыми строками, если блоков не хватило
         while len(blocks) < num_blocks: blocks.append("")
         
         return blocks[:num_blocks]
+        
     except Exception as e:
         return [f"API Error: {str(e)}"] * num_blocks
 
@@ -4042,6 +4054,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
