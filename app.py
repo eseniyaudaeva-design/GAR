@@ -2225,193 +2225,78 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (NO ICONS + FIXED ARGUMENTS ERROR)
+# 4. Отрисовка (SMART PATTERN DETECTION + FIXED LAYOUT)
         if meta_res:
             import textwrap 
             
-            st.markdown("### 🧬 Рекомендации по мета-данным")
+            st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
             # --- CSS STYLES ---
             st.markdown("""
             <style>
-                div[data-testid="column"] {
-                    display: flex;
-                    flex-direction: column;
-                }
-                
+                div[data-testid="column"] { display: flex; flex-direction: column; }
                 .flat-card {
-                    background-color: #FFFFFF;
-                    border: 1px solid #E5E7EB;
-                    border-radius: 12px;
-                    height: 360px; 
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: space-between;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    overflow: visible;
-                    position: relative;
-                    z-index: 1;
+                    background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px;
+                    height: 380px; /* Чуть увеличили высоту для вариантов */
+                    display: flex; flex-direction: column; justify-content: space-between;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden;
                 }
-                
-                .flat-card:hover {
-                    z-index: 10;
-                }
-                
                 .flat-header {
-                    height: 50px;
-                    padding: 0 20px;
-                    font-weight: 700;
-                    font-size: 16px; /* Чуть крупнее, раз нет иконки */
-                    color: #111827;
-                    border-bottom: 1px solid #F3F4F6;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    flex-shrink: 0;
+                    height: 50px; padding: 0 20px; font-weight: 700; font-size: 15px; color: #111827;
+                    border-bottom: 1px solid #F3F4F6; display: flex; align-items: center; gap: 8px; flex-shrink: 0;
                 }
-                
                 .flat-content {
-                    flex-grow: 1;
-                    padding: 10px 20px;
-                    font-size: 13px;
-                    line-height: 1.4;
-                    color: #374151;
-                    overflow-y: auto;
-                    background: transparent;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: center;
+                    flex-grow: 1; padding: 10px 20px; font-size: 13px; line-height: 1.4; color: #374151;
+                    overflow-y: auto; background: transparent; display: flex; flex-direction: column; justify-content: center;
                 }
                 .flat-content::-webkit-scrollbar { width: 4px; }
                 .flat-content::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
-
                 .flat-footer {
-                    height: 170px; 
-                    min-height: 170px;
-                    padding: 12px 20px;
-                    border-top: 1px solid #F3F4F6;
-                    background-color: #FAFAFA;
-                    flex-shrink: 0;
-                    display: flex;
-                    flex-direction: column;
+                    height: 180px; min-height: 180px; padding: 12px 20px;
+                    border-top: 1px solid #F3F4F6; background-color: #FAFAFA;
+                    flex-shrink: 0; display: flex; flex-direction: column;
                 }
-                
                 .flat-metric-row {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 4px;
-                    font-size: 10px;
-                    font-weight: 700;
-                    color: #9CA3AF;
-                    text-transform: uppercase;
+                    display: flex; justify-content: space-between; align-items: center;
+                    margin-bottom: 4px; font-size: 10px; font-weight: 700; color: #9CA3AF; text-transform: uppercase;
                 }
-                
-                .flat-len-badge {
-                    padding: 2px 8px;
-                    border-radius: 4px;
-                    font-weight: 700;
-                    font-size: 10px;
-                    text-transform: uppercase;
-                }
-
+                .flat-len-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; text-transform: uppercase; }
                 .flat-progress-bg {
-                    width: 100%;
-                    background-color: #E5E7EB;
-                    height: 6px; 
-                    border-radius: 3px;
-                    overflow: hidden;
-                    margin-bottom: 12px;
-                    flex-shrink: 0;
+                    width: 100%; background-color: #E5E7EB; height: 6px; border-radius: 3px;
+                    overflow: hidden; margin-bottom: 10px; flex-shrink: 0;
                 }
-                
-                .flat-tags-area {
-                    flex-grow: 1;
-                    overflow: hidden;
-                }
-                
-                .flat-tags-wrapper {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 4px;
-                }
-                
+                .flat-tags-wrapper { display: flex; flex-wrap: wrap; gap: 4px; }
                 .flat-miss-tag {
-                    display: inline-block;
-                    border: 1px solid #FECACA;
-                    color: #991B1B;
-                    background-color: #FFFFFF;
-                    padding: 3px 8px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    border-radius: 4px;
+                    display: inline-block; border: 1px solid #FECACA; color: #991B1B;
+                    background-color: #FFFFFF; padding: 3px 8px; font-size: 11px;
+                    font-weight: 600; border-radius: 4px;
                 }
-                
                 .flat-ok-msg {
-                    height: 100%;
-                    display: flex;
-                    align-items: center;
-                    color: #059669;
-                    font-weight: 700;
-                    font-size: 13px;
-                    background: #ECFDF5;
-                    border-radius: 6px;
-                    padding: 0 10px;
+                    height: 100%; display: flex; align-items: center; color: #059669;
+                    font-weight: 700; font-size: 13px; background: #ECFDF5;
+                    border-radius: 6px; padding: 0 10px;
                 }
-
+                /* Стиль для сгенерированного текста */
+                .gen-box {
+                    margin-top: 8px; padding: 8px; background: #F0F9FF;
+                    border: 1px dashed #0EA5E9; border-radius: 6px;
+                    font-size: 11px; color: #0C4A6E; line-height: 1.3;
+                    max-height: 60px; overflow-y: auto;
+                }
                 /* Tooltip */
                 .tooltip-container {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 16px;
-                    height: 16px;
-                    background-color: #F3F4F6;
-                    color: #6B7280;
-                    border-radius: 50%;
-                    font-size: 11px;
-                    margin-left: 2px;
-                    cursor: help;
-                    position: relative;
-                    font-weight: bold;
+                    display: inline-flex; align-items: center; justify-content: center;
+                    width: 16px; height: 16px; background-color: #F3F4F6; color: #6B7280;
+                    border-radius: 50%; font-size: 11px; margin-left: 2px; cursor: help; position: relative; font-weight: bold;
                 }
                 .tooltip-text {
-                    visibility: hidden;
-                    width: 200px;
-                    background-color: #1F2937;
-                    color: #fff;
-                    text-align: left;
-                    border-radius: 6px;
-                    padding: 10px;
-                    position: absolute;
-                    z-index: 100;
-                    top: 130%; 
-                    left: 50%;
-                    margin-left: -100px; 
-                    opacity: 0;
-                    transition: opacity 0.2s;
-                    font-size: 11px;
-                    font-weight: 400;
-                    line-height: 1.5;
-                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+                    visibility: hidden; width: 220px; background-color: #1F2937; color: #fff;
+                    text-align: left; border-radius: 6px; padding: 10px; position: absolute;
+                    z-index: 100; top: 130%; left: 50%; margin-left: -110px;
+                    opacity: 0; transition: opacity 0.2s; font-size: 11px; font-weight: 400;
+                    line-height: 1.4; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
                 }
-                .tooltip-text::after {
-                    content: "";
-                    position: absolute;
-                    bottom: 100%;
-                    left: 50%;
-                    margin-left: -5px;
-                    border-width: 5px;
-                    border-style: solid;
-                    border-color: transparent transparent #1F2937 transparent;
-                }
-                .tooltip-container:hover .tooltip-text {
-                    visibility: visible;
-                    opacity: 1;
-                }
-                .tt-green { color: #34D399; font-weight: 700; }
-                .tt-yellow { color: #FBBF24; font-weight: 700; }
-                .tt-red { color: #F87171; font-weight: 700; }
+                .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
             </style>
             """, unsafe_allow_html=True)
 
@@ -2421,7 +2306,7 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
-            # Логика длины
+            # === ЛОГИКА ДЛИНЫ ===
             def check_len_status(text, type_key):
                 length = len(text) if text else 0
                 limits = {
@@ -2433,47 +2318,108 @@ with tab_seo_main:
                 g_min, g_max = rule['good']
                 ok_min, ok_max = rule['ok_min'], rule['ok_max']
                 
-                if g_min <= length <= g_max:
-                    return length, "ХОРОШО", "#059669", "#ECFDF5" 
-                elif ok_min <= length < g_min:
-                    return length, "Можно увеличить объем", "#D97706", "#FFFBEB"
-                elif g_max < length <= ok_max:
-                    return length, "Можно сократить объем", "#D97706", "#FFFBEB"
-                elif length < ok_min:
-                    return length, "КРИТИЧЕСКИ МАЛО", "#DC2626", "#FEF2F2"
-                else: 
-                    return length, "КРИТИЧЕСКИ МНОГО", "#DC2626", "#FEF2F2"
+                if g_min <= length <= g_max: return length, "ХОРОШО", "#059669", "#ECFDF5" 
+                elif ok_min <= length < g_min: return length, "МАЛО (увеличьте)", "#D97706", "#FFFBEB"
+                elif g_max < length <= ok_max: return length, "МНОГО (сократите)", "#D97706", "#FFFBEB"
+                elif length < ok_min: return length, "КРИТИЧЕСКИ МАЛО", "#DC2626", "#FEF2F2"
+                else: return length, "КРИТИЧЕСКИ МНОГО", "#DC2626", "#FEF2F2"
 
             def get_tooltip_html(type_key):
                 rules = {
-                    'Title': '<span class="tt-green">Хорошо:</span> 30-70<br><span class="tt-yellow">Приемлемо:</span> 10-29 или 71-90<br><span class="tt-red">Плохо:</span> <10 или >90',
-                    'Description': '<span class="tt-green">Хорошо:</span> 150-250<br><span class="tt-yellow">Приемлемо:</span> 75-149 или 251-300<br><span class="tt-red">Плохо:</span> <75 или >300',
-                    'H1': '<span class="tt-green">Хорошо:</span> 20-60<br><span class="tt-yellow">Приемлемо:</span> 5-19 или 61-70<br><span class="tt-red">Плохо:</span> <5 или >70'
+                    'Title': 'Хорошо: 30-70<br>Приемлемо: 10-90',
+                    'Description': 'Хорошо: 150-250<br>Приемлемо: 75-300',
+                    'H1': 'Хорошо: 20-60<br>Приемлемо: 5-70'
                 }
-                text = rules.get(type_key, "")
-                return f"""<div class="tooltip-container">?<span class="tooltip-text">{text}</span></div>"""
+                return f"""<div class="tooltip-container">?<span class="tooltip-text">{rules.get(type_key, "")}</span></div>"""
 
-            # ОБНОВЛЕННАЯ ФУНКЦИЯ (Без иконки, но с type_key)
-            def render_flat_card_fixed(col, label, type_key, text_content, score, missing_list):
+            # === УМНЫЙ ГЕНЕРАТОР (Сохраняет стиль сайта) ===
+            def generate_smart_suggestions(current_text, base_h1, missing_words, type_key):
+                base = base_h1 if base_h1 and len(base_h1) > 2 else "Товар"
+                
+                # Чистим базовое название от лишнего (например "Труба алюминиевая купить") -> "Труба алюминиевая"
+                clean_base = re.sub(r'(?i)\s(купить|цена|оптом|в москве).*', '', base).strip()
+                
+                # Топ-3 упущенных слова
+                missing = [w for w in missing_words if len(w) > 2][:4] 
+                keywords_str = ", ".join(missing)
+                
+                suggestions = []
+
+                if type_key == "Title":
+                    # 1. Пытаемся найти "хвост" бренда в текущем Title
+                    # Ищем разделители: | - —
+                    brand_tail = ""
+                    if current_text:
+                        match = re.search(r'(\s[|—]\s.*$)', current_text)
+                        if match:
+                            brand_tail = match.group(1) # Например: " | Стальметурал"
+                    
+                    if not brand_tail:
+                        brand_tail = "" # Если не нашли, хвоста не будет
+
+                    # Вариант 1: Сборка с сохранением бренда
+                    if missing:
+                        s1 = f"Купить {clean_base} {keywords_str}{brand_tail}"
+                    else:
+                        s1 = f"Купить {clean_base} в Москве, цена оптом{brand_tail}"
+                    
+                    suggestions.append(s1)
+
+                elif type_key == "Description":
+                    # 1. Пытаемся найти телефон и "хвост"
+                    # Пример: ... по телефону +7 (499) ... ▪ Поставка по России...
+                    phone_part = ""
+                    benefits_part = ""
+                    
+                    if current_text:
+                        # Ищем телефон
+                        phone_match = re.search(r'(\+7\s?\(?\d{3}\)?[\d\-\s]+)', current_text)
+                        if phone_match:
+                            phone_part = f" Тел: {phone_match.group(1)}."
+                        
+                        # Ищем разделитель ▪ или | для преимуществ
+                        sep_match = re.search(r'([▪|]\s.*$)', current_text)
+                        if sep_match:
+                            benefits_part = " " + sep_match.group(1)
+                    
+                    # Если ничего не нашли, ставим заглушку
+                    if not benefits_part:
+                        benefits_part = " ▪ Доставка по РФ, скидки, ГОСТ."
+
+                    # Вариант 1: Интеграция слов в начало
+                    kw_insert = f" В наличии: {keywords_str}." if missing else " Большой выбор."
+                    
+                    s1 = f"{clean_base.capitalize()} — продажа оптом и в розницу.{kw_insert}{phone_part}{benefits_part}"
+                    suggestions.append(s1)
+
+                return suggestions
+
+            def render_flat_card_fixed(col, label, type_key, text_content, score, missing_list, h1_ref):
                 if score >= 90: rel_color = "#10B981"
                 elif score >= 50: rel_color = "#F59E0B"
                 else: rel_color = "#EF4444"
 
                 curr_len, len_status, len_text_color, len_bg_color = check_len_status(text_content, type_key)
                 len_badge_html = f'<span class="flat-len-badge" style="background:{len_bg_color}; color:{len_text_color};">{curr_len} СИМВ. | {len_status}</span>'
-                
                 tooltip_html = get_tooltip_html(type_key)
 
+                # Логика контента
                 rec_content = ""
+                show_gen = False
+                
                 if score < 100 and missing_list:
                     tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
                     rec_content = f"""<div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:6px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div><div class="flat-tags-wrapper">{tags}</div>"""
+                    show_gen = True
                 elif score >= 100:
-                    rec_content = f"""<div class="flat-ok-msg">✔ Хорошо</div>"""
+                    rec_content = f"""<div class="flat-ok-msg">✔ Идеально</div>"""
 
                 display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
 
-                # HTML БЕЗ ИКОНКИ В ШАПКЕ
+                # Ключи
+                gen_key = f"gen_btn_{type_key}"
+                res_key = f"gen_res_{type_key}"
+
                 raw_html = f"""
 <div class="flat-card">
 <div class="flat-header">
@@ -2483,184 +2429,36 @@ with tab_seo_main:
 {display_text}
 </div>
 <div class="flat-footer">
-<div class="flat-metric-row">
-{len_badge_html}
-</div>
+<div class="flat-metric-row">{len_badge_html}</div>
 <div class="flat-metric-row" style="margin-top:5px;">
-<span>Релевантность</span>
-<span style="color: {rel_color}">{score}%</span>
+<span>Релевантность</span><span style="color: {rel_color}">{score}%</span>
 </div>
 <div class="flat-progress-bg">
 <div style="width: {score}%; height: 100%; background-color: {rel_color};"></div>
 </div>
-<div class="flat-tags-area">
-{rec_content}
-</div>
+<div class="flat-tags-area">{rec_content}</div>
 </div>
 </div>
 """
                 with col:
                     st.markdown(raw_html, unsafe_allow_html=True)
+                    
+                    # Генерация (Кнопка под карточкой)
+                    if show_gen and type_key != "H1":
+                        if st.button(f"✨ Сгенерировать {type_key}", key=gen_key, use_container_width=True):
+                            suggs = generate_smart_suggestions(text_content, h1_ref, missing_list, type_key)
+                            st.session_state[res_key] = suggs
+                        
+                        if res_key in st.session_state:
+                            for s in st.session_state[res_key]:
+                                st.markdown(f"<div class='gen-box'>{s}</div>", unsafe_allow_html=True)
 
-            # ВЫЗОВЫ ФУНКЦИИ (ИКОНКИ УДАЛЕНЫ, НО TYPE_KEY ОСТАЛСЯ)
-            render_flat_card_fixed(col_m1, "Title", "Title", m_self['Title'], m_scores['title'], m_miss['title'])
-            render_flat_card_fixed(col_m2, "Description", "Description", m_self['Description'], m_scores['desc'], m_miss['desc'])
-            render_flat_card_fixed(col_m3, "H1 Заголовок", "H1", m_self['H1'], m_scores['h1'], m_miss['h1'])
+            # Вывод
+            render_flat_card_fixed(col_m1, "Title", "Title", m_self['Title'], m_scores['title'], m_miss['title'], m_self['H1'])
+            render_flat_card_fixed(col_m2, "Description", "Description", m_self['Description'], m_scores['desc'], m_miss['desc'], m_self['H1'])
+            render_flat_card_fixed(col_m3, "H1 Заголовок", "H1", m_self['H1'], m_scores['h1'], m_miss['h1'], m_self['H1'])
 
             st.markdown("<br>", unsafe_allow_html=True)
-            
-# =======================================================
-            # БЛОК 1: ОТКРЫТЫЕ СЕКЦИИ (ГЛАВНОЕ)
-            # =======================================================
-
-            # 1. СЕМАНТИЧЕСКОЕ ЯДРО (ОТКРЫТО)
-            with st.expander("🛒 Семантическое ядро", expanded=True):
-                if not st.session_state.get('orig_products'):
-                    st.info("⚠️ Данные отсутствуют. Запустите анализ.")
-                else:
-                    # Ряд 1
-                    c1, c2, c3 = st.columns(3)
-                    with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
-                    with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
-                    with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
-                    
-                    # Ряд 2
-                    c4, c5, c6 = st.columns(3)
-                    with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
-                    with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
-                    with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
-
-                    st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-
-                    # Блок стоп-слов
-                    cs1, cs2 = st.columns([1, 3])
-                    
-                    if 'sensitive_words_input_final' not in st.session_state:
-                        current_list = st.session_state.get('categorized_sensitive', [])
-                        st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
-                    
-                    current_text_value = st.session_state['sensitive_words_input_final']
-                    
-                    with cs1:
-                        count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
-                        st.markdown(f"**⛔ Стоп-слова**")
-                        st.markdown(f"Исключено: **{count_excluded}**")
-                        st.caption("Эти слова автоматически удалены.")
-                    
-                    with cs2:
-                        new_sens_str = st.text_area(
-                            "hidden_label", height=100,
-                            key="sensitive_words_input_final",
-                            label_visibility="collapsed",
-                            placeholder="Слова для исключения..."
-                        )
-
-                        if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                            raw_input = st.session_state.get("sensitive_words_input_final", "")
-                            new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
-                            
-                            st.session_state.categorized_sensitive = sorted(list(new_stop_set))
-                            
-                            def apply_filter(orig_list_key, stop_set):
-                                original = st.session_state.get(orig_list_key, [])
-                                return [w for w in original if w.lower() not in stop_set]
-
-                            st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
-                            st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
-                            st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
-                            st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
-                            st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
-                            st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
-
-                            all_prods = st.session_state.categorized_products
-                            count_prods = len(all_prods)
-                            if count_prods < 20:
-                                st.session_state.auto_tags_words = all_prods
-                                st.session_state.auto_promo_words = []
-                            else:
-                                half = int(math.ceil(count_prods / 2))
-                                st.session_state.auto_tags_words = all_prods[:half]
-                                st.session_state.auto_promo_words = all_prods[half:]
-
-                            st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
-                            st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
-
-                            st.toast("Фильтр обновлен!", icon="✅")
-                            time.sleep(0.5)
-                            st.rerun()
-
-            # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ОТКРЫТО)
-            with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
-                render_paginated_table(
-                    results['relevance_top'], 
-                    "4. Релевантность", 
-                    "tbl_rel", 
-                    default_sort_col="Позиция", 
-                    default_sort_order="Возрастание", 
-                    show_controls=False # <--- СКРЫВАЕМ ФИЛЬТРЫ
-                )
-
-            # =======================================================
-            # БЛОК 2: ЗАКРЫТЫЕ СЕКЦИИ (ДЕТАЛИ)
-            # =======================================================
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.caption("👇 Дополнительные данные")
-
-            # 3. ТАБЛИЦА НАЗВАНИЙ (ЗАКРЫТО)
-            with st.expander("🏷️ Рекомендации по названию товаров", expanded=False):
-                if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
-                    df_naming = st.session_state.naming_table_df
-                    
-                    if 'ideal_h1_result' in st.session_state:
-                        res_ideal = st.session_state.ideal_h1_result
-                        if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
-                            example_name = res_ideal[0]
-                            report_list = res_ideal[1]
-                            formula_str = "Формула не определена"
-                            for line in report_list:
-                                if "структура" in line or "Схема" in line:
-                                    formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
-                                    break
-                            with st.container(border=True):
-                                st.markdown("#### 🧪 Идеальная формула названия")
-                                st.info(f"**{formula_str}**", icon="🧩")
-                                st.markdown(f"**Пример генерации:** _{example_name}_")
-                        else:
-                            st.warning("⚠️ Данные устарели.")
-
-                    st.markdown("##### Детальный анализ характеристик")
-                    if not df_naming.empty:
-                        col_ctrl1, col_ctrl2 = st.columns([1, 3])
-                        with col_ctrl1:
-                            show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
-                        
-                        df_display = df_naming.copy()
-                        if not show_tech:
-                            df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
-
-                        if 'cat_sort' in df_display.columns:
-                            df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
-                        
-                        cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
-                        existing_cols = [c for c in cols_to_show if c in df_display.columns]
-                        df_display = df_display[existing_cols]
-
-                        def style_rows(row):
-                            val = str(row.get('Добавить', ''))
-                            if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row)
-                            if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row)
-                            return [''] * len(row)
-
-                        st.dataframe(
-                            df_display.style.apply(style_rows, axis=1),
-                            use_container_width=True,
-                            hide_index=True,
-                            height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
-                        )
-                    else:
-                        st.warning("Нет данных для отображения.")
-                else:
-                    st.info("Данные для анализа названий отсутствуют.")
 
             # 4. ДЕТАЛИ META (ЗАКРЫТО)
             with st.expander("🕵️ Мета-данные конкурентов", expanded=False):
@@ -4131,6 +3929,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
