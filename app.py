@@ -3109,13 +3109,17 @@ with tab_wholesale_main:
                 manual_html_source = None
 
         with col_key:
-            default_key = st.session_state.get('gemini_key_cache', "AIzaSyBbbyJowWt6eQoOzF4lkszbM1n9BAs6cxI")
-            
-            gemini_api_key = st.text_input("Google Gemini API Key", value=default_key, type="password")
-            
-            # Сохраняем в сессию
-            if gemini_api_key: 
-                st.session_state.gemini_key_cache = gemini_api_key
+    # 1. Пробуем достать ключ из безопасного хранилища Streamlit
+            try:
+                # Мы ищем ключ с именем GEMINI_KEY
+                key_from_secrets = st.secrets["GEMINI_KEY"]
+            except (FileNotFoundError, KeyError):
+                key_from_secrets = ""
+
+    # 2. Логика: если в сессии (кэше) есть ключ - берем его, если нет - берем из секретов
+    default_key = st.session_state.get('gemini_key_cache', key_from_secrets)
+    
+    gemini_api_key = st.text_input("Google Gemini API Key", value=default_key, type="password")
 
     # ==========================================
     # 2. ВЫБОР МОДУЛЕЙ
@@ -4022,6 +4026,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
