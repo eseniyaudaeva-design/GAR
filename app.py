@@ -2072,8 +2072,10 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (COMPACT 260PX + SINGLE LINE HTML FIX)
+# 4. Отрисовка (FINAL: BIG TAGS + READABLE UI)
         if meta_res:
+            import textwrap 
+            
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
             # --- CSS STYLES ---
@@ -2088,62 +2090,61 @@ with tab_seo_main:
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 12px;
-                    /* 1. КОМПАКТНАЯ ФИКСИРОВАННАЯ ВЫСОТА */
-                    height: 260px; 
+                    /* Высота чуть больше, чтобы вместить крупные теги */
+                    height: 340px; 
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    overflow: hidden;
+                    padding: 16px;
                 }
                 
                 .flat-header {
-                    padding: 12px 16px;
                     font-weight: 700;
-                    font-size: 15px;
+                    font-size: 16px;
                     color: #111827;
-                    border-bottom: 1px solid #F3F4F6;
+                    margin-bottom: 10px;
                     display: flex;
                     align-items: center;
                     gap: 8px;
                     flex-shrink: 0;
-                    height: 45px;
+                    border-bottom: 1px solid #F3F4F6;
+                    padding-bottom: 8px;
                 }
                 
                 .flat-content {
-                    padding: 12px 16px;
-                    font-size: 13px;
-                    line-height: 1.4;
+                    font-size: 14px;
+                    line-height: 1.5;
                     color: #374151;
+                    font-family: 'Inter', sans-serif;
+                    
+                    /* Скролл для текста */
                     flex-grow: 1;
-                    overflow-y: auto; /* Скролл только для текста */
-                    background: transparent;
+                    overflow-y: auto;
+                    min-height: 40px;
+                    
+                    margin-bottom: 10px;
+                    padding-right: 5px;
                     display: flex;
                     flex-direction: column;
                     justify-content: center;
                 }
                 
-                /* Тонкий скроллбар */
+                /* Скроллбар */
                 .flat-content::-webkit-scrollbar { width: 4px; }
                 .flat-content::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
 
                 .flat-footer {
-                    padding: 12px 16px;
-                    border-top: 1px solid #F3F4F6;
-                    background-color: #FAFAFA;
-                    /* 2. ФИКСИРОВАННАЯ ВЫСОТА ПОДВАЛА */
-                    height: 95px; 
                     flex-shrink: 0;
-                    display: flex;
-                    flex-direction: column;
+                    margin-top: auto;
                 }
                 
                 .flat-rel-row {
                     display: flex;
                     justify-content: space-between;
-                    font-size: 10px;
+                    font-size: 11px;
                     font-weight: 700;
-                    color: #6B7280;
+                    color: #9CA3AF;
                     text-transform: uppercase;
                     margin-bottom: 4px;
                 }
@@ -2154,26 +2155,28 @@ with tab_seo_main:
                     height: 6px; 
                     border-radius: 3px;
                     overflow: hidden;
-                    margin-bottom: 8px;
+                    margin-bottom: 10px;
                     flex-shrink: 0;
                 }
                 
                 .flat-tags-area {
-                    flex-grow: 1;
                     overflow: hidden;
                     position: relative;
                 }
                 
+                /* === КРУПНЫЕ ТЕГИ === */
                 .flat-miss-tag {
                     display: inline-block;
                     border: 1px solid #FECACA;
-                    color: #B91C1C;
-                    background-color: #FFFFFF;
-                    padding: 1px 6px;
-                    margin: 2px;
-                    font-size: 10px;
+                    color: #991B1B; /* Темно-красный */
+                    background-color: #FFF5F5;
+                    
+                    /* Увеличенные размеры */
+                    padding: 4px 10px; 
+                    margin: 3px 3px 3px 0;
+                    font-size: 13px; /* Нормальный читаемый шрифт */
                     font-weight: 600;
-                    border-radius: 4px;
+                    border-radius: 6px;
                 }
                 
                 .flat-ok-msg {
@@ -2182,10 +2185,10 @@ with tab_seo_main:
                     align-items: center;
                     color: #059669;
                     font-weight: 700;
-                    font-size: 12px;
+                    font-size: 14px;
                     background: #ECFDF5;
                     border-radius: 6px;
-                    padding: 0 10px;
+                    padding: 8px 12px;
                 }
             </style>
             """, unsafe_allow_html=True)
@@ -2198,23 +2201,23 @@ with tab_seo_main:
 
             def render_flat_card_fixed(col, label, icon, text_content, score, missing_list):
                 # Цвета
-                if score >= 90: color = "#10B981" # Green
-                elif score >= 50: color = "#F59E0B" # Yellow
-                else: color = "#EF4444" # Red
+                if score >= 90: color = "#10B981"
+                elif score >= 50: color = "#F59E0B"
+                else: color = "#EF4444"
 
-                # Сборка блока рекомендаций В ОДНУ СТРОКУ (чтобы не было багов с отступами)
+                # Блок рекомендаций
                 rec_content = ""
                 if score < 100 and missing_list:
-                    tags_html = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
-                    # ВАЖНО: Весь HTML в одну линию
-                    rec_content = f'<div style="font-size:9px; font-weight:700; color:#9CA3AF; margin-bottom:2px;">НУЖНО ДОБАВИТЬ:</div><div style="line-height:1.2;">{tags_html}</div>'
+                    # Лимит 8-10 слов, так как они теперь крупные
+                    tags_html = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:10]])
+                    # HTML в одну строку
+                    rec_content = f'<div style="font-size:11px; font-weight:700; color:#6B7280; margin-bottom:4px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div><div style="line-height:1.4;">{tags_html}</div>'
                 elif score >= 100:
                     rec_content = f'<div class="flat-ok-msg"><span>✔ Идеально соответствует топу</span></div>'
 
-                # Текст контента
                 display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
 
-                # СБОРКА ОСНОВНОГО HTML (Тоже без отступов внутри строки)
+                # СБОРКА HTML В ОДНУ СТРОКУ (Без отступов внутри f-string)
                 final_html = f"""
 <div class="flat-card">
 <div class="flat-header"><span>{icon}</span> {label}</div>
@@ -2226,7 +2229,6 @@ with tab_seo_main:
 </div>
 </div>
 """
-                
                 with col:
                     st.markdown(final_html, unsafe_allow_html=True)
 
@@ -3832,6 +3834,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
