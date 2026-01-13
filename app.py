@@ -2360,6 +2360,25 @@ with tab_seo_main:
                     </div>
                     """, unsafe_allow_html=True)
 
+# 6. ГЛУБИНА (ЗАКРЫТО)
+        with st.expander("📉 1. Глубина (Детальная таблица)", expanded=False):
+            render_paginated_table(
+                results['depth'], 
+                "Глубина", 
+                "tbl_depth_1", 
+                default_sort_col="Рекомендация", 
+                use_abs_sort_default=True
+            )
+
+        # 7. TF-IDF (ЗАКРЫТО)
+        with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
+            render_paginated_table(
+                results['hybrid'], 
+                "3. TF-IDF", 
+                "tbl_hybrid", 
+                default_sort_col="TF-IDF ТОП", 
+                show_controls=False 
+            )
 # ==========================================
     # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ
     # ==========================================
@@ -3660,6 +3679,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
