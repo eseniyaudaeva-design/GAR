@@ -2238,28 +2238,28 @@ with tab_seo_main:
                 # HTML (Без отступов для корректного рендера)
                 raw_html = f"""
 <div class="flat-card">
-    <div class="flat-header">
-        <span>{icon}</span> {label}
-    </div>
-    
-    <div class="flat-content">
-        {display_text}
-    </div>
+<div class="flat-header">
+<span>{icon}</span> {label}
+</div>
 
-    <div class="flat-footer">
-        <div class="flat-rel-row">
-            <span>Релевантность</span>
-            <span style="color: {color}">{score}%</span>
-        </div>
-        
-        <div class="flat-progress-bg">
-            <div style="width: {score}%; height: 100%; background-color: {color};"></div>
-        </div>
-        
-        <div class="flat-tags-area">
-            {rec_content}
-        </div>
-    </div>
+<div class="flat-content">
+{display_text}
+</div>
+
+<div class="flat-footer">
+<div class="flat-rel-row">
+<span>Релевантность</span>
+<span style="color: {color}">{score}%</span>
+</div>
+
+<div class="flat-progress-bg">
+<div style="width: {score}%; height: 100%; background-color: {color};"></div>
+</div>
+
+<div class="flat-tags-area">
+{rec_content}
+</div>
+</div>
 </div>
 """
                 clean_html = textwrap.dedent(raw_html)
@@ -3869,6 +3869,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
