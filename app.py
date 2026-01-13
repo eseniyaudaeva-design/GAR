@@ -2072,32 +2072,31 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (ФИНАЛЬНЫЙ ВАРИАНТ - БЕЗ СКРОЛЛА, РОВНЫЕ КАРТОЧКИ)
+# 4. Отрисовка (ФИНАЛЬНЫЙ ВАРИАНТ - БЕЗ СЕРОГО ПОЛЯ, РОВНЫЕ)
         if meta_res:
             import textwrap 
             
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
-            # --- CSS STYLES (Clean & Auto-Height) ---
+            # --- CSS STYLES (Transparent & Equal Height) ---
             st.markdown("""
             <style>
-                /* Карточка растягивается на всю высоту колонки */
                 div[data-testid="column"] {
                     display: flex;
-                    flex-direction: column; 
+                    flex-direction: column;
                 }
                 
                 .meta-card-clean {
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
-                    border-radius: 12px;
-                    padding: 20px;
-                    flex-grow: 1; /* Заставляет карточку занимать все доступное место */
+                    border-radius: 16px; /* Чуть больше скругление */
+                    padding: 24px;
+                    flex-grow: 1;
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-                    min-height: 280px; /* Минимальная высота для визуального равенства */
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+                    min-height: 360px; /* Фиксируем высоту, чтобы были ровные */
                 }
                 
                 /* Заголовок */
@@ -2105,49 +2104,48 @@ with tab_seo_main:
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    margin-bottom: 15px;
-                    border-bottom: 1px solid #F3F4F6;
-                    padding-bottom: 10px;
+                    margin-bottom: 20px;
+                    border-bottom: 2px solid #F3F4F6; /* Чуть жирнее линия */
+                    padding-bottom: 12px;
                 }
                 .clean-label {
                     font-size: 16px;
-                    font-weight: 700;
-                    color: #1F2937;
+                    font-weight: 800;
+                    color: #111827;
                     display: flex;
                     align-items: center;
-                    gap: 8px;
+                    gap: 10px;
                 }
                 .clean-score-badge {
-                    font-size: 13px;
+                    font-size: 14px;
                     font-weight: 800;
-                    padding: 4px 10px;
-                    border-radius: 6px;
+                    padding: 4px 12px;
+                    border-radius: 20px;
                 }
                 
-                /* Текст контента - БЕЗ СКРОЛЛА, РАСТЯГИВАЕТСЯ */
-                .clean-text-box {
-                    background-color: #F9FAFB;
-                    border: 1px solid #E5E7EB;
-                    border-radius: 8px;
-                    padding: 12px;
-                    font-size: 13px;
-                    line-height: 1.5;
+                /* Текст контента - БЕЗ РАМОК, ПРЯМО НА КАРТОЧКЕ */
+                .clean-text-content {
+                    font-size: 15px; /* Шрифт чуть крупнее для читаемости */
+                    line-height: 1.6;
                     color: #374151;
-                    font-family: 'Inter', sans-serif; /* Обычный шрифт, не код */
-                    margin-bottom: 15px;
-                    height: auto; /* Авто-высота */
-                    min-height: 60px;
-                    overflow: visible; /* Никаких скроллов */
-                    white-space: pre-wrap; /* Перенос строк */
+                    font-family: 'Inter', sans-serif;
+                    margin-bottom: 20px;
+                    flex-grow: 1; /* Растягивает блок, чтобы футер был внизу */
+                    white-space: pre-wrap;
+                }
+                /* Если данных нет, делаем серым */
+                .clean-text-empty {
+                    color: #9CA3AF;
+                    font-style: italic;
                 }
 
-                /* Тонкая полоска прогресса */
+                /* Прогресс бар */
                 .clean-progress-bg {
                     width: 100%;
                     background-color: #F3F4F6;
                     border-radius: 10px;
-                    height: 6px; /* Тонкая */
-                    margin-bottom: 15px;
+                    height: 6px;
+                    margin-bottom: 20px;
                     overflow: hidden;
                 }
                 .clean-progress-fill {
@@ -2156,16 +2154,17 @@ with tab_seo_main:
                     transition: width 0.6s ease;
                 }
 
-                /* Блок рекомендаций (всегда внизу) */
+                /* Футер (Рекомендации) */
                 .clean-footer {
-                    margin-top: auto;
+                    margin-top: auto; /* Всегда прижат к низу */
+                    padding-top: 10px;
                 }
                 .clean-rec-title {
                     font-size: 11px;
                     font-weight: 700;
                     color: #6B7280;
                     text-transform: uppercase;
-                    margin-bottom: 8px;
+                    margin-bottom: 10px;
                     letter-spacing: 0.5px;
                 }
                 .clean-tags-container {
@@ -2174,17 +2173,17 @@ with tab_seo_main:
                     gap: 6px;
                 }
                 .clean-miss-tag {
-                    background-color: #FEF2F2;
-                    color: #B91C1C;
-                    border: 1px solid #FECACA;
-                    padding: 3px 8px;
+                    background-color: #FFF1F2;
+                    color: #BE123C;
+                    border: 1px solid #FECDD3;
+                    padding: 4px 10px;
                     border-radius: 6px;
-                    font-size: 11px;
+                    font-size: 12px;
                     font-weight: 600;
                 }
                 .clean-ok-msg {
                     color: #059669;
-                    font-size: 13px;
+                    font-size: 14px;
                     font-weight: 600;
                     display: flex;
                     align-items: center;
@@ -2213,12 +2212,14 @@ with tab_seo_main:
                 rec_label = "Статус:"
                 if score < 100 and missing_list:
                     rec_label = "Нужно добавить:"
-                    # Показываем все слова, так как скролла нет
-                    tags_html = "".join([f'<span class="clean-miss-tag">{w}</span>' for w in missing_list[:20]])
+                    tags_html = "".join([f'<span class="clean-miss-tag">{w}</span>' for w in missing_list[:15]])
                 elif score >= 100:
                     tags_html = '<span class="clean-ok-msg">✅ Идеально соответствует топу</span>'
 
-                # Сборка HTML (Без отступов для корректного рендера)
+                # Текст или заглушка
+                content_html = f'<div class="clean-text-content">{text_content}</div>' if text_content else '<div class="clean-text-content clean-text-empty">— Нет данных —</div>'
+
+                # Сборка HTML (dedent уберет отступы)
                 raw_html = f"""
 <div class="meta-card-clean">
 <div>
@@ -2227,9 +2228,7 @@ with tab_seo_main:
 <div class="clean-score-badge" style="background: {bg_score}; color: {text_score}">{score}%</div>
 </div>
 
-<div class="clean-text-box">
-{text_content if text_content else "— Нет данных —"}
-</div>
+{content_html}
 
 <div class="clean-progress-bg">
 <div class="clean-progress-fill" style="width: {score}%; background-color: {color};"></div>
@@ -3851,6 +3850,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
