@@ -2072,8 +2072,10 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (КОМПАКТНЫЙ ДИЗАЙН v2 - ИСПРАВЛЕННЫЙ)
+# 4. Отрисовка (ФИНАЛЬНЫЙ ВАРИАНТ - БЕЗ ОТОБРАЖЕНИЯ КОДА)
         if meta_res:
+            import textwrap # Эта библиотека уберет лишние пробелы и починит верстку
+            
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
             # --- CSS STYLES (Compact) ---
@@ -2190,33 +2192,35 @@ with tab_seo_main:
                 elif score >= 100:
                     tags_html = '<span class="compact-ok-msg">✔ Отлично</span>'
 
-                # 3. Сборка HTML (Прижат к левому краю, чтобы не было бага с pre-formatted text)
-                html_code = f"""
-<div class="meta-card-compact">
-    <div class="compact-header">
-        <div class="compact-label"><span>{icon}</span> {label}</div>
-        <div class="compact-score" style="background: {bg_score}; color: {text_score}">{score}%</div>
-    </div>
-    
-    <div class="compact-text-box" title="{text_content}">
-        {text_content if text_content else "Нет данных"}
-    </div>
+                # 3. Сборка HTML (Используем dedent, чтобы убрать отступы)
+                raw_html = f"""
+                <div class="meta-card-compact">
+                    <div class="compact-header">
+                        <div class="compact-label"><span>{icon}</span> {label}</div>
+                        <div class="compact-score" style="background: {bg_score}; color: {text_score}">{score}%</div>
+                    </div>
+                    
+                    <div class="compact-text-box" title="{text_content}">
+                        {text_content if text_content else "Нет данных"}
+                    </div>
 
-    <div class="compact-progress-bg">
-        <div class="compact-progress-fill" style="width: {score}%; background-color: {color};"></div>
-    </div>
+                    <div class="compact-progress-bg">
+                        <div class="compact-progress-fill" style="width: {score}%; background-color: {color};"></div>
+                    </div>
 
-    <div>
-        <div class="compact-rec-title">{rec_label}</div>
-        <div class="compact-tags-container">
-            {tags_html}
-        </div>
-    </div>
-</div>
-"""
+                    <div>
+                        <div class="compact-rec-title">{rec_label}</div>
+                        <div class="compact-tags-container">
+                            {tags_html}
+                        </div>
+                    </div>
+                </div>
+                """
+                # Очищаем отступы, чтобы Streamlit не думал, что это блок кода
+                clean_html = textwrap.dedent(raw_html)
                 
                 with col:
-                    st.markdown(html_code, unsafe_allow_html=True)
+                    st.markdown(clean_html, unsafe_allow_html=True)
 
             # Вывод колонок
             render_meta_card_compact(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
@@ -2246,7 +2250,6 @@ with tab_seo_main:
                     },
                     height=300
                 )
-
         # ==========================================
         # КОНЕЦ НОВОГО БЛОКА
         # ==========================================
@@ -3821,6 +3824,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
