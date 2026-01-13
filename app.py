@@ -17,7 +17,7 @@ import io
 import os
 import google.generativeai as genai
 import requests
-proxy_url = "http://QYnojH:Uekp4k@196.18.3.35:8080" 
+proxy_url = "http://QYnojH:Uekp4k@196.18.3.35:8000" 
 
 os.environ["http_proxy"] = proxy_url
 os.environ["https_proxy"] = proxy_url
@@ -4039,6 +4039,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
