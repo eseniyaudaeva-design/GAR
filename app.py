@@ -15,18 +15,19 @@ import time
 import json
 import io
 import os
+import google.generativeai as genai
+import requests
 proxy_url = "http://QYnojH:Uekp4k@196.18.3.35:8080" 
 
 os.environ["http_proxy"] = proxy_url
 os.environ["https_proxy"] = proxy_url
-os.environ["HTTP_PROXY"] = proxy_url
-os.environ["HTTPS_PROXY"] = proxy_url
-import google.generativeai as genai
-import requests
+
 try:
-    print("Проверка IP...", requests.get("https://api.ipify.org").text)
+    my_ip = requests.get("https://api.ipify.org", timeout=5).text
+    st.info(f"🕵️ ВАШ IP ДЛЯ СКРИПТА: {my_ip}")
 except Exception as e:
-    print(f"Ошибка соединения через прокси: {e}")
+    st.error(f"❌ Прокси не работает: {e}")
+    
 import random
 import streamlit.components.v1 as components
 import copy
