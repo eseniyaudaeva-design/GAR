@@ -1867,19 +1867,25 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     if not base_text: return ["Error: No base text"] * num_blocks
     if not genai: return ["Error: google-genai lib not installed"] * num_blocks
     
-    # === ИНИЦИАЛИЗАЦИЯ КЛИЕНТА (НОВЫЙ SDK) ===
+    # === ИНИЦИАЛИЗАЦИЯ КЛИЕНТА ===
     try:
         client = genai.Client(api_key=api_key)
     except Exception as e:
         return [f"Client Init Error: {str(e)}"] * num_blocks
 
+    # 1. ПОДГОТОВКА ПЕРЕМЕННЫХ
     seo_words = seo_words or []
     seo_instruction_block = ""
+    
+    # ВОТ ЗДЕСЬ формируется строка из списка, который мы починили в предыдущем шаге
     if seo_words:
+        # Превращаем список ['слово1', 'слово2'] в строку "слово1, слово2"
         seo_list_str = ", ".join(seo_words)
+        
+        # Вставляем эту строку в ВАШ блок инструкции
         seo_instruction_block = f"""
 --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
-Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме: {seo_list_str}
+Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме: {{{seo_list_str}}}
 
 ПРАВИЛА ВНЕДРЕНИЯ И ВЫДЕЛЕНИЯ:
 1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем {num_blocks} блокам.
@@ -1889,7 +1895,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 -------------------------------------------
 """
 
-    # 2. Системная роль (Твой полный оригинал)
+    # 2. СИСТЕМНАЯ РОЛЬ (ВАШ ТЕКСТ)
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
         "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
@@ -1907,7 +1913,10 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         "3. Именна собственные, названия городов пиши с заглавной буквы. Марки пиши в соответствии с марочниками. ГОСТ всегда заглавными."
     )
 
-    # 3. Пользовательский промт (Твой полный оригинал)
+    # 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ (ВАШ ТЕКСТ С ПЕРЕМЕННЫМИ)
+    # Вместо "{муфта}" теперь стоит переменная {tag_name}
+    # Вместо "{base_text[:3500]}" стоит переменная base_text
+    
     user_prompt = f"""
     ИСХОДНЫЕ ДАННЫЕ:
     Название товара: "{tag_name}"
@@ -1947,7 +1956,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     """
     
     try:
-        # Объединяем инструкции в один запрос (специфика Gemini Client)
+        # Объединяем инструкции
         full_content = system_instruction + "\n\n" + user_prompt
         
         response = client.models.generate_content(
@@ -1956,13 +1965,12 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         )
         content = response.text
         
-        # Чистка ответа от лишних артефактов
+        # Чистка
         content = re.sub(r'\[\d+\]', '', content)
         content = content.replace("```html", "").replace("```", "").strip()
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
         
-        # Если блоков меньше чем надо, добиваем пустыми
         while len(blocks) < num_blocks: blocks.append("")
         
         return blocks[:num_blocks]
@@ -3992,6 +4000,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
