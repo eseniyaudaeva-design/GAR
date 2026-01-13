@@ -2348,15 +2348,15 @@ with tab_seo_main:
                 ok_min, ok_max = rule['ok_min'], rule['ok_max']
                 
                 if g_min <= length <= g_max:
-                    return length, "ХОРОШО", "#059669", "#ECFDF5" 
+                    return length, "Хорошо", "#059669", "#ECFDF5" 
                 elif ok_min <= length < g_min:
-                    return length, "МАЛО (увеличьте)", "#D97706", "#FFFBEB"
+                    return length, "Можно увеличить объем", "#D97706", "#FFFBEB"
                 elif g_max < length <= ok_max:
-                    return length, "МНОГО (сократите)", "#D97706", "#FFFBEB"
+                    return length, "Можно уменьшить объем", "#D97706", "#FFFBEB"
                 elif length < ok_min:
-                    return length, "КРИТИЧЕСКИ МАЛО", "#DC2626", "#FEF2F2"
+                    return length, "Критически мало", "#DC2626", "#FEF2F2"
                 else: 
-                    return length, "КРИТИЧЕСКИ МНОГО", "#DC2626", "#FEF2F2"
+                    return length, "Критически много", "#DC2626", "#FEF2F2"
 
             # === ТУЛТИП ===
             def get_tooltip_html(type_key):
@@ -4030,6 +4030,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
