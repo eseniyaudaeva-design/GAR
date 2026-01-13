@@ -3116,10 +3116,13 @@ with tab_wholesale_main:
                 manual_html_source = None
 
         with col_key:
-            # === ЗАМЕНА НА GEMINI ===
-            default_key = st.session_state.get('gemini_key_cache', "")
+            default_key = st.session_state.get('gemini_key_cache', "AIzaSyBbbyJowWt6eQoOzF4lkszbM1n9BAs6cxI")
+            
             gemini_api_key = st.text_input("Google Gemini API Key", value=default_key, type="password")
-            if gemini_api_key: st.session_state.gemini_key_cache = gemini_api_key
+            
+            # Сохраняем в сессию
+            if gemini_api_key: 
+                st.session_state.gemini_key_cache = gemini_api_key
 
     # ==========================================
     # 2. ВЫБОР МОДУЛЕЙ
@@ -3987,6 +3990,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
