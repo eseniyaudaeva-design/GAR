@@ -3516,24 +3516,11 @@ with tab_wholesale_main:
     st.markdown("---")
     
 # ==========================================
-    # 4. ЗАПУСК ГЕНЕРАЦИИ (ИСПРАВЛЕННАЯ ЛОГИКА)
-    # ==========================================
-    
-    ready_to_go = True
-    if use_manual_html:
-        if not manual_html_source: ready_to_go = False
-    else:
-        if not main_category_url: ready_to_go = False
-
-    if (use_text or use_tables or use_geo) and not gemini_api_key: ready_to_go = False
-    if use_promo and df_db_promo is None: ready_to_go = False
-
-# ==========================================
-    # 🆘 БЛОК ДИАГНОСТИКИ (Gemini 2.0 Flash)
+    # 🆘 БЛОК ДИАГНОСТИКИ (Gemini 2.5 Flash)
     # ==========================================
     st.markdown("---")
-with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошибки)", expanded=True):
-        if st.button("📡 ПРОВЕРИТЬ GEMINI 2.0"):
+    with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошибки)", expanded=True):
+        if st.button("📡 ПРОВЕРИТЬ GEMINI"):
             if not gemini_api_key:
                 st.error("❌ Ключ API не введен!")
             elif not genai:
@@ -3561,7 +3548,7 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
                         except: pass
 
     # ==========================================
-    # 4. ЗАПУСК ГЕНЕРАЦИИ (ФИНАЛ С gemini-2.0-flash)
+    # 4. ЗАПУСК ГЕНЕРАЦИИ (ФИНАЛ С gemini-2.5-flash)
     # ==========================================
     
     ready_to_go = True
@@ -3590,16 +3577,15 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
         status_box.write(f"📝 Слов для текста: {len(actual_text_list)}")
         status_box.write(f"🌍 Городов для Гео: {len(actual_geo_list)}")
 
-        # === ИНИЦИАЛИЗАЦИЯ CLIENT (ЗАМЕНИЛИ MODEL НА CLIENT) ===
+        # === ИНИЦИАЛИЗАЦИЯ CLIENT (НОВАЯ БИБЛИОТЕКА) ===
         client = None
         if genai and (use_text or use_tables or use_geo) and gemini_api_key:
             try:
-                # ВМЕСТО configure ДЕЛАЕМ Client
                 client = genai.Client(api_key=gemini_api_key)
             except Exception as e:
                 status_box.error(f"Ошибка подключения к Gemini: {e}")
 
-        final_data = []
+        final_data = [] 
         
         # --- БАЗЫ ДАННЫХ ---
         tags_map = {}
@@ -3773,9 +3759,9 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
                     p_html += '</div></div>'
                     row_data['Promo HTML'] = p_html
 
-            # === AI RUN (gemini-2.0-flash) ===
+            # === AI RUN (gemini-2.5-flash) ===
             
-            if use_text and model:
+            if use_text and client:
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
                 for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
 
@@ -3784,9 +3770,8 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
                     ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
                     prompt = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
                     try:
-                        # ИСПОЛЬЗУЕМ client.models.generate_content
                         resp = client.models.generate_content(
-                            model="gemini-2.5-flash",
+                            model="gemini-2.5-flash", 
                             contents=prompt
                         )
                         row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
@@ -3797,7 +3782,6 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
                     cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
                     prompt = f"Write HTML <p> regarding delivery. You MUST mention these specific cities: {cities}. No Markdown. No links."
                     try:
-                        # ИСПОЛЬЗУЕМ client.models.generate_content
                         resp = client.models.generate_content(
                             model="gemini-2.5-flash",
                             contents=prompt
@@ -3820,8 +3804,7 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
         st.session_state.unified_excel_data = buffer.getvalue()
         
         status_box.update(label="✅ Готово!", state="complete", expanded=False)
-# --- ЭТОТ КОД ДОЛЖЕН БЫТЬ НА ТОМ ЖЕ УРОВНЕ ОТСТУПА, ЧТО И if st.button(...) ---
-    
+
     # КНОПКА СКАЧИВАНИЯ
     if st.session_state.get('unified_excel_data') is not None:
         st.success("Файл успешно сгенерирован!")
@@ -3832,6 +3815,114 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
+# ==========================================
+# 5. БЛОК ПРЕДПРОСМОТРА (PREVIEW) - ФИНАЛЬНЫЙ
+# ==========================================
+if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not None:
+    st.markdown("---")
+    st.header("👀 Предпросмотр результата")
+    
+    df = st.session_state.gen_result_df
+    
+    # 1. Выбор страницы
+    page_options = df['Product Name'].tolist()
+    selected_page_name = st.selectbox("Выберите страницу для просмотра:", page_options, key="preview_selector")
+    
+    # Получаем строку данных
+    row = df[df['Product Name'] == selected_page_name].iloc[0]
+    
+    # 2. Определяем наличие данных
+    has_text = any(
+        (f'Text_Block_{i}' in row and pd.notna(row[f'Text_Block_{i}']) and str(row[f'Text_Block_{i}']).strip())
+        for i in range(1, 6)
+    )
+    
+    table_cols = [c for c in df.columns if 'Table_' in c and '_HTML' in c and pd.notna(row[c]) and str(row[c]).strip()]
+    has_tables = len(table_cols) > 0
+    
+    has_tags = 'Tags HTML' in row and pd.notna(row['Tags HTML']) and str(row['Tags HTML']).strip()
+    has_sidebar = 'Sidebar HTML' in row and pd.notna(row['Sidebar HTML']) and str(row['Sidebar HTML']).strip()
+    has_geo = 'IP_PROP4819' in row and pd.notna(row['IP_PROP4819']) and str(row['IP_PROP4819']).strip()
+    
+    # --- ПРОВЕРКА ПРОМО ---
+    has_promo = 'Promo HTML' in row and pd.notna(row['Promo HTML']) and str(row['Promo HTML']).strip()
+    
+    has_visual = has_tags or has_sidebar or has_geo or has_promo 
+
+    # 3. Активные вкладки
+    active_tabs = []
+    if has_text: active_tabs.append("📝 Текст")
+    if has_tables: active_tabs.append("🧩 Таблицы")
+    if has_visual: active_tabs.append("🎨 Визуал")
+
+    # Стили
+    st.markdown("""
+    <style>
+        .preview-box { border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; background: #fff; margin-bottom: 20px; }
+        .preview-label { font-size: 12px; font-weight: bold; color: #888; text-transform: uppercase; margin-bottom: 5px; }
+        .popular-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag-link { background: #f0f2f5; color: #333; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; font-weight: bold; }
+        .sidebar-wrapper ul { list-style-type: none; padding-left: 10px; }
+        .level-1-header { font-weight: bold; margin-top: 10px; color: #277EFF; }
+        /* Стили для карточек Промо */
+        .promo-grid { display: flex !important; flex-wrap: wrap; gap: 10px; }
+        .promo-card { width: 23%; box-sizing: border-box; }
+        .promo-card img { max-width: 100%; height: auto; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    if not active_tabs:
+        st.warning("⚠️ Контент пуст.")
+    else:
+        tabs_objects = st.tabs(active_tabs)
+        tabs_map = dict(zip(active_tabs, tabs_objects))
+        
+        # --- ТЕКСТ ---
+        if "📝 Текст" in tabs_map:
+            with tabs_map["📝 Текст"]:
+                st.subheader(row['Product Name'])
+                for i in range(1, 6):
+                    col_key = f'Text_Block_{i}'
+                    if col_key in row and pd.notna(row[col_key]):
+                        content = str(row[col_key]).strip()
+                        if content:
+                            with st.container():
+                                st.caption(f"Блок {i}")
+                                st.markdown(f"<div class='preview-box'>{content}</div>", unsafe_allow_html=True)
+
+        # --- ТАБЛИЦЫ ---
+        if "🧩 Таблицы" in tabs_map:
+            with tabs_map["🧩 Таблицы"]:
+                for t_col in table_cols:
+                    content = row[t_col]
+                    clean_title = t_col.replace('_HTML', '').replace('_', ' ')
+                    st.caption(clean_title)
+                    st.markdown(content, unsafe_allow_html=True)
+
+        # --- ВИЗУАЛ ---
+        if "🎨 Визуал" in tabs_map:
+            with tabs_map["🎨 Визуал"]:
+                # Вывод Промо
+                if has_promo:
+                     st.markdown('<div class="preview-label">Промо-блок (Рекомендации)</div>', unsafe_allow_html=True)
+                     st.markdown(f"<div class='preview-box'>{row['Promo HTML']}</div>", unsafe_allow_html=True)
+                
+                c1, c2 = st.columns(2)
+                with c1:
+                    if has_tags:
+                        st.markdown('<div class="preview-label">Теги</div>', unsafe_allow_html=True)
+                        st.markdown(f"<div class='preview-box'>{row['Tags HTML']}</div>", unsafe_allow_html=True)
+                    if has_geo:
+                        st.markdown('<div class="preview-label">Гео-блок</div>', unsafe_allow_html=True)
+                        st.markdown(f"<div class='preview-box'>{row['IP_PROP4819']}</div>", unsafe_allow_html=True)
+                with c2:
+                    if has_sidebar:
+                        st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
+                        st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
 
 # ==========================================
 # 5. БЛОК ПРЕДПРОСМОТРА (PREVIEW) - ФИНАЛЬНЫЙ
@@ -4060,6 +4151,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
