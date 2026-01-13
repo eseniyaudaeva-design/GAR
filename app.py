@@ -837,6 +837,13 @@ def parse_page(url, settings, query_context=""):
         # 1. Создаем объект Soup (Полная страница)
         soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
         
+        # === НОВОЕ: Собираем Title и Description отдельно ===
+        page_title = soup.title.string.strip() if soup.title and soup.title.string else ""
+        
+        meta_desc_tag = soup.find('meta', attrs={'name': 'description'})
+        page_desc = meta_desc_tag['content'].strip() if meta_desc_tag and meta_desc_tag.get('content') else ""
+        # ====================================================
+
         # === ЛОГИКА ТАБЛИЦЫ 2 (Поиск товаров по URL/Ссылке) ===
         product_titles = []
         search_roots = set()
@@ -892,20 +899,13 @@ def parse_page(url, settings, query_context=""):
         if grid_div: grid_div.decompose()
         
         # === [ВАЖНО] ФИЛЬТРАЦИЯ КОНТЕНТА ПО ГАЛОЧКАМ ===
-        
         tags_to_remove = []
-        # Если галочка "Исключать noindex" ВКЛЮЧЕНА - добавляем тег в список на удаление
         if settings['noindex']: tags_to_remove.append('noindex')
         
         for s in [soup, soup_no_grid]:
-            # Удаляем комментарии (всегда)
             for c in s.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
-            
-            # Удаляем теги из списка (noindex, если выбран)
             if tags_to_remove:
                 for t in s.find_all(tags_to_remove): t.decompose()
-            
-            # Удаляем скрипты и стили (всегда)
             for script in s(["script", "style", "svg", "path", "noscript"]): script.decompose()
 
         # Текст ссылок (анкоры)
@@ -914,23 +914,17 @@ def parse_page(url, settings, query_context=""):
         
         # Сбор ДОПОЛНИТЕЛЬНОГО текста (Description, Alt, Title)
         extra_text = []
-        
-        # Description берем всегда
-        meta_desc = soup.find('meta', attrs={'name': 'description'})
-        if meta_desc and meta_desc.get('content'): extra_text.append(meta_desc['content'])
+        # Description добавляем в общий текст анализа тоже
+        if page_desc: extra_text.append(page_desc)
 
-        # === [ВАЖНО] УЧЕТ ALT / TITLE ===
-        # Если галочка ВКЛЮЧЕНА - собираем, если НЕТ - пропускаем
         if settings['alt_title']:
             for img in soup.find_all('img', alt=True): extra_text.append(img['alt'])
             for t in soup.find_all(title=True): extra_text.append(t['title'])
-        # ================================
 
-        # Собираем итоговый текст: Видимый текст + Скрытый (Alt/Title/Desc)
+        # Собираем итоговый текст
         body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
 
-        # То же самое для версии "без товаров"
         body_text_no_grid_raw = soup_no_grid.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text_no_grid = re.sub(r'\s+', ' ', body_text_no_grid_raw).strip()
 
@@ -943,10 +937,115 @@ def parse_page(url, settings, query_context=""):
             'body_text_no_grid': body_text_no_grid,
             'anchor_text': anchor_text,
             'h1': h1_text,
-            'product_titles': product_titles
+            'product_titles': product_titles,
+            # !!! НОВЫЕ ПОЛЯ ДЛЯ DASHBOARD !!!
+            'meta_title': page_title,
+            'meta_desc': page_desc
         }
     except Exception:
         return None
+
+def analyze_meta_gaps(comp_data_full, my_data, settings):
+    """
+    Анализирует Title, Description и H1 конкурентов.
+    Выявляет слова, которые есть у топов, но нет у вас.
+    """
+    if not comp_data_full: return None
+
+    # Вспомогательная функция токенизации (простая)
+    def fast_tokenize(text):
+        if not text: return set()
+        # Лемматизируем
+        lemmas = set()
+        words = re.findall(r'[а-яА-Яa-zA-Z0-9]+', text.lower())
+        stop_garbage = {'в', 'на', 'и', 'с', 'по', 'для', 'от', 'до', 'купить', 'цена', 'за', 'г', 'обл', 'р', 'руб', 'мм', 'шт'}
+        # Можно добавить settings['custom_stops'] сюда
+        
+        for w in words:
+            if len(w) < 2: continue
+            if w in stop_garbage: continue
+            if morph:
+                try:
+                    nf = morph.parse(w)[0].normal_form
+                    lemmas.add(nf)
+                except: lemmas.add(w)
+            else:
+                lemmas.add(w)
+        return lemmas
+
+    # 1. Мои данные
+    my_t_tokens = fast_tokenize(my_data.get('meta_title', ''))
+    my_d_tokens = fast_tokenize(my_data.get('meta_desc', ''))
+    my_h_tokens = fast_tokenize(my_data.get('h1', ''))
+
+    # 2. Сбор статистики конкурентов
+    stats = {
+        'title': Counter(),
+        'desc': Counter(),
+        'h1': Counter()
+    }
+    
+    # Для детальной таблицы
+    detailed_rows = []
+
+    for item in comp_data_full:
+        t_tok = fast_tokenize(item.get('meta_title', ''))
+        d_tok = fast_tokenize(item.get('meta_desc', ''))
+        h_tok = fast_tokenize(item.get('h1', ''))
+        
+        stats['title'].update(t_tok)
+        stats['desc'].update(d_tok)
+        stats['h1'].update(h_tok)
+
+        # Логика рекомендаций для конкретного url (для таблицы)
+        # Просто пример: чего не хватает этому урлу относительно общего топа? 
+        # (В данном случае мы будем сравнивать ВАС с ними, поэтому тут просто собираем данные)
+        detailed_rows.append({
+            'URL': item['url'],
+            'Title': item.get('meta_title', ''),
+            'Description': item.get('meta_desc', ''),
+            'H1': item.get('h1', '')
+        })
+
+    # 3. Формирование рекомендаций
+    # Берем слова, которые встречаются хотя бы у 30% конкурентов (или минимум у 2-х)
+    threshold = max(2, int(len(comp_data_full) * 0.25))
+    
+    def get_missing(source_counter, my_tokens):
+        missing = []
+        total_important = 0
+        found_important = 0
+        
+        # Сортируем по частоте
+        for word, count in source_counter.most_common(20):
+            if count >= threshold:
+                total_important += 1
+                if word in my_tokens:
+                    found_important += 1
+                else:
+                    missing.append(word)
+        
+        # Расчет скора (Релевантность)
+        score = 100
+        if total_important > 0:
+            score = int((found_important / total_important) * 100)
+        
+        return score, missing
+
+    score_t, miss_t = get_missing(stats['title'], my_t_tokens)
+    score_d, miss_d = get_missing(stats['desc'], my_d_tokens)
+    score_h, miss_h = get_missing(stats['h1'], my_h_tokens)
+
+    return {
+        'scores': {'title': score_t, 'desc': score_d, 'h1': score_h},
+        'missing': {'title': miss_t, 'desc': miss_d, 'h1': miss_h},
+        'detailed': detailed_rows,
+        'my_data': {
+            'Title': my_data.get('meta_title', 'Не определен'),
+            'Description': my_data.get('meta_desc', 'Не определен'),
+            'H1': my_data.get('h1', 'Не определен')
+        }
+    }
         
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     # Внутренняя функция округления
@@ -1950,6 +2049,100 @@ with tab_seo_main:
         <br>
         """, unsafe_allow_html=True)
 
+        # ==========================================
+        # 🔥 НОВЫЙ БЛОК: META DASHBOARD
+        # ==========================================
+        
+        meta_res = None
+        if 'raw_comp_data' in st.session_state and my_data:
+            meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
+
+        if meta_res:
+            st.markdown("### 🧬 Рекомендации Title, Description и H1")
+            
+            # Стили для прогресс-баров
+            st.markdown("""
+            <style>
+                .meta-box { border: 1px solid #E0E0E0; border-radius: 8px; padding: 15px; height: 100%; background: #FFF; }
+                .meta-title { font-weight: bold; font-size: 16px; margin-bottom: 5px; color: #333; }
+                .meta-content { font-size: 13px; color: #555; margin-bottom: 10px; font-style: italic; min-height: 40px;}
+                .missing-tag { display: inline-block; background: #ffebee; color: #c62828; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 4px; margin-bottom: 4px; border: 1px solid #ef9a9a; }
+                .perfect-tag { color: #2E7D32; font-weight: bold; font-size: 13px; }
+            </style>
+            """, unsafe_allow_html=True)
+
+            m_scores = meta_res['scores']
+            m_miss = meta_res['missing']
+            m_self = meta_res['my_data']
+
+            col_m1, col_m2, col_m3 = st.columns(3)
+
+            # Функция отрисовки карточки
+            def render_meta_card(col, label, text, score, missing_list):
+                with col:
+                    # Цвет бара
+                    bar_color = "#2E7D32" if score == 100 else ("#F9A825" if score >= 60 else "#D32F2F")
+                    
+                    with st.container():
+                        st.markdown(f"""
+                        <div class="meta-box">
+                            <div class="meta-title">{label}</div>
+                            <div class="meta-content">"{text}"</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.markdown(f"**Релевантность: {score}%**")
+                        st.progress(score / 100, )
+                        
+                        if score < 100 and missing_list:
+                            st.markdown("**Добавить:**")
+                            html_tags = "".join([f'<span class="missing-tag">{w}</span>' for w in missing_list[:10]])
+                            st.markdown(html_tags, unsafe_allow_html=True)
+                        elif score == 100:
+                            st.markdown("<span class='perfect-tag'>✅ Идеально (по конкурентам)</span>", unsafe_allow_html=True)
+
+            render_meta_card(col_m1, "Title", m_self['Title'], m_scores['title'], m_miss['title'])
+            render_meta_card(col_m2, "Description", m_self['Description'], m_scores['desc'], m_miss['desc'])
+            render_meta_card(col_m3, "H1 Заголовок", m_self['H1'], m_scores['h1'], m_miss['h1'])
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # СКРЫТАЯ ТАБЛИЦА (КАК НА СКРИНЕ 1)
+            with st.expander("🕵️ Детальное сравнение с конкурентами (Нажмите, чтобы раскрыть)"):
+                # Создаем DataFrame
+                df_meta = pd.DataFrame(meta_res['detailed'])
+                
+                # Добавляем строку ВАШЕГО сайта первой
+                my_row = pd.DataFrame([{
+                    'URL': 'ВАШ САЙТ', 
+                    'Title': m_self['Title'], 
+                    'Description': m_self['Description'], 
+                    'H1': m_self['H1']
+                }])
+                df_meta = pd.concat([my_row, df_meta], ignore_index=True)
+                
+                # Функция подсветки отсутствующих слов (визуальная)
+                # Это сложно сделать внутри st.dataframe с HTML, но мы можем добавить колонку "Рекомендации"
+                
+                # Простая версия: просто выводим таблицу
+                st.dataframe(
+                    df_meta, 
+                    use_container_width=True, 
+                    column_config={
+                        "URL": st.column_config.LinkColumn("Ссылка"),
+                        "Title": st.column_config.TextColumn("Title", width="medium"),
+                        "Description": st.column_config.TextColumn("Description", width="large"),
+                        "H1": st.column_config.TextColumn("H1", width="small"),
+                    },
+                    height=400
+                )
+                
+                st.caption("ℹ️ Таблица содержит сырые данные конкурентов. Рекомендации выше строятся на основе частотного анализа этих данных.")
+
+        # ==========================================
+        # КОНЕЦ НОВОГО БЛОКА
+        # ==========================================
+
         with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
             if not st.session_state.get('orig_products'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
@@ -2228,6 +2421,7 @@ with tab_seo_main:
             
             # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Только по элите)
             # Медианы и TF-IDF пересчитаются строго по этому списку
+            st.session_state['raw_comp_data'] = final_clean_data
             results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
             st.session_state.analysis_results = results_final
             
@@ -3531,6 +3725,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
