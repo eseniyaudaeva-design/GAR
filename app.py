@@ -2333,15 +2333,32 @@ with tab_seo_main:
 
         # 5. УПУЩЕННАЯ СЕМАНТИКА
         high = results.get('missing_semantics_high', [])
-        if high:
-            with st.expander(f"🧩 Упущенная семантика ({len(high)})", expanded=False):
-                st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-
-        # 6. ГЛУБИНА И TF-IDF
-        with st.expander("📉 Глубина и TF-IDF", expanded=False):
-            render_paginated_table(results['depth'], "Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-            st.markdown("---")
-            render_paginated_table(results['hybrid'], "TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП", show_controls=False)
+        low = results.get('missing_semantics_low', [])
+        
+        if high or low:
+            # Считаем общую сумму
+            total_missing = len(high) + len(low)
+            
+            with st.expander(f"🧩 Упущенная семантика ({total_missing})", expanded=False):
+                # 1. ВАЖНЫЕ (Медиана >= 1) - Синяя плашка
+                if high: 
+                    words_high = ", ".join([x['word'] for x in high])
+                    st.markdown(f"""
+                    <div style='background:#EBF5FF; padding:12px; border-radius:8px; border:1px solid #BFDBFE; color:#1E40AF; margin-bottom:10px;'>
+                        <div style='font-weight:bold; margin-bottom:4px;'>🔥 Важные (Есть у большинства конкурентов):</div>
+                        <div style='font-size:14px; line-height:1.5;'>{words_high}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # 2. ДОПОЛНИТЕЛЬНЫЕ (Медиана < 1) - Серая плашка
+                if low: 
+                    words_low = ", ".join([x['word'] for x in low])
+                    st.markdown(f"""
+                    <div style='background:#F8FAFC; padding:12px; border-radius:8px; border:1px solid #E2E8F0; color:#475569;'>
+                        <div style='font-weight:bold; margin-bottom:4px;'>🔸 Дополнительные (Встречаются реже):</div>
+                        <div style='font-size:13px; line-height:1.5;'>{words_low}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # ==========================================
     # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ
@@ -3643,6 +3660,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
