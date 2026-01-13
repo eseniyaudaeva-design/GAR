@@ -15,6 +15,18 @@ import time
 import json
 import io
 import os
+proxy_url = "http://QYnojH:Uekp4k@196.18.3.35:8080" 
+
+os.environ["http_proxy"] = proxy_url
+os.environ["https_proxy"] = proxy_url
+os.environ["HTTP_PROXY"] = proxy_url
+os.environ["HTTPS_PROXY"] = proxy_url
+import google.generativeai as genai
+import requests
+try:
+    print("Проверка IP...", requests.get("https://api.ipify.org").text)
+except Exception as e:
+    print(f"Ошибка соединения через прокси: {e}")
 import random
 import streamlit.components.v1 as components
 import copy
@@ -1944,7 +1956,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     try:
         genai.configure(api_key=api_key)
         # === ИСПОЛЬЗУЕМ gemini-2.0-flash ===
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         full_prompt = system_instruction + "\n\n" + user_prompt
         
@@ -4026,6 +4038,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
