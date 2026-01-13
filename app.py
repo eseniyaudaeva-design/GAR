@@ -3470,11 +3470,15 @@ with tab_wholesale_main:
     else:
         if not main_category_url: ready_to_go = False
 
+# === ИСПРАВЛЕНИЕ: Проверяем gemini_api_key вместо pplx_api_key ===
     if (use_text or use_tables) and not gemini_api_key: ready_to_go = False
+    
     # Убираем жесткие проверки контента здесь, так как подгрузим файлы принудительно ниже
     # if use_tags and not tags_file_content: ready_to_go = False 
     if use_promo and df_db_promo is None: ready_to_go = False
-    if use_geo and not pplx_api_key: ready_to_go = False
+    
+    # === ИСПРАВЛЕНИЕ: Здесь тоже меняем на gemini_api_key ===
+    if use_geo and not gemini_api_key: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         # === ОЧИСТКА ПРЕДЫДУЩИХ РЕЗУЛЬТАТОВ ===
@@ -4147,5 +4151,6 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
