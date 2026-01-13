@@ -2435,7 +2435,8 @@ with tab_seo_main:
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            with st.expander("🕵️ Мета конкурентов"):
+# 1. ТАБЛИЦА ДЕТАЛЕЙ META (Скрыта)
+            with st.expander("🕵️ Мета конкурентов (Детальная таблица)", expanded=False):
                 df_meta = pd.DataFrame(meta_res['detailed'])
                 my_row = pd.DataFrame([{
                     'URL': 'ВАШ САЙТ', 
@@ -2456,15 +2457,12 @@ with tab_seo_main:
                     },
                     height=300
                 )
-        # ==========================================
-        # КОНЕЦ НОВОГО БЛОКА
-        # ==========================================
 
-# ==========================================
-        # 5. СЕМАНТИЧЕСКОЕ ЯДРО (ОТКРЫТО ПО УМОЛЧАНИЮ)
         # ==========================================
-        # Добавлен key="sem_core_main", чтобы сбросить кэш состояния и открыть блок
-        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
+        # 5. СЕМАНТИЧЕСКОЕ ЯДРО (ОТКРЫТО ПРИНУДИТЕЛЬНО)
+        # ==========================================
+        # key="sem_core_FORCE_OPEN" - заставляет блок открыться, игнорируя память браузера
+        with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True, key="sem_core_FORCE_OPEN"):
             if not st.session_state.get('orig_products'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
             else:
@@ -2540,7 +2538,7 @@ with tab_seo_main:
                         time.sleep(0.5)
                         st.rerun()
 
-        # --- УПУЩЕННАЯ СЕМАНТИКА (ЗАКРЫТО) ---
+        # --- УПУЩЕННАЯ СЕМАНТИКА (Скрыто) ---
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         
@@ -2549,11 +2547,11 @@ with tab_seo_main:
                 if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
                 if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
-        # 1. ТАБЛИЦА ГЛУБИНЫ (ЗАКРЫТО)
+        # 6. ТАБЛИЦА ГЛУБИНЫ (Скрыто)
         with st.expander("📉 1. Анализ Глубины (Частотность слов)", expanded=False):
             render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
-        # 2. ТАБЛИЦА НАЗВАНИЙ (ЗАКРЫТО)
+        # 7. ТАБЛИЦА НАЗВАНИЙ (Скрыто)
         with st.expander("🏷️ 2. Рекомендации по названию товаров", expanded=False):
             if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
                 df_naming = st.session_state.naming_table_df
@@ -2611,11 +2609,11 @@ with tab_seo_main:
             else:
                 st.info("Данные для анализа названий отсутствуют.")
 
-        # 3. ТАБЛИЦА TF-IDF (ЗАКРЫТО)
+        # 8. ТАБЛИЦА TF-IDF (Скрыто)
         with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
             render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
 
-        # 4. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ЗАКРЫТО)
+        # 9. ТАБЛИЦА РЕЛЕВАНТНОСТИ (Скрыто)
         with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=False):
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
@@ -4043,6 +4041,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
