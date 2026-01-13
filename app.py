@@ -2183,8 +2183,7 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
-            def render_meta_card_compact(col, label, icon, text_content, score, missing_list):
-                # Цвета
+                # 1. Логика цветов
                 if score >= 90:
                     color = "#10B981"; bg_score = "#D1FAE5"; text_score = "#065F46"
                 elif score >= 50:
@@ -2192,43 +2191,44 @@ with tab_seo_main:
                 else:
                     color = "#EF4444"; bg_score = "#FEE2E2"; text_score = "#991B1B"
 
-                # Теги
+                # 2. Логика тегов/сообщений
                 tags_html = ""
                 rec_label = "Статус:"
                 if score < 100 and missing_list:
                     rec_label = "Добавить:"
-                    # Показываем больше тегов, так как они мелкие (до 15)
+                    # Берем до 15 слов
                     tags_html = "".join([f'<span class="compact-miss-tag">{w}</span>' for w in missing_list[:15]])
                 elif score >= 100:
                     tags_html = '<span class="compact-ok-msg">✔ Отлично</span>'
 
-                # Сборка HTML (Обратите внимание на отсутствие лишних пробелов в f-string)
+                # 3. Сборка HTML
+                # ВАЖНО: Весь HTML код ниже прижат к левому краю (без отступов), 
+                # чтобы Markdown не превратил его в блок кода.
                 html_code = f"""
-                <div class="meta-card-compact">
-                    <div class="compact-header">
-                        <div class="compact-label"><span>{icon}</span> {label}</div>
-                        <div class="compact-score" style="background: {bg_score}; color: {text_score}">{score}%</div>
-                    </div>
-                    
-                    <div class="compact-text-box" title="{text_content}">
-                        {text_content if text_content else "Нет данных"}
-                    </div>
+<div class="meta-card-compact">
+    <div class="compact-header">
+        <div class="compact-label"><span>{icon}</span> {label}</div>
+        <div class="compact-score" style="background: {bg_score}; color: {text_score}">{score}%</div>
+    </div>
+    
+    <div class="compact-text-box" title="{text_content}">
+        {text_content if text_content else "Нет данных"}
+    </div>
 
-                    <div class="compact-progress-bg">
-                        <div class="compact-progress-fill" style="width: {score}%; background-color: {color};"></div>
-                    </div>
+    <div class="compact-progress-bg">
+        <div class="compact-progress-fill" style="width: {score}%; background-color: {color};"></div>
+    </div>
 
-                    <div>
-                        <div class="compact-rec-title">{rec_label}</div>
-                        <div class="compact-tags-container">
-                            {tags_html}
-                        </div>
-                    </div>
-                </div>
-                """
+    <div>
+        <div class="compact-rec-title">{rec_label}</div>
+        <div class="compact-tags-container">
+            {tags_html}
+        </div>
+    </div>
+</div>
+"""
                 
                 with col:
-                    # !!! ВАЖНО: unsafe_allow_html=True обязателен !!!
                     st.markdown(html_code, unsafe_allow_html=True)
 
             # Вывод колонок
@@ -3835,6 +3835,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
