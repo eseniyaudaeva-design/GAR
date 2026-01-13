@@ -2155,8 +2155,8 @@ with tab_seo_main:
 
         st.text_area("Не учитывать домены", height=100, key="settings_excludes", help="Домены, которые парсер пропустит сразу.")
         st.text_area("Стоп-слова", height=100, key="settings_stops", help="Слова, которые не попадут в анализ.")
-        # ----------------------------------------
-    # БЛОК 1: ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ (ТЕПЕРЬ ПЕРВЫЙ)
+# ==========================================
+    # БЛОК 1: ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ
     # ==========================================
     if st.session_state.analysis_done and st.session_state.analysis_results:
         results = st.session_state.analysis_results
@@ -2164,62 +2164,40 @@ with tab_seo_main:
         d_score = results['my_score']['depth']
         w_score = results['my_score']['width']
         
-        # Ширина
+        # Цвета баллов
         w_color = "#2E7D32" if w_score >= 80 else ("#E65100" if w_score >= 50 else "#D32F2F")
         
-        # Глубина (Цель = 80)
         if 75 <= d_score <= 88:
-            d_color = "#2E7D32" # Зеленый (Отлично)
-            d_status = "ИДЕАЛ (Топ)"
+            d_color = "#2E7D32"; d_status = "ИДЕАЛ (Топ)"
         elif 88 < d_score <= 100:
-            d_color = "#D32F2F" # Красный (Риск переспама)
-            d_status = "ПЕРЕСПАМ (Риск)"
+            d_color = "#D32F2F"; d_status = "ПЕРЕСПАМ (Риск)"
         elif 55 <= d_score < 75:
-            d_color = "#F9A825" # Желтый
-            d_status = "Средняя"
+            d_color = "#F9A825"; d_status = "Средняя"
         else:
-            d_color = "#D32F2F" # Красный
-            d_status = "Низкая"
+            d_color = "#D32F2F"; d_status = "Низкая"
 
         st.success("Анализ готов!")
         
+        # Стили
         st.markdown("""
         <style>
             details > summary { list-style: none; }
             details > summary::-webkit-details-marker { display: none; }
-            .details-card {
-                background-color: #f8f9fa; border: 1px solid #e9ecef;
-                border-radius: 8px; margin-bottom: 10px;
-                overflow: hidden; transition: all 0.2s ease;
-            }
-            .details-card:hover { box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-color: #d1d5db; }
-            .card-summary {
-                padding: 12px 15px; cursor: pointer; font-weight: 700;
-                font-size: 15px; color: #111827; display: flex;
-                justify-content: space-between; align-items: center;
-                background-color: #ffffff;
-            }
-            .card-summary:hover { background-color: #f3f4f6; }
-            .card-content {
-                padding: 15px; border-top: 1px solid #e9ecef;
-                font-size: 14px; color: #374151; line-height: 1.6;
-                background-color: #fcfcfc;
-            }
-            .count-tag { 
-                background: #e5e7eb; color: #374151; padding: 2px 8px; 
-                border-radius: 10px; font-size: 12px; font-weight: 600;
-                min-width: 25px; text-align: center;
-            }
-            .arrow-icon {
-                font-size: 10px; margin-right: 8px; color: #9ca3af;
-                transition: transform 0.2s;
-            }
-            details[open] .arrow-icon { transform: rotate(90deg); color: #277EFF; }
+            .details-card { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 10px; }
+            .card-summary { padding: 12px 15px; cursor: pointer; font-weight: 700; display: flex; justify-content: space-between; }
+            .count-tag { background: #e5e7eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+            .flat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; height: 340px; display: flex; flex-direction: column; }
+            .flat-header { height: 50px; padding: 0 20px; font-weight: 700; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }
+            .flat-content { flex-grow: 1; padding: 15px 20px; overflow-y: auto; font-size: 13px; line-height: 1.4; }
+            .flat-footer { height: 150px; padding: 12px 20px; border-top: 1px solid #f3f4f6; background: #fafafa; }
+            .flat-len-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; }
+            .flat-miss-tag { border: 1px solid #fecaca; color: #991b1b; padding: 2px 6px; font-size: 11px; border-radius: 4px; margin: 2px; display: inline-block; }
         </style>
         """, unsafe_allow_html=True)
 
+        # Вывод баллов
         st.markdown(f"""
-        <div style='display: flex; gap: 20px; flex-wrap: wrap;'>
+        <div style='display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;'>
             <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {w_color};'>
                 <div style='font-size: 12px; color: #666;'>ШИРИНА (Охват тем)</div>
                 <div style='font-size: 24px; font-weight: bold; color: {w_color};'>{w_score}/100</div>
@@ -2229,534 +2207,141 @@ with tab_seo_main:
                 <div style='font-size: 24px; font-weight: bold; color: {d_color};'>{d_score}/100 <span style='font-size:14px; font-weight:normal;'>({d_status})</span></div>
             </div>
         </div>
-        <br>
         """, unsafe_allow_html=True)
 
-# ==========================================
-        # 🔥 НОВЫЙ БЛОК: META DASHBOARD (ИСПРАВЛЕННЫЙ)
-        # ==========================================
-        
-        # 1. Восстанавливаем данные, чтобы избежать NameError
-        my_data = st.session_state.get('saved_my_data')
-        
-        # 2. Восстанавливаем настройки
-        settings = {
-            'noindex': st.session_state.get('settings_noindex', True), 
-            'alt_title': st.session_state.get('settings_alt', False), 
-            'numbers': st.session_state.get('settings_numbers', False), 
-            'norm': st.session_state.get('settings_norm', True), 
-            'ua': st.session_state.get('settings_ua', "Mozilla/5.0"), 
-            'custom_stops': st.session_state.get('settings_stops', "").split()
-        }
-
-        # 3. Запускаем анализ
+        # --- РАСЧЕТ META (Чтобы показать их первыми) ---
+        my_data_saved = st.session_state.get('saved_my_data')
         meta_res = None
-        # Проверяем наличие данных перед запуском функции
-        if 'raw_comp_data' in st.session_state and my_data:
-            meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
+        
+        if 'raw_comp_data' in st.session_state and my_data_saved:
+            # Настройки для анализатора
+            s_meta = {
+                'noindex': True, 'alt_title': False, 'numbers': False, 'norm': True, 
+                'ua': "Mozilla/5.0", 'custom_stops': st.session_state.get('settings_stops', "").split()
+            }
+            meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data_saved, s_meta)
 
-# 4. Отрисовка (FINAL STABLE: NO GEN + FIXED TOOLTIP)
+        # --- ВЫВОД META DASHBOARD (КАРТОЧКИ) ---
         if meta_res:
-            import textwrap 
-            
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
-            # --- CSS STYLES ---
-            st.markdown("""
-            <style>
-                div[data-testid="column"] {
-                    display: flex;
-                    flex-direction: column;
-                }
-                
-                .flat-card {
-                    background-color: #FFFFFF;
-                    border: 1px solid #E5E7EB;
-                    border-radius: 12px;
-                    height: 340px; 
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: space-between;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    /* Важно для тултипа: */
-                    overflow: visible; 
-                    position: relative;
-                    z-index: 1;
-                }
-                
-                /* Поднимаем карточку при наведении, чтобы тултип был поверх всего */
-                .flat-card:hover {
-                    z-index: 100;
-                }
-                
-                .flat-header {
-                    height: 50px;
-                    padding: 0 20px;
-                    font-weight: 700;
-                    font-size: 15px;
-                    color: #111827;
-                    border-bottom: 1px solid #F3F4F6;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    flex-shrink: 0;
-                }
-                
-                .flat-content {
-                    flex-grow: 1;
-                    padding: 10px 20px;
-                    font-size: 13px;
-                    line-height: 1.4;
-                    color: #374151;
-                    overflow-y: auto;
-                    background: transparent;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: center;
-                }
-                .flat-content::-webkit-scrollbar { width: 4px; }
-                .flat-content::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
-
-                .flat-footer {
-                    height: 150px; 
-                    min-height: 150px;
-                    padding: 12px 20px;
-                    border-top: 1px solid #F3F4F6;
-                    background-color: #FAFAFA;
-                    flex-shrink: 0;
-                    display: flex;
-                    flex-direction: column;
-                }
-                
-                .flat-metric-row {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 4px;
-                    font-size: 10px;
-                    font-weight: 700;
-                    color: #9CA3AF;
-                    text-transform: uppercase;
-                }
-                
-                .flat-len-badge {
-                    padding: 2px 8px;
-                    border-radius: 4px;
-                    font-weight: 700;
-                    font-size: 10px;
-                    text-transform: uppercase;
-                }
-
-                .flat-progress-bg {
-                    width: 100%;
-                    background-color: #E5E7EB;
-                    height: 6px; 
-                    border-radius: 3px;
-                    overflow: hidden;
-                    margin-bottom: 12px;
-                    flex-shrink: 0;
-                }
-                
-                .flat-tags-area {
-                    flex-grow: 1;
-                    overflow: hidden;
-                }
-                
-                .flat-tags-wrapper {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 4px;
-                }
-                
-                .flat-miss-tag {
-                    display: inline-block;
-                    border: 1px solid #FECACA;
-                    color: #991B1B;
-                    background-color: #FFFFFF;
-                    padding: 3px 8px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    border-radius: 4px;
-                }
-                
-                .flat-ok-msg {
-                    height: 100%;
-                    display: flex;
-                    align-items: center;
-                    color: #059669;
-                    font-weight: 700;
-                    font-size: 13px;
-                    background: #ECFDF5;
-                    border-radius: 6px;
-                    padding: 0 10px;
-                }
-
-                /* === TOOLTIP FIXED === */
-                .tooltip-container {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 16px;
-                    height: 16px;
-                    background-color: #F3F4F6;
-                    color: #6B7280;
-                    border-radius: 50%;
-                    font-size: 11px;
-                    margin-left: 5px;
-                    cursor: help;
-                    position: relative;
-                    font-weight: bold;
-                }
-                
-                .tooltip-text {
-                    visibility: hidden;
-                    width: 240px; /* Шире, чтобы влезало */
-                    background-color: #1F2937;
-                    color: #fff;
-                    text-align: left;
-                    border-radius: 6px;
-                    padding: 12px;
-                    
-                    /* Позиционирование */
-                    position: absolute;
-                    z-index: 9999; /* Максимальный слой */
-                    top: 125%; /* Снизу от иконки */
-                    left: 50%;
-                    margin-left: -120px; /* Центрируем */
-                    
-                    opacity: 0;
-                    transition: opacity 0.2s;
-                    
-                    font-size: 11px;
-                    font-weight: 400;
-                    line-height: 1.5;
-                    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-                    text-transform: none; /* Убираем uppercase родителя */
-                }
-                
-                /* Стрелочка */
-                .tooltip-text::after {
-                    content: "";
-                    position: absolute;
-                    bottom: 100%; /* Сверху блока */
-                    left: 50%;
-                    margin-left: -5px;
-                    border-width: 5px;
-                    border-style: solid;
-                    border-color: transparent transparent #1F2937 transparent;
-                }
-                
-                .tooltip-container:hover .tooltip-text {
-                    visibility: visible;
-                    opacity: 1;
-                }
-                
-                /* Цвета внутри тултипа */
-                .tt-row { margin-bottom: 4px; }
-                .tt-green { color: #34D399; font-weight: 700; }
-                .tt-yellow { color: #FBBF24; font-weight: 700; }
-                .tt-red { color: #F87171; font-weight: 700; }
-            </style>
-            """, unsafe_allow_html=True)
-
-            m_scores = meta_res['scores']
-            m_miss = meta_res['missing']
-            m_self = meta_res['my_data']
-
-            col_m1, col_m2, col_m3 = st.columns(3)
-
-            # === ЛОГИКА ДЛИНЫ ===
+            # Хелперы для отрисовки
             def check_len_status(text, type_key):
                 length = len(text) if text else 0
-                limits = {
-                    'Title': {'good': (30, 70), 'ok_min': 10, 'ok_max': 90},
-                    'Description': {'good': (150, 250), 'ok_min': 75, 'ok_max': 300},
-                    'H1': {'good': (20, 60), 'ok_min': 5, 'ok_max': 70}
-                }
-                rule = limits.get(type_key, {'good': (0,0), 'ok_min': 0, 'ok_max': 0})
-                g_min, g_max = rule['good']
-                ok_min, ok_max = rule['ok_min'], rule['ok_max']
+                limits = {'Title': (30, 70), 'Description': (150, 250), 'H1': (20, 60)}
+                mn, mx = limits.get(type_key, (0,0))
+                if mn <= length <= mx: return length, "ХОРОШО", "#059669", "#ECFDF5"
+                return length, "ПЛОХО", "#DC2626", "#FEF2F2"
+
+            def render_flat_card(col, label, type_key, icon, txt, score, missing):
+                length, status, col_txt, col_bg = check_len_status(txt, type_key)
+                rel_col = "#10B981" if score >= 90 else ("#F59E0B" if score >= 50 else "#EF4444")
                 
-                if g_min <= length <= g_max: return length, "ХОРОШО", "#059669", "#ECFDF5" 
-                elif ok_min <= length < g_min: return length, "МАЛО (увеличьте)", "#D97706", "#FFFBEB"
-                elif g_max < length <= ok_max: return length, "МНОГО (сократите)", "#D97706", "#FFFBEB"
-                elif length < ok_min: return length, "КРИТИЧЕСКИ МАЛО", "#DC2626", "#FEF2F2"
-                else: return length, "КРИТИЧЕСКИ МНОГО", "#DC2626", "#FEF2F2"
+                miss_html = ""
+                if missing:
+                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing[:10]])
+                    miss_html = f"<div style='margin-top:5px;'>{tags}</div>"
+                else:
+                    miss_html = "<div style='color:#059669; font-weight:bold; margin-top:10px;'>✔ Всё отлично</div>"
 
-            # === ГЕНЕРАЦИЯ ТУЛТИПА (С полным текстом) ===
-            def get_tooltip_html(type_key):
-                rules = {
-                    'Title': (
-                        '<div class="tt-row"><span class="tt-green">Хорошо:</span> 30-70</div>'
-                        '<div class="tt-row"><span class="tt-yellow">Приемлемо:</span> 10-29 или 71-90</div>'
-                        '<div class="tt-row"><span class="tt-red">Плохо:</span> <10 или >90</div>'
-                    ),
-                    'Description': (
-                        '<div class="tt-row"><span class="tt-green">Хорошо:</span> 150-250</div>'
-                        '<div class="tt-row"><span class="tt-yellow">Приемлемо:</span> 75-149 или 251-300</div>'
-                        '<div class="tt-row"><span class="tt-red">Плохо:</span> <75 или >300</div>'
-                    ),
-                    'H1': (
-                        '<div class="tt-row"><span class="tt-green">Хорошо:</span> 20-60</div>'
-                        '<div class="tt-row"><span class="tt-yellow">Приемлемо:</span> 5-19 или 61-70</div>'
-                        '<div class="tt-row"><span class="tt-red">Плохо:</span> <5 или >70</div>'
-                    )
-                }
-                text = rules.get(type_key, "")
-                # HTML в одну строку
-                return f"""<div class="tooltip-container">?<div class="tooltip-text">{text}</div></div>"""
+                html = f"""
+                <div class="flat-card">
+                    <div class="flat-header">
+                        <div>{icon} {label}</div>
+                        <span class="flat-len-badge" style="background:{col_bg}; color:{col_txt}">{length} зн.</span>
+                    </div>
+                    <div class="flat-content">{txt if txt else '<span style="color:#ccc">Нет данных</span>'}</div>
+                    <div class="flat-footer">
+                        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:11px; color:#9ca3af;">
+                            <span>РЕЛЕВАНТНОСТЬ</span> 
+                            <span style="color:{rel_col}">{score}%</span>
+                        </div>
+                        <div style="width:100%; height:6px; background:#e5e7eb; border-radius:3px; margin-top:5px; overflow:hidden;">
+                            <div style="width:{score}%; height:100%; background:{rel_col};"></div>
+                        </div>
+                        {miss_html}
+                    </div>
+                </div>
+                """
+                col.markdown(html, unsafe_allow_html=True)
 
-            def render_flat_card_fixed(col, label, type_key, icon, text_content, score, missing_list):
-                if score >= 90: rel_color = "#10B981"
-                elif score >= 50: rel_color = "#F59E0B"
-                else: rel_color = "#EF4444"
-
-                curr_len, len_status, len_text_color, len_bg_color = check_len_status(text_content, type_key)
-                len_badge_html = f'<span class="flat-len-badge" style="background:{len_bg_color}; color:{len_text_color};">{curr_len} СИМВ. | {len_status}</span>'
-                tooltip_html = get_tooltip_html(type_key)
-
-                rec_content = ""
-                if score < 100 and missing_list:
-                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
-                    rec_content = f"""<div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:6px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div><div class="flat-tags-wrapper">{tags}</div>"""
-                elif score >= 100:
-                    rec_content = f"""<div class="flat-ok-msg">✔ Идеально соответствует топу</div>"""
-
-                display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
-
-                # HTML (No Indent)
-                raw_html = f"""
-<div class="flat-card">
-<div class="flat-header">
-<div>{icon} {label}</div> {tooltip_html}
-</div>
-<div class="flat-content">
-{display_text}
-</div>
-<div class="flat-footer">
-<div class="flat-metric-row">
-{len_badge_html}
-</div>
-<div class="flat-metric-row" style="margin-top:5px;">
-<span>Релевантность</span>
-<span style="color: {rel_color}">{score}%</span>
-</div>
-<div class="flat-progress-bg">
-<div style="width: {score}%; height: 100%; background-color: {rel_color};"></div>
-</div>
-<div class="flat-tags-area">
-{rec_content}
-</div>
-</div>
-</div>
-"""
-                with col:
-                    st.markdown(raw_html, unsafe_allow_html=True)
-
-            # Вывод колонок
-            render_flat_card_fixed(col_m1, "Title", "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
-            render_flat_card_fixed(col_m2, "Description", "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
-            render_flat_card_fixed(col_m3, "H1 Заголовок", "H1", "#️⃣", m_self['H1'], m_scores['h1'], m_miss['h1'])
-
-            st.markdown("<br>", unsafe_allow_html=True)
+            c1, c2, c3 = st.columns(3)
+            m_s = meta_res['scores']; m_m = meta_res['missing']; m_d = meta_res['my_data']
             
-        # =======================================================
-        # БЛОК 1: ОТКРЫТЫЕ СЕКЦИИ (ГЛАВНОЕ)
-        # =======================================================
+            render_flat_card(c1, "Title", "Title", "📑", m_d['Title'], m_s['title'], m_m['title'])
+            render_flat_card(c2, "Description", "Description", "📝", m_d['Description'], m_s['desc'], m_m['desc'])
+            render_flat_card(c3, "H1 Заголовок", "H1", "#️⃣", m_d['H1'], m_s['h1'], m_m['h1'])
+            
+            st.markdown("<br>", unsafe_allow_html=True)
 
-        # 1. СЕМАНТИЧЕСКОЕ ЯДРО (ОТКРЫТО)
+        # 1. СЕМАНТИЧЕСКОЕ ЯДРО
         with st.expander("🛒 Семантическое ядро", expanded=True):
             if not st.session_state.get('orig_products'):
-                st.info("⚠️ Данные отсутствуют. Запустите анализ.")
+                st.info("⚠️ Данные отсутствуют.")
             else:
-                # Ряд 1
                 c1, c2, c3 = st.columns(3)
                 with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
                 with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
                 with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
                 
-                # Ряд 2
                 c4, c5, c6 = st.columns(3)
                 with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
                 with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
                 with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
 
-                st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-
-                # Блок стоп-слов
-                cs1, cs2 = st.columns([1, 3])
-                
-                if 'sensitive_words_input_final' not in st.session_state:
-                    current_list = st.session_state.get('categorized_sensitive', [])
-                    st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
-                
-                current_text_value = st.session_state['sensitive_words_input_final']
-                
-                with cs1:
-                    count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
-                    st.markdown(f"**⛔ Стоп-слова**")
-                    st.markdown(f"Исключено: **{count_excluded}**")
-                    st.caption("Эти слова автоматически удалены.")
-                
-                with cs2:
-                    new_sens_str = st.text_area(
-                        "hidden_label", height=100,
-                        key="sensitive_words_input_final",
-                        label_visibility="collapsed",
-                        placeholder="Слова для исключения..."
-                    )
-
-                    if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                        raw_input = st.session_state.get("sensitive_words_input_final", "")
-                        new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
-                        
-                        st.session_state.categorized_sensitive = sorted(list(new_stop_set))
-                        
-                        def apply_filter(orig_list_key, stop_set):
-                            original = st.session_state.get(orig_list_key, [])
-                            return [w for w in original if w.lower() not in stop_set]
-
-                        st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
-                        st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
-                        st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
-                        st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
-                        st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
-                        st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
-
-                        all_prods = st.session_state.categorized_products
-                        count_prods = len(all_prods)
-                        if count_prods < 20:
-                            st.session_state.auto_tags_words = all_prods
-                            st.session_state.auto_promo_words = []
-                        else:
-                            half = int(math.ceil(count_prods / 2))
-                            st.session_state.auto_tags_words = all_prods[:half]
-                            st.session_state.auto_promo_words = all_prods[half:]
-
-                        st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
-                        st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
-
-                        st.toast("Фильтр обновлен!", icon="✅")
-                        time.sleep(0.5)
-                        st.rerun()
-
-        # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ОТКРЫТО)
+        # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ
         with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
-            render_paginated_table(
-                results['relevance_top'], 
-                "4. Релевантность", 
-                "tbl_rel", 
-                default_sort_col="Позиция", 
-                default_sort_order="Возрастание", 
-                show_controls=False # <--- СКРЫВАЕМ ФИЛЬТРЫ
-            )
+            render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", 
+                                   default_sort_col="Позиция", default_sort_order="Возрастание", show_controls=False)
 
-        # =======================================================
-        # БЛОК 2: ЗАКРЫТЫЕ СЕКЦИИ (ДЕТАЛИ)
-        # =======================================================
         st.markdown("<br>", unsafe_allow_html=True)
         st.caption("👇 Дополнительные данные")
 
-        # 3. ТАБЛИЦА НАЗВАНИЙ (ЗАКРЫТО)
+        # 3. НАЙМИНГ
         with st.expander("🏷️ Рекомендации по названию товаров", expanded=False):
-            if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
-                df_naming = st.session_state.naming_table_df
-                
-                if 'ideal_h1_result' in st.session_state:
-                    res_ideal = st.session_state.ideal_h1_result
-                    if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
-                        example_name = res_ideal[0]
-                        report_list = res_ideal[1]
-                        formula_str = "Формула не определена"
-                        for line in report_list:
-                            if "структура" in line or "Схема" in line:
-                                formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
-                                break
-                        with st.container(border=True):
-                            st.markdown("#### 🧪 Идеальная формула названия")
-                            st.info(f"**{formula_str}**", icon="🧩")
-                            st.markdown(f"**Пример генерации:** _{example_name}_")
-                    else:
-                        st.warning("⚠️ Данные устарели.")
-
-                st.markdown("##### Детальный анализ характеристик")
-                if not df_naming.empty:
-                    col_ctrl1, col_ctrl2 = st.columns([1, 3])
-                    with col_ctrl1:
-                        show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
-                    
-                    df_display = df_naming.copy()
-                    if not show_tech:
-                        df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
-
-                    if 'cat_sort' in df_display.columns:
-                        df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
-                    
-                    cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
-                    existing_cols = [c for c in cols_to_show if c in df_display.columns]
-                    df_display = df_display[existing_cols]
-
-                    def style_rows(row):
-                        val = str(row.get('Добавить', ''))
-                        if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row)
-                        if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row)
-                        return [''] * len(row)
-
-                    st.dataframe(
-                        df_display.style.apply(style_rows, axis=1),
-                        use_container_width=True,
-                        hide_index=True,
-                        height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
-                    )
-                else:
-                    st.warning("Нет данных для отображения.")
+            if 'naming_table_df' in st.session_state and not st.session_state.naming_table_df.empty:
+                st.dataframe(st.session_state.naming_table_df, use_container_width=True, hide_index=True)
             else:
-                st.info("Данные для анализа названий отсутствуют.")
+                st.info("Нет данных.")
 
-        # 4. ДЕТАЛИ META (ЗАКРЫТО)
+        # 4. ДЕТАЛИ META (ТАБЛИЦА) - ВОТ ТУТ БЫЛА ОШИБКА
         with st.expander("🕵️ Мета-данные конкурентов", expanded=False):
-            df_meta = pd.DataFrame(meta_res['detailed'])
-            my_row = pd.DataFrame([{
-                'URL': 'ВАШ САЙТ', 
-                'Title': m_self['Title'], 
-                'Description': m_self['Description'], 
-                'H1': m_self['H1']
-            }])
-            df_meta = pd.concat([my_row, df_meta], ignore_index=True)
-            
-            st.dataframe(
-                df_meta, 
-                use_container_width=True, 
-                column_config={
-                    "URL": st.column_config.LinkColumn("Ссылка"),
-                    "Title": st.column_config.TextColumn("Title", width="medium"),
-                    "Description": st.column_config.TextColumn("Description", width="large"),
-                    "H1": st.column_config.TextColumn("H1", width="small"),
-                },
-                height=300
-            )
+            # Вставляем защиту: если meta_res нет, не строим таблицу
+            if meta_res and 'detailed' in meta_res:
+                df_meta_table = pd.DataFrame(meta_res['detailed'])
+                # Добавляем строку "Ваш сайт"
+                my_row = pd.DataFrame([{
+                    'URL': 'ВАШ САЙТ', 
+                    'Title': meta_res['my_data']['Title'], 
+                    'Description': meta_res['my_data']['Description'], 
+                    'H1': meta_res['my_data']['H1']
+                }])
+                df_meta_table = pd.concat([my_row, df_meta_table], ignore_index=True)
+                
+                st.dataframe(
+                    df_meta_table, 
+                    use_container_width=True, 
+                    column_config={
+                        "URL": st.column_config.LinkColumn("Ссылка"),
+                        "Title": st.column_config.TextColumn("Title", width="medium"),
+                        "Description": st.column_config.TextColumn("Description", width="large"),
+                        "H1": st.column_config.TextColumn("H1", width="small"),
+                    }
+                )
+            else:
+                st.warning("Данные по мета-тегам недоступны (возможно, ошибка при анализе).")
 
-        # 5. УПУЩЕННАЯ СЕМАНТИКА (ЗАКРЫТО)
+        # 5. УПУЩЕННАЯ СЕМАНТИКА
         high = results.get('missing_semantics_high', [])
-        low = results.get('missing_semantics_low', [])
-        if high or low:
-            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+        if high:
+            with st.expander(f"🧩 Упущенная семантика ({len(high)})", expanded=False):
+                st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
 
-        # 6. ГЛУБИНА (ЗАКРЫТО)
-        with st.expander("📉 Глубина", expanded=False):
+        # 6. ГЛУБИНА И TF-IDF
+        with st.expander("📉 Глубина и TF-IDF", expanded=False):
             render_paginated_table(results['depth'], "Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
-
-        # 7. TF-IDF (ЗАКРЫТО)
-        with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
-            render_paginated_table(
-                results['hybrid'], 
-                "3. TF-IDF", 
-                "tbl_hybrid", 
-                default_sort_col="TF-IDF ТОП", 
-                show_controls=False # <--- СКРЫВАЕМ ФИЛЬТРЫ
-            )
+            st.markdown("---")
+            render_paginated_table(results['hybrid'], "TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП", show_controls=False)
 
 # ==========================================
     # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ
@@ -4058,6 +3643,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
