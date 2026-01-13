@@ -2507,7 +2507,7 @@ with tab_seo_main:
 
             # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ОТКРЫТО)
             with st.expander("🏆 Таблица релевантности", expanded=True):
-                render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Позиция", default_sort_order="Возрастание")
+                render_paginated_table(results['relevance_top'], "Релевантность", "tbl_rel", default_sort_col="Позиция", default_sort_order="Возрастание")
 
             # =======================================================
             # БЛОК 2: ЗАКРЫТЫЕ СЕКЦИИ (ДЕТАЛИ)
@@ -2516,7 +2516,7 @@ with tab_seo_main:
             st.caption("👇 Дополнительные данные (нажмите, чтобы раскрыть)")
 
             # 3. ТАБЛИЦА НАЗВАНИЙ (ЗАКРЫТО)
-            with st.expander("🏷️ 2. Рекомендации по названию товаров", expanded=False):
+            with st.expander("🏷️ Рекомендации по названию товаров", expanded=False):
                 if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
                     df_naming = st.session_state.naming_table_df
                     
@@ -2604,11 +2604,11 @@ with tab_seo_main:
 
             # 6. ГЛУБИНА (ЗАКРЫТО)
             with st.expander("📉 Глубина", expanded=False):
-                render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+                render_paginated_table(results['depth'], "Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
 
             # 7. TF-IDF (ЗАКРЫТО)
             with st.expander("🧮 TF-IDF", expanded=False):
-                render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+                render_paginated_table(results['hybrid'], "TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
 
 # ==========================================
     # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ
@@ -4034,6 +4034,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
