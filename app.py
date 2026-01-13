@@ -958,7 +958,7 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
     TOTAL_COMPS = len(comp_data_full)
     
     # !!! ИСПРАВЛЕНО: СТРОГО 50% !!!
-    MIN_OCCURRENCE_PCT = 0.5 
+    MIN_OCCURRENCE_PCT = 0.4 
     
     # Минимум 2 сайта, даже если конкурентов всего 3
     MIN_COUNT = max(2, int(TOTAL_COMPS * MIN_OCCURRENCE_PCT))
@@ -3905,6 +3905,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
