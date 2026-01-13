@@ -2072,134 +2072,111 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (АДАПТИВНОЕ ВЫРАВНИВАНИЕ - FLEXBOX)
+# 4. Отрисовка (FLAT DESIGN - КАК НА СКРИНШОТЕ)
         if meta_res:
             import textwrap 
             
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
-            # --- CSS STYLES (Adaptive Layout) ---
+            # --- CSS STYLES (Flat & Clean) ---
             st.markdown("""
             <style>
-                /* Растягиваем колонки Streamlit */
+                /* Контейнер колонки растягиваем */
                 div[data-testid="column"] {
                     display: flex;
                     flex-direction: column;
                 }
                 
-                .meta-card-adaptive {
-                    background-color: #FFFFFF;
-                    border: 1px solid #E5E7EB;
-                    border-radius: 12px;
-                    padding: 24px;
-                    flex-grow: 1; /* Карточка занимает всю высоту колонки */
+                /* Основная карточка */
+                .flat-card {
+                    background-color: transparent; /* Прозрачный фон */
+                    padding: 0 10px;
+                    flex-grow: 1; /* Растягиваем на всю высоту */
                     display: flex;
                     flex-direction: column;
-                    justify-content: space-between; /* Разносит верх и низ */
-                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-                    min-height: 420px; /* Высокая минимальная высота, чтобы влез любой Description */
-                }
-                
-                /* 1. ШАПКА (Фиксирована сверху) */
-                .adaptive-header {
-                    display: flex;
                     justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 16px;
-                    border-bottom: 2px solid #F3F4F6;
-                    padding-bottom: 12px;
-                    flex-shrink: 0; /* Не сжиматься */
-                }
-                .adaptive-label {
-                    font-size: 16px;
-                    font-weight: 800;
-                    color: #111827;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                }
-                .adaptive-score-badge {
-                    font-size: 14px;
-                    font-weight: 800;
-                    padding: 4px 12px;
-                    border-radius: 20px;
+                    min-height: 250px; /* Минимальная высота для выравнивания */
                 }
                 
-                /* 2. ТЕЛО С ТЕКСТОМ (Занимает все свободное место и центрирует контент) */
-                .adaptive-body {
-                    flex-grow: 1; /* Растягивается */
+                /* Заголовок (Title, Description...) */
+                .flat-header {
+                    text-align: center;
+                    font-weight: 700;
+                    font-size: 18px;
+                    color: #111827;
+                    margin-bottom: 15px;
+                }
+                
+                /* Контент (Сам текст) */
+                .flat-content {
+                    text-align: center;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    color: #374151;
+                    flex-grow: 1; /* Занимает всё свободное место */
                     display: flex;
                     align-items: center; /* Центрирует текст по вертикали */
+                    justify-content: center;
                     margin-bottom: 20px;
-                    min-height: 100px; /* Минимальная зона для текста */
+                    padding: 0 5px;
+                    font-family: 'Inter', sans-serif;
                 }
                 
-                .adaptive-text-content {
-                    font-size: 14px;
-                    line-height: 1.6;
-                    color: #374151;
-                    font-family: 'Inter', sans-serif;
+                /* Разделительная линия */
+                .flat-divider {
+                    height: 1px;
+                    background-color: #E5E7EB;
                     width: 100%;
-                    white-space: pre-wrap; /* Перенос строк */
-                    /* Если текста нет - курсив */
+                    margin-bottom: 15px;
                 }
-                .text-placeholder {
-                    color: #9CA3AF;
-                    font-style: italic;
-                }
-
-                /* 3. ПОДВАЛ (Прогресс + Теги) - Всегда внизу */
-                .adaptive-footer-wrapper {
-                    flex-shrink: 0; /* Не сжиматься */
+                
+                /* Блок релевантности (внизу) */
+                .flat-footer {
                     margin-top: auto;
                 }
-
-                /* Прогресс бар */
-                .adaptive-progress-bg {
-                    width: 100%;
-                    background-color: #F3F4F6;
-                    border-radius: 10px;
-                    height: 6px;
-                    margin-bottom: 16px;
-                    overflow: hidden;
+                
+                .flat-rel-label {
+                    text-align: center;
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #1F2937;
+                    text-transform: uppercase;
+                    margin-bottom: 8px;
                 }
-                .adaptive-progress-fill {
+                
+                /* Кастомный прогресс бар */
+                .flat-progress-bg {
+                    width: 100%;
+                    background-color: #E5E7EB; /* Серый фон полоски */
+                    height: 6px;
+                    border-radius: 0; /* Острые углы как на скрине, или 2px */
+                    overflow: hidden;
+                    margin-bottom: 5px;
+                }
+                .flat-progress-fill {
                     height: 100%;
-                    border-radius: 10px;
                     transition: width 0.6s ease;
                 }
-
-                /* Рекомендации */
-                .adaptive-rec-title {
-                    font-size: 11px;
-                    font-weight: 700;
-                    color: #6B7280;
-                    text-transform: uppercase;
-                    margin-bottom: 10px;
-                    letter-spacing: 0.5px;
-                }
-                .adaptive-tags-container {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 6px;
-                    min-height: 26px; /* Резерв места, чтобы карточки не прыгали если тегов нет */
-                }
-                .adaptive-miss-tag {
-                    background-color: #FFF1F2;
-                    color: #BE123C;
-                    border: 1px solid #FECDD3;
-                    padding: 4px 10px;
-                    border-radius: 6px;
+                
+                .flat-score-num {
+                    text-align: center;
                     font-size: 12px;
-                    font-weight: 600;
+                    color: #6B7280;
                 }
-                .adaptive-ok-msg {
-                    color: #059669;
-                    font-size: 13px;
-                    font-weight: 600;
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
+                
+                /* Блок "Добавить слова" */
+                .flat-missing-block {
+                    margin-top: 10px;
+                    text-align: center;
+                }
+                .flat-miss-tag {
+                    display: inline-block;
+                    border: 1px solid #FECACA;
+                    color: #B91C1C;
+                    padding: 2px 6px;
+                    margin: 2px;
+                    font-size: 11px;
+                    border-radius: 4px;
                 }
             </style>
             """, unsafe_allow_html=True)
@@ -2210,50 +2187,45 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
-            def render_meta_card_adaptive(col, label, icon, text_content, score, missing_list):
-                # Цвета
+            def render_flat_card(col, label, text_content, score, missing_list):
+                # Цвета как на скрине
                 if score >= 90:
-                    color = "#10B981"; bg_score = "#ECFDF5"; text_score = "#047857"
+                    color = "#16A34A" # Зеленый
                 elif score >= 50:
-                    color = "#F59E0B"; bg_score = "#FFFBEB"; text_score = "#B45309"
+                    color = "#CA8A04" # Желтый/Оранжевый
                 else:
-                    color = "#EF4444"; bg_score = "#FEF2F2"; text_score = "#B91C1C"
+                    color = "#DC2626" # Красный
 
-                # Логика тегов
-                tags_html = ""
-                rec_label = "Статус:"
+                # Блок с пропущенными словами (если есть)
+                missing_html = ""
                 if score < 100 and missing_list:
-                    rec_label = "Нужно добавить:"
-                    tags_html = "".join([f'<span class="adaptive-miss-tag">{w}</span>' for w in missing_list[:15]])
-                elif score >= 100:
-                    tags_html = '<span class="adaptive-ok-msg">✅ Идеально соответствует топу</span>'
+                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
+                    missing_html = f"""
+                    <div class="flat-missing-block">
+                        <div style="font-size:10px; font-weight:bold; color:#999; margin-bottom:4px;">ДОБАВИТЬ:</div>
+                        {tags}
+                    </div>
+                    """
 
-                # Текст
-                text_html = f'<div class="adaptive-text-content">{text_content}</div>' if text_content else '<div class="adaptive-text-content text-placeholder">— Нет данных —</div>'
-
-                # Сборка HTML
+                # Сборка HTML (dedent уберет отступы)
                 raw_html = f"""
-<div class="meta-card-adaptive">
-<!-- ВЕРХ -->
-<div class="adaptive-header">
-<div class="adaptive-label"><span>{icon}</span> {label}</div>
-<div class="adaptive-score-badge" style="background: {bg_score}; color: {text_score}">{score}%</div>
+<div class="flat-card">
+<div class="flat-header">{label}</div>
+
+<div class="flat-content">
+{text_content if text_content else "— Нет данных —"}
 </div>
 
-<!-- СЕРЕДИНА (Центрируется) -->
-<div class="adaptive-body">
-{text_html}
-</div>
+<div class="flat-footer">
+<div class="flat-divider"></div>
+<div class="flat-rel-label">Релевантность</div>
 
-<!-- НИЗ (Прибит к дну) -->
-<div class="adaptive-footer-wrapper">
-<div class="adaptive-progress-bg">
-<div class="adaptive-progress-fill" style="width: {score}%; background-color: {color};"></div>
+<div class="flat-progress-bg">
+<div class="flat-progress-fill" style="width: {score}%; background-color: {color};"></div>
 </div>
-<div class="adaptive-rec-title">{rec_label}</div>
-<div class="adaptive-tags-container">
-{tags_html}
-</div>
+<div class="flat-score-num">{score}%</div>
+
+{missing_html}
 </div>
 </div>
 """
@@ -2262,10 +2234,10 @@ with tab_seo_main:
                 with col:
                     st.markdown(clean_html, unsafe_allow_html=True)
 
-            # Вывод колонок
-            render_meta_card_adaptive(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
-            render_meta_card_adaptive(col_m2, "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
-            render_meta_card_adaptive(col_m3, "H1 Заголовок", "#️⃣", m_self['H1'], m_scores['h1'], m_miss['h1'])
+            # Вывод колонок (без иконок, как на скрине)
+            render_flat_card(col_m1, "Title", m_self['Title'], m_scores['title'], m_miss['title'])
+            render_flat_card(col_m2, "Description", m_self['Description'], m_scores['desc'], m_miss['desc'])
+            render_flat_card(col_m3, "H1", m_self['H1'], m_scores['h1'], m_miss['h1'])
 
             st.markdown("<br>", unsafe_allow_html=True)
             
@@ -3864,6 +3836,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
