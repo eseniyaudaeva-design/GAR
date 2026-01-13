@@ -2560,203 +2560,203 @@ with tab_seo_main:
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-# =======================================================
-            # БЛОК 1: ОТКРЫТЫЕ СЕКЦИИ (ГЛАВНОЕ)
-            # =======================================================
+        # =======================================================
+        # БЛОК 1: ОТКРЫТЫЕ СЕКЦИИ (ГЛАВНОЕ)
+        # =======================================================
 
-            # 1. СЕМАНТИЧЕСКОЕ ЯДРО (ОТКРЫТО)
-            with st.expander("🛒 Семантическое ядро", expanded=True):
-                if not st.session_state.get('orig_products'):
-                    st.info("⚠️ Данные отсутствуют. Запустите анализ.")
-                else:
-                    # Ряд 1
-                    c1, c2, c3 = st.columns(3)
-                    with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
-                    with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
-                    with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
-                    
-                    # Ряд 2
-                    c4, c5, c6 = st.columns(3)
-                    with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
-                    with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
-                    with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
-
-                    st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-
-                    # Блок стоп-слов
-                    cs1, cs2 = st.columns([1, 3])
-                    
-                    if 'sensitive_words_input_final' not in st.session_state:
-                        current_list = st.session_state.get('categorized_sensitive', [])
-                        st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
-                    
-                    current_text_value = st.session_state['sensitive_words_input_final']
-                    
-                    with cs1:
-                        count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
-                        st.markdown(f"**⛔ Стоп-слова**")
-                        st.markdown(f"Исключено: **{count_excluded}**")
-                        st.caption("Эти слова автоматически удалены.")
-                    
-                    with cs2:
-                        new_sens_str = st.text_area(
-                            "hidden_label", height=100,
-                            key="sensitive_words_input_final",
-                            label_visibility="collapsed",
-                            placeholder="Слова для исключения..."
-                        )
-
-                        if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
-                            raw_input = st.session_state.get("sensitive_words_input_final", "")
-                            new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
-                            
-                            st.session_state.categorized_sensitive = sorted(list(new_stop_set))
-                            
-                            def apply_filter(orig_list_key, stop_set):
-                                original = st.session_state.get(orig_list_key, [])
-                                return [w for w in original if w.lower() not in stop_set]
-
-                            st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
-                            st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
-                            st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
-                            st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
-                            st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
-                            st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
-
-                            all_prods = st.session_state.categorized_products
-                            count_prods = len(all_prods)
-                            if count_prods < 20:
-                                st.session_state.auto_tags_words = all_prods
-                                st.session_state.auto_promo_words = []
-                            else:
-                                half = int(math.ceil(count_prods / 2))
-                                st.session_state.auto_tags_words = all_prods[:half]
-                                st.session_state.auto_promo_words = all_prods[half:]
-
-                            st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
-                            st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
-
-                            st.toast("Фильтр обновлен!", icon="✅")
-                            time.sleep(0.5)
-                            st.rerun()
-
-            # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ОТКРЫТО)
-            with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
-                render_paginated_table(
-                    results['relevance_top'], 
-                    "4. Релевантность", 
-                    "tbl_rel", 
-                    default_sort_col="Позиция", 
-                    default_sort_order="Возрастание", 
-                    show_controls=False # <--- СКРЫВАЕМ ФИЛЬТРЫ
-                )
-
-            # =======================================================
-            # БЛОК 2: ЗАКРЫТЫЕ СЕКЦИИ (ДЕТАЛИ)
-            # =======================================================
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.caption("👇 Дополнительные данные")
-
-            # 3. ТАБЛИЦА НАЗВАНИЙ (ЗАКРЫТО)
-            with st.expander("🏷️ Рекомендации по названию товаров", expanded=False):
-                if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
-                    df_naming = st.session_state.naming_table_df
-                    
-                    if 'ideal_h1_result' in st.session_state:
-                        res_ideal = st.session_state.ideal_h1_result
-                        if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
-                            example_name = res_ideal[0]
-                            report_list = res_ideal[1]
-                            formula_str = "Формула не определена"
-                            for line in report_list:
-                                if "структура" in line or "Схема" in line:
-                                    formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
-                                    break
-                            with st.container(border=True):
-                                st.markdown("#### 🧪 Идеальная формула названия")
-                                st.info(f"**{formula_str}**", icon="🧩")
-                                st.markdown(f"**Пример генерации:** _{example_name}_")
-                        else:
-                            st.warning("⚠️ Данные устарели.")
-
-                    st.markdown("##### Детальный анализ характеристик")
-                    if not df_naming.empty:
-                        col_ctrl1, col_ctrl2 = st.columns([1, 3])
-                        with col_ctrl1:
-                            show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
-                        
-                        df_display = df_naming.copy()
-                        if not show_tech:
-                            df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
-
-                        if 'cat_sort' in df_display.columns:
-                            df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
-                        
-                        cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
-                        existing_cols = [c for c in cols_to_show if c in df_display.columns]
-                        df_display = df_display[existing_cols]
-
-                        def style_rows(row):
-                            val = str(row.get('Добавить', ''))
-                            if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row)
-                            if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row)
-                            return [''] * len(row)
-
-                        st.dataframe(
-                            df_display.style.apply(style_rows, axis=1),
-                            use_container_width=True,
-                            hide_index=True,
-                            height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
-                        )
-                    else:
-                        st.warning("Нет данных для отображения.")
-                else:
-                    st.info("Данные для анализа названий отсутствуют.")
-
-            # 4. ДЕТАЛИ META (ЗАКРЫТО)
-            with st.expander("🕵️ Мета-данные конкурентов", expanded=False):
-                df_meta = pd.DataFrame(meta_res['detailed'])
-                my_row = pd.DataFrame([{
-                    'URL': 'ВАШ САЙТ', 
-                    'Title': m_self['Title'], 
-                    'Description': m_self['Description'], 
-                    'H1': m_self['H1']
-                }])
-                df_meta = pd.concat([my_row, df_meta], ignore_index=True)
+        # 1. СЕМАНТИЧЕСКОЕ ЯДРО (ОТКРЫТО)
+        with st.expander("🛒 Семантическое ядро", expanded=True):
+            if not st.session_state.get('orig_products'):
+                st.info("⚠️ Данные отсутствуют. Запустите анализ.")
+            else:
+                # Ряд 1
+                c1, c2, c3 = st.columns(3)
+                with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
+                with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
+                with c3: render_clean_block("Коммерция", "💰", st.session_state.categorized_commercial)
                 
-                st.dataframe(
-                    df_meta, 
-                    use_container_width=True, 
-                    column_config={
-                        "URL": st.column_config.LinkColumn("Ссылка"),
-                        "Title": st.column_config.TextColumn("Title", width="medium"),
-                        "Description": st.column_config.TextColumn("Description", width="large"),
-                        "H1": st.column_config.TextColumn("H1", width="small"),
-                    },
-                    height=300
-                )
+                # Ряд 2
+                c4, c5, c6 = st.columns(3)
+                with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
+                with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
+                with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
 
-            # 5. УПУЩЕННАЯ СЕМАНТИКА (ЗАКРЫТО)
-            high = results.get('missing_semantics_high', [])
-            low = results.get('missing_semantics_low', [])
-            if high or low:
-                with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
-                    if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
-                    if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
 
-            # 6. ГЛУБИНА (ЗАКРЫТО)
-            with st.expander("📉 Глубина", expanded=False):
-                render_paginated_table(results['depth'], "Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+                # Блок стоп-слов
+                cs1, cs2 = st.columns([1, 3])
+                
+                if 'sensitive_words_input_final' not in st.session_state:
+                    current_list = st.session_state.get('categorized_sensitive', [])
+                    st.session_state['sensitive_words_input_final'] = "\n".join(current_list)
+                
+                current_text_value = st.session_state['sensitive_words_input_final']
+                
+                with cs1:
+                    count_excluded = len([x for x in current_text_value.split('\n') if x.strip()])
+                    st.markdown(f"**⛔ Стоп-слова**")
+                    st.markdown(f"Исключено: **{count_excluded}**")
+                    st.caption("Эти слова автоматически удалены.")
+                
+                with cs2:
+                    new_sens_str = st.text_area(
+                        "hidden_label", height=100,
+                        key="sensitive_words_input_final",
+                        label_visibility="collapsed",
+                        placeholder="Слова для исключения..."
+                    )
 
-            # 7. TF-IDF (ЗАКРЫТО)
-            with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
-                render_paginated_table(
-                    results['hybrid'], 
-                    "3. TF-IDF", 
-                    "tbl_hybrid", 
-                    default_sort_col="TF-IDF ТОП", 
-                    show_controls=False # <--- СКРЫВАЕМ ФИЛЬТРЫ
-                )
+                    if st.button("🔄 Обновить фильтр", type="primary", use_container_width=True):
+                        raw_input = st.session_state.get("sensitive_words_input_final", "")
+                        new_stop_set = set([w.strip().lower() for w in raw_input.split('\n') if w.strip()])
+                        
+                        st.session_state.categorized_sensitive = sorted(list(new_stop_set))
+                        
+                        def apply_filter(orig_list_key, stop_set):
+                            original = st.session_state.get(orig_list_key, [])
+                            return [w for w in original if w.lower() not in stop_set]
+
+                        st.session_state.categorized_products = apply_filter('orig_products', new_stop_set)
+                        st.session_state.categorized_services = apply_filter('orig_services', new_stop_set)
+                        st.session_state.categorized_commercial = apply_filter('orig_commercial', new_stop_set)
+                        st.session_state.categorized_geo = apply_filter('orig_geo', new_stop_set)
+                        st.session_state.categorized_dimensions = apply_filter('orig_dimensions', new_stop_set)
+                        st.session_state.categorized_general = apply_filter('orig_general', new_stop_set)
+
+                        all_prods = st.session_state.categorized_products
+                        count_prods = len(all_prods)
+                        if count_prods < 20:
+                            st.session_state.auto_tags_words = all_prods
+                            st.session_state.auto_promo_words = []
+                        else:
+                            half = int(math.ceil(count_prods / 2))
+                            st.session_state.auto_tags_words = all_prods[:half]
+                            st.session_state.auto_promo_words = all_prods[half:]
+
+                        st.session_state['kws_tags_auto'] = "\n".join(st.session_state.auto_tags_words)
+                        st.session_state['kws_promo_auto'] = "\n".join(st.session_state.auto_promo_words)
+
+                        st.toast("Фильтр обновлен!", icon="✅")
+                        time.sleep(0.5)
+                        st.rerun()
+
+        # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ОТКРЫТО)
+        with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
+            render_paginated_table(
+                results['relevance_top'], 
+                "4. Релевантность", 
+                "tbl_rel", 
+                default_sort_col="Позиция", 
+                default_sort_order="Возрастание", 
+                show_controls=False # <--- СКРЫВАЕМ ФИЛЬТРЫ
+            )
+
+        # =======================================================
+        # БЛОК 2: ЗАКРЫТЫЕ СЕКЦИИ (ДЕТАЛИ)
+        # =======================================================
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.caption("👇 Дополнительные данные")
+
+        # 3. ТАБЛИЦА НАЗВАНИЙ (ЗАКРЫТО)
+        with st.expander("🏷️ Рекомендации по названию товаров", expanded=False):
+            if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
+                df_naming = st.session_state.naming_table_df
+                
+                if 'ideal_h1_result' in st.session_state:
+                    res_ideal = st.session_state.ideal_h1_result
+                    if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
+                        example_name = res_ideal[0]
+                        report_list = res_ideal[1]
+                        formula_str = "Формула не определена"
+                        for line in report_list:
+                            if "структура" in line or "Схема" in line:
+                                formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
+                                break
+                        with st.container(border=True):
+                            st.markdown("#### 🧪 Идеальная формула названия")
+                            st.info(f"**{formula_str}**", icon="🧩")
+                            st.markdown(f"**Пример генерации:** _{example_name}_")
+                    else:
+                        st.warning("⚠️ Данные устарели.")
+
+                st.markdown("##### Детальный анализ характеристик")
+                if not df_naming.empty:
+                    col_ctrl1, col_ctrl2 = st.columns([1, 3])
+                    with col_ctrl1:
+                        show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
+                    
+                    df_display = df_naming.copy()
+                    if not show_tech:
+                        df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
+
+                    if 'cat_sort' in df_display.columns:
+                        df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
+                    
+                    cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
+                    existing_cols = [c for c in cols_to_show if c in df_display.columns]
+                    df_display = df_display[existing_cols]
+
+                    def style_rows(row):
+                        val = str(row.get('Добавить', ''))
+                        if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row)
+                        if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row)
+                        return [''] * len(row)
+
+                    st.dataframe(
+                        df_display.style.apply(style_rows, axis=1),
+                        use_container_width=True,
+                        hide_index=True,
+                        height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
+                    )
+                else:
+                    st.warning("Нет данных для отображения.")
+            else:
+                st.info("Данные для анализа названий отсутствуют.")
+
+        # 4. ДЕТАЛИ META (ЗАКРЫТО)
+        with st.expander("🕵️ Мета-данные конкурентов", expanded=False):
+            df_meta = pd.DataFrame(meta_res['detailed'])
+            my_row = pd.DataFrame([{
+                'URL': 'ВАШ САЙТ', 
+                'Title': m_self['Title'], 
+                'Description': m_self['Description'], 
+                'H1': m_self['H1']
+            }])
+            df_meta = pd.concat([my_row, df_meta], ignore_index=True)
+            
+            st.dataframe(
+                df_meta, 
+                use_container_width=True, 
+                column_config={
+                    "URL": st.column_config.LinkColumn("Ссылка"),
+                    "Title": st.column_config.TextColumn("Title", width="medium"),
+                    "Description": st.column_config.TextColumn("Description", width="large"),
+                    "H1": st.column_config.TextColumn("H1", width="small"),
+                },
+                height=300
+            )
+
+        # 5. УПУЩЕННАЯ СЕМАНТИКА (ЗАКРЫТО)
+        high = results.get('missing_semantics_high', [])
+        low = results.get('missing_semantics_low', [])
+        if high or low:
+            with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
+                if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
+                if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
+
+        # 6. ГЛУБИНА (ЗАКРЫТО)
+        with st.expander("📉 Глубина", expanded=False):
+            render_paginated_table(results['depth'], "Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+
+        # 7. TF-IDF (ЗАКРЫТО)
+        with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
+            render_paginated_table(
+                results['hybrid'], 
+                "3. TF-IDF", 
+                "tbl_hybrid", 
+                default_sort_col="TF-IDF ТОП", 
+                show_controls=False # <--- СКРЫВАЕМ ФИЛЬТРЫ
+            )
 
 # ==========================================
     # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ
@@ -4058,6 +4058,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
