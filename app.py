@@ -3502,6 +3502,52 @@ with tab_wholesale_main:
 
     if (use_text or use_tables or use_geo) and not gemini_api_key: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
+
+    # ==========================================
+    # 🆘 БЛОК ДИАГНОСТИКИ (ВСТАВИТЬ ПЕРЕД КНОПКОЙ ЗАПУСКА)
+    # ==========================================
+    st.markdown("---")
+    with st.expander("🛠️ ДИАГНОСТИКА API (Нажмите, если генерация не работает)", expanded=True):
+        st.write("Нажмите кнопку ниже, чтобы отправить тестовый запрос 'Hello' в Gemini. Мы увидим точный текст ошибки.")
+        
+        if st.button("📡 ПРОВЕРИТЬ СВЯЗЬ С GEMINI"):
+            if not gemini_api_key:
+                st.error("❌ Ключ API не введен!")
+            elif not genai:
+                st.error("❌ Библиотека google-generativeai не установлена!")
+            else:
+                try:
+                    # 1. Настройка
+                    genai.configure(api_key=gemini_api_key)
+                    # 2. Инициализация модели
+                    test_model = genai.GenerativeModel('gemini-1.5-flash')
+                    # 3. Тестовый запрос
+                    with st.spinner("Отправка запроса..."):
+                        response = test_model.generate_content("Just say 'OK'")
+                    
+                    # 4. Результат
+                    if response and response.text:
+                        st.success(f"✅ УСПЕХ! Ответ нейросети: {response.text}")
+                        st.info("Вывод: Ключ рабочий, лимиты есть. Проблема была в передаче данных (исправлено в коде ниже).")
+                    else:
+                        st.warning("⚠️ Ответ получен, но он пустой. Возможно, сработали фильтры безопасности.")
+                        
+                except Exception as e:
+                    # ВЫВОД ПОЛНОЙ ОШИБКИ
+                    st.error(f"❌ ОШИБКА API: {str(e)}")
+                    
+                    err_str = str(e)
+                    if "429" in err_str:
+                        st.markdown("**Диагноз:** 🛑 **Закончились лимиты (Quota Exceeded).** Нужен новый ключ.")
+                    elif "400" in err_str or "API key not valid" in err_str:
+                        st.markdown("**Диагноз:** 🔑 **Неверный ключ API.** Проверьте копирование.")
+                    elif "User location is not supported" in err_str:
+                        st.markdown("**Диагноз:** 🌍 **Гео-блок.** Google Gemini не работает с вашего IP. Включите VPN (USA/Europe).")
+                    elif "genai.Client" in err_str:
+                        st.markdown("**Диагноз:** 💻 **Старая версия библиотеки.** Используйте код с `GenerativeModel` (исправлено в предыдущем шаге).")
+
+    st.markdown("---")
+    # ==========================================
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         st.session_state.gen_result_df = None
@@ -4009,6 +4055,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
