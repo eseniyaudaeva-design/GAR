@@ -2215,7 +2215,7 @@ with tab_seo_main:
                     tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:14]])
                     rec_content = f"""<div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:6px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div><div class="flat-tags-wrapper">{tags}</div>"""
                 elif score >= 100:
-                    rec_content = f"""<div class="flat-ok-msg">✔ Идеально соответствует топу</div>"""
+                    rec_content = f"""<div class="flat-ok-msg">✔</div>"""
 
                 display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
 
@@ -3848,6 +3848,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
