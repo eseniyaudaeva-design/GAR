@@ -949,28 +949,59 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
     """
     Анализирует Title, Description и H1 конкурентов.
     Выявляет слова, которые есть у топов, но нет у вас.
+    (Улучшенная версия: фильтрация предлогов и союзов)
     """
     if not comp_data_full: return None
 
-    # Вспомогательная функция токенизации (простая)
+    # Вспомогательная функция токенизации (УЛУЧШЕННАЯ)
     def fast_tokenize(text):
         if not text: return set()
-        # Лемматизируем
+        
+        # 1. Жесткий список мусора (предлоги, союзы, единицы измерения)
+        stop_garbage = {
+            'в', 'на', 'и', 'с', 'со', 'по', 'для', 'от', 'до', 'из', 'к', 'у', 
+            'о', 'об', 'за', 'над', 'под', 'при', 'про', 'без', 'через',
+            'а', 'но', 'или', 'да', 'как', 'что', 'чтобы', 'если', 'то', 'ли', 'бы', 'же', 
+            'г', 'обл', 'р', 'руб', 'мм', 'см', 'м', 'кг', 'т', 'шт', 'дн',
+            'весь', 'все', 'всё', 'свой', 'ваш', 'наш' # Местоимения
+        }
+        
+        # Добавляем пользовательские стоп-слова из настроек, если есть
+        if settings.get('custom_stops'):
+            stop_garbage.update(set(settings['custom_stops']))
+
         lemmas = set()
+        # Оставляем только буквы и цифры
         words = re.findall(r'[а-яА-Яa-zA-Z0-9]+', text.lower())
-        stop_garbage = {'в', 'на', 'и', 'с', 'по', 'для', 'от', 'до', 'купить', 'цена', 'за', 'г', 'обл', 'р', 'руб', 'мм', 'шт'}
-        # Можно добавить settings['custom_stops'] сюда
         
         for w in words:
-            if len(w) < 2: continue
+            if len(w) < 2: continue # Пропускаем однобуквенные (кроме тех, что в словаре, но их мы и так удалим)
             if w in stop_garbage: continue
+            
+            # Лемматизация и проверка части речи
             if morph:
                 try:
-                    nf = morph.parse(w)[0].normal_form
-                    lemmas.add(nf)
-                except: lemmas.add(w)
+                    p = morph.parse(w)[0]
+                    
+                    # === ГЛАВНЫЙ ФИЛЬТР ЧАСТЕЙ РЕЧИ ===
+                    # PREP = Предлог
+                    # CONJ = Союз
+                    # PRCL = Частица
+                    # NPRO = Местоимение (я, ты, мы, вы, он...)
+                    # INTJ = Междометие
+                    if p.tag.POS in {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ'}:
+                        continue
+                    
+                    # Дополнительная проверка: иногда предлоги определяются как наречия или иное
+                    if p.normal_form in stop_garbage:
+                        continue
+
+                    lemmas.add(p.normal_form)
+                except: 
+                    lemmas.add(w)
             else:
                 lemmas.add(w)
+                
         return lemmas
 
     # 1. Мои данные
@@ -997,9 +1028,6 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
         stats['desc'].update(d_tok)
         stats['h1'].update(h_tok)
 
-        # Логика рекомендаций для конкретного url (для таблицы)
-        # Просто пример: чего не хватает этому урлу относительно общего топа? 
-        # (В данном случае мы будем сравнивать ВАС с ними, поэтому тут просто собираем данные)
         detailed_rows.append({
             'URL': item['url'],
             'Title': item.get('meta_title', ''),
@@ -1008,7 +1036,7 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
         })
 
     # 3. Формирование рекомендаций
-    # Берем слова, которые встречаются хотя бы у 30% конкурентов (или минимум у 2-х)
+    # Берем слова, которые встречаются хотя бы у 25-30% конкурентов
     threshold = max(2, int(len(comp_data_full) * 0.25))
     
     def get_missing(source_counter, my_tokens):
@@ -1016,8 +1044,8 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
         total_important = 0
         found_important = 0
         
-        # Сортируем по частоте
-        for word, count in source_counter.most_common(20):
+        # Сортируем по частоте (берем топ-25 популярных слов)
+        for word, count in source_counter.most_common(25):
             if count >= threshold:
                 total_important += 1
                 if word in my_tokens:
@@ -3848,6 +3876,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
