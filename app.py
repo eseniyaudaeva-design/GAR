@@ -2352,9 +2352,9 @@ with tab_seo_main:
                 if g_min <= length <= g_max:
                     return length, "ХОРОШО", "#059669", "#ECFDF5" 
                 elif ok_min <= length < g_min:
-                    return length, "МАЛО (увеличьте)", "#D97706", "#FFFBEB"
+                    return length, "Можно увеличить объем", "#D97706", "#FFFBEB"
                 elif g_max < length <= ok_max:
-                    return length, "МНОГО (сократите)", "#D97706", "#FFFBEB"
+                    return length, "Можно сократить объем", "#D97706", "#FFFBEB"
                 elif length < ok_min:
                     return length, "КРИТИЧЕСКИ МАЛО", "#DC2626", "#FEF2F2"
                 else: 
@@ -2385,7 +2385,7 @@ with tab_seo_main:
                     tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
                     rec_content = f"""<div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:6px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div><div class="flat-tags-wrapper">{tags}</div>"""
                 elif score >= 100:
-                    rec_content = f"""<div class="flat-ok-msg">✔ Идеально соответствует топу</div>"""
+                    rec_content = f"""<div class="flat-ok-msg">✔ Хорошо</div>"""
 
                 display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
 
@@ -4034,6 +4034,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
