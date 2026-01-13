@@ -3502,17 +3502,15 @@ with tab_wholesale_main:
     st.markdown("---")
     
 # ==========================================
-    # 4. ЗАПУСК ГЕНЕРАЦИИ (GOOGLE GENAI VERSION)
+    # 4. ЗАПУСК ГЕНЕРАЦИИ (ИСПРАВЛЕННАЯ ЛОГИКА)
     # ==========================================
     
     ready_to_go = True
-    
     if use_manual_html:
         if not manual_html_source: ready_to_go = False
     else:
         if not main_category_url: ready_to_go = False
 
-    # Проверка ключа (теперь проверяем gemini_api_key)
     if (use_text or use_tables) and not gemini_api_key: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_geo and not gemini_api_key: ready_to_go = False
@@ -3521,11 +3519,35 @@ with tab_wholesale_main:
         st.session_state.gen_result_df = None
         st.session_state.unified_excel_data = None
         
+        # --- [ВАЖНО] ПРИНУДИТЕЛЬНОЕ ЧТЕНИЕ ДАННЫХ ПЕРЕД СТАРТОМ ---
+        # Считываем данные напрямую из ключей виджетов, чтобы они не потерялись
+        
+        # 1. Слова для Текста
+        raw_txt_val = st.session_state.get("ai_text_context_editable", "")
+        # Если пусто, пробуем взять из дефолта
+        if not raw_txt_val: raw_txt_val = text_context_default
+        actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
+
+        # 2. Слова для Гео
+        raw_geo_val = st.session_state.get("kws_geo_auto", "")
+        if not raw_geo_val: raw_geo_val = geo_context_default
+        actual_geo_list = [x.strip() for x in re.split(r'[,\n]+', raw_geo_val) if x.strip()]
+        # ----------------------------------------------------------
+
         status_box = st.status("🛠️ Подготовка данных...", expanded=True)
+        
+        # Показываем отладку пользователю, чтобы убедиться, что слова есть
+        status_box.write(f"📊 Найдено слов для текста: {len(actual_text_list)}")
+        status_box.write(f"🌍 Найдено городов для Гео: {len(actual_geo_list)}")
+        
+        if use_text and not actual_text_list:
+            status_box.warning("⚠️ Внимание: Список слов для текста пуст! Нейросеть не получит SEO-слова.")
+        if use_geo and not actual_geo_list:
+            status_box.warning("⚠️ Внимание: Список городов пуст! Гео-блок может быть стандартным.")
+
         final_data = [] 
         
         # --- СБОР БАЗ ДАННЫХ ---
-        # 1. Теги
         tags_map = {}
         all_tags_links = []
         if use_tags:
@@ -3541,21 +3563,18 @@ with tab_wholesale_main:
                 search_roots = {tr}
                 if len(tr) > 5: search_roots.update([tr[:-1], tr[:-2]])
                 elif len(tr) > 4: search_roots.add(tr[:-1])
-
                 matches = []
                 for u in all_tags_links:
                     if any(root in u.lower() for root in search_roots):
                         matches.append(u); break
                 if matches: tags_map[kw] = matches
 
-        # 2. Промо
         p_img_map = {}
         if use_promo and df_db_promo is not None:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
         
-        # 3. Сайдбар
         all_menu_urls = []
         if use_sidebar:
             if sidebar_content:
@@ -3587,7 +3606,6 @@ with tab_wholesale_main:
                     for link in tags_container.find_all('a'):
                         full_url = urljoin(main_category_url or "http://localhost", link.get('href'))
                         target_pages.append({'url': full_url, 'name': link.get_text(strip=True)})
-                
                 if not target_pages:
                     h1 = soup.find('h1')
                     target_pages.append({'url': main_category_url or "local", 'name': h1.get_text(strip=True) if h1 else "Товар"})
@@ -3641,7 +3659,6 @@ with tab_wholesale_main:
                 parts = [p for p in path.split('/') if p]
                 idx_start = parts.index('catalog') + 1 if 'catalog' in parts else 0
                 rel_parts = parts[idx_start:] if parts[idx_start:] else parts
-                
                 curr = tree
                 for i, part in enumerate(rel_parts):
                     if part not in curr: curr[part] = {}
@@ -3660,31 +3677,25 @@ with tab_wholesale_main:
                     has_children = any(k for k in child.keys() if not k.startswith('__'))
                     if level == 1:
                         html += '<li class="level-1-header">\n'
-                        if has_children:
-                            html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=2)}</ul>'
+                        if has_children: html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=2)}</ul>'
                         else: html += f'<a href="{url or "#"}">{name}</a>'
                         html += '</li>\n'
                     elif level == 2:
                         html += '<li class="level-2-header">\n' if has_children else '<li class="level-2-link-special">\n'
-                        if has_children:
-                            html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=3)}</ul>'
+                        if has_children: html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=3)}</ul>'
                         else: html += f'<a href="{url or "#"}">{name}</a>'
                         html += '</li>\n'
                     elif level >= 3: html += f'<li class="level-3-link"><a href="{url or "#"}">{name}</a></li>\n'
                 return html
             full_sidebar_code = f'<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{render_tree_internal(tree, level=1)}</ul></nav></div></div>'
 
-        # === ИНИЦИАЛИЗАЦИЯ CLIENT (НОВЫЙ SDK, КАК В СПРАВКЕ) ===
+        # === ИНИЦИАЛИЗАЦИЯ CLIENT ===
         client = None
         if genai and (use_text or use_tables or use_geo) and gemini_api_key:
-            try:
-                # ВОТ ОН, ТОТ САМЫЙ КЛИЕНТ ИЗ СПРАВКИ
-                client = genai.Client(api_key=gemini_api_key)
-            except:
-                status_box.error("Ошибка ключа Gemini (Client Init)")
+            try: client = genai.Client(api_key=gemini_api_key)
+            except: status_box.error("Ошибка ключа Gemini (Client Init)")
 
         progress_bar = status_box.progress(0)
-        # === ИСПРАВЛЕНИЕ: ДОБАВЛЕНА ПЕРЕМЕННАЯ, КОТОРОЙ НЕ ХВАТАЛО ===
         total_steps = len(target_pages) if target_pages else 1
         
         for idx, page in enumerate(target_pages):
@@ -3692,9 +3703,15 @@ with tab_wholesale_main:
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
+            
+            # [FIX] Заполняем дефолтными данными
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # ВИЗУАЛ (Теги/Промо)
+            # [FIX] Если включен Гео-блок, СТИРАЕМ заглушку, чтобы видеть результат работы (или ошибку)
+            if use_geo:
+                row_data['IP_PROP4819'] = "Ошибка генерации Geo" 
+
+            # ВИЗУАЛ
             row_data['Tags HTML'] = "" 
             if use_tags:
                 html_c = []
@@ -3719,11 +3736,12 @@ with tab_wholesale_main:
                     p_html += '</div></div>'
                     row_data['Promo HTML'] = p_html
 
-            # === AI ГЕНЕРАЦИЯ (НОВЫЙ СИНТАКСИС) ===
+            # === AI ГЕНЕРАЦИЯ (Используем actual_... списки) ===
             
             # 1. ТЕКСТ
             if use_text and client:
-                blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, text_context_final_list)
+                # [FIX] Передаем actual_text_list, который мы достали в начале кнопки
+                blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
                 for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
 
             # 2. ТАБЛИЦЫ
@@ -3732,15 +3750,15 @@ with tab_wholesale_main:
                     ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
                     prompt = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
                     try:
-                        # Используем модель 1.5-flash, она самая стабильная сейчас
                         resp = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
                         row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
             # 3. GEO
-            if use_geo and client and global_geo_list:
-                cities = ", ".join(random.sample(global_geo_list, min(20, len(global_geo_list))))
-                prompt = f"Write HTML <p> regarding delivery to: {cities}. No Markdown."
+            # [FIX] Используем actual_geo_list
+            if use_geo and client and actual_geo_list:
+                cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
+                prompt = f"Write HTML <p> regarding delivery. You MUST mention these specific cities: {cities}. No Markdown."
                 try:
                     resp = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
                     row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
@@ -4000,6 +4018,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
