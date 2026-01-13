@@ -2274,6 +2274,90 @@ with tab_seo_main:
             
             st.markdown("<br>", unsafe_allow_html=True)
 
+# --- (ВСТАВИТЬ ПОСЛЕ ЦВЕТНЫХ ЦИФР, НО ПЕРЕД СЕМАНТИЧЕСКИМ ЯДРОМ) ---
+
+        # 1. Пытаемся достать данные
+        my_data_saved = st.session_state.get('saved_my_data')
+        comp_data_raw = st.session_state.get('raw_comp_data')
+        meta_res = None
+        
+        # 2. Пробуем рассчитать, только если есть и Свой сайт, и Конкуренты
+        if comp_data_raw and my_data_saved:
+            # Настройки для анализатора
+            s_meta = {
+                'noindex': True, 'alt_title': False, 'numbers': False, 'norm': True, 
+                'ua': "Mozilla/5.0", 'custom_stops': st.session_state.get('settings_stops', "").split()
+            }
+            try:
+                meta_res = analyze_meta_gaps(comp_data_raw, my_data_saved, s_meta)
+            except Exception as e:
+                st.error(f"Ошибка расчета Meta: {e}")
+
+        # 3. ВЫВОД (Отрисовываем в любом случае)
+        st.markdown("### 🧬 Рекомендации Title, Description и H1")
+        
+        if meta_res:
+            # === ЕСЛИ ДАННЫЕ ЕСТЬ - РИСУЕМ КАРТОЧКИ ===
+            
+            # Хелперы (функции внутри условия, чтобы не мешались)
+            def check_len_status(text, type_key):
+                length = len(text) if text else 0
+                limits = {'Title': (30, 70), 'Description': (150, 250), 'H1': (20, 60)}
+                mn, mx = limits.get(type_key, (0,0))
+                if mn <= length <= mx: return length, "ХОРОШО", "#059669", "#ECFDF5"
+                return length, "ПЛОХО", "#DC2626", "#FEF2F2"
+
+            def render_flat_card(col, label, type_key, icon, txt, score, missing):
+                length, status, col_txt, col_bg = check_len_status(txt, type_key)
+                rel_col = "#10B981" if score >= 90 else ("#F59E0B" if score >= 50 else "#EF4444")
+                
+                miss_html = ""
+                if missing:
+                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing[:10]])
+                    miss_html = f"<div style='margin-top:5px;'>{tags}</div>"
+                else:
+                    miss_html = "<div style='color:#059669; font-weight:bold; margin-top:10px;'>✔ Всё отлично</div>"
+
+                html = f"""
+                <div class="flat-card">
+                    <div class="flat-header">
+                        <div>{icon} {label}</div>
+                        <span class="flat-len-badge" style="background:{col_bg}; color:{col_txt}">{length} зн.</span>
+                    </div>
+                    <div class="flat-content">{txt if txt else '<span style="color:#ccc">Нет данных</span>'}</div>
+                    <div class="flat-footer">
+                        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:11px; color:#9ca3af;">
+                            <span>РЕЛЕВАНТНОСТЬ</span> 
+                            <span style="color:{rel_col}">{score}%</span>
+                        </div>
+                        <div style="width:100%; height:6px; background:#e5e7eb; border-radius:3px; margin-top:5px; overflow:hidden;">
+                            <div style="width:{score}%; height:100%; background:{rel_col};"></div>
+                        </div>
+                        {miss_html}
+                    </div>
+                </div>
+                """
+                col.markdown(html, unsafe_allow_html=True)
+
+            # Рендер колонок
+            c1, c2, c3 = st.columns(3)
+            m_s = meta_res['scores']; m_m = meta_res['missing']; m_d = meta_res['my_data']
+            
+            render_flat_card(c1, "Title", "Title", "📑", m_d.get('Title'), m_s.get('title',0), m_m.get('title',[]))
+            render_flat_card(c2, "Description", "Description", "📝", m_d.get('Description'), m_s.get('desc',0), m_m.get('desc',[]))
+            render_flat_card(c3, "H1 Заголовок", "H1", "#️⃣", m_d.get('H1'), m_s.get('h1',0), m_m.get('h1',[]))
+            
+        else:
+            # === ЕСЛИ ДАННЫХ НЕТ - ПИШЕМ ПРИЧИНУ ===
+            st.warning("⚠️ **Блок скрыт:** Недостаточно данных для анализа мета-тегов.")
+            st.info("""
+            **Возможные причины:**
+            1. Вы не указали **URL вашей страницы** (или выбрали "Без страницы"). Без вашего URL не с чем сравнивать конкурентов.
+            2. Данные конкурентов не были скачаны (ошибка парсинга).
+            """)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        # --- (ДАЛЬШЕ ИДЕТ СЕМАНТИЧЕСКОЕ ЯДРО) ---
         # 1. СЕМАНТИЧЕСКОЕ ЯДРО
         with st.expander("🛒 Семантическое ядро", expanded=True):
             if not st.session_state.get('orig_products'):
@@ -3643,6 +3727,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
