@@ -2072,10 +2072,8 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (FIXED FOOTER HEIGHT - PERFECT ALIGNMENT)
+# 4. Отрисовка (COMPACT 260PX + SINGLE LINE HTML FIX)
         if meta_res:
-            import textwrap 
-            
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
             # --- CSS STYLES ---
@@ -2090,59 +2088,51 @@ with tab_seo_main:
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 12px;
-                    /* 1. ФИКСИРОВАННАЯ ВЫСОТА ВСЕЙ КАРТОЧКИ */
-                    height: 400px; 
+                    /* 1. КОМПАКТНАЯ ФИКСИРОВАННАЯ ВЫСОТА */
+                    height: 260px; 
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
-                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-                    overflow: hidden; /* Чтобы ничего не вылезало */
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    overflow: hidden;
                 }
                 
                 .flat-header {
-                    padding: 15px 20px;
+                    padding: 12px 16px;
                     font-weight: 700;
-                    font-size: 16px;
+                    font-size: 15px;
                     color: #111827;
                     border-bottom: 1px solid #F3F4F6;
                     display: flex;
                     align-items: center;
                     gap: 8px;
                     flex-shrink: 0;
-                    height: 55px; /* Фикс высота шапки */
+                    height: 45px;
                 }
                 
                 .flat-content {
-                    padding: 15px 20px;
-                    font-size: 14px;
-                    line-height: 1.5;
+                    padding: 12px 16px;
+                    font-size: 13px;
+                    line-height: 1.4;
                     color: #374151;
-                    
-                    /* СКРОЛЛ ТОЛЬКО ЗДЕСЬ */
                     flex-grow: 1;
-                    overflow-y: auto; 
-                    
-                    /* Убираем "окошки" - фон прозрачный */
+                    overflow-y: auto; /* Скролл только для текста */
                     background: transparent;
-                    
-                    /* Центрирование текста по вертикали, если его мало */
                     display: flex;
                     flex-direction: column;
-                    justify-content: center; 
+                    justify-content: center;
                 }
                 
-                /* Кастомный скроллбар */
+                /* Тонкий скроллбар */
                 .flat-content::-webkit-scrollbar { width: 4px; }
                 .flat-content::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
 
                 .flat-footer {
-                    padding: 15px 20px;
+                    padding: 12px 16px;
                     border-top: 1px solid #F3F4F6;
-                    background-color: #FAFAFA; /* Чуть сероватый низ для визуального отделения */
-                    
-                    /* 2. ФИКСИРОВАННАЯ ВЫСОТА ФУТЕРА */
-                    /* Это гарантирует, что полоска ВСЕГДА будет на одной высоте */
-                    height: 130px; 
+                    background-color: #FAFAFA;
+                    /* 2. ФИКСИРОВАННАЯ ВЫСОТА ПОДВАЛА */
+                    height: 95px; 
                     flex-shrink: 0;
                     display: flex;
                     flex-direction: column;
@@ -2151,11 +2141,11 @@ with tab_seo_main:
                 .flat-rel-row {
                     display: flex;
                     justify-content: space-between;
-                    font-size: 11px;
+                    font-size: 10px;
                     font-weight: 700;
                     color: #6B7280;
                     text-transform: uppercase;
-                    margin-bottom: 6px;
+                    margin-bottom: 4px;
                 }
                 
                 .flat-progress-bg {
@@ -2164,14 +2154,14 @@ with tab_seo_main:
                     height: 6px; 
                     border-radius: 3px;
                     overflow: hidden;
-                    margin-bottom: 10px;
+                    margin-bottom: 8px;
                     flex-shrink: 0;
                 }
                 
-                /* Место под теги (Фиксированная зона) */
                 .flat-tags-area {
                     flex-grow: 1;
-                    overflow: hidden; /* Если тегов миллион - они просто обрежутся, не ломая верстку */
+                    overflow: hidden;
+                    position: relative;
                 }
                 
                 .flat-miss-tag {
@@ -2179,9 +2169,9 @@ with tab_seo_main:
                     border: 1px solid #FECACA;
                     color: #B91C1C;
                     background-color: #FFFFFF;
-                    padding: 2px 8px;
+                    padding: 1px 6px;
                     margin: 2px;
-                    font-size: 11px;
+                    font-size: 10px;
                     font-weight: 600;
                     border-radius: 4px;
                 }
@@ -2192,7 +2182,7 @@ with tab_seo_main:
                     align-items: center;
                     color: #059669;
                     font-weight: 700;
-                    font-size: 13px;
+                    font-size: 12px;
                     background: #ECFDF5;
                     border-radius: 6px;
                     padding: 0 10px;
@@ -2208,64 +2198,37 @@ with tab_seo_main:
 
             def render_flat_card_fixed(col, label, icon, text_content, score, missing_list):
                 # Цвета
-                if score >= 90:
-                    color = "#10B981" # Зеленый
-                elif score >= 50:
-                    color = "#F59E0B" # Желтый
-                else:
-                    color = "#EF4444" # Красный
+                if score >= 90: color = "#10B981" # Green
+                elif score >= 50: color = "#F59E0B" # Yellow
+                else: color = "#EF4444" # Red
 
-                # Блок рекомендаций
+                # Сборка блока рекомендаций В ОДНУ СТРОКУ (чтобы не было багов с отступами)
                 rec_content = ""
                 if score < 100 and missing_list:
-                    # Показываем теги
-                    tags_html = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]]) # Лимит ~12 штук
-                    rec_content = f"""
-                        <div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:4px;">НУЖНО ДОБАВИТЬ:</div>
-                        <div style="line-height: 1.4;">{tags_html}</div>
-                    """
+                    tags_html = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
+                    # ВАЖНО: Весь HTML в одну линию
+                    rec_content = f'<div style="font-size:9px; font-weight:700; color:#9CA3AF; margin-bottom:2px;">НУЖНО ДОБАВИТЬ:</div><div style="line-height:1.2;">{tags_html}</div>'
                 elif score >= 100:
-                    # Плашка "Идеально"
-                    rec_content = f"""
-                        <div class="flat-ok-msg">
-                            <span>✔ Идеально соответствует топу</span>
-                        </div>
-                    """
+                    rec_content = f'<div class="flat-ok-msg"><span>✔ Идеально соответствует топу</span></div>'
 
                 # Текст контента
                 display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
 
-                # HTML (Без отступов для корректного рендера)
-                raw_html = f"""
+                # СБОРКА ОСНОВНОГО HTML (Тоже без отступов внутри строки)
+                final_html = f"""
 <div class="flat-card">
-<div class="flat-header">
-<span>{icon}</span> {label}
-</div>
-
-<div class="flat-content">
-{display_text}
-</div>
-
+<div class="flat-header"><span>{icon}</span> {label}</div>
+<div class="flat-content">{display_text}</div>
 <div class="flat-footer">
-<div class="flat-rel-row">
-<span>Релевантность</span>
-<span style="color: {color}">{score}%</span>
-</div>
-
-<div class="flat-progress-bg">
-<div style="width: {score}%; height: 100%; background-color: {color};"></div>
-</div>
-
-<div class="flat-tags-area">
-{rec_content}
-</div>
+<div class="flat-rel-row"><span>Релевантность</span><span style="color: {color}">{score}%</span></div>
+<div class="flat-progress-bg"><div style="width: {score}%; height: 100%; background-color: {color};"></div></div>
+<div class="flat-tags-area">{rec_content}</div>
 </div>
 </div>
 """
-                clean_html = textwrap.dedent(raw_html)
                 
                 with col:
-                    st.markdown(clean_html, unsafe_allow_html=True)
+                    st.markdown(final_html, unsafe_allow_html=True)
 
             # Вывод колонок
             render_flat_card_fixed(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
@@ -3869,6 +3832,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
