@@ -15,7 +15,8 @@ openai
 XlsxWriter
 curl_cffi
 plotly
-google-generativeai
+google-genai
+
 
 
 
