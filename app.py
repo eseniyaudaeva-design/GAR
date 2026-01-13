@@ -2422,9 +2422,7 @@ with tab_seo_main:
             
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
             
-            # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Только по элите)
-            # Медианы и TF-IDF пересчитаются строго по этому списку
-            st.session_state['raw_comp_data'] = final_clean_data
+# 3. ФИНАЛЬНЫЙ РАСЧЕТ (Только по элите)
             results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
             st.session_state.analysis_results = results_final
             
@@ -2433,6 +2431,52 @@ with tab_seo_main:
             st.session_state.naming_table_df = naming_df 
             st.session_state.ideal_h1_result = analyze_ideal_name(final_clean_data)
             st.session_state.analysis_done = True
+            
+            # ==========================================
+            # 🔥 ПЕРЕНЕСЕННЫЙ БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ
+            # (Теперь он выполняется ДО фильтрации и рерана)
+            # ==========================================
+            words_to_check = [x['word'] for x in results_final.get('missing_semantics_high', [])]
+            if not words_to_check:
+                st.session_state.categorized_products = []; st.session_state.categorized_services = []
+                st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
+            else:
+                with st.spinner("Классификация семантики..."):
+                    categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
+                
+                st.session_state.categorized_products = categorized['products']
+                st.session_state.categorized_services = categorized['services']
+                st.session_state.categorized_commercial = categorized['commercial']
+                st.session_state.categorized_geo = categorized['geo']
+                st.session_state.categorized_dimensions = categorized['dimensions']
+                st.session_state.categorized_general = categorized['general']
+                st.session_state.categorized_sensitive = categorized['sensitive']
+
+                st.session_state.orig_products = categorized['products'] + categorized['sensitive']
+                st.session_state.orig_services = categorized['services'] + categorized['sensitive']
+                st.session_state.orig_commercial = categorized['commercial'] + categorized['sensitive']
+                st.session_state.orig_geo = categorized['geo'] + categorized['sensitive']
+                st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
+                st.session_state.orig_general = categorized['general'] + categorized['sensitive']
+                
+                st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
+
+            # Обновление списков для генератора
+            all_found_products = st.session_state.categorized_products
+            count_prods = len(all_found_products)
+            if count_prods < 20:
+                st.session_state.auto_tags_words = all_found_products
+                st.session_state.auto_promo_words = []
+            else:
+                half_count = int(math.ceil(count_prods / 2))
+                st.session_state.auto_tags_words = all_found_products[:half_count]
+                st.session_state.auto_promo_words = all_found_products[half_count:]
+            
+            st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
+            st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
+            # ==========================================
+            # КОНЕЦ ПЕРЕНЕСЕННОГО БЛОКА
+            # ==========================================
             
 # === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
             
@@ -2522,46 +2566,6 @@ with tab_seo_main:
             
             # Перезагружаем страницу, чтобы применить изменения СВЕРХУ
             st.rerun()
-
-            # Классификация семантики (по финальным данным)
-            res = st.session_state.analysis_results
-            words_to_check = [x['word'] for x in res.get('missing_semantics_high', [])]
-            if not words_to_check:
-                st.session_state.categorized_products = []; st.session_state.categorized_services = []
-                st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
-            else:
-                with st.spinner("Классификация семантики..."):
-                    categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
-                
-                st.session_state.categorized_products = categorized['products']
-                st.session_state.categorized_services = categorized['services']
-                st.session_state.categorized_commercial = categorized['commercial']
-                st.session_state.categorized_geo = categorized['geo']
-                st.session_state.categorized_dimensions = categorized['dimensions']
-                st.session_state.categorized_general = categorized['general']
-                st.session_state.categorized_sensitive = categorized['sensitive']
-
-                st.session_state.orig_products = categorized['products'] + categorized['sensitive']
-                st.session_state.orig_services = categorized['services'] + categorized['sensitive']
-                st.session_state.orig_commercial = categorized['commercial'] + categorized['sensitive']
-                st.session_state.orig_geo = categorized['geo'] + categorized['sensitive']
-                st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
-                st.session_state.orig_general = categorized['general'] + categorized['sensitive']
-                
-                st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
-
-            all_found_products = st.session_state.categorized_products
-            count_prods = len(all_found_products)
-            if count_prods < 20:
-                st.session_state.auto_tags_words = all_found_products
-                st.session_state.auto_promo_words = []
-            else:
-                half_count = int(math.ceil(count_prods / 2))
-                st.session_state.auto_tags_words = all_found_products[:half_count]
-                st.session_state.auto_promo_words = all_found_products[half_count:]
-            
-            st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
-            st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
 
 # === ФИНАЛЬНЫЙ ШТРИХ: АВТО-ПЕРЕКЛЮЧЕНИЕ ===
             # 1. Принудительно меняем радио-кнопку на "Ручной список"
@@ -3728,6 +3732,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
