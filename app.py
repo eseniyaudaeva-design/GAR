@@ -1867,11 +1867,12 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     if not base_text: return ["Error: No base text"] * num_blocks
     if not genai: return ["Error: google-genai lib not installed"] * num_blocks
     
-    # 1. ПОДГОТОВКА ПЕРЕМЕННЫХ
+    # 1. ПОДГОТОВКА СПИСКА СЛОВ
     seo_words = seo_words or []
     seo_instruction_block = ""
     
     if seo_words:
+        # Превращаем список в строку для промта
         seo_list_str = ", ".join(seo_words)
         seo_instruction_block = f"""
 --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
@@ -1885,6 +1886,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 -------------------------------------------
 """
 
+    # 2. ПРОМТЫ (Системный и Пользовательский)
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
         "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
@@ -1945,7 +1947,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Соединяем системную роль и промт, так как обычный API принимает один контекст
+        # Соединяем системную роль и промт (стандартный API принимает один кусок текста)
         full_prompt = system_instruction + "\n\n" + user_prompt
         
         response = model.generate_content(full_prompt)
@@ -1957,6 +1959,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
         
+        # Если блоков меньше чем надо, добиваем пустыми
         while len(blocks) < num_blocks: blocks.append("")
         
         return blocks[:num_blocks]
@@ -3497,7 +3500,6 @@ with tab_wholesale_main:
     else:
         if not main_category_url: ready_to_go = False
 
-    # Проверка ключа
     if (use_text or use_tables or use_geo) and not gemini_api_key: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     
@@ -3505,26 +3507,24 @@ with tab_wholesale_main:
         st.session_state.gen_result_df = None
         st.session_state.unified_excel_data = None
         
-        # --- [КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ] ЧИТАЕМ ДАННЫЕ НАПРЯМУЮ ИЗ ВИДЖЕТОВ ---
-        # Это гарантирует, что списки слов не будут пустыми при перезагрузке
+        # --- [ВАЖНО] ПРИНУДИТЕЛЬНОЕ ЧТЕНИЕ ДАННЫХ ПЕРЕД СТАРТОМ ---
+        # Чтобы списки не были пустыми после нажатия кнопки
         
-        # 1. Слова для ТЕКСТА
+        # 1. Слова для Текста
         raw_txt_val = st.session_state.get("ai_text_context_editable", "")
-        # Если в поле пусто, берем дефолтное значение
         if not raw_txt_val: raw_txt_val = text_context_default
         actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
 
-        # 2. Слова для ГЕО
+        # 2. Слова для Гео
         raw_geo_val = st.session_state.get("kws_geo_auto", "")
         if not raw_geo_val: raw_geo_val = geo_context_default
         actual_geo_list = [x.strip() for x in re.split(r'[,\n]+', raw_geo_val) if x.strip()]
-        # ------------------------------------------------------------------
+        # ----------------------------------------------------------
 
         status_box = st.status("🛠️ Подготовка данных...", expanded=True)
         
-        # Вывод отладки, чтобы вы видели, что слова подцепились
-        status_box.write(f"📝 Слов для текста найдено: {len(actual_text_list)}")
-        status_box.write(f"🌍 Городов для Гео найдено: {len(actual_geo_list)}")
+        status_box.write(f"📝 Слов для текста: {len(actual_text_list)}")
+        status_box.write(f"🌍 Городов для Гео: {len(actual_geo_list)}")
 
         if use_text and not actual_text_list:
             status_box.warning("⚠️ Внимание: Список слов для текста пуст!")
@@ -3542,7 +3542,7 @@ with tab_wholesale_main:
 
         final_data = [] 
         
-        # --- СБОР БАЗ ДАННЫХ (Оставляем как есть) ---
+        # --- СБОР БАЗ ДАННЫХ (БЕЗ ИЗМЕНЕНИЙ) ---
         tags_map = {}
         all_tags_links = []
         if use_tags:
@@ -3693,12 +3693,12 @@ with tab_wholesale_main:
             
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
             
-            # Заполнение статики
+            # Заполняем дефолтными данными
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # ЕСЛИ ВКЛЮЧЕН ГЕО-БЛОК, удаляем заглушку, чтобы видеть реальный результат
+            # [FIX] СТИРАЕМ заглушку Geo, чтобы если генерация сломалась, мы увидели ошибку, а не старый текст
             if use_geo:
-                row_data['IP_PROP4819'] = "" 
+                row_data['IP_PROP4819'] = ""
 
             # ВИЗУАЛ
             row_data['Tags HTML'] = "" 
@@ -3725,11 +3725,11 @@ with tab_wholesale_main:
                     p_html += '</div></div>'
                     row_data['Promo HTML'] = p_html
 
-            # === AI ГЕНЕРАЦИЯ (Исправлено) ===
+            # === AI ГЕНЕРАЦИЯ (С исправленной логикой) ===
             
             # 1. ТЕКСТ
             if use_text and model:
-                # Передаем список actual_text_list, который мы достали выше
+                # Передаем actual_text_list, который мы достали выше (он точно не пустой, если вы его заполняли)
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
                 for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
 
@@ -3743,7 +3743,7 @@ with tab_wholesale_main:
                         row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
-            # 3. GEO
+            # 3. GEO (Исправлено: Пишем ошибку в ячейку, если что-то пошло не так)
             if use_geo and model:
                 if actual_geo_list:
                     cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
@@ -3753,7 +3753,7 @@ with tab_wholesale_main:
                         row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data['IP_PROP4819'] = f"Geo API Error: {e}"
                 else:
-                    row_data['IP_PROP4819'] = "Ошибка: Список городов пуст, генерация невозможна."
+                    row_data['IP_PROP4819'] = "Error: Geo list is empty."
 
             # Сайдбар
             if use_sidebar: row_data['Sidebar HTML'] = full_sidebar_code
@@ -4009,6 +4009,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
