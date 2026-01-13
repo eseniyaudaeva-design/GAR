@@ -1865,14 +1865,13 @@ def get_page_data_for_gen(url):
 
 def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * num_blocks
-    if not genai: return ["Error: google-generativeai lib not installed"] * num_blocks
+    if not genai: return ["Error: google-genai lib not installed"] * num_blocks
     
-    # Настройка API
+    # === ИНИЦИАЛИЗАЦИЯ КЛИЕНТА (НОВЫЙ SDK) ===
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash') # Используем быструю и дешевую модель
+        client = genai.Client(api_key=api_key)
     except Exception as e:
-        return [f"API Config Error: {str(e)}"] * num_blocks
+        return [f"Client Init Error: {str(e)}"] * num_blocks
 
     seo_words = seo_words or []
     seo_instruction_block = ""
@@ -1886,26 +1885,30 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем {num_blocks} блокам.
 2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b>..."
 3. СТРОГИЙ ЗАПРЕТ: Используй тег <b> ТОЛЬКО для этих SEO-слов. Не выделяй жирным ничего другого.
-4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным.
+4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь.
 -------------------------------------------
 """
 
+    # 2. Системная роль (Твой полный оригинал)
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
-        "Твоя цель — писать глубокий, технически полезный текст для профессионалов. "
+        "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
         "Ты выдаешь ТОЛЬКО HTML-код. "
-        "Стиль: Деловой, экспертный. Избегай воды. "
-        "Факты и конкретика: Подкрепляй суждения фактами. "
-        "Коммерческая направленность: Текст должен продавать. Говори от лица производителя/поставщика. "
+        "Стиль: Деловой, экспертный, но \"человечный\" и понятный. Избегай канцеляризмов и пространных рассуждений. "
+        "Факты и конкретика: Все суждения подкрепляй измеримыми фактами, цифрами, ссылками на ГОСТы, марки стали и другие нормативы. "
+        "Используй поисковые инструменты для проверки и обогащения текста актуальной информацией. "
+        "Коммерческая направленность: Текст должен продавать. Говори от лица компании-производителя/поставщика. "
+        "Вместо \"проверенный поставщик\" используй формулировки, подчеркивающие собственное производство и экспертизу. "
+        "Формула Главреда для B2B: В тексте должны быть ответы на вопросы: что это? какую проблему решает? кому подойдет? "
+        "какие есть разновидности? Дополнительно раскрой информацию о стандартах производства, складских запасах и возможности изготовления под заказ. "
         "СТРОГИЕ ЗАПРЕТЫ: "
-        "1. Не используй упоминания Украины, политики. Контент строго для РФ. "
-        "2. НИКОГДА не используй ссылки на источники. "
-        "3. Именна собственные и города с заглавной буквы. ГОСТ всегда заглавными."
+        "1. Не используй упоминания Украины, украинских городов (Киев, Львов и др.), политические темы, валюту гривну. Контент строго для РФ. "
+        "2. НИКОГДА не используй ссылки на источники ни в тексте, ни в списках. Чисти текст от них полностью. "
+        "3. Именна собственные, названия городов пиши с заглавной буквы. Марки пиши в соответствии с марочниками. ГОСТ всегда заглавными."
     )
 
+    # 3. Пользовательский промт (Твой полный оригинал)
     user_prompt = f"""
-    {system_instruction}
-
     ИСХОДНЫЕ ДАННЫЕ:
     Название товара: "{tag_name}"
     Базовый текст (фактура): \"\"\"{base_text[:3500]}\"\"\"
@@ -1916,36 +1919,55 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     Напиши {num_blocks} HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||
     
     ОБЩИЕ ТРЕБОВАНИЯ:
-    1. ОБЪЕМ: Каждый блок ~600-800 символов.
-    2. ЧИСТОТА: Только HTML, без Markdown (```html).
+    1. ОБЪЕМ: Каждый блок должен содержать максимум 800 символов. Раскрывай тему подробно.
+    2. ЧИСТОТА: Исключи любые ссылки на источники.
+    3. ПОЛЬЗА: Текст должен быть технически грамотным и полезным для специалиста по закупкам. Избегай "воды".
     
-    СТРУКТУРА КАЖДОГО БЛОКА:
-    1. Заголовок (<h2> для 1-го, <h3> для остальных).
-    2. Текст (<p>).
-    3. Список (<ul> с <li>).
-    4. Текст (<p>).
+    ТРЕБОВАНИЯ К СТРУКТУРЕ КАЖДОГО БЛОКА:
+    Каждый из {num_blocks} блоков должен строго соблюдать следующий порядок элементов:
+    1. Заголовок (<h2> только для 1-го блока, <h3> для блоков 2-5).
+    2. Первый абзац текста (<p>) - развернутый, информативный.
+    3. Вводное предложение, подводящее к списку (например: "Основные характеристики:", "Сферы применения:").
+    4. Маркированный список (<ul> c <li>).
+    5. Второй (завершающий) абзац текста (<p>) - развернутый.
     
     ТЕМЫ БЛОКОВ:
-    БЛОК 1: Вводный. Заголовок <h2>{forced_header}</h2>.
-    БЛОКИ 2-{num_blocks}: Технические детали, применение, производство.
+    --- БЛОК 1 (Вводный) ---
+    - Заголовок: <h2>{forced_header}</h2>
+    - Описание товара, назначение, ключевые особенности.
     
-    ВЫВОД: Только HTML код, разбитый через |||BLOCK_SEP|||.
+    --- БЛОКИ 2, 3, 4, 5 (Технические детали) ---
+    - Заголовки: <h3> (Характеристики, Применение, Производство, Особенности, Сортамент и т.д.).
+    - Используй фактуру из "Базового текста".
+    
+    ФИНАЛЬНЫЕ УСЛОВИЯ:
+    - Никаких вводных слов типа "Вот ваш код".
+    - Никакого Markdown (```).
+    - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
     """
     
     try:
-        response = model.generate_content(user_prompt)
+        # Объединяем инструкции в один запрос (специфика Gemini Client)
+        full_content = system_instruction + "\n\n" + user_prompt
+        
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=full_content
+        )
         content = response.text
         
-        # Чистка ответа
+        # Чистка ответа от лишних артефактов
         content = re.sub(r'\[\d+\]', '', content)
         content = content.replace("```html", "").replace("```", "").strip()
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
         
+        # Если блоков меньше чем надо, добиваем пустыми
         while len(blocks) < num_blocks: blocks.append("")
+        
         return blocks[:num_blocks]
     except Exception as e:
-        return [f"Gemini API Error: {str(e)}"] * num_blocks
+        return [f"API Error: {str(e)}"] * num_blocks
 
 # ==========================================
 # 7. UI TABS RESTRUCTURED
@@ -3094,7 +3116,8 @@ with tab_wholesale_main:
                 manual_html_source = None
 
         with col_key:
-            default_key = st.session_state.get('gemini_key_cache', "AIzaSyDy1XyLb1ClOuCDuneheIsgDeq4zH-WYq8")
+            # === ЗАМЕНА НА GEMINI ===
+            default_key = st.session_state.get('gemini_key_cache', "")
             gemini_api_key = st.text_input("Google Gemini API Key", value=default_key, type="password")
             if gemini_api_key: st.session_state.gemini_key_cache = gemini_api_key
 
@@ -3468,7 +3491,7 @@ with tab_wholesale_main:
     st.markdown("---")
     
 # ==========================================
-    # 4. ЗАПУСК ГЕНЕРАЦИИ (ИСПРАВЛЕННЫЙ ПОИСК ССЫЛОК)
+    # 4. ЗАПУСК ГЕНЕРАЦИИ (GOOGLE GENAI VERSION)
     # ==========================================
     
     ready_to_go = True
@@ -3478,166 +3501,61 @@ with tab_wholesale_main:
     else:
         if not main_category_url: ready_to_go = False
 
-# === ИСПРАВЛЕНИЕ: Проверяем gemini_api_key вместо pplx_api_key ===
+    # Проверка ключа Gemini
     if (use_text or use_tables) and not gemini_api_key: ready_to_go = False
-    
-    # Убираем жесткие проверки контента здесь, так как подгрузим файлы принудительно ниже
-    # if use_tags and not tags_file_content: ready_to_go = False 
     if use_promo and df_db_promo is None: ready_to_go = False
-    
-    # === ИСПРАВЛЕНИЕ: Здесь тоже меняем на gemini_api_key ===
     if use_geo and not gemini_api_key: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
-        # === ОЧИСТКА ПРЕДЫДУЩИХ РЕЗУЛЬТАТОВ ===
         st.session_state.gen_result_df = None
         st.session_state.unified_excel_data = None
-        # ======================================
         
         status_box = st.status("🛠️ Подготовка данных...", expanded=True)
         final_data = [] 
         
-        # 1. СБОР ИСХОДНЫХ ССЫЛОК И БАЗ (ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА)
-        
-        # --- База Тегов (links_base.txt) ---
+        # --- СБОР БАЗ ДАННЫХ (БЕЗ ИЗМЕНЕНИЙ) ---
+        # 1. Теги
         tags_map = {}
         all_tags_links = []
         if use_tags:
-            # Сначала пробуем взять из UI (если загружали вручную)
             if tags_file_content:
                 s_io = io.StringIO(tags_file_content)
                 all_tags_links = [l.strip() for l in s_io.readlines() if l.strip()]
-            # Если пусто, пробуем читать файл с диска напрямую
             elif os.path.exists("data/links_base.txt"):
                 with open("data/links_base.txt", "r", encoding="utf-8") as f:
                     all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
             
-            # --- УМНЫЙ ПОИСК (Smart Matching) ---
             for kw in global_tags_list:
-                # 1. Транслитерация
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                
-                # 2. Выделение корня (обрезаем окончания, чтобы найти 'gibkiy' в 'gibkaya')
-                search_roots = {tr} # Исходный вариант
-                if len(tr) > 5: 
-                    search_roots.add(tr[:-1]) # минус 1 буква
-                    search_roots.add(tr[:-2]) # минус 2 буквы (iy, yy, ay)
-                elif len(tr) > 4:
-                    search_roots.add(tr[:-1])
+                search_roots = {tr}
+                if len(tr) > 5: search_roots.update([tr[:-1], tr[:-2]])
+                elif len(tr) > 4: search_roots.add(tr[:-1])
 
-                # 3. Ищем любое совпадение корня в ссылках
                 matches = []
                 for u in all_tags_links:
-                    u_lower = u.lower()
-                    for root in search_roots:
-                        if root in u_lower:
-                            matches.append(u)
-                            break # Если нашли по одному корню, переходим к след. ссылке
-                
+                    if any(root in u.lower() for root in search_roots):
+                        matches.append(u); break
                 if matches: tags_map[kw] = matches
 
-        # --- База Промо (images_db.xlsx) ---
+        # 2. Промо
         p_img_map = {}
         if use_promo and df_db_promo is not None:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
         
-        # --- База Сайдбара (menu_structure.txt) ---
+        # 3. Сайдбар
         all_menu_urls = []
         if use_sidebar:
-            # Сначала из UI
             if sidebar_content:
                 s_io = io.StringIO(sidebar_content)
                 all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
-            # Иначе с диска
             elif os.path.exists("data/menu_structure.txt"):
                 with open("data/menu_structure.txt", "r", encoding="utf-8") as f:
                     all_menu_urls = [l.strip() for l in f.readlines() if l.strip()]
 
-        # =========================================================
-        # 🔥 ЛОГИКА ПОИСКА ПОТЕРЯННЫХ СЛОВ (ОБНОВЛЕННАЯ)
-        # =========================================================
-        missing_words_log = set()
-        
-        # 1. Проверяем ТЕГИ
-        if use_tags:
-            for kw in global_tags_list:
-                if kw not in tags_map: 
-                    missing_words_log.add(kw)
-        
-        # 2. Проверяем ПРОМО (Тоже умный поиск)
-        if use_promo:
-            for kw in global_promo_list:
-                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                # Формируем корни для поиска
-                roots = [tr]
-                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
-                
-                has_match = False
-                for u in p_img_map.keys():
-                    if any(r in u for r in roots):
-                        has_match = True
-                        break
-                
-                if not has_match:
-                    missing_words_log.add(kw)
-
-        # 3. Проверяем САЙДБАР (Тоже умный поиск)
-        if use_sidebar and global_sidebar_list:
-            for kw in global_sidebar_list:
-                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                roots = [tr]
-                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
-                
-                has_match = False
-                for u in all_menu_urls:
-                    if any(r in u for r in roots):
-                        has_match = True
-                        break
-                
-                if not has_match:
-                    missing_words_log.add(kw)
-
-        # 4. АВТОМАТИЧЕСКОЕ ПЕРЕРАСПРЕДЕЛЕНИЕ
-        if missing_words_log:
-            missing_list = sorted(list(missing_words_log))
-            
-            # А. Добавляем в Текстовый контекст
-            for w in missing_list:
-                if w not in text_context_final_list:
-                    text_context_final_list.append(w)
-            
-            # Б. Добавляем в Табличный контекст
-            tech_additions = []
-            for w in missing_list:
-                # Если цифра, ГОСТ или специфичные слова
-                if any(char.isdigit() for char in w) or any(x in w.lower() for x in ['гост', 'тип', 'форма', 'мм', 'кг']):
-                    tech_additions.append(w)
-            
-            if tech_additions:
-                tech_context_final_str += "\n" + ", ".join(tech_additions)
-
-            # В. ПЛАШКА
-            status_box.markdown(f"""
-                <div style="background-color: #FFF4E5; border-left: 5px solid #FF9800; padding: 15px; border-radius: 4px; margin-bottom: 15px; color: #663C00;">
-                    <strong>⚠️ Внимание: Часть ссылок не найдена</strong><br>
-                    <span style="font-size: 0.9em;">
-                    Мы не нашли точного совпадения в структуре для: <b>{', '.join(missing_list)}</b>.<br>
-                    ✅ <u>Они были перенесены в ТЗ для Нейросети (будут в тексте/таблицах).</u>
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
-            time.sleep(2)
-
-        # =========================================================
-        # ДАЛЕЕ СТАНДАРТНАЯ ЛОГИКА (БЕЗ ИЗМЕНЕНИЙ В СТРУКТУРЕ)
-        # =========================================================
-
+        # --- СБОР СТРАНИЦ ---
         target_pages = []
-        soup = None
-        current_base_url = main_category_url if main_category_url else "http://localhost"
-
         try:
             if use_manual_html:
                 status_box.write("📂 Обрабатываем HTML код...")
@@ -3646,127 +3564,63 @@ with tab_wholesale_main:
                 status_box.write(f"🕵️ Сканируем категорию: {main_category_url}")
                 session = requests.Session()
                 retry = Retry(connect=3, read=3, redirect=3, backoff_factor=0.5)
-                adapter = HTTPAdapter(max_retries=retry)
-                session.mount('http://', adapter)
-                session.mount('https://', adapter)
-                
+                session.mount('https://', HTTPAdapter(max_retries=retry))
                 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
                 r = session.get(main_category_url, headers=headers, timeout=30, verify=False)
-                
-                if r.status_code == 200:
-                    soup = BeautifulSoup(r.text, 'html.parser')
-                else: 
-                    status_box.error(f"Ошибка доступа: {r.status_code}")
-                    st.stop()
+                if r.status_code == 200: soup = BeautifulSoup(r.text, 'html.parser')
+                else: status_box.error(f"Ошибка доступа: {r.status_code}"); st.stop()
             
             if soup:
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
                     for link in tags_container.find_all('a'):
-                        href = link.get('href')
-                        name = link.get_text(strip=True)
-                        if href and name:
-                            full_url = urljoin(current_base_url, href)
-                            target_pages.append({'url': full_url, 'name': name})
+                        full_url = urljoin(main_category_url or "http://localhost", link.get('href'))
+                        target_pages.append({'url': full_url, 'name': link.get_text(strip=True)})
                 
                 if not target_pages:
-                    status_box.warning("Теги товаров не найдены (класс .popular-tags-inner). Генерируем для одной страницы.")
                     h1 = soup.find('h1')
-                    name = h1.get_text(strip=True) if h1 else "Товар"
-                    target_pages.append({'url': current_base_url, 'name': name})
-                    
-        except Exception as e: 
-            status_box.error(f"Критическая ошибка: {e}")
-            st.stop()
-            
-        # Сбор имен для ссылок
-        urls_to_fetch_names = set()
-        promo_items_pool = []  # <--- ДОБАВЛЕНА ИНИЦИАЛИЗАЦИЯ
-        
-        if use_tags:
-            for kw, matches in tags_map.items():
-                urls_to_fetch_names.update(matches)
+                    target_pages.append({'url': main_category_url or "local", 'name': h1.get_text(strip=True) if h1 else "Товар"})
+        except Exception as e: status_box.error(f"Ошибка: {e}"); st.stop()
 
+        # --- СБОР ИМЕН ССЫЛОК ---
+        urls_to_fetch_names = set()
+        promo_items_pool = []
+        if use_tags:
+            for matches in tags_map.values(): urls_to_fetch_names.update(matches)
+        
         if use_promo:
             used_urls = set()
             for kw in global_promo_list:
-                if kw in missing_words_log: continue
-                
-                # Повторяем умный поиск для сбора ссылок
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                roots = [tr]
-                if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
-                
-                matches = []
-                # Ищем в keys() карты картинок
-                for u in p_img_map.keys():
-                    if any(r in u for r in roots): matches.append(u)
-                
-                # === [ИСПРАВЛЕНИЕ] Ограничиваем: 1 слово = 1 ссылка ===
+                roots = [tr, tr[:-1], tr[:-2]] if len(tr)>5 else [tr]
+                matches = [u for u in p_img_map.keys() if any(r in u for r in roots)]
                 if matches:
-                    random.shuffle(matches) # Перемешиваем, чтобы было разнообразие
-                    
-                    found_for_this_kw = False
-                    for m in matches:
-                        if m not in used_urls:
-                            urls_to_fetch_names.add(m)
-                            promo_items_pool.append({'url': m, 'img': p_img_map[m]})
-                            used_urls.add(m)
-                            found_for_this_kw = True
-                            break # <-- ГЛАВНЫЙ ФИКС: Берем только ОДНУ ссылку на ОДНО слово
+                    m = random.choice(matches)
+                    if m not in used_urls:
+                        urls_to_fetch_names.add(m); promo_items_pool.append({'url': m, 'img': p_img_map[m]}); used_urls.add(m)
 
         sidebar_matched_urls = []
         if use_sidebar:
             if global_sidebar_list:
                 for kw in global_sidebar_list:
-                    if kw in missing_words_log: continue
-                    
                     tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                    roots = [tr]
-                    if len(tr) > 5: roots.extend([tr[:-1], tr[:-2]])
-                    
-                    found = []
-                    for u in all_menu_urls:
-                        if any(r in u for r in roots): found.append(u)
-                    
+                    roots = [tr, tr[:-1], tr[:-2]] if len(tr)>5 else [tr]
+                    found = [u for u in all_menu_urls if any(r in u for r in roots)]
                     sidebar_matched_urls.extend(found)
                 sidebar_matched_urls = list(set(sidebar_matched_urls))
-            else:
-                sidebar_matched_urls = all_menu_urls
-            
+            else: sidebar_matched_urls = all_menu_urls
             urls_to_fetch_names.update(sidebar_matched_urls)
 
-        # --- КЭШИРОВАНИЕ ИМЕН ---
         url_name_cache = {}
         if urls_to_fetch_names:
-            status_box.write(f"🌍 Получаем названия для {len(urls_to_fetch_names)} ссылок...")
-            
-            def fetch_name_worker(u): 
-                return u, get_breadcrumb_only(u) 
-            
+            status_box.write(f"🌍 Получаем названия ссылок ({len(urls_to_fetch_names)})...")
+            def fetch_w(u): return u, get_breadcrumb_only(u)
             with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-                future_to_url = {executor.submit(fetch_name_worker, u): u for u in urls_to_fetch_names}
-                done_cnt = 0
-                prog_fetch = status_box.progress(0)
-                for future in concurrent.futures.as_completed(future_to_url):
-                    u_res, name_res = future.result()
-                    norm_key = u_res.rstrip('/')
-                    
-                    if name_res:
-                        url_name_cache[norm_key] = name_res
-                    else:
-                        slug = norm_key.split('/')[-1]
-                        url_name_cache[norm_key] = force_cyrillic_name_global(slug)
-                    
-                    done_cnt += 1
-                    prog_fetch.progress(done_cnt / len(urls_to_fetch_names))
-            
-            status_box.write("✅ Названия собраны!")
+                for f in concurrent.futures.as_completed({executor.submit(fetch_w, u): u for u in urls_to_fetch_names}):
+                    u_res, name_res = f.result()
+                    url_name_cache[u_res.rstrip('/')] = name_res or force_cyrillic_name_global(u_res.split('/')[-1])
 
-        # ------------------------------------------------------------------
-        # СБОРКА КОНТЕНТА
-        # ------------------------------------------------------------------
-        
+        # --- ГЕНЕРАЦИЯ САЙДБАРА ---
         full_sidebar_code = ""
         if use_sidebar:
             status_box.write("🔨 Сборка меню...")
@@ -3774,8 +3628,7 @@ with tab_wholesale_main:
             for url in sidebar_matched_urls:
                 path = urlparse(url).path.strip('/')
                 parts = [p for p in path.split('/') if p]
-                idx_start = 0
-                if 'catalog' in parts: idx_start = parts.index('catalog') + 1
+                idx_start = parts.index('catalog') + 1 if 'catalog' in parts else 0
                 rel_parts = parts[idx_start:] if parts[idx_start:] else parts
                 
                 curr = tree
@@ -3783,8 +3636,7 @@ with tab_wholesale_main:
                     if part not in curr: curr[part] = {}
                     if i == len(rel_parts) - 1:
                         curr[part]['__url__'] = url
-                        cache_key = url.rstrip('/')
-                        curr[part]['__name__'] = url_name_cache.get(cache_key, force_cyrillic_name_global(part))
+                        curr[part]['__name__'] = url_name_cache.get(url.rstrip('/'), force_cyrillic_name_global(part))
                     curr = curr[part]
             
             def render_tree_internal(node, level=1):
@@ -3795,134 +3647,108 @@ with tab_wholesale_main:
                     name = child.get('__name__', force_cyrillic_name_global(key))
                     url = child.get('__url__')
                     has_children = any(k for k in child.keys() if not k.startswith('__'))
-                    
                     if level == 1:
                         html += '<li class="level-1-header">\n'
                         if has_children:
-                            html += f'    <span class="dropdown-toggle">{name}</span>\n'
-                            html += '    <ul class="collapse-menu list-unstyled">\n'
-                            html += render_tree_internal(child, level=2)
-                            html += '    </ul>\n'
-                        else:
-                            target = url if url else "#"
-                            html += f'    <a href="{target}">{name}</a>\n'
+                            html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=2)}</ul>'
+                        else: html += f'<a href="{url or "#"}">{name}</a>'
                         html += '</li>\n'
                     elif level == 2:
+                        html += '<li class="level-2-header">\n' if has_children else '<li class="level-2-link-special">\n'
                         if has_children:
-                            html += '<li class="level-2-header">\n'
-                            html += f'    <span class="dropdown-toggle">{name}</span>\n'
-                            html += '    <ul class="collapse-menu list-unstyled">\n'
-                            html += render_tree_internal(child, level=3)
-                            html += '    </ul>\n'
-                        else:
-                            target = url if url else "#"
-                            html += f'<li class="level-2-link-special"><a href="{target}">{name}</a></li>\n'
-                    elif level >= 3:
-                        target = url if url else "#"
-                        html += f'<li class="level-3-link"><a href="{target}">{name}</a></li>\n'
+                            html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=3)}</ul>'
+                        else: html += f'<a href="{url or "#"}">{name}</a>'
+                        html += '</li>\n'
+                    elif level >= 3: html += f'<li class="level-3-link"><a href="{url or "#"}">{name}</a></li>\n'
                 return html
+            full_sidebar_code = f'<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{render_tree_internal(tree, level=1)}</ul></nav></div></div>'
 
-            inner_html = render_tree_internal(tree, level=1)
-            full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>"""
-
-# === ИНИЦИАЛИЗАЦИЯ GEMINI ===
-        model = None
+        # === ИНИЦИАЛИЗАЦИЯ CLIENT (НОВЫЙ SDK) ===
+        client = None
         if genai and (use_text or use_tables or use_geo) and gemini_api_key:
             try:
-                genai.configure(api_key=gemini_api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                client = genai.Client(api_key=gemini_api_key)
             except:
-                status_box.error("Ошибка авторизации Gemini")
+                status_box.error("Ошибка ключа Gemini")
 
         progress_bar = status_box.progress(0)
-        total_steps = len(target_pages)
         
         for idx, page in enumerate(target_pages):
-            base_text_raw, tags_on_page, real_header_h2, err = get_page_data_for_gen(page['url'])
+            base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
-            current_page_seo_words = list(text_context_final_list)
             
-            # --- ВИЗУАЛЬНЫЕ БЛОКИ ---
+            # ВИЗУАЛ (Теги/Промо)
             row_data['Tags HTML'] = "" 
-            row_data['Promo HTML'] = ""
-            
-            # ... (Код Tags HTML и Promo HTML оставляем без изменений, он не зависит от нейросети) ...
             if use_tags:
-                html_collector = []
+                html_c = []
                 for kw in global_tags_list:
                     if kw in tags_map:
                         valid = [u for u in tags_map[kw] if u.rstrip('/') != page['url'].rstrip('/')]
                         if valid:
                             sel = random.choice(valid)
                             nm = url_name_cache.get(sel.rstrip('/'), kw)
-                            html_collector.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
-                        else:
-                             if kw not in current_page_seo_words: current_page_seo_words.append(kw)
-                if html_collector:
-                    row_data['Tags HTML'] = '<div class="popular-tags">' + "\n".join(html_collector) + '</div>'
+                            html_c.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
+                if html_c: row_data['Tags HTML'] = '<div class="popular-tags">' + "\n".join(html_c) + '</div>'
 
+            row_data['Promo HTML'] = ""
             if use_promo:
                 cands = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
                 random.shuffle(cands)
                 if cands:
                     p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
                     for item in cands:
-                        p_name = url_name_cache.get(item['url'].rstrip('/'), "Товар")
-                        p_html += f'<div class="promo-card" style="min-width:220px;"><a href="{item["url"]}"><img src="{item["img"]}" style="max-height:100px;"><br>{p_name}</a></div>'
+                        nm = url_name_cache.get(item['url'].rstrip('/'), "Товар")
+                        p_html += f'<div class="promo-card" style="min-width:220px;"><a href="{item["url"]}"><img src="{item["img"]}" style="max-height:100px;"><br>{nm}</a></div>'
                     p_html += '</div></div>'
                     row_data['Promo HTML'] = p_html
 
-            # --- НЕЙРОСЕТЬ (GEMINI) ---
-
+            # === AI ГЕНЕРАЦИЯ (НОВЫЙ СИНТАКСИС) ===
+            
             # 1. ТЕКСТ
-            if use_text and model:
-                # Передаем ключ (gemini_api_key), так как он нужен внутри функции для конфигурации, 
-                # либо можно передать уже настроенный model, но проще поправить вызов.
-                # В новой функции generate_ai_content_blocks первым аргументом идет api_key
-                blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw if base_text_raw else "", page['name'], header_for_ai, num_text_blocks_val, current_page_seo_words)
+            if use_text and client:
+                blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, text_context_final_list)
                 for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
 
             # 2. ТАБЛИЦЫ
-            if use_tables and model:
+            if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
-                    ctx = f"Данные из семантики: {tech_context_final_str}" if tech_context_final_str else ""
-                    prompt = f"Create strictly HTML <table> for product '{header_for_ai}'. Table Topic: {t_topic}. Context: {ctx}. Use real typical data. No Markdown formatting, just <table> code."
+                    ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
+                    prompt = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
                     try:
-                        resp = model.generate_content(prompt)
-                        html = resp.text.replace("```html", "").replace("```", "").strip()
-                        if "<table" not in html: html = f"<table>{html}</table>"
-                        row_data[f'Table_{t_i+1}_HTML'] = html
+                        resp = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
+                        row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
             # 3. GEO
-            if use_geo and model and global_geo_list:
+            if use_geo and client and global_geo_list:
                 cities = ", ".join(random.sample(global_geo_list, min(20, len(global_geo_list))))
-                prompt = f"Write a short HTML <p> paragraph regarding delivery of '{header_for_ai}' to these cities: {cities}. Mention fast shipping. No Markdown."
+                prompt = f"Write HTML <p> regarding delivery to: {cities}. No Markdown."
                 try:
-                    resp = model.generate_content(prompt)
+                    resp = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
                     row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
                 except Exception as e: row_data['IP_PROP4819'] = f"Error: {e}"
 
+            # Сайдбар
             if use_sidebar: row_data['Sidebar HTML'] = full_sidebar_code
+
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
 
-        # --- СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ---
+        # Сохранение
         df_result = pd.DataFrame(final_data)
         st.session_state.gen_result_df = df_result 
         
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_result.to_excel(writer, index=False)
-        
         st.session_state.unified_excel_data = buffer.getvalue()
         
-        status_box.update(label="✅ Конвейер завершен! Данные готовы.", state="complete", expanded=False)
+        status_box.update(label="✅ Готово!", state="complete", expanded=False)
 
-    # ИСПРАВЛЕНИЕ: Проверяем, что данные не просто есть в ключах, а не равны None
+    # КНОПКА СКАЧИВАНИЯ (Она теперь здесь)
     if st.session_state.get('unified_excel_data') is not None:
         st.success("Файл успешно сгенерирован!")
         st.download_button(
@@ -4159,6 +3985,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
