@@ -1872,7 +1872,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     seo_instruction_block = ""
     
     if seo_words:
-        # Превращаем список в строку для промта
         seo_list_str = ", ".join(seo_words)
         seo_instruction_block = f"""
 --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
@@ -1886,7 +1885,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 -------------------------------------------
 """
 
-    # 2. ПРОМТЫ (Системный и Пользовательский)
+    # 2. ПРОМТЫ
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
         "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
@@ -1943,23 +1942,20 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     """
     
     try:
-        # === ИСПРАВЛЕНИЕ: Используем стандартный метод API ===
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # === ВОТ ТУТ МЫ СМЕНИЛИ МОДЕЛЬ НА gemini-pro ===
+        model = genai.GenerativeModel('gemini-pro')
         
-        # Соединяем системную роль и промт (стандартный API принимает один кусок текста)
         full_prompt = system_instruction + "\n\n" + user_prompt
         
         response = model.generate_content(full_prompt)
         content = response.text
         
-        # Чистка ответа
         content = re.sub(r'\[\d+\]', '', content)
         content = content.replace("```html", "").replace("```", "").strip()
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
         
-        # Если блоков меньше чем надо, добиваем пустыми
         while len(blocks) < num_blocks: blocks.append("")
         
         return blocks[:num_blocks]
@@ -3503,92 +3499,82 @@ with tab_wholesale_main:
     if (use_text or use_tables or use_geo) and not gemini_api_key: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
 
-    # ==========================================
-    # 🆘 БЛОК ДИАГНОСТИКИ (ВСТАВИТЬ ПЕРЕД КНОПКОЙ ЗАПУСКА)
+# ==========================================
+    # 🆘 БЛОК ДИАГНОСТИКИ (СПИСОК МОДЕЛЕЙ)
     # ==========================================
     st.markdown("---")
-    with st.expander("🛠️ ДИАГНОСТИКА API (Нажмите, если генерация не работает)", expanded=True):
-        st.write("Нажмите кнопку ниже, чтобы отправить тестовый запрос 'Hello' в Gemini. Мы увидим точный текст ошибки.")
-        
-        if st.button("📡 ПРОВЕРИТЬ СВЯЗЬ С GEMINI"):
+    with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошибки)", expanded=True):
+        if st.button("📡 ПРОВЕРИТЬ GEMINI-PRO"):
             if not gemini_api_key:
                 st.error("❌ Ключ API не введен!")
             elif not genai:
                 st.error("❌ Библиотека google-generativeai не установлена!")
             else:
                 try:
-                    # 1. Настройка
                     genai.configure(api_key=gemini_api_key)
-                    # 2. Инициализация модели
-                    test_model = genai.GenerativeModel('gemini-1.5-flash')
-                    # 3. Тестовый запрос
+                    # Используем gemini-pro для теста
+                    test_model = genai.GenerativeModel('gemini-pro')
                     with st.spinner("Отправка запроса..."):
-                        response = test_model.generate_content("Just say 'OK'")
+                        response = test_model.generate_content("Say OK")
                     
-                    # 4. Результат
                     if response and response.text:
-                        st.success(f"✅ УСПЕХ! Ответ нейросети: {response.text}")
-                        st.info("Вывод: Ключ рабочий, лимиты есть. Проблема была в передаче данных (исправлено в коде ниже).")
+                        st.success(f"✅ УСПЕХ! Ответ: {response.text}")
                     else:
-                        st.warning("⚠️ Ответ получен, но он пустой. Возможно, сработали фильтры безопасности.")
-                        
+                        st.warning("⚠️ Ответ пустой.")
                 except Exception as e:
-                    # ВЫВОД ПОЛНОЙ ОШИБКИ
-                    st.error(f"❌ ОШИБКА API: {str(e)}")
-                    
-                    err_str = str(e)
-                    if "429" in err_str:
-                        st.markdown("**Диагноз:** 🛑 **Закончились лимиты (Quota Exceeded).** Нужен новый ключ.")
-                    elif "400" in err_str or "API key not valid" in err_str:
-                        st.markdown("**Диагноз:** 🔑 **Неверный ключ API.** Проверьте копирование.")
-                    elif "User location is not supported" in err_str:
-                        st.markdown("**Диагноз:** 🌍 **Гео-блок.** Google Gemini не работает с вашего IP. Включите VPN (USA/Europe).")
-                    elif "genai.Client" in err_str:
-                        st.markdown("**Диагноз:** 💻 **Старая версия библиотеки.** Используйте код с `GenerativeModel` (исправлено в предыдущем шаге).")
+                    st.error(f"❌ ОШИБКА: {str(e)}")
+                    if "404" in str(e):
+                        st.info("Попробуйте получить список доступных моделей:")
+                        try:
+                            models = [m.name for m in genai.list_models()]
+                            st.code("\n".join(models))
+                        except: pass
 
     st.markdown("---")
+
     # ==========================================
+    # 4. ЗАПУСК ГЕНЕРАЦИИ (ФИНАЛ С gemini-pro)
+    # ==========================================
+    
+    ready_to_go = True
+    if use_manual_html:
+        if not manual_html_source: ready_to_go = False
+    else:
+        if not main_category_url: ready_to_go = False
+
+    if (use_text or use_tables or use_geo) and not gemini_api_key: ready_to_go = False
+    if use_promo and df_db_promo is None: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         st.session_state.gen_result_df = None
         st.session_state.unified_excel_data = None
         
-        # --- [ВАЖНО] ПРИНУДИТЕЛЬНОЕ ЧТЕНИЕ ДАННЫХ ПЕРЕД СТАРТОМ ---
-        # Чтобы списки не были пустыми после нажатия кнопки
-        
-        # 1. Слова для Текста
+        # 1. ЧТЕНИЕ ДАННЫХ
         raw_txt_val = st.session_state.get("ai_text_context_editable", "")
         if not raw_txt_val: raw_txt_val = text_context_default
         actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
 
-        # 2. Слова для Гео
         raw_geo_val = st.session_state.get("kws_geo_auto", "")
         if not raw_geo_val: raw_geo_val = geo_context_default
         actual_geo_list = [x.strip() for x in re.split(r'[,\n]+', raw_geo_val) if x.strip()]
-        # ----------------------------------------------------------
 
         status_box = st.status("🛠️ Подготовка данных...", expanded=True)
-        
         status_box.write(f"📝 Слов для текста: {len(actual_text_list)}")
         status_box.write(f"🌍 Городов для Гео: {len(actual_geo_list)}")
 
-        if use_text and not actual_text_list:
-            status_box.warning("⚠️ Внимание: Список слов для текста пуст!")
-        if use_geo and not actual_geo_list:
-            status_box.warning("⚠️ Внимание: Список городов пуст!")
-
-        # === ИНИЦИАЛИЗАЦИЯ МОДЕЛИ (СТАНДАРТНАЯ) ===
+        # === ИНИЦИАЛИЗАЦИЯ MODEL (gemini-pro) ===
         model = None
         if genai and (use_text or use_tables or use_geo) and gemini_api_key:
             try:
                 genai.configure(api_key=gemini_api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # !!! ВАЖНАЯ ЗАМЕНА !!!
+                model = genai.GenerativeModel('gemini-pro')
             except Exception as e:
                 status_box.error(f"Ошибка подключения к Gemini: {e}")
 
         final_data = [] 
         
-        # --- СБОР БАЗ ДАННЫХ (БЕЗ ИЗМЕНЕНИЙ) ---
+        # --- БАЗЫ ДАННЫХ ---
         tags_map = {}
         all_tags_links = []
         if use_tags:
@@ -3598,12 +3584,10 @@ with tab_wholesale_main:
             elif os.path.exists("data/links_base.txt"):
                 with open("data/links_base.txt", "r", encoding="utf-8") as f:
                     all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
-            
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                 search_roots = {tr}
                 if len(tr) > 5: search_roots.update([tr[:-1], tr[:-2]])
-                elif len(tr) > 4: search_roots.add(tr[:-1])
                 matches = []
                 for u in all_tags_links:
                     if any(root in u.lower() for root in search_roots):
@@ -3625,21 +3609,19 @@ with tab_wholesale_main:
                 with open("data/menu_structure.txt", "r", encoding="utf-8") as f:
                     all_menu_urls = [l.strip() for l in f.readlines() if l.strip()]
 
-        # --- СБОР СТРАНИЦ ---
+        # --- СБОР ---
         target_pages = []
         try:
             if use_manual_html:
-                status_box.write("📂 Обрабатываем HTML код...")
                 soup = BeautifulSoup(manual_html_source, 'html.parser')
             else:
-                status_box.write(f"🕵️ Сканируем категорию: {main_category_url}")
                 session = requests.Session()
                 retry = Retry(connect=3, read=3, redirect=3, backoff_factor=0.5)
                 session.mount('https://', HTTPAdapter(max_retries=retry))
-                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                headers = {'User-Agent': 'Mozilla/5.0'}
                 r = session.get(main_category_url, headers=headers, timeout=30, verify=False)
                 if r.status_code == 200: soup = BeautifulSoup(r.text, 'html.parser')
-                else: status_box.error(f"Ошибка доступа: {r.status_code}"); st.stop()
+                else: st.stop()
             
             if soup:
                 tags_container = soup.find(class_='popular-tags-inner')
@@ -3650,14 +3632,13 @@ with tab_wholesale_main:
                 if not target_pages:
                     h1 = soup.find('h1')
                     target_pages.append({'url': main_category_url or "local", 'name': h1.get_text(strip=True) if h1 else "Товар"})
-        except Exception as e: status_box.error(f"Ошибка: {e}"); st.stop()
+        except Exception: st.stop()
 
-        # --- ВСПОМОГАТЕЛЬНЫЕ ДАННЫЕ ---
+        # --- ВСПОМОГАТЕЛЬНЫЕ ---
         urls_to_fetch_names = set()
         promo_items_pool = []
         if use_tags:
             for matches in tags_map.values(): urls_to_fetch_names.update(matches)
-        
         if use_promo:
             used_urls = set()
             for kw in global_promo_list:
@@ -3668,7 +3649,7 @@ with tab_wholesale_main:
                     m = random.choice(matches)
                     if m not in used_urls:
                         urls_to_fetch_names.add(m); promo_items_pool.append({'url': m, 'img': p_img_map[m]}); used_urls.add(m)
-
+        
         sidebar_matched_urls = []
         if use_sidebar:
             if global_sidebar_list:
@@ -3683,17 +3664,15 @@ with tab_wholesale_main:
 
         url_name_cache = {}
         if urls_to_fetch_names:
-            status_box.write(f"🌍 Получаем названия ссылок ({len(urls_to_fetch_names)})...")
             def fetch_w(u): return u, get_breadcrumb_only(u)
             with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                 for f in concurrent.futures.as_completed({executor.submit(fetch_w, u): u for u in urls_to_fetch_names}):
                     u_res, name_res = f.result()
                     url_name_cache[u_res.rstrip('/')] = name_res or force_cyrillic_name_global(u_res.split('/')[-1])
 
-        # --- ГЕНЕРАЦИЯ САЙДБАРА ---
+        # --- САЙДБАР ---
         full_sidebar_code = ""
         if use_sidebar:
-            status_box.write("🔨 Сборка меню...")
             tree = {}
             for url in sidebar_matched_urls:
                 path = urlparse(url).path.strip('/')
@@ -3707,7 +3686,6 @@ with tab_wholesale_main:
                         curr[part]['__url__'] = url
                         curr[part]['__name__'] = url_name_cache.get(url.rstrip('/'), force_cyrillic_name_global(part))
                     curr = curr[part]
-            
             def render_tree_internal(node, level=1):
                 html = ""
                 keys = sorted([k for k in node.keys() if not k.startswith('__')])
@@ -3738,15 +3716,12 @@ with tab_wholesale_main:
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
-            
-            # Заполняем дефолтными данными
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # [FIX] СТИРАЕМ заглушку Geo, чтобы если генерация сломалась, мы увидели ошибку, а не старый текст
-            if use_geo:
-                row_data['IP_PROP4819'] = ""
+            # Чистим статику если выбрано Geo
+            if use_geo: row_data['IP_PROP4819'] = ""
 
-            # ВИЗУАЛ
+            # VISUAL
             row_data['Tags HTML'] = "" 
             if use_tags:
                 html_c = []
@@ -3771,15 +3746,12 @@ with tab_wholesale_main:
                     p_html += '</div></div>'
                     row_data['Promo HTML'] = p_html
 
-            # === AI ГЕНЕРАЦИЯ (С исправленной логикой) ===
+            # === AI RUN (gemini-pro) ===
             
-            # 1. ТЕКСТ
             if use_text and model:
-                # Передаем actual_text_list, который мы достали выше (он точно не пустой, если вы его заполняли)
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
                 for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
 
-            # 2. ТАБЛИЦЫ
             if use_tables and model:
                 for t_i, t_topic in enumerate(table_prompts):
                     ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
@@ -3789,7 +3761,6 @@ with tab_wholesale_main:
                         row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
-            # 3. GEO (Исправлено: Пишем ошибку в ячейку, если что-то пошло не так)
             if use_geo and model:
                 if actual_geo_list:
                     cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
@@ -3797,17 +3768,14 @@ with tab_wholesale_main:
                     try:
                         resp = model.generate_content(prompt)
                         row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
-                    except Exception as e: row_data['IP_PROP4819'] = f"Geo API Error: {e}"
-                else:
-                    row_data['IP_PROP4819'] = "Error: Geo list is empty."
+                    except Exception as e: row_data['IP_PROP4819'] = f"Geo Error: {e}"
+                else: row_data['IP_PROP4819'] = "Geo list empty."
 
-            # Сайдбар
             if use_sidebar: row_data['Sidebar HTML'] = full_sidebar_code
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
 
-        # Сохранение
         df_result = pd.DataFrame(final_data)
         st.session_state.gen_result_df = df_result 
         
@@ -3817,7 +3785,6 @@ with tab_wholesale_main:
         st.session_state.unified_excel_data = buffer.getvalue()
         
         status_box.update(label="✅ Готово!", state="complete", expanded=False)
-
     # КНОПКА СКАЧИВАНИЯ
     if st.session_state.get('unified_excel_data') is not None:
         st.success("Файл успешно сгенерирован!")
@@ -4055,6 +4022,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
