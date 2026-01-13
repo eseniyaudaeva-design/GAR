@@ -3540,14 +3540,11 @@ with tab_wholesale_main:
                 st.error("❌ Библиотека google-generativeai не установлена!")
             else:
                 try:
-                    genai.configure(
-                        api_key=gemini_api_key,
-                        transport='rest'  # <--- ВОТ ЭТО ГЛАВНОЕ ИСПРАВЛЕНИЕ
+                    client = genai.Client(api_key=gemini_api_key)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash", 
+                        contents="Say OK"
                     )
-                    # Используем модель из вашего списка
-                    test_model = genai.GenerativeModel('gemini-2.5-flash')
-                    with st.spinner("Отправка запроса..."):
-                        response = test_model.generate_content("Say OK")
                     
                     if response and response.text:
                         st.success(f"✅ УСПЕХ! Ответ: {response.text}")
@@ -3594,13 +3591,12 @@ with tab_wholesale_main:
         status_box.write(f"📝 Слов для текста: {len(actual_text_list)}")
         status_box.write(f"🌍 Городов для Гео: {len(actual_geo_list)}")
 
-        # === ИНИЦИАЛИЗАЦИЯ MODEL (gemini-2.0-flash) ===
-        model = None
+# === ИНИЦИАЛИЗАЦИЯ CLIENT (ВМЕСТО MODEL) ===
+        client = None
         if genai and (use_text or use_tables or use_geo) and gemini_api_key:
             try:
-                genai.configure(api_key=gemini_api_key)
-                # !!! ВАЖНАЯ ЗАМЕНА !!!
-                model = genai.GenerativeModel('gemini-2.5-flash')
+                # Убираем configure, создаем Client
+                client = genai.Client(api_key=gemini_api_key)
             except Exception as e:
                 status_box.error(f"Ошибка подключения к Gemini: {e}")
 
@@ -3784,21 +3780,29 @@ with tab_wholesale_main:
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
                 for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
 
-            if use_tables and model:
+            if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
                     ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
                     prompt = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
                     try:
-                        resp = model.generate_content(prompt)
+                        # ИСПОЛЬЗУЕМ client.models.generate_content
+                        resp = client.models.generate_content(
+                            model="gemini-2.5-flash", 
+                            contents=prompt
+                        )
                         row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
-            if use_geo and model:
+            if use_geo and client:
                 if actual_geo_list:
                     cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
                     prompt = f"Write HTML <p> regarding delivery. You MUST mention these specific cities: {cities}. No Markdown. No links."
                     try:
-                        resp = model.generate_content(prompt)
+                        # ИСПОЛЬЗУЕМ client.models.generate_content
+                        resp = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=prompt
+                        )
                         row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data['IP_PROP4819'] = f"Geo Error: {e}"
                 else: row_data['IP_PROP4819'] = "Geo list empty."
@@ -4054,6 +4058,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
