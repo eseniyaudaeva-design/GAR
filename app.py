@@ -1654,12 +1654,18 @@ def analyze_ideal_name(comp_data_full):
             
     return ideal_name, report
 
-def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False):
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False, default_sort_order="Убывание"):
     if df.empty: st.info(f"{title_text}: Нет данных."); return
     col_t1, col_t2 = st.columns([7, 3])
     with col_t1: st.markdown(f"### {title_text}")
-    if f'{key_prefix}_sort_col' not in st.session_state: st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if (default_sort_col and default_sort_col in df.columns) else df.columns[0]
-    if f'{key_prefix}_sort_order' not in st.session_state: st.session_state[f'{key_prefix}_sort_order'] = "Убывание"
+    
+    # Инициализация сортировки с учетом переданных дефолтных значений
+    if f'{key_prefix}_sort_col' not in st.session_state: 
+        st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if (default_sort_col and default_sort_col in df.columns) else df.columns[0]
+    
+    # === ИЗМЕНЕНИЕ: Используем переданный default_sort_order ===
+    if f'{key_prefix}_sort_order' not in st.session_state: 
+        st.session_state[f'{key_prefix}_sort_order'] = default_sort_order
 
     search_query = st.text_input(f"🔍 Поиск ({title_text})", key=f"{key_prefix}_search")
     if search_query:
@@ -1678,19 +1684,25 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             sort_col = st.selectbox("🗂 Сортировать по:", df_filtered.columns, key=f"{key_prefix}_sort_box", index=list(df_filtered.columns).index(current_sort))
             st.session_state[f'{key_prefix}_sort_col'] = sort_col
         with col_s2:
-            sort_order = st.radio("Порядок:", ["Убывание", "Возрастание"], horizontal=True, key=f"{key_prefix}_order_box", index=0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1)
+            # Индекс 0 = Убывание, 1 = Возрастание
+            def_index = 0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
+            sort_order = st.radio("Порядок:", ["Убывание", "Возрастание"], horizontal=True, key=f"{key_prefix}_order_box", index=def_index)
             st.session_state[f'{key_prefix}_sort_order'] = sort_order
         st.markdown("</div>", unsafe_allow_html=True)
 
     ascending = (sort_order == "Возрастание")
-    if use_abs_sort_default and sort_col == "Рекомендация" and "sort_val" in df_filtered.columns: df_filtered = df_filtered.sort_values(by="sort_val", ascending=ascending)
+    
+    # Логика сортировки
+    if use_abs_sort_default and sort_col == "Рекомендация" and "sort_val" in df_filtered.columns: 
+        df_filtered = df_filtered.sort_values(by="sort_val", ascending=ascending)
     elif ("Добавить" in sort_col or "+/-" in sort_col) and df_filtered[sort_col].dtype == object:
         try:
             df_filtered['_temp_sort'] = df_filtered[sort_col].astype(str).str.replace(r'[^\d]', '', regex=True)
             df_filtered['_temp_sort'] = pd.to_numeric(df_filtered['_temp_sort'], errors='coerce').fillna(0)
             df_filtered = df_filtered.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
         except: df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
-    else: df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
+    else: 
+        df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
 
     df_filtered = df_filtered.reset_index(drop=True); df_filtered.index = df_filtered.index + 1
     buffer = io.BytesIO()
@@ -2615,7 +2627,13 @@ with tab_seo_main:
 
         # 4. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ОТКРЫТО ПО УМОЛЧАНИЮ)
         with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
-            render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
+            render_paginated_table(
+                results['relevance_top'], 
+                "4. Релевантность", 
+                "tbl_rel", 
+                default_sort_col="Позиция",        # <-- Сортировка по Позиции
+                default_sort_order="Возрастание"   # <-- По возрастанию (1, 2, 3...)
+            )
 
 # ==========================================
     # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ
@@ -2694,7 +2712,7 @@ with tab_seo_main:
         
         # 3. СКАЧИВАНИЕ (Всех 30)
         comp_data_valid = []
-        with st.status(f"🕵️ Глубокое сканирование (Всего кандидатов: {len(candidates_pool)})...", expanded=True) as status:
+        with st.status(f"🕵️ Сканирование (Всего кандидатов: {len(candidates_pool)})...", expanded=True) as status:
             with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
                 futures = {
                     executor.submit(parse_page, item['url'], settings, st.session_state.query_input): item 
@@ -4041,6 +4059,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
