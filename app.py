@@ -3560,7 +3560,7 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
                             st.code("\n".join(models))
                         except: pass
 
-        st.markdown("---")
+    st.markdown("---")
 
     # ==========================================
     # 4. ЗАПУСК ГЕНЕРАЦИИ (ФИНАЛ С gemini-2.0-flash)
@@ -3822,6 +3822,8 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
         st.session_state.unified_excel_data = buffer.getvalue()
         
         status_box.update(label="✅ Готово!", state="complete", expanded=False)
+# --- ЭТОТ КОД ДОЛЖЕН БЫТЬ НА ТОМ ЖЕ УРОВНЕ ОТСТУПА, ЧТО И if st.button(...) ---
+    
     # КНОПКА СКАЧИВАНИЯ
     if st.session_state.get('unified_excel_data') is not None:
         st.success("Файл успешно сгенерирован!")
@@ -3832,6 +3834,7 @@ with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошиб
             mime="application/vnd.ms-excel",
             key="btn_dl_unified"
         )
+
 # ==========================================
 # 5. БЛОК ПРЕДПРОСМОТРА (PREVIEW) - ФИНАЛЬНЫЙ
 # ==========================================
@@ -3865,7 +3868,7 @@ with tab_wholesale_main:
         # --- ПРОВЕРКА ПРОМО ---
         has_promo = 'Promo HTML' in row and pd.notna(row['Promo HTML']) and str(row['Promo HTML']).strip()
         
-        has_visual = has_tags or has_sidebar or has_geo or has_promo # <-- Добавили промо в условие
+        has_visual = has_tags or has_sidebar or has_geo or has_promo 
 
         # 3. Активные вкладки
         active_tabs = []
@@ -4059,6 +4062,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
