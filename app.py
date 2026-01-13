@@ -1654,16 +1654,15 @@ def analyze_ideal_name(comp_data_full):
             
     return ideal_name, report
 
-def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False, default_sort_order="Убывание"):
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False, default_sort_order="Убывание", show_controls=True):
     if df.empty: st.info(f"{title_text}: Нет данных."); return
     col_t1, col_t2 = st.columns([7, 3])
     with col_t1: st.markdown(f"### {title_text}")
     
-    # Инициализация сортировки с учетом переданных дефолтных значений
+    # Инициализация дефолтов в Session State
     if f'{key_prefix}_sort_col' not in st.session_state: 
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if (default_sort_col and default_sort_col in df.columns) else df.columns[0]
     
-    # === ИЗМЕНЕНИЕ: Используем переданный default_sort_order ===
     if f'{key_prefix}_sort_order' not in st.session_state: 
         st.session_state[f'{key_prefix}_sort_order'] = default_sort_order
 
@@ -1675,24 +1674,29 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     if df_filtered.empty: st.warning("Ничего не найдено."); return
 
-    with st.container():
-        st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
-        col_s1, col_s2, col_sp = st.columns([2, 2, 4])
-        with col_s1:
-            current_sort = st.session_state[f'{key_prefix}_sort_col']
-            if current_sort not in df_filtered.columns: current_sort = df_filtered.columns[0]
-            sort_col = st.selectbox("🗂 Сортировать по:", df_filtered.columns, key=f"{key_prefix}_sort_box", index=list(df_filtered.columns).index(current_sort))
-            st.session_state[f'{key_prefix}_sort_col'] = sort_col
-        with col_s2:
-            # Индекс 0 = Убывание, 1 = Возрастание
-            def_index = 0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
-            sort_order = st.radio("Порядок:", ["Убывание", "Возрастание"], horizontal=True, key=f"{key_prefix}_order_box", index=def_index)
-            st.session_state[f'{key_prefix}_sort_order'] = sort_order
-        st.markdown("</div>", unsafe_allow_html=True)
+    # === ЛОГИКА ОТОБРАЖЕНИЯ КОНТРОЛОВ ===
+    if show_controls:
+        with st.container():
+            st.markdown("<div class='sort-container'>", unsafe_allow_html=True)
+            col_s1, col_s2, col_sp = st.columns([2, 2, 4])
+            with col_s1:
+                current_sort = st.session_state[f'{key_prefix}_sort_col']
+                if current_sort not in df_filtered.columns: current_sort = df_filtered.columns[0]
+                sort_col = st.selectbox("🗂 Сортировать по:", df_filtered.columns, key=f"{key_prefix}_sort_box", index=list(df_filtered.columns).index(current_sort))
+                st.session_state[f'{key_prefix}_sort_col'] = sort_col
+            with col_s2:
+                def_index = 0 if st.session_state[f'{key_prefix}_sort_order'] == "Убывание" else 1
+                sort_order = st.radio("Порядок:", ["Убывание", "Возрастание"], horizontal=True, key=f"{key_prefix}_order_box", index=def_index)
+                st.session_state[f'{key_prefix}_sort_order'] = sort_order
+            st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        # Если контролы скрыты, берем значения из session_state (дефолтные)
+        sort_col = st.session_state[f'{key_prefix}_sort_col']
+        sort_order = st.session_state[f'{key_prefix}_sort_order']
 
     ascending = (sort_order == "Возрастание")
     
-    # Логика сортировки
+    # Применение сортировки
     if use_abs_sort_default and sort_col == "Рекомендация" and "sort_val" in df_filtered.columns: 
         df_filtered = df_filtered.sort_values(by="sort_val", ascending=ascending)
     elif ("Добавить" in sort_col or "+/-" in sort_col) and df_filtered[sort_col].dtype == object:
@@ -1702,9 +1706,13 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             df_filtered = df_filtered.sort_values(by='_temp_sort', ascending=ascending).drop(columns=['_temp_sort'])
         except: df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
     else: 
-        df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
+        # Проверка наличия колонки (на случай смены данных)
+        if sort_col in df_filtered.columns:
+            df_filtered = df_filtered.sort_values(by=sort_col, ascending=ascending)
 
     df_filtered = df_filtered.reset_index(drop=True); df_filtered.index = df_filtered.index + 1
+    
+    # Экспорт
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         export_df = df_filtered.copy()
@@ -1714,6 +1722,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     excel_data = buffer.getvalue()
     with col_t2: st.download_button(label="📥 Скачать Excel", data=excel_data, file_name=f"{key_prefix}_export.xlsx", mime="application/vnd.ms-excel", key=f"{key_prefix}_down")
 
+    # Пагинация
     ROWS_PER_PAGE = 20
     if f'{key_prefix}_page' not in st.session_state: st.session_state[f'{key_prefix}_page'] = 1
     total_rows = len(df_filtered); total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
@@ -1743,6 +1752,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     try: styled_df = df_view.style.apply(highlight_rows, axis=1)
     except: styled_df = df_view
     st.dataframe(styled_df, use_container_width=True, height=(len(df_view) * 35) + 40, column_config={c: None for c in cols_to_hide})
+    
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     with c_btn_prev:
         if st.button("⬅️", key=f"{key_prefix}_prev", disabled=(current_page <= 1), use_container_width=True):
@@ -1754,7 +1764,6 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             st.session_state[f'{key_prefix}_page'] += 1
             st.rerun()
     st.markdown("---")
-
 # ==========================================
 # PERPLEXITY GEN
 # ==========================================
@@ -2506,8 +2515,15 @@ with tab_seo_main:
                             st.rerun()
 
             # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ОТКРЫТО)
-            with st.expander("🏆 Таблица релевантности", expanded=True):
-                render_paginated_table(results['relevance_top'], "Релевантность", "tbl_rel", default_sort_col="Позиция", default_sort_order="Возрастание")
+            with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
+                render_paginated_table(
+                    results['relevance_top'], 
+                    "4. Релевантность", 
+                    "tbl_rel", 
+                    default_sort_col="Позиция", 
+                    default_sort_order="Возрастание", 
+                    show_controls=False # <--- СКРЫВАЕМ ФИЛЬТРЫ
+                )
 
             # =======================================================
             # БЛОК 2: ЗАКРЫТЫЕ СЕКЦИИ (ДЕТАЛИ)
@@ -2607,8 +2623,14 @@ with tab_seo_main:
                 render_paginated_table(results['depth'], "Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
 
             # 7. TF-IDF (ЗАКРЫТО)
-            with st.expander("🧮 TF-IDF", expanded=False):
-                render_paginated_table(results['hybrid'], "TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+            with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
+                render_paginated_table(
+                    results['hybrid'], 
+                    "3. TF-IDF", 
+                    "tbl_hybrid", 
+                    default_sort_col="TF-IDF ТОП", 
+                    show_controls=False # <--- СКРЫВАЕМ ФИЛЬТРЫ
+                )
 
 # ==========================================
     # БЛОК 2: СКАНИРОВАНИЕ И РАСЧЕТ
@@ -4034,6 +4056,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
