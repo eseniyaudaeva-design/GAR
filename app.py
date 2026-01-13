@@ -2049,19 +2049,14 @@ with tab_seo_main:
         <br>
         """, unsafe_allow_html=True)
 
+# ==========================================
+        # 🔥 НОВЫЙ БЛОК: META DASHBOARD (ИСПРАВЛЕННЫЙ)
         # ==========================================
-        # 🔥 НОВЫЙ БЛОК: META DASHBOARD
-        # ==========================================
-        my_data = st.session_state.get('saved_my_data') 
         
-        meta_res = None
-        if 'raw_comp_data' in st.session_state and my_data:
-        # === ВСТАВИТЬ ЭТОТ БЛОК ПЕРЕД СТРОКОЙ С ОШИБКОЙ ===
-        
-        # 1. Восстанавливаем данные о вашем сайте
+        # 1. Восстанавливаем данные, чтобы избежать NameError
         my_data = st.session_state.get('saved_my_data')
         
-        # 2. Восстанавливаем настройки (они тоже нужны функции)
+        # 2. Восстанавливаем настройки
         settings = {
             'noindex': st.session_state.get('settings_noindex', True), 
             'alt_title': st.session_state.get('settings_alt', False), 
@@ -2070,18 +2065,17 @@ with tab_seo_main:
             'ua': st.session_state.get('settings_ua', "Mozilla/5.0"), 
             'custom_stops': st.session_state.get('settings_stops', "").split()
         }
-        # ==================================================
 
-        # Ваша строка с ошибкой теперь должна быть ниже:
+        # 3. Запускаем анализ
         meta_res = None
+        # Проверяем наличие данных перед запуском функции
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
-            meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
+        # 4. Отрисовка
         if meta_res:
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
-            # Стили для прогресс-баров
             st.markdown("""
             <style>
                 .meta-box { border: 1px solid #E0E0E0; border-radius: 8px; padding: 15px; height: 100%; background: #FFF; }
@@ -2098,12 +2092,8 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
-            # Функция отрисовки карточки
             def render_meta_card(col, label, text, score, missing_list):
                 with col:
-                    # Цвет бара
-                    bar_color = "#2E7D32" if score == 100 else ("#F9A825" if score >= 60 else "#D32F2F")
-                    
                     with st.container():
                         st.markdown(f"""
                         <div class="meta-box">
@@ -2111,9 +2101,8 @@ with tab_seo_main:
                             <div class="meta-content">"{text}"</div>
                         </div>
                         """, unsafe_allow_html=True)
-                        
                         st.markdown(f"**Релевантность: {score}%**")
-                        st.progress(score / 100, )
+                        st.progress(score / 100)
                         
                         if score < 100 and missing_list:
                             st.markdown("**Добавить:**")
@@ -2128,12 +2117,8 @@ with tab_seo_main:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # СКРЫТАЯ ТАБЛИЦА (КАК НА СКРИНЕ 1)
             with st.expander("🕵️ Детальное сравнение с конкурентами (Нажмите, чтобы раскрыть)"):
-                # Создаем DataFrame
                 df_meta = pd.DataFrame(meta_res['detailed'])
-                
-                # Добавляем строку ВАШЕГО сайта первой
                 my_row = pd.DataFrame([{
                     'URL': 'ВАШ САЙТ', 
                     'Title': m_self['Title'], 
@@ -2142,10 +2127,6 @@ with tab_seo_main:
                 }])
                 df_meta = pd.concat([my_row, df_meta], ignore_index=True)
                 
-                # Функция подсветки отсутствующих слов (визуальная)
-                # Это сложно сделать внутри st.dataframe с HTML, но мы можем добавить колонку "Рекомендации"
-                
-                # Простая версия: просто выводим таблицу
                 st.dataframe(
                     df_meta, 
                     use_container_width=True, 
@@ -2157,8 +2138,7 @@ with tab_seo_main:
                     },
                     height=400
                 )
-                
-                st.caption("ℹ️ Таблица содержит сырые данные конкурентов. Рекомендации выше строятся на основе частотного анализа этих данных.")
+                st.caption("ℹ️ Таблица содержит сырые данные конкурентов.")
 
         # ==========================================
         # КОНЕЦ НОВОГО БЛОКА
@@ -2453,10 +2433,14 @@ with tab_seo_main:
             st.session_state.analysis_done = True
             
             # ==========================================
-            # 🔥 ПЕРЕНЕСЕННЫЙ БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ
-            # (Теперь он выполняется ДО фильтрации и рерана)
+            # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (СТРОГО ЗДЕСЬ)
             # ==========================================
             words_to_check = [x['word'] for x in results_final.get('missing_semantics_high', [])]
+            
+            # Если "важных" слов мало, берем и дополнительные, чтобы заполнить фильтры
+            if len(words_to_check) < 5:
+                words_to_check.extend([x['word'] for x in results_final.get('missing_semantics_low', [])[:20]])
+
             if not words_to_check:
                 st.session_state.categorized_products = []; st.session_state.categorized_services = []
                 st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
@@ -2472,6 +2456,7 @@ with tab_seo_main:
                 st.session_state.categorized_general = categorized['general']
                 st.session_state.categorized_sensitive = categorized['sensitive']
 
+                # Сохраняем оригиналы
                 st.session_state.orig_products = categorized['products'] + categorized['sensitive']
                 st.session_state.orig_services = categorized['services'] + categorized['sensitive']
                 st.session_state.orig_commercial = categorized['commercial'] + categorized['sensitive']
@@ -2495,12 +2480,13 @@ with tab_seo_main:
             st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
             st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
             # ==========================================
-            # КОНЕЦ ПЕРЕНЕСЕННОГО БЛОКА
+            # КОНЕЦ БЛОКА КЛАССИФИКАЦИИ
             # ==========================================
             
-# === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
             
-            # 1. Берем данные
+            # === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
+            
+            # 1. Берем данные для проверки аномалий
             if "API" in current_source_val and 'full_graph_data' in st.session_state:
                 df_rel_check = st.session_state['full_graph_data']
             else:
@@ -2519,51 +2505,35 @@ with tab_seo_main:
 
             final_clean_text = ""
             
-            # --- ЛОГИКА РАСПРЕДЕЛЕНИЯ (БЕЗ ПЕРЕРИСОВКИ) ---
-            if is_filter_enabled:
-                if bad_urls_dicts:
-                    # 1. Сохраняем плохих
-                    st.session_state['detected_anomalies'] = bad_urls_dicts
-                    
-                    blacklist_keys = set()
-                    excluded_display_list = []
-                    for item in bad_urls_dicts:
-                        raw_u = item.get('url', '')
-                        if raw_u:
-                            blacklist_keys.add(get_strict_key(raw_u))
-                            excluded_display_list.append(str(raw_u).strip())
-                    
-                    st.session_state['excluded_urls_auto'] = "\n".join(excluded_display_list)
-                    
-                    # 2. Собираем хороших
-                    clean_active_list = []
-                    seen_keys = set()
-                    for u in good_urls:
-                        key = get_strict_key(u)
-                        if key and key not in blacklist_keys and key not in seen_keys:
-                            clean_active_list.append(str(u).strip())
-                            seen_keys.add(key)
-                    
-                    final_clean_text = "\n".join(clean_active_list)
-                    st.toast(f"Фильтр сработал. Исключено: {len(blacklist_keys)}", icon="✂️")
+            # --- ЛОГИКА РАСПРЕДЕЛЕНИЯ ---
+            if is_filter_enabled and bad_urls_dicts:
+                # 1. Сохраняем плохих
+                st.session_state['detected_anomalies'] = bad_urls_dicts
                 
-                else:
-                    # Плохих нет, просто убираем дубли
-                    clean_active = []
-                    seen = set()
-                    for u in good_urls:
-                        key = get_strict_key(u)
-                        if key and key not in seen:
-                            clean_active.append(str(u).strip())
-                            seen.add(key)
-                    final_clean_text = "\n".join(clean_active)
-                    
-                    # Чистим старые ошибки, если они были
-                    st.session_state.pop('excluded_urls_auto', None)
-                    st.session_state.pop('detected_anomalies', None)
-
+                blacklist_keys = set()
+                excluded_display_list = []
+                for item in bad_urls_dicts:
+                    raw_u = item.get('url', '')
+                    if raw_u:
+                        blacklist_keys.add(get_strict_key(raw_u))
+                        excluded_display_list.append(str(raw_u).strip())
+                
+                st.session_state['excluded_urls_auto'] = "\n".join(excluded_display_list)
+                
+                # 2. Собираем хороших
+                clean_active_list = []
+                seen_keys = set()
+                for u in good_urls:
+                    key = get_strict_key(u)
+                    if key and key not in blacklist_keys and key not in seen_keys:
+                        clean_active_list.append(str(u).strip())
+                        seen_keys.add(key)
+                
+                final_clean_text = "\n".join(clean_active_list)
+                st.toast(f"Фильтр сработал. Исключено: {len(blacklist_keys)}", icon="✂️")
+            
             else:
-                # Фильтр выключен - берем всё
+                # Фильтр выключен или плохих нет - берем всё
                 clean_all = []
                 seen_all = set()
                 combined_pool = good_urls + [x['url'] for x in (bad_urls_dicts or [])]
@@ -2574,26 +2544,18 @@ with tab_seo_main:
                         seen_all.add(key)
                 
                 final_clean_text = "\n".join(clean_all)
+                # Чистим старые ошибки
                 st.session_state.pop('excluded_urls_auto', None)
                 st.session_state.pop('detected_anomalies', None)
 
-# === ФИНАЛЬНАЯ ЗАПИСЬ (ИСПРАВЛЕННАЯ) ===
-            # Сохраняем во ВРЕМЕННУЮ переменную, чтобы не сломать виджет
+            # === ФИНАЛЬНАЯ ЗАПИСЬ И ПЕРЕЗАГРУЗКА ===
+            # Сохраняем во ВРЕМЕННУЮ переменную
             st.session_state['temp_update_urls'] = final_clean_text
             
             # Ставим флаг переключения радио-кнопки
             st.session_state['force_radio_switch'] = True
             
             # Перезагружаем страницу, чтобы применить изменения СВЕРХУ
-            st.rerun()
-
-# === ФИНАЛЬНЫЙ ШТРИХ: АВТО-ПЕРЕКЛЮЧЕНИЕ ===
-            # 1. Принудительно меняем радио-кнопку на "Ручной список"
-            st.session_state['force_radio_switch'] = True
-            
-            # 2. (СТРОКУ С ПЕРЕЗАПИСЬЮ УДАЛИЛИ - ОНА ЛИШНЯЯ И ВРЕДНАЯ)
-            # Список ссылок уже сформирован в блоке "УМНАЯ ФИЛЬТРАЦИЯ" выше.
-            
             st.rerun()
 
 # ------------------------------------------
@@ -3752,6 +3714,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
