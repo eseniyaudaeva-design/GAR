@@ -1867,22 +1867,12 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     if not base_text: return ["Error: No base text"] * num_blocks
     if not genai: return ["Error: google-genai lib not installed"] * num_blocks
     
-    # === ИНИЦИАЛИЗАЦИЯ КЛИЕНТА ===
-    try:
-        client = genai.Client(api_key=api_key)
-    except Exception as e:
-        return [f"Client Init Error: {str(e)}"] * num_blocks
-
     # 1. ПОДГОТОВКА ПЕРЕМЕННЫХ
     seo_words = seo_words or []
     seo_instruction_block = ""
     
-    # ВОТ ЗДЕСЬ формируется строка из списка, который мы починили в предыдущем шаге
     if seo_words:
-        # Превращаем список ['слово1', 'слово2'] в строку "слово1, слово2"
         seo_list_str = ", ".join(seo_words)
-        
-        # Вставляем эту строку в ВАШ блок инструкции
         seo_instruction_block = f"""
 --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
 Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме: {{{seo_list_str}}}
@@ -1895,7 +1885,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 -------------------------------------------
 """
 
-    # 2. СИСТЕМНАЯ РОЛЬ (ВАШ ТЕКСТ)
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
         "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
@@ -1913,10 +1902,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         "3. Именна собственные, названия городов пиши с заглавной буквы. Марки пиши в соответствии с марочниками. ГОСТ всегда заглавными."
     )
 
-    # 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ (ВАШ ТЕКСТ С ПЕРЕМЕННЫМИ)
-    # Вместо "{муфта}" теперь стоит переменная {tag_name}
-    # Вместо "{base_text[:3500]}" стоит переменная base_text
-    
     user_prompt = f"""
     ИСХОДНЫЕ ДАННЫЕ:
     Название товара: "{tag_name}"
@@ -1956,16 +1941,17 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     """
     
     try:
-        # Объединяем инструкции
-        full_content = system_instruction + "\n\n" + user_prompt
+        # === ИСПРАВЛЕНИЕ: Используем стандартный метод API ===
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=full_content
-        )
+        # Соединяем системную роль и промт, так как обычный API принимает один контекст
+        full_prompt = system_instruction + "\n\n" + user_prompt
+        
+        response = model.generate_content(full_prompt)
         content = response.text
         
-        # Чистка
+        # Чистка ответа
         content = re.sub(r'\[\d+\]', '', content)
         content = content.replace("```html", "").replace("```", "").strip()
         
@@ -3511,43 +3497,52 @@ with tab_wholesale_main:
     else:
         if not main_category_url: ready_to_go = False
 
-    if (use_text or use_tables) and not gemini_api_key: ready_to_go = False
+    # Проверка ключа
+    if (use_text or use_tables or use_geo) and not gemini_api_key: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
-    if use_geo and not gemini_api_key: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         st.session_state.gen_result_df = None
         st.session_state.unified_excel_data = None
         
-        # --- [ВАЖНО] ПРИНУДИТЕЛЬНОЕ ЧТЕНИЕ ДАННЫХ ПЕРЕД СТАРТОМ ---
-        # Считываем данные напрямую из ключей виджетов, чтобы они не потерялись
+        # --- [КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ] ЧИТАЕМ ДАННЫЕ НАПРЯМУЮ ИЗ ВИДЖЕТОВ ---
+        # Это гарантирует, что списки слов не будут пустыми при перезагрузке
         
-        # 1. Слова для Текста
+        # 1. Слова для ТЕКСТА
         raw_txt_val = st.session_state.get("ai_text_context_editable", "")
-        # Если пусто, пробуем взять из дефолта
+        # Если в поле пусто, берем дефолтное значение
         if not raw_txt_val: raw_txt_val = text_context_default
         actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
 
-        # 2. Слова для Гео
+        # 2. Слова для ГЕО
         raw_geo_val = st.session_state.get("kws_geo_auto", "")
         if not raw_geo_val: raw_geo_val = geo_context_default
         actual_geo_list = [x.strip() for x in re.split(r'[,\n]+', raw_geo_val) if x.strip()]
-        # ----------------------------------------------------------
+        # ------------------------------------------------------------------
 
         status_box = st.status("🛠️ Подготовка данных...", expanded=True)
         
-        # Показываем отладку пользователю, чтобы убедиться, что слова есть
-        status_box.write(f"📊 Найдено слов для текста: {len(actual_text_list)}")
-        status_box.write(f"🌍 Найдено городов для Гео: {len(actual_geo_list)}")
-        
+        # Вывод отладки, чтобы вы видели, что слова подцепились
+        status_box.write(f"📝 Слов для текста найдено: {len(actual_text_list)}")
+        status_box.write(f"🌍 Городов для Гео найдено: {len(actual_geo_list)}")
+
         if use_text and not actual_text_list:
-            status_box.warning("⚠️ Внимание: Список слов для текста пуст! Нейросеть не получит SEO-слова.")
+            status_box.warning("⚠️ Внимание: Список слов для текста пуст!")
         if use_geo and not actual_geo_list:
-            status_box.warning("⚠️ Внимание: Список городов пуст! Гео-блок может быть стандартным.")
+            status_box.warning("⚠️ Внимание: Список городов пуст!")
+
+        # === ИНИЦИАЛИЗАЦИЯ МОДЕЛИ (СТАНДАРТНАЯ) ===
+        model = None
+        if genai and (use_text or use_tables or use_geo) and gemini_api_key:
+            try:
+                genai.configure(api_key=gemini_api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+            except Exception as e:
+                status_box.error(f"Ошибка подключения к Gemini: {e}")
 
         final_data = [] 
         
-        # --- СБОР БАЗ ДАННЫХ ---
+        # --- СБОР БАЗ ДАННЫХ (Оставляем как есть) ---
         tags_map = {}
         all_tags_links = []
         if use_tags:
@@ -3611,7 +3606,7 @@ with tab_wholesale_main:
                     target_pages.append({'url': main_category_url or "local", 'name': h1.get_text(strip=True) if h1 else "Товар"})
         except Exception as e: status_box.error(f"Ошибка: {e}"); st.stop()
 
-        # --- СБОР ИМЕН ССЫЛОК ---
+        # --- ВСПОМОГАТЕЛЬНЫЕ ДАННЫЕ ---
         urls_to_fetch_names = set()
         promo_items_pool = []
         if use_tags:
@@ -3689,12 +3684,6 @@ with tab_wholesale_main:
                 return html
             full_sidebar_code = f'<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{render_tree_internal(tree, level=1)}</ul></nav></div></div>'
 
-        # === ИНИЦИАЛИЗАЦИЯ CLIENT ===
-        client = None
-        if genai and (use_text or use_tables or use_geo) and gemini_api_key:
-            try: client = genai.Client(api_key=gemini_api_key)
-            except: status_box.error("Ошибка ключа Gemini (Client Init)")
-
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages) if target_pages else 1
         
@@ -3704,12 +3693,12 @@ with tab_wholesale_main:
             
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
             
-            # [FIX] Заполняем дефолтными данными
+            # Заполнение статики
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # [FIX] Если включен Гео-блок, СТИРАЕМ заглушку, чтобы видеть результат работы (или ошибку)
+            # ЕСЛИ ВКЛЮЧЕН ГЕО-БЛОК, удаляем заглушку, чтобы видеть реальный результат
             if use_geo:
-                row_data['IP_PROP4819'] = "Ошибка генерации Geo" 
+                row_data['IP_PROP4819'] = "" 
 
             # ВИЗУАЛ
             row_data['Tags HTML'] = "" 
@@ -3736,33 +3725,35 @@ with tab_wholesale_main:
                     p_html += '</div></div>'
                     row_data['Promo HTML'] = p_html
 
-            # === AI ГЕНЕРАЦИЯ (Используем actual_... списки) ===
+            # === AI ГЕНЕРАЦИЯ (Исправлено) ===
             
             # 1. ТЕКСТ
-            if use_text and client:
-                # [FIX] Передаем actual_text_list, который мы достали в начале кнопки
+            if use_text and model:
+                # Передаем список actual_text_list, который мы достали выше
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
                 for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
 
             # 2. ТАБЛИЦЫ
-            if use_tables and client:
+            if use_tables and model:
                 for t_i, t_topic in enumerate(table_prompts):
                     ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
                     prompt = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
                     try:
-                        resp = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
+                        resp = model.generate_content(prompt)
                         row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
             # 3. GEO
-            # [FIX] Используем actual_geo_list
-            if use_geo and client and actual_geo_list:
-                cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
-                prompt = f"Write HTML <p> regarding delivery. You MUST mention these specific cities: {cities}. No Markdown."
-                try:
-                    resp = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
-                    row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
-                except Exception as e: row_data['IP_PROP4819'] = f"Error: {e}"
+            if use_geo and model:
+                if actual_geo_list:
+                    cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
+                    prompt = f"Write HTML <p> regarding delivery. You MUST mention these specific cities: {cities}. No Markdown. No links."
+                    try:
+                        resp = model.generate_content(prompt)
+                        row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
+                    except Exception as e: row_data['IP_PROP4819'] = f"Geo API Error: {e}"
+                else:
+                    row_data['IP_PROP4819'] = "Ошибка: Список городов пуст, генерация невозможна."
 
             # Сайдбар
             if use_sidebar: row_data['Sidebar HTML'] = full_sidebar_code
@@ -4018,6 +4009,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
