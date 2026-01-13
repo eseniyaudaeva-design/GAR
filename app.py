@@ -21,9 +21,6 @@ import copy
 import plotly.graph_objects as go
 import pickle
 import datetime
-import sys
-import streamlit as st
-st.toast(f"🐍 Python Version: {sys.version.split()[0]}")
 
 # ==========================================
 # FIX FOR PYTHON 3.11+
@@ -4162,6 +4159,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
