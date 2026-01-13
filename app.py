@@ -3504,7 +3504,7 @@ with tab_wholesale_main:
     else:
         if not main_category_url: ready_to_go = False
 
-    # Проверка ключа Gemini
+    # Проверка ключа (теперь проверяем gemini_api_key)
     if (use_text or use_tables) and not gemini_api_key: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     if use_geo and not gemini_api_key: ready_to_go = False
@@ -3516,7 +3516,7 @@ with tab_wholesale_main:
         status_box = st.status("🛠️ Подготовка данных...", expanded=True)
         final_data = [] 
         
-        # --- СБОР БАЗ ДАННЫХ (БЕЗ ИЗМЕНЕНИЙ) ---
+        # --- СБОР БАЗ ДАННЫХ ---
         # 1. Теги
         tags_map = {}
         all_tags_links = []
@@ -3666,17 +3666,18 @@ with tab_wholesale_main:
                 return html
             full_sidebar_code = f'<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{render_tree_internal(tree, level=1)}</ul></nav></div></div>'
 
-        # === ИНИЦИАЛИЗАЦИЯ CLIENT (НОВЫЙ SDK) ===
+        # === ИНИЦИАЛИЗАЦИЯ CLIENT (НОВЫЙ SDK, КАК В СПРАВКЕ) ===
         client = None
         if genai and (use_text or use_tables or use_geo) and gemini_api_key:
             try:
+                # ВОТ ОН, ТОТ САМЫЙ КЛИЕНТ ИЗ СПРАВКИ
                 client = genai.Client(api_key=gemini_api_key)
             except:
-                status_box.error("Ошибка ключа Gemini")
+                status_box.error("Ошибка ключа Gemini (Client Init)")
 
         progress_bar = status_box.progress(0)
-
-        total_steps = len(target_pages) if len(target_pages) > 0 else 1
+        # === ИСПРАВЛЕНИЕ: ДОБАВЛЕНА ПЕРЕМЕННАЯ, КОТОРОЙ НЕ ХВАТАЛО ===
+        total_steps = len(target_pages) if target_pages else 1
         
         for idx, page in enumerate(target_pages):
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
@@ -3723,6 +3724,7 @@ with tab_wholesale_main:
                     ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
                     prompt = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
                     try:
+                        # Используем модель 1.5-flash, она самая стабильная сейчас
                         resp = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
                         row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
@@ -3753,7 +3755,7 @@ with tab_wholesale_main:
         
         status_box.update(label="✅ Готово!", state="complete", expanded=False)
 
-    # КНОПКА СКАЧИВАНИЯ (Она теперь здесь)
+    # КНОПКА СКАЧИВАНИЯ
     if st.session_state.get('unified_excel_data') is not None:
         st.success("Файл успешно сгенерирован!")
         st.download_button(
@@ -3990,6 +3992,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
