@@ -2072,30 +2072,31 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (ФИНАЛЬНЫЙ ВАРИАНТ - БЕЗ ОТОБРАЖЕНИЯ КОДА)
+# 4. Отрисовка (ФИНАЛЬНАЯ ПОПЫТКА - ПРИЖАТЫЙ HTML)
         if meta_res:
-            import textwrap # Эта библиотека уберет лишние пробелы и починит верстку
-            
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
-            # --- CSS STYLES (Compact) ---
+            # --- CSS STYLES (Compact & Flexbox) ---
             st.markdown("""
             <style>
                 .meta-card-compact {
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 8px;
-                    padding: 12px;
+                    padding: 15px;
                     height: 100%;
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                    justify-content: space-between;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
                 }
                 .compact-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    margin-bottom: 8px;
+                    margin-bottom: 10px;
+                    border-bottom: 1px solid #F3F4F6;
+                    padding-bottom: 5px;
                 }
                 .compact-label {
                     font-size: 14px;
@@ -2107,40 +2108,40 @@ with tab_seo_main:
                 }
                 .compact-score {
                     font-size: 12px;
-                    font-weight: 700;
+                    font-weight: 800;
                     padding: 2px 8px;
                     border-radius: 12px;
                 }
                 .compact-text-box {
                     background-color: #F9FAFB;
-                    border: 1px solid #F3F4F6;
+                    border: 1px solid #E5E7EB;
                     border-radius: 6px;
                     padding: 8px;
-                    font-size: 11px;
+                    font-size: 12px;
                     line-height: 1.4;
                     color: #4B5563;
                     font-family: monospace;
                     margin-bottom: 10px;
-                    display: -webkit-box;
-                    -webkit-line-clamp: 3;
-                    -webkit-box-orient: vertical;
-                    overflow: hidden;
-                    min-height: 45px;
+                    height: 60px; /* Фиксированная высота для ровности */
+                    overflow-y: auto;
                 }
                 .compact-progress-bg {
                     width: 100%;
                     background-color: #F3F4F6;
-                    border-radius: 3px;
+                    border-radius: 4px;
                     height: 6px;
                     margin-bottom: 10px;
                     overflow: hidden;
                 }
                 .compact-progress-fill {
                     height: 100%;
-                    border-radius: 3px;
+                    border-radius: 4px;
+                }
+                .compact-footer {
+                    margin-top: auto;
                 }
                 .compact-rec-title {
-                    font-size: 10px;
+                    font-size: 11px;
                     font-weight: 600;
                     color: #9CA3AF;
                     text-transform: uppercase;
@@ -2150,6 +2151,7 @@ with tab_seo_main:
                     display: flex;
                     flex-wrap: wrap;
                     gap: 4px;
+                    min-height: 24px;
                 }
                 .compact-miss-tag {
                     background-color: #FEF2F2;
@@ -2157,12 +2159,12 @@ with tab_seo_main:
                     border: 1px solid #FECACA;
                     padding: 2px 6px;
                     border-radius: 4px;
-                    font-size: 10px;
+                    font-size: 11px;
                     font-weight: 600;
                 }
                 .compact-ok-msg {
                     color: #059669;
-                    font-size: 11px;
+                    font-size: 12px;
                     font-weight: 600;
                 }
             </style>
@@ -2188,39 +2190,34 @@ with tab_seo_main:
                 rec_label = "Статус:"
                 if score < 100 and missing_list:
                     rec_label = "Добавить:"
-                    tags_html = "".join([f'<span class="compact-miss-tag">{w}</span>' for w in missing_list[:15]])
+                    tags_html = "".join([f'<span class="compact-miss-tag">{w}</span>' for w in missing_list[:12]])
                 elif score >= 100:
                     tags_html = '<span class="compact-ok-msg">✔ Отлично</span>'
 
-                # 3. Сборка HTML (Используем dedent, чтобы убрать отступы)
-                raw_html = f"""
-                <div class="meta-card-compact">
-                    <div class="compact-header">
-                        <div class="compact-label"><span>{icon}</span> {label}</div>
-                        <div class="compact-score" style="background: {bg_score}; color: {text_score}">{score}%</div>
-                    </div>
-                    
-                    <div class="compact-text-box" title="{text_content}">
-                        {text_content if text_content else "Нет данных"}
-                    </div>
-
-                    <div class="compact-progress-bg">
-                        <div class="compact-progress-fill" style="width: {score}%; background-color: {color};"></div>
-                    </div>
-
-                    <div>
-                        <div class="compact-rec-title">{rec_label}</div>
-                        <div class="compact-tags-container">
-                            {tags_html}
-                        </div>
-                    </div>
-                </div>
-                """
-                # Очищаем отступы, чтобы Streamlit не думал, что это блок кода
-                clean_html = textwrap.dedent(raw_html)
+                # 3. Сборка HTML (ПРИЖАТ К ЛЕВОМУ КРАЮ - ЭТО ВАЖНО!)
+                html_code = f"""
+<div class="meta-card-compact">
+<div class="compact-header">
+<div class="compact-label"><span>{icon}</span> {label}</div>
+<div class="compact-score" style="background: {bg_score}; color: {text_score}">{score}%</div>
+</div>
+<div class="compact-text-box" title="{text_content}">
+{text_content if text_content else "Нет данных"}
+</div>
+<div class="compact-progress-bg">
+<div class="compact-progress-fill" style="width: {score}%; background-color: {color};"></div>
+</div>
+<div class="compact-footer">
+<div class="compact-rec-title">{rec_label}</div>
+<div class="compact-tags-container">
+{tags_html}
+</div>
+</div>
+</div>
+"""
                 
                 with col:
-                    st.markdown(clean_html, unsafe_allow_html=True)
+                    st.markdown(html_code, unsafe_allow_html=True)
 
             # Вывод колонок
             render_meta_card_compact(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
@@ -3824,6 +3821,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
