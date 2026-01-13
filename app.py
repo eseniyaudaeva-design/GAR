@@ -2564,7 +2564,7 @@ with tab_seo_main:
             render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
         # 2. ТАБЛИЦА НАЗВАНИЙ (ОТКРЫТО ПО УМОЛЧАНИЮ)
-        with st.expander("🏷️ 2. Рекомендации по названию товаров", expanded=True):
+        with st.expander("🏷️ 2. Рекомендации по названию товаров", expanded=False):
             if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
                 df_naming = st.session_state.naming_table_df
                 
@@ -4059,6 +4059,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
