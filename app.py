@@ -2287,9 +2287,9 @@ with tab_seo_main:
 
                 # 2. ПРИЕМЛЕМО (Оранжевый) - Даем совет
                 elif ok_min <= length < g_min:
-                    return length, "Маловато (увеличьте)", "#D97706", "#FFFBEB"
+                    return length, "Можно увеличить объем", "#D97706", "#FFFBEB"
                 elif g_max < length <= ok_max:
-                    return length, "Многовато (сократите)", "#D97706", "#FFFBEB"
+                    return length, "Можно уменьшить объем", "#D97706", "#FFFBEB"
 
                 # 3. ПЛОХО (Красный) - Даем совет
                 elif length < ok_min:
@@ -3948,6 +3948,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
