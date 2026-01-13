@@ -2072,84 +2072,78 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (FLAT DESIGN - КАК НА СКРИНШОТЕ)
+# 4. Отрисовка (FIX: RAW HTML ISSUE + FLAT DESIGN)
         if meta_res:
             import textwrap 
             
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
-            # --- CSS STYLES (Flat & Clean) ---
+            # --- CSS STYLES ---
             st.markdown("""
             <style>
-                /* Контейнер колонки растягиваем */
                 div[data-testid="column"] {
                     display: flex;
                     flex-direction: column;
                 }
                 
-                /* Основная карточка */
                 .flat-card {
-                    background-color: transparent; /* Прозрачный фон */
-                    padding: 0 10px;
-                    flex-grow: 1; /* Растягиваем на всю высоту */
+                    background-color: #FFFFFF;
+                    border: 1px solid #E5E7EB;
+                    border-radius: 8px; /* Небольшое скругление */
+                    padding: 20px;
+                    flex-grow: 1;
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
-                    min-height: 250px; /* Минимальная высота для выравнивания */
+                    min-height: 320px; /* Фиксированная высота для ровности */
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
                 }
                 
-                /* Заголовок (Title, Description...) */
                 .flat-header {
-                    text-align: center;
                     font-weight: 700;
-                    font-size: 18px;
+                    font-size: 16px;
                     color: #111827;
                     margin-bottom: 15px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
                 }
                 
-                /* Контент (Сам текст) */
                 .flat-content {
-                    text-align: center;
                     font-size: 14px;
                     line-height: 1.5;
                     color: #374151;
+                    text-align: center; /* Текст по центру */
                     flex-grow: 1; /* Занимает всё свободное место */
                     display: flex;
-                    align-items: center; /* Центрирует текст по вертикали */
+                    align-items: center;
                     justify-content: center;
                     margin-bottom: 20px;
-                    padding: 0 5px;
+                    padding: 0 10px;
                     font-family: 'Inter', sans-serif;
                 }
                 
-                /* Разделительная линия */
-                .flat-divider {
-                    height: 1px;
-                    background-color: #E5E7EB;
-                    width: 100%;
-                    margin-bottom: 15px;
-                }
-                
-                /* Блок релевантности (внизу) */
                 .flat-footer {
-                    margin-top: auto;
+                    margin-top: auto; /* Прибивает футер к низу */
+                    border-top: 1px solid #F3F4F6;
+                    padding-top: 15px;
                 }
                 
                 .flat-rel-label {
                     text-align: center;
-                    font-size: 12px;
+                    font-size: 11px;
                     font-weight: 700;
-                    color: #1F2937;
+                    color: #9CA3AF;
                     text-transform: uppercase;
                     margin-bottom: 8px;
+                    letter-spacing: 0.5px;
                 }
                 
-                /* Кастомный прогресс бар */
                 .flat-progress-bg {
                     width: 100%;
-                    background-color: #E5E7EB; /* Серый фон полоски */
-                    height: 6px;
-                    border-radius: 0; /* Острые углы как на скрине, или 2px */
+                    background-color: #E5E7EB;
+                    height: 4px; /* Тонкая линия */
+                    border-radius: 2px;
                     overflow: hidden;
                     margin-bottom: 5px;
                 }
@@ -2161,22 +2155,32 @@ with tab_seo_main:
                 .flat-score-num {
                     text-align: center;
                     font-size: 12px;
+                    font-weight: 600;
                     color: #6B7280;
                 }
                 
-                /* Блок "Добавить слова" */
+                /* Блок тегов */
                 .flat-missing-block {
-                    margin-top: 10px;
+                    margin-top: 15px;
                     text-align: center;
                 }
                 .flat-miss-tag {
                     display: inline-block;
                     border: 1px solid #FECACA;
                     color: #B91C1C;
+                    background-color: #FEF2F2;
                     padding: 2px 6px;
                     margin: 2px;
                     font-size: 11px;
+                    font-weight: 600;
                     border-radius: 4px;
+                }
+                .flat-ok {
+                    color: #059669;
+                    font-weight: 600;
+                    font-size: 13px;
+                    text-align: center;
+                    margin-top: 10px;
                 }
             </style>
             """, unsafe_allow_html=True)
@@ -2187,45 +2191,44 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
-            def render_flat_card(col, label, text_content, score, missing_list):
-                # Цвета как на скрине
+            def render_flat_card(col, label, icon, text_content, score, missing_list):
+                # Цвета
                 if score >= 90:
                     color = "#16A34A" # Зеленый
                 elif score >= 50:
-                    color = "#CA8A04" # Желтый/Оранжевый
+                    color = "#CA8A04" # Желтый
                 else:
                     color = "#DC2626" # Красный
 
-                # Блок с пропущенными словами (если есть)
-                missing_html = ""
+                # Собираем блок рекомендаций (БЕЗ ЛИШНИХ ПРОБЕЛОВ)
+                rec_html = ""
                 if score < 100 and missing_list:
                     tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
-                    missing_html = f"""
-                    <div class="flat-missing-block">
-                        <div style="font-size:10px; font-weight:bold; color:#999; margin-bottom:4px;">ДОБАВИТЬ:</div>
-                        {tags}
-                    </div>
-                    """
+                    rec_html = (
+                        f'<div class="flat-missing-block">'
+                        f'<div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:5px;">ДОБАВИТЬ:</div>'
+                        f'{tags}'
+                        f'</div>'
+                    )
+                elif score >= 100:
+                    rec_html = '<div class="flat-ok">✔ Идеально</div>'
 
-                # Сборка HTML (dedent уберет отступы)
+                # Основной HTML (dedent почистит внешние отступы)
                 raw_html = f"""
 <div class="flat-card">
-<div class="flat-header">{label}</div>
+<div class="flat-header"><span>{icon}</span> {label}</div>
 
 <div class="flat-content">
 {text_content if text_content else "— Нет данных —"}
 </div>
 
 <div class="flat-footer">
-<div class="flat-divider"></div>
 <div class="flat-rel-label">Релевантность</div>
-
 <div class="flat-progress-bg">
 <div class="flat-progress-fill" style="width: {score}%; background-color: {color};"></div>
 </div>
 <div class="flat-score-num">{score}%</div>
-
-{missing_html}
+{rec_html}
 </div>
 </div>
 """
@@ -2234,10 +2237,10 @@ with tab_seo_main:
                 with col:
                     st.markdown(clean_html, unsafe_allow_html=True)
 
-            # Вывод колонок (без иконок, как на скрине)
-            render_flat_card(col_m1, "Title", m_self['Title'], m_scores['title'], m_miss['title'])
-            render_flat_card(col_m2, "Description", m_self['Description'], m_scores['desc'], m_miss['desc'])
-            render_flat_card(col_m3, "H1", m_self['H1'], m_scores['h1'], m_miss['h1'])
+            # Вывод колонок
+            render_flat_card(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
+            render_flat_card(col_m2, "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
+            render_flat_card(col_m3, "H1", "#️⃣", m_self['H1'], m_scores['h1'], m_miss['h1'])
 
             st.markdown("<br>", unsafe_allow_html=True)
             
@@ -3836,6 +3839,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
