@@ -2145,7 +2145,7 @@ with tab_seo_main:
         if meta_res:
             import textwrap 
             
-            st.markdown("### 🧬 Рекомендации Title, Description и H1")
+            st.markdown("### 🧬 Рекомендации по мета-данным")
             
             # --- CSS STYLES ---
             st.markdown("""
@@ -4059,6 +4059,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
