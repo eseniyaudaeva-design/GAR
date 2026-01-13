@@ -2835,7 +2835,7 @@ with tab_seo_main:
             
             # --- ЭТАП 2: Отбор чистовых (Топ-10/20 без мусора) ---
             
-            # 1. Берем данные тех сайтов, которые НЕ в списке плохих
+# 1. Берем данные тех сайтов, которые НЕ в списке плохих
             bad_urls_set = set(item['url'] for item in bad_urls_dicts)
             
             # === ИСПРАВЛЕННАЯ ЛОГИКА ФИЛЬТРАЦИИ ===
@@ -2846,10 +2846,16 @@ with tab_seo_main:
                 final_clean_data = clean_data_pool[:user_target_top_n]
             else:
                 # В ручном режиме используем ВСЕХ скачанных, не фильтруем "слабых"
-                st.session_state['raw_comp_data'] = final_clean_data
                 final_clean_data = data_for_graph 
             
+            # <--- ВАЖНО: Строка сохранения идет СТРОГО ПОСЛЕ блока if/else --->
+            st.session_state['raw_comp_data'] = final_clean_data
+            # ------------------------------------------------------------------
+
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
+            
+            # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Только по элите)
+            results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
             
 # 3. ФИНАЛЬНЫЙ РАСЧЕТ (Только по элите)
             results_final = calculate_metrics(final_clean_data, my_data, settings, my_serp_pos, final_clean_targets)
@@ -4153,5 +4159,6 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
