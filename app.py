@@ -1869,7 +1869,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     # Настройка API
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash') # Используем быструю и дешевую модель
+        model = genai.GenerativeModel('gemini-pro') # Используем быструю и дешевую модель
     except Exception as e:
         return [f"API Config Error: {str(e)}"] * num_blocks
 
@@ -3822,7 +3822,7 @@ with tab_wholesale_main:
         if genai and (use_text or use_tables or use_geo) and gemini_api_key:
             try:
                 genai.configure(api_key=gemini_api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-pro') # <--- ИСПРАВЛЕНО
             except:
                 status_box.error("Ошибка авторизации Gemini")
 
@@ -4151,6 +4151,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
