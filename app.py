@@ -2072,7 +2072,7 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (FIX: RAW HTML ISSUE + FLAT DESIGN)
+# 4. Отрисовка (FIXED HEIGHT + SCROLL + BIG TAGS)
         if meta_res:
             import textwrap 
             
@@ -2089,14 +2089,14 @@ with tab_seo_main:
                 .flat-card {
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
-                    border-radius: 8px; /* Небольшое скругление */
+                    border-radius: 12px;
                     padding: 20px;
-                    flex-grow: 1;
+                    /* ФИКСИРОВАННАЯ ВЫСОТА КАРТОЧКИ */
+                    height: 450px; 
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
-                    min-height: 320px; /* Фиксированная высота для ровности */
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
                 }
                 
                 .flat-header {
@@ -2107,26 +2107,33 @@ with tab_seo_main:
                     display: flex;
                     align-items: center;
                     gap: 8px;
+                    flex-shrink: 0; /* Шапка не сжимается */
                 }
                 
                 .flat-content {
                     font-size: 14px;
                     line-height: 1.5;
                     color: #374151;
-                    text-align: center; /* Текст по центру */
-                    flex-grow: 1; /* Занимает всё свободное место */
+                    text-align: center;
+                    
+                    /* СКРОЛЛ ДЛЯ ТЕКСТА */
+                    flex-grow: 1;
+                    overflow-y: auto; 
+                    
+                    /* Центрирование контента, если его мало */
                     display: flex;
-                    align-items: center;
+                    flex-direction: column;
                     justify-content: center;
+                    
                     margin-bottom: 20px;
                     padding: 0 10px;
                     font-family: 'Inter', sans-serif;
+                    border-bottom: 1px dashed #F3F4F6; /* Легкий разделитель снизу */
                 }
                 
                 .flat-footer {
-                    margin-top: auto; /* Прибивает футер к низу */
-                    border-top: 1px solid #F3F4F6;
-                    padding-top: 15px;
+                    flex-shrink: 0; /* Футер не сжимается */
+                    margin-top: auto;
                 }
                 
                 .flat-rel-label {
@@ -2142,8 +2149,8 @@ with tab_seo_main:
                 .flat-progress-bg {
                     width: 100%;
                     background-color: #E5E7EB;
-                    height: 4px; /* Тонкая линия */
-                    border-radius: 2px;
+                    height: 6px; 
+                    border-radius: 3px;
                     overflow: hidden;
                     margin-bottom: 5px;
                 }
@@ -2157,30 +2164,36 @@ with tab_seo_main:
                     font-size: 12px;
                     font-weight: 600;
                     color: #6B7280;
+                    margin-bottom: 10px;
                 }
                 
                 /* Блок тегов */
                 .flat-missing-block {
-                    margin-top: 15px;
+                    margin-top: 10px;
                     text-align: center;
+                    /* Ограничиваем высоту блока тегов, если их ОЧЕНЬ много */
+                    max-height: 80px; 
+                    overflow-y: auto;
                 }
+                
+                /* УВЕЛИЧЕННЫЕ ТЕГИ */
                 .flat-miss-tag {
                     display: inline-block;
                     border: 1px solid #FECACA;
-                    color: #B91C1C;
+                    color: #991B1B; /* Более темный красный для читаемости */
                     background-color: #FEF2F2;
-                    padding: 2px 6px;
-                    margin: 2px;
-                    font-size: 11px;
+                    padding: 4px 8px; /* Больше отступы */
+                    margin: 3px;
+                    font-size: 13px; /* Крупнее шрифт */
                     font-weight: 600;
-                    border-radius: 4px;
+                    border-radius: 6px;
                 }
                 .flat-ok {
                     color: #059669;
                     font-weight: 600;
-                    font-size: 13px;
+                    font-size: 14px;
                     text-align: center;
-                    margin-top: 10px;
+                    margin-top: 15px;
                 }
             </style>
             """, unsafe_allow_html=True)
@@ -2200,20 +2213,21 @@ with tab_seo_main:
                 else:
                     color = "#DC2626" # Красный
 
-                # Собираем блок рекомендаций (БЕЗ ЛИШНИХ ПРОБЕЛОВ)
+                # Рекомендации
                 rec_html = ""
                 if score < 100 and missing_list:
-                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
+                    # Убрали срез [:12], чтобы показать больше, раз есть скролл
+                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list])
                     rec_html = (
                         f'<div class="flat-missing-block">'
-                        f'<div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:5px;">ДОБАВИТЬ:</div>'
+                        f'<div style="font-size:11px; font-weight:700; color:#6B7280; margin-bottom:5px; text-transform:uppercase;">Добавить:</div>'
                         f'{tags}'
                         f'</div>'
                     )
                 elif score >= 100:
                     rec_html = '<div class="flat-ok">✔ Идеально</div>'
 
-                # Основной HTML (dedent почистит внешние отступы)
+                # HTML
                 raw_html = f"""
 <div class="flat-card">
 <div class="flat-header"><span>{icon}</span> {label}</div>
@@ -2237,7 +2251,7 @@ with tab_seo_main:
                 with col:
                     st.markdown(clean_html, unsafe_allow_html=True)
 
-            # Вывод колонок
+            # Вывод
             render_flat_card(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
             render_flat_card(col_m2, "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
             render_flat_card(col_m3, "H1", "#️⃣", m_self['H1'], m_scores['h1'], m_miss['h1'])
@@ -3839,6 +3853,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
