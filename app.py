@@ -1943,8 +1943,8 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     
     try:
         genai.configure(api_key=api_key)
-        # === ВОТ ТУТ МЫ СМЕНИЛИ МОДЕЛЬ НА gemini-pro ===
-        model = genai.GenerativeModel('gemini-pro')
+        # === ИСПОЛЬЗУЕМ gemini-2.0-flash ===
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         full_prompt = system_instruction + "\n\n" + user_prompt
         
@@ -3500,11 +3500,11 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
 
 # ==========================================
-    # 🆘 БЛОК ДИАГНОСТИКИ (СПИСОК МОДЕЛЕЙ)
+    # 🆘 БЛОК ДИАГНОСТИКИ (Gemini 2.0 Flash)
     # ==========================================
     st.markdown("---")
     with st.expander("🛠️ ДИАГНОСТИКА API (Если есть ошибки)", expanded=True):
-        if st.button("📡 ПРОВЕРИТЬ GEMINI-PRO"):
+        if st.button("📡 ПРОВЕРИТЬ GEMINI 2.0"):
             if not gemini_api_key:
                 st.error("❌ Ключ API не введен!")
             elif not genai:
@@ -3512,8 +3512,8 @@ with tab_wholesale_main:
             else:
                 try:
                     genai.configure(api_key=gemini_api_key)
-                    # Используем gemini-pro для теста
-                    test_model = genai.GenerativeModel('gemini-pro')
+                    # Используем модель из вашего списка
+                    test_model = genai.GenerativeModel('gemini-2.0-flash')
                     with st.spinner("Отправка запроса..."):
                         response = test_model.generate_content("Say OK")
                     
@@ -3524,7 +3524,7 @@ with tab_wholesale_main:
                 except Exception as e:
                     st.error(f"❌ ОШИБКА: {str(e)}")
                     if "404" in str(e):
-                        st.info("Попробуйте получить список доступных моделей:")
+                        st.info("Попробуйте получить список доступных моделей (возможно, нужна другая):")
                         try:
                             models = [m.name for m in genai.list_models()]
                             st.code("\n".join(models))
@@ -3533,7 +3533,7 @@ with tab_wholesale_main:
     st.markdown("---")
 
     # ==========================================
-    # 4. ЗАПУСК ГЕНЕРАЦИИ (ФИНАЛ С gemini-pro)
+    # 4. ЗАПУСК ГЕНЕРАЦИИ (ФИНАЛ С gemini-2.0-flash)
     # ==========================================
     
     ready_to_go = True
@@ -3562,13 +3562,13 @@ with tab_wholesale_main:
         status_box.write(f"📝 Слов для текста: {len(actual_text_list)}")
         status_box.write(f"🌍 Городов для Гео: {len(actual_geo_list)}")
 
-        # === ИНИЦИАЛИЗАЦИЯ MODEL (gemini-pro) ===
+        # === ИНИЦИАЛИЗАЦИЯ MODEL (gemini-2.0-flash) ===
         model = None
         if genai and (use_text or use_tables or use_geo) and gemini_api_key:
             try:
                 genai.configure(api_key=gemini_api_key)
                 # !!! ВАЖНАЯ ЗАМЕНА !!!
-                model = genai.GenerativeModel('gemini-pro')
+                model = genai.GenerativeModel('gemini-2.0-flash')
             except Exception as e:
                 status_box.error(f"Ошибка подключения к Gemini: {e}")
 
@@ -3718,7 +3718,7 @@ with tab_wholesale_main:
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             
-            # Чистим статику если выбрано Geo
+            # Чистим статику
             if use_geo: row_data['IP_PROP4819'] = ""
 
             # VISUAL
@@ -3746,7 +3746,7 @@ with tab_wholesale_main:
                     p_html += '</div></div>'
                     row_data['Promo HTML'] = p_html
 
-            # === AI RUN (gemini-pro) ===
+            # === AI RUN (gemini-2.0-flash) ===
             
             if use_text and model:
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
@@ -4022,6 +4022,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
