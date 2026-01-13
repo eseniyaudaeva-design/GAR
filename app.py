@@ -2225,11 +2225,11 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (NO ICONS + FIXED ARGUMENTS ERROR)
+# 4. Отрисовка (FINAL STABLE: NO GEN + FIXED TOOLTIP)
         if meta_res:
             import textwrap 
             
-            st.markdown("### 🧬 Рекомендации по мета-данным")
+            st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
             # --- CSS STYLES ---
             st.markdown("""
@@ -2243,25 +2243,27 @@ with tab_seo_main:
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 12px;
-                    height: 360px; 
+                    height: 340px; 
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    overflow: visible;
+                    /* Важно для тултипа: */
+                    overflow: visible; 
                     position: relative;
                     z-index: 1;
                 }
                 
+                /* Поднимаем карточку при наведении, чтобы тултип был поверх всего */
                 .flat-card:hover {
-                    z-index: 10;
+                    z-index: 100;
                 }
                 
                 .flat-header {
                     height: 50px;
                     padding: 0 20px;
                     font-weight: 700;
-                    font-size: 16px; /* Чуть крупнее, раз нет иконки */
+                    font-size: 15px;
                     color: #111827;
                     border-bottom: 1px solid #F3F4F6;
                     display: flex;
@@ -2286,8 +2288,8 @@ with tab_seo_main:
                 .flat-content::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
 
                 .flat-footer {
-                    height: 170px; 
-                    min-height: 170px;
+                    height: 150px; 
+                    min-height: 150px;
                     padding: 12px 20px;
                     border-top: 1px solid #F3F4F6;
                     background-color: #FAFAFA;
@@ -2359,7 +2361,7 @@ with tab_seo_main:
                     padding: 0 10px;
                 }
 
-                /* Tooltip */
+                /* === TOOLTIP FIXED === */
                 .tooltip-container {
                     display: inline-flex;
                     align-items: center;
@@ -2370,45 +2372,57 @@ with tab_seo_main:
                     color: #6B7280;
                     border-radius: 50%;
                     font-size: 11px;
-                    margin-left: 2px;
+                    margin-left: 5px;
                     cursor: help;
                     position: relative;
                     font-weight: bold;
                 }
+                
                 .tooltip-text {
                     visibility: hidden;
-                    width: 200px;
+                    width: 240px; /* Шире, чтобы влезало */
                     background-color: #1F2937;
                     color: #fff;
                     text-align: left;
                     border-radius: 6px;
-                    padding: 10px;
+                    padding: 12px;
+                    
+                    /* Позиционирование */
                     position: absolute;
-                    z-index: 100;
-                    top: 130%; 
+                    z-index: 9999; /* Максимальный слой */
+                    top: 125%; /* Снизу от иконки */
                     left: 50%;
-                    margin-left: -100px; 
+                    margin-left: -120px; /* Центрируем */
+                    
                     opacity: 0;
                     transition: opacity 0.2s;
+                    
                     font-size: 11px;
                     font-weight: 400;
                     line-height: 1.5;
-                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+                    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+                    text-transform: none; /* Убираем uppercase родителя */
                 }
+                
+                /* Стрелочка */
                 .tooltip-text::after {
                     content: "";
                     position: absolute;
-                    bottom: 100%;
+                    bottom: 100%; /* Сверху блока */
                     left: 50%;
                     margin-left: -5px;
                     border-width: 5px;
                     border-style: solid;
                     border-color: transparent transparent #1F2937 transparent;
                 }
+                
                 .tooltip-container:hover .tooltip-text {
                     visibility: visible;
                     opacity: 1;
                 }
+                
+                /* Цвета внутри тултипа */
+                .tt-row { margin-bottom: 4px; }
                 .tt-green { color: #34D399; font-weight: 700; }
                 .tt-yellow { color: #FBBF24; font-weight: 700; }
                 .tt-red { color: #F87171; font-weight: 700; }
@@ -2421,7 +2435,7 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
-            # Логика длины
+            # === ЛОГИКА ДЛИНЫ ===
             def check_len_status(text, type_key):
                 length = len(text) if text else 0
                 limits = {
@@ -2433,35 +2447,42 @@ with tab_seo_main:
                 g_min, g_max = rule['good']
                 ok_min, ok_max = rule['ok_min'], rule['ok_max']
                 
-                if g_min <= length <= g_max:
-                    return length, "ХОРОШО", "#059669", "#ECFDF5" 
-                elif ok_min <= length < g_min:
-                    return length, "Можно увеличить объем", "#D97706", "#FFFBEB"
-                elif g_max < length <= ok_max:
-                    return length, "Можно сократить объем", "#D97706", "#FFFBEB"
-                elif length < ok_min:
-                    return length, "КРИТИЧЕСКИ МАЛО", "#DC2626", "#FEF2F2"
-                else: 
-                    return length, "КРИТИЧЕСКИ МНОГО", "#DC2626", "#FEF2F2"
+                if g_min <= length <= g_max: return length, "ХОРОШО", "#059669", "#ECFDF5" 
+                elif ok_min <= length < g_min: return length, "МАЛО (увеличьте)", "#D97706", "#FFFBEB"
+                elif g_max < length <= ok_max: return length, "МНОГО (сократите)", "#D97706", "#FFFBEB"
+                elif length < ok_min: return length, "КРИТИЧЕСКИ МАЛО", "#DC2626", "#FEF2F2"
+                else: return length, "КРИТИЧЕСКИ МНОГО", "#DC2626", "#FEF2F2"
 
+            # === ГЕНЕРАЦИЯ ТУЛТИПА (С полным текстом) ===
             def get_tooltip_html(type_key):
                 rules = {
-                    'Title': '<span class="tt-green">Хорошо:</span> 30-70<br><span class="tt-yellow">Приемлемо:</span> 10-29 или 71-90<br><span class="tt-red">Плохо:</span> <10 или >90',
-                    'Description': '<span class="tt-green">Хорошо:</span> 150-250<br><span class="tt-yellow">Приемлемо:</span> 75-149 или 251-300<br><span class="tt-red">Плохо:</span> <75 или >300',
-                    'H1': '<span class="tt-green">Хорошо:</span> 20-60<br><span class="tt-yellow">Приемлемо:</span> 5-19 или 61-70<br><span class="tt-red">Плохо:</span> <5 или >70'
+                    'Title': (
+                        '<div class="tt-row"><span class="tt-green">Хорошо:</span> 30-70</div>'
+                        '<div class="tt-row"><span class="tt-yellow">Приемлемо:</span> 10-29 или 71-90</div>'
+                        '<div class="tt-row"><span class="tt-red">Плохо:</span> <10 или >90</div>'
+                    ),
+                    'Description': (
+                        '<div class="tt-row"><span class="tt-green">Хорошо:</span> 150-250</div>'
+                        '<div class="tt-row"><span class="tt-yellow">Приемлемо:</span> 75-149 или 251-300</div>'
+                        '<div class="tt-row"><span class="tt-red">Плохо:</span> <75 или >300</div>'
+                    ),
+                    'H1': (
+                        '<div class="tt-row"><span class="tt-green">Хорошо:</span> 20-60</div>'
+                        '<div class="tt-row"><span class="tt-yellow">Приемлемо:</span> 5-19 или 61-70</div>'
+                        '<div class="tt-row"><span class="tt-red">Плохо:</span> <5 или >70</div>'
+                    )
                 }
                 text = rules.get(type_key, "")
-                return f"""<div class="tooltip-container">?<span class="tooltip-text">{text}</span></div>"""
+                # HTML в одну строку
+                return f"""<div class="tooltip-container">?<div class="tooltip-text">{text}</div></div>"""
 
-            # ОБНОВЛЕННАЯ ФУНКЦИЯ (Без иконки, но с type_key)
-            def render_flat_card_fixed(col, label, type_key, text_content, score, missing_list):
+            def render_flat_card_fixed(col, label, type_key, icon, text_content, score, missing_list):
                 if score >= 90: rel_color = "#10B981"
                 elif score >= 50: rel_color = "#F59E0B"
                 else: rel_color = "#EF4444"
 
                 curr_len, len_status, len_text_color, len_bg_color = check_len_status(text_content, type_key)
                 len_badge_html = f'<span class="flat-len-badge" style="background:{len_bg_color}; color:{len_text_color};">{curr_len} СИМВ. | {len_status}</span>'
-                
                 tooltip_html = get_tooltip_html(type_key)
 
                 rec_content = ""
@@ -2469,15 +2490,15 @@ with tab_seo_main:
                     tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
                     rec_content = f"""<div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:6px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div><div class="flat-tags-wrapper">{tags}</div>"""
                 elif score >= 100:
-                    rec_content = f"""<div class="flat-ok-msg">✔ Хорошо</div>"""
+                    rec_content = f"""<div class="flat-ok-msg">✔ Идеально соответствует топу</div>"""
 
                 display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
 
-                # HTML БЕЗ ИКОНКИ В ШАПКЕ
+                # HTML (No Indent)
                 raw_html = f"""
 <div class="flat-card">
 <div class="flat-header">
-{label} {tooltip_html}
+<div>{icon} {label}</div> {tooltip_html}
 </div>
 <div class="flat-content">
 {display_text}
@@ -2502,10 +2523,10 @@ with tab_seo_main:
                 with col:
                     st.markdown(raw_html, unsafe_allow_html=True)
 
-            # ВЫЗОВЫ ФУНКЦИИ (ИКОНКИ УДАЛЕНЫ, НО TYPE_KEY ОСТАЛСЯ)
-            render_flat_card_fixed(col_m1, "Title", "Title", m_self['Title'], m_scores['title'], m_miss['title'])
-            render_flat_card_fixed(col_m2, "Description", "Description", m_self['Description'], m_scores['desc'], m_miss['desc'])
-            render_flat_card_fixed(col_m3, "H1 Заголовок", "H1", m_self['H1'], m_scores['h1'], m_miss['h1'])
+            # Вывод колонок
+            render_flat_card_fixed(col_m1, "Title", "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
+            render_flat_card_fixed(col_m2, "Description", "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
+            render_flat_card_fixed(col_m3, "H1 Заголовок", "H1", "#️⃣", m_self['H1'], m_scores['h1'], m_miss['h1'])
 
             st.markdown("<br>", unsafe_allow_html=True)
             
@@ -4131,3 +4152,4 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
