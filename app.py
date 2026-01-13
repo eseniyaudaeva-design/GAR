@@ -1957,7 +1957,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     try:
         genai.configure(api_key=api_key)
         # === ИСПОЛЬЗУЕМ gemini-2.0-flash ===
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash-lite')
         
         full_prompt = system_instruction + "\n\n" + user_prompt
         
@@ -3530,7 +3530,7 @@ with tab_wholesale_main:
                 try:
                     genai.configure(api_key=gemini_api_key)
                     # Используем модель из вашего списка
-                    test_model = genai.GenerativeModel('gemini-1.5-flash')
+                    test_model = genai.GenerativeModel('gemini-2.0-flash-lite')
                     with st.spinner("Отправка запроса..."):
                         response = test_model.generate_content("Say OK")
                     
@@ -3585,7 +3585,7 @@ with tab_wholesale_main:
             try:
                 genai.configure(api_key=gemini_api_key)
                 # !!! ВАЖНАЯ ЗАМЕНА !!!
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-2.0-flash-lite')
             except Exception as e:
                 status_box.error(f"Ошибка подключения к Gemini: {e}")
 
@@ -4039,6 +4039,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
