@@ -2052,6 +2052,7 @@ with tab_seo_main:
         # ==========================================
         # 🔥 НОВЫЙ БЛОК: META DASHBOARD
         # ==========================================
+        my_data = st.session_state.get('saved_my_data') 
         
         meta_res = None
         if 'raw_comp_data' in st.session_state and my_data:
@@ -2316,6 +2317,8 @@ with tab_seo_main:
                 my_domain = urlparse(st.session_state.my_url_input).netloc
         elif current_input_type == "Исходный код страницы или текст":
             my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
+
+        st.session_state['saved_my_data'] = my_data 
             
         # 2. Сбор КАНДИДАТОВ
         candidates_pool = []
@@ -3725,6 +3728,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
