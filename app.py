@@ -2072,7 +2072,7 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (FINAL: BIG TAGS + READABLE UI)
+# 4. Отрисовка (FIXED FOOTER HEIGHT - PERFECT ALIGNMENT)
         if meta_res:
             import textwrap 
             
@@ -2090,53 +2090,55 @@ with tab_seo_main:
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 12px;
-                    /* Высота чуть больше, чтобы вместить крупные теги */
-                    height: 340px; 
+                    /* Общая высота карточки */
+                    height: 380px; 
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    padding: 16px;
+                    overflow: hidden;
                 }
                 
+                /* 1. ШАПКА - Фикс высота */
                 .flat-header {
+                    height: 50px;
+                    padding: 0 20px;
                     font-weight: 700;
                     font-size: 16px;
                     color: #111827;
-                    margin-bottom: 10px;
+                    border-bottom: 1px solid #F3F4F6;
                     display: flex;
                     align-items: center;
                     gap: 8px;
                     flex-shrink: 0;
-                    border-bottom: 1px solid #F3F4F6;
-                    padding-bottom: 8px;
                 }
                 
+                /* 2. КОНТЕНТ - Занимает всё свободное место */
                 .flat-content {
+                    flex-grow: 1;
+                    padding: 15px 20px;
                     font-size: 14px;
                     line-height: 1.5;
                     color: #374151;
-                    font-family: 'Inter', sans-serif;
+                    overflow-y: auto; /* Скролл только у текста */
                     
-                    /* Скролл для текста */
-                    flex-grow: 1;
-                    overflow-y: auto;
-                    min-height: 40px;
-                    
-                    margin-bottom: 10px;
-                    padding-right: 5px;
+                    /* Центрирование текста, если его мало */
                     display: flex;
                     flex-direction: column;
                     justify-content: center;
                 }
                 
-                /* Скроллбар */
-                .flat-content::-webkit-scrollbar { width: 4px; }
-                .flat-content::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
-
+                /* 3. ФУТЕР - ФИКСИРОВАННАЯ ВЫСОТА */
+                /* Именно это выравнивает полоски релевантности */
                 .flat-footer {
+                    height: 130px; 
+                    min-height: 130px;
+                    padding: 15px 20px;
+                    border-top: 1px solid #F3F4F6;
+                    background-color: #FAFAFA; /* Легкий фон, чтобы выделить зону */
                     flex-shrink: 0;
-                    margin-top: auto;
+                    display: flex;
+                    flex-direction: column;
                 }
                 
                 .flat-rel-row {
@@ -2144,9 +2146,9 @@ with tab_seo_main:
                     justify-content: space-between;
                     font-size: 11px;
                     font-weight: 700;
-                    color: #9CA3AF;
+                    color: #6B7280;
                     text-transform: uppercase;
-                    margin-bottom: 4px;
+                    margin-bottom: 6px;
                 }
                 
                 .flat-progress-bg {
@@ -2155,28 +2157,32 @@ with tab_seo_main:
                     height: 6px; 
                     border-radius: 3px;
                     overflow: hidden;
-                    margin-bottom: 10px;
+                    margin-bottom: 12px;
                     flex-shrink: 0;
                 }
                 
+                /* Зона для тегов внутри футера */
                 .flat-tags-area {
-                    overflow: hidden;
-                    position: relative;
+                    flex-grow: 1;
+                    overflow: hidden; /* Обрезаем лишнее, чтобы не ломать верстку */
                 }
                 
-                /* === КРУПНЫЕ ТЕГИ === */
+                /* Теги */
+                .flat-tags-wrapper {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 4px;
+                }
+                
                 .flat-miss-tag {
                     display: inline-block;
                     border: 1px solid #FECACA;
-                    color: #991B1B; /* Темно-красный */
-                    background-color: #FFF5F5;
-                    
-                    /* Увеличенные размеры */
-                    padding: 4px 10px; 
-                    margin: 3px 3px 3px 0;
-                    font-size: 13px; /* Нормальный читаемый шрифт */
+                    color: #991B1B;
+                    background-color: #FFFFFF;
+                    padding: 3px 8px;
+                    font-size: 11px;
                     font-weight: 600;
-                    border-radius: 6px;
+                    border-radius: 4px;
                 }
                 
                 .flat-ok-msg {
@@ -2185,11 +2191,15 @@ with tab_seo_main:
                     align-items: center;
                     color: #059669;
                     font-weight: 700;
-                    font-size: 14px;
+                    font-size: 13px;
                     background: #ECFDF5;
                     border-radius: 6px;
-                    padding: 8px 12px;
+                    padding: 0 10px;
                 }
+                
+                /* Скроллбар */
+                .flat-content::-webkit-scrollbar { width: 4px; }
+                .flat-content::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
             </style>
             """, unsafe_allow_html=True)
 
@@ -2208,29 +2218,50 @@ with tab_seo_main:
                 # Блок рекомендаций
                 rec_content = ""
                 if score < 100 and missing_list:
-                    # Лимит 8-10 слов, так как они теперь крупные
-                    tags_html = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:10]])
-                    # HTML в одну строку
-                    rec_content = f'<div style="font-size:11px; font-weight:700; color:#6B7280; margin-bottom:4px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div><div style="line-height:1.4;">{tags_html}</div>'
+                    # Лимит 10-12 слов
+                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
+                    rec_content = f"""
+                        <div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:6px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div>
+                        <div class="flat-tags-wrapper">{tags}</div>
+                    """
                 elif score >= 100:
-                    rec_content = f'<div class="flat-ok-msg"><span>✔ Идеально соответствует топу</span></div>'
+                    rec_content = f"""
+                        <div class="flat-ok-msg">✔ Идеально соответствует топу</div>
+                    """
 
                 display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
 
-                # СБОРКА HTML В ОДНУ СТРОКУ (Без отступов внутри f-string)
-                final_html = f"""
+                # HTML (dedent уберет отступы)
+                raw_html = f"""
 <div class="flat-card">
-<div class="flat-header"><span>{icon}</span> {label}</div>
-<div class="flat-content">{display_text}</div>
-<div class="flat-footer">
-<div class="flat-rel-row"><span>Релевантность</span><span style="color: {color}">{score}%</span></div>
-<div class="flat-progress-bg"><div style="width: {score}%; height: 100%; background-color: {color};"></div></div>
-<div class="flat-tags-area">{rec_content}</div>
-</div>
+    <div class="flat-header">
+        <span>{icon}</span> {label}
+    </div>
+    
+    <div class="flat-content">
+        {display_text}
+    </div>
+
+    <div class="flat-footer">
+        <div class="flat-rel-row">
+            <span>Релевантность</span>
+            <span style="color: {color}">{score}%</span>
+        </div>
+        
+        <div class="flat-progress-bg">
+            <div style="width: {score}%; height: 100%; background-color: {color};"></div>
+        </div>
+        
+        <div class="flat-tags-area">
+            {rec_content}
+        </div>
+    </div>
 </div>
 """
+                clean_html = textwrap.dedent(raw_html)
+                
                 with col:
-                    st.markdown(final_html, unsafe_allow_html=True)
+                    st.markdown(clean_html, unsafe_allow_html=True)
 
             # Вывод колонок
             render_flat_card_fixed(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
@@ -3834,6 +3865,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
