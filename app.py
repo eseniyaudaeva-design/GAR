@@ -44,6 +44,10 @@ try:
 except ImportError:
     openai = None
 
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 # ==========================================
 # 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ
 # ==========================================
@@ -1858,9 +1862,17 @@ def get_page_data_for_gen(url):
             
     return base_text, tags_data, page_header, None
 
-def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
+def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * num_blocks
+    if not genai: return ["Error: google-generativeai lib not installed"] * num_blocks
     
+    # Настройка API
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash') # Используем быструю и дешевую модель
+    except Exception as e:
+        return [f"API Config Error: {str(e)}"] * num_blocks
+
     seo_words = seo_words or []
     seo_instruction_block = ""
     if seo_words:
@@ -1873,30 +1885,26 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
 1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем {num_blocks} блокам.
 2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b>..."
 3. СТРОГИЙ ЗАПРЕТ: Используй тег <b> ТОЛЬКО для этих SEO-слов. Не выделяй жирным ничего другого.
-4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь.
+4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным.
 -------------------------------------------
 """
 
-    # 2. Системная роль (Обновленная)
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
-        "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
+        "Твоя цель — писать глубокий, технически полезный текст для профессионалов. "
         "Ты выдаешь ТОЛЬКО HTML-код. "
-        "Стиль: Деловой, экспертный, но \"человечный\" и понятный. Избегай канцеляризмов и пространных рассуждений. "
-        "Факты и конкретика: Все суждения подкрепляй измеримыми фактами, цифрами, ссылками на ГОСТы, марки стали и другие нормативы. "
-        "Используй поисковые инструменты для проверки и обогащения текста актуальной информацией. "
-        "Коммерческая направленность: Текст должен продавать. Говори от лица компании-производителя/поставщика. "
-        "Вместо \"проверенный поставщик\" используй формулировки, подчеркивающие собственное производство и экспертизу. "
-        "Формула Главреда для B2B: В тексте должны быть ответы на вопросы: что это? какую проблему решает? кому подойдет? "
-        "какие есть разновидности? Дополнительно раскрой информацию о стандартах производства, складских запасах и возможности изготовления под заказ. "
+        "Стиль: Деловой, экспертный. Избегай воды. "
+        "Факты и конкретика: Подкрепляй суждения фактами. "
+        "Коммерческая направленность: Текст должен продавать. Говори от лица производителя/поставщика. "
         "СТРОГИЕ ЗАПРЕТЫ: "
-        "1. Не используй упоминания Украины, украинских городов (Киев, Львов и др.), политические темы, валюту гривну. Контент строго для РФ. "
-        "2. НИКОГДА не используй ссылки на источники ни в тексте, ни в списках. Чисти текст от них полностью. "
-        "3. Именна собственные, названия городов пиши с заглавной буквы. Марки пиши в соответствии с марочниками. ГОСТ всегда заглавными."
+        "1. Не используй упоминания Украины, политики. Контент строго для РФ. "
+        "2. НИКОГДА не используй ссылки на источники. "
+        "3. Именна собственные и города с заглавной буквы. ГОСТ всегда заглавными."
     )
 
-    # 3. Пользовательский промт (Обновленный с переменными)
     user_prompt = f"""
+    {system_instruction}
+
     ИСХОДНЫЕ ДАННЫЕ:
     Название товара: "{tag_name}"
     Базовый текст (фактура): \"\"\"{base_text[:3500]}\"\"\"
@@ -1907,55 +1915,36 @@ def generate_ai_content_blocks(client, base_text, tag_name, forced_header, num_b
     Напиши {num_blocks} HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||
     
     ОБЩИЕ ТРЕБОВАНИЯ:
-    1. ОБЪЕМ: Каждый блок должен содержать максимум 800 символов. Раскрывай тему подробно.
-    2. ЧИСТОТА: Исключи любые ссылки на источники.
-    3. ПОЛЬЗА: Текст должен быть технически грамотным и полезным для специалиста по закупкам. Избегай "воды".
+    1. ОБЪЕМ: Каждый блок ~600-800 символов.
+    2. ЧИСТОТА: Только HTML, без Markdown (```html).
     
-    ТРЕБОВАНИЯ К СТРУКТУРЕ КАЖДОГО БЛОКА:
-    Каждый из {num_blocks} блоков должен строго соблюдать следующий порядок элементов:
-    1. Заголовок (<h2> только для 1-го блока, <h3> для блоков 2-5).
-    2. Первый абзац текста (<p>) - развернутый, информативный.
-    3. Вводное предложение, подводящее к списку (например: "Основные характеристики:", "Сферы применения:").
-    4. Маркированный список (<ul> c <li>).
-    5. Второй (завершающий) абзац текста (<p>) - развернутый.
+    СТРУКТУРА КАЖДОГО БЛОКА:
+    1. Заголовок (<h2> для 1-го, <h3> для остальных).
+    2. Текст (<p>).
+    3. Список (<ul> с <li>).
+    4. Текст (<p>).
     
     ТЕМЫ БЛОКОВ:
-    --- БЛОК 1 (Вводный) ---
-    - Заголовок: <h2>{forced_header}</h2>
-    - Описание товара, назначение, ключевые особенности.
+    БЛОК 1: Вводный. Заголовок <h2>{forced_header}</h2>.
+    БЛОКИ 2-{num_blocks}: Технические детали, применение, производство.
     
-    --- БЛОКИ 2, 3, 4, 5 (Технические детали) ---
-    - Заголовки: <h3> (Характеристики, Применение, Производство, Особенности, Сортамент и т.д.).
-    - Используй фактуру из "Базового текста".
-    
-    ФИНАЛЬНЫЕ УСЛОВИЯ:
-    - Никаких вводных слов типа "Вот ваш код".
-    - Никакого Markdown (```).
-    - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
+    ВЫВОД: Только HTML код, разбитый через |||BLOCK_SEP|||.
     """
     
     try:
-        response = client.chat.completions.create(
-            model="sonar-pro",
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.75
-        )
-        content = response.choices[0].message.content
-        # Чистка ответа от лишних артефактов
+        response = model.generate_content(user_prompt)
+        content = response.text
+        
+        # Чистка ответа
         content = re.sub(r'\[\d+\]', '', content)
         content = content.replace("```html", "").replace("```", "").strip()
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
         
-        # Если блоков меньше чем надо, добиваем пустыми, чтобы не сломать Excel
         while len(blocks) < num_blocks: blocks.append("")
-        
         return blocks[:num_blocks]
     except Exception as e:
-        return [f"API Error: {str(e)}"] * num_blocks
+        return [f"Gemini API Error: {str(e)}"] * num_blocks
 
 # ==========================================
 # 7. UI TABS RESTRUCTURED
@@ -3097,9 +3086,9 @@ with tab_wholesale_main:
                 manual_html_source = None
 
         with col_key:
-            default_key = st.session_state.get('pplx_key_cache', "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")
-            pplx_api_key = st.text_input("Perplexity API Key", value=default_key, type="password")
-            if pplx_api_key: st.session_state.pplx_key_cache = pplx_api_key
+            default_key = st.session_state.get('gemini_key_cache', "AIzaSyDy1XyLb1ClOuCDuneheIsgDeq4zH-WYq8")
+            gemini_api_key = st.text_input("Google Gemini API Key", value=default_key, type="password")
+            if gemini_api_key: st.session_state.gemini_key_cache = gemini_api_key
 
     # ==========================================
     # 2. ВЫБОР МОДУЛЕЙ
@@ -3481,7 +3470,7 @@ with tab_wholesale_main:
     else:
         if not main_category_url: ready_to_go = False
 
-    if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
+    if (use_text or use_tables) and not gemini_api_key: ready_to_go = False
     # Убираем жесткие проверки контента здесь, так как подгрузим файлы принудительно ниже
     # if use_tags and not tags_file_content: ready_to_go = False 
     if use_promo and df_db_promo is None: ready_to_go = False
@@ -3824,10 +3813,14 @@ with tab_wholesale_main:
             inner_html = render_tree_internal(tree, level=1)
             full_sidebar_code = f"""<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{inner_html}</ul></nav></div></div>"""
 
-        # === ИНИЦИАЛИЗАЦИЯ КЛИЕНТА PERPLEXITY ===
-        client = None
-        if openai and (use_text or use_tables or use_geo) and pplx_api_key:
-            client = openai.OpenAI(api_key=pplx_api_key, base_url="https://api.perplexity.ai")
+# === ИНИЦИАЛИЗАЦИЯ GEMINI ===
+        model = None
+        if genai and (use_text or use_tables or use_geo) and gemini_api_key:
+            try:
+                genai.configure(api_key=gemini_api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+            except:
+                status_box.error("Ошибка авторизации Gemini")
 
         progress_bar = status_box.progress(0)
         total_steps = len(target_pages)
@@ -3840,11 +3833,11 @@ with tab_wholesale_main:
             for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
             current_page_seo_words = list(text_context_final_list)
             
-            # --- ВИЗУАЛЬНЫЕ БЛОКИ (TAGS / PROMO) ---
-            # (Здесь оставляем вашу существующую логику тегов и промо, или просто инициализируем пустыми)
+            # --- ВИЗУАЛЬНЫЕ БЛОКИ ---
             row_data['Tags HTML'] = "" 
             row_data['Promo HTML'] = ""
             
+            # ... (Код Tags HTML и Promo HTML оставляем без изменений, он не зависит от нейросети) ...
             if use_tags:
                 html_collector = []
                 for kw in global_tags_list:
@@ -3870,33 +3863,35 @@ with tab_wholesale_main:
                     p_html += '</div></div>'
                     row_data['Promo HTML'] = p_html
 
-            # --- НЕЙРОСЕТЬ (PERPLEXITY) ---
+            # --- НЕЙРОСЕТЬ (GEMINI) ---
 
             # 1. ТЕКСТ
-            if use_text and client:
-                # Передаем client, а не api_key
-                blocks = generate_ai_content_blocks(client, base_text_raw if base_text_raw else "", page['name'], header_for_ai, num_text_blocks_val, current_page_seo_words)
+            if use_text and model:
+                # Передаем ключ (gemini_api_key), так как он нужен внутри функции для конфигурации, 
+                # либо можно передать уже настроенный model, но проще поправить вызов.
+                # В новой функции generate_ai_content_blocks первым аргументом идет api_key
+                blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw if base_text_raw else "", page['name'], header_for_ai, num_text_blocks_val, current_page_seo_words)
                 for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
 
             # 2. ТАБЛИЦЫ
-            if use_tables and client:
+            if use_tables and model:
                 for t_i, t_topic in enumerate(table_prompts):
-                    ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
-                    prompt = f"Create HTML table for '{header_for_ai}'. Topic: {t_topic}. {ctx}. Requirements: Real data, raw HTML <table>, no Markdown."
+                    ctx = f"Данные из семантики: {tech_context_final_str}" if tech_context_final_str else ""
+                    prompt = f"Create strictly HTML <table> for product '{header_for_ai}'. Table Topic: {t_topic}. Context: {ctx}. Use real typical data. No Markdown formatting, just <table> code."
                     try:
-                        resp = client.chat.completions.create(model="sonar-pro", messages=[{"role": "user", "content": prompt}])
-                        html = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                        resp = model.generate_content(prompt)
+                        html = resp.text.replace("```html", "").replace("```", "").strip()
                         if "<table" not in html: html = f"<table>{html}</table>"
                         row_data[f'Table_{t_i+1}_HTML'] = html
                     except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
             # 3. GEO
-            if use_geo and client and global_geo_list:
+            if use_geo and model and global_geo_list:
                 cities = ", ".join(random.sample(global_geo_list, min(20, len(global_geo_list))))
-                prompt = f"Write HTML <p> regarding delivery of '{header_for_ai}' to: {cities}. No Markdown."
+                prompt = f"Write a short HTML <p> paragraph regarding delivery of '{header_for_ai}' to these cities: {cities}. Mention fast shipping. No Markdown."
                 try:
-                    resp = client.chat.completions.create(model="sonar-pro", messages=[{"role": "user", "content": prompt}])
-                    row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                    resp = model.generate_content(prompt)
+                    row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
                 except Exception as e: row_data['IP_PROP4819'] = f"Error: {e}"
 
             if use_sidebar: row_data['Sidebar HTML'] = full_sidebar_code
@@ -4152,4 +4147,5 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
