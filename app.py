@@ -2072,7 +2072,7 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (FIXED FOOTER + HTML LEFT ALIGN NO INDENT)
+# 4. Отрисовка (COMPACT CARD + TALLER FOOTER + NO HTML INDENT)
         if meta_res:
             import textwrap 
             
@@ -2090,8 +2090,8 @@ with tab_seo_main:
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 12px;
-                    /* Общая высота карточки */
-                    height: 380px; 
+                    /* 1. УМЕНЬШИЛИ ОБЩУЮ ВЫСОТУ (было 400px) */
+                    height: 340px; 
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
@@ -2103,7 +2103,7 @@ with tab_seo_main:
                     height: 50px;
                     padding: 0 20px;
                     font-weight: 700;
-                    font-size: 16px;
+                    font-size: 15px;
                     color: #111827;
                     border-bottom: 1px solid #F3F4F6;
                     display: flex;
@@ -2114,14 +2114,14 @@ with tab_seo_main:
                 
                 .flat-content {
                     flex-grow: 1;
-                    padding: 15px 20px;
-                    font-size: 14px;
-                    line-height: 1.5;
+                    padding: 10px 20px;
+                    font-size: 13px;
+                    line-height: 1.4;
                     color: #374151;
-                    overflow-y: auto; /* Скролл только у текста */
+                    overflow-y: auto; /* Скролл для текста */
                     background: transparent;
                     
-                    /* Центрирование текста */
+                    /* Центрируем текст по вертикали, чтобы убрать пустоту */
                     display: flex;
                     flex-direction: column;
                     justify-content: center;
@@ -2130,11 +2130,11 @@ with tab_seo_main:
                 .flat-content::-webkit-scrollbar { width: 4px; }
                 .flat-content::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
 
-                /* ФИКСИРОВАННЫЙ ФУТЕР - ДЛЯ РОВНЫХ ПОЛОСОК */
                 .flat-footer {
-                    height: 130px; 
-                    min-height: 130px;
-                    padding: 15px 20px;
+                    /* 2. УВЕЛИЧИЛИ ВЫСОТУ ФУТЕРА (было 130px) */
+                    height: 150px; 
+                    min-height: 150px;
+                    padding: 12px 20px;
                     border-top: 1px solid #F3F4F6;
                     background-color: #FAFAFA;
                     flex-shrink: 0;
@@ -2145,7 +2145,7 @@ with tab_seo_main:
                 .flat-rel-row {
                     display: flex;
                     justify-content: space-between;
-                    font-size: 11px;
+                    font-size: 10px;
                     font-weight: 700;
                     color: #6B7280;
                     text-transform: uppercase;
@@ -2158,7 +2158,7 @@ with tab_seo_main:
                     height: 6px; 
                     border-radius: 3px;
                     overflow: hidden;
-                    margin-bottom: 12px;
+                    margin-bottom: 10px;
                     flex-shrink: 0;
                 }
                 
@@ -2211,14 +2211,15 @@ with tab_seo_main:
 
                 rec_content = ""
                 if score < 100 and missing_list:
-                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
+                    # Чуть больше тегов влезет в увеличенный футер
+                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:14]])
                     rec_content = f"""<div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:6px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div><div class="flat-tags-wrapper">{tags}</div>"""
                 elif score >= 100:
                     rec_content = f"""<div class="flat-ok-msg">✔ Идеально соответствует топу</div>"""
 
                 display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
 
-                # ВОТ ЗДЕСЬ УБРАНЫ ВСЕ ОТСТУПЫ У HTML
+                # 3. HTML СТРОГО БЕЗ ОТСТУПОВ СЛЕВА
                 raw_html = f"""
 <div class="flat-card">
 <div class="flat-header">
@@ -3847,6 +3848,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
