@@ -2072,7 +2072,7 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (FIXED HEIGHT + SCROLL + BIG TAGS)
+# 4. Отрисовка (COMPACT FIXED SIZE + TEXT SCROLL ONLY)
         if meta_res:
             import textwrap 
             
@@ -2090,9 +2090,11 @@ with tab_seo_main:
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 12px;
-                    padding: 20px;
-                    /* ФИКСИРОВАННАЯ ВЫСОТА КАРТОЧКИ */
-                    height: 450px; 
+                    padding: 16px; /* Чуть меньше отступы для компактности */
+                    
+                    /* ФИКСИРОВАННАЯ УМЕНЬШЕННАЯ ВЫСОТА */
+                    height: 320px; 
+                    
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
@@ -2101,49 +2103,58 @@ with tab_seo_main:
                 
                 .flat-header {
                     font-weight: 700;
-                    font-size: 16px;
+                    font-size: 15px;
                     color: #111827;
-                    margin-bottom: 15px;
+                    margin-bottom: 10px;
                     display: flex;
                     align-items: center;
                     gap: 8px;
                     flex-shrink: 0; /* Шапка не сжимается */
+                    border-bottom: 1px solid #F3F4F6;
+                    padding-bottom: 8px;
                 }
                 
                 .flat-content {
-                    font-size: 14px;
+                    font-size: 13px;
                     line-height: 1.5;
                     color: #374151;
-                    text-align: center;
                     
-                    /* СКРОЛЛ ДЛЯ ТЕКСТА */
-                    flex-grow: 1;
-                    overflow-y: auto; 
+                    /* СКРОЛЛ ТОЛЬКО ЗДЕСЬ */
+                    flex-grow: 1; /* Занимает всё доступное место */
+                    overflow-y: auto; /* Включает скролл если текста много */
+                    min-height: 50px; /* Минимальная высота, чтобы текст не исчез */
                     
-                    /* Центрирование контента, если его мало */
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: center;
-                    
-                    margin-bottom: 20px;
-                    padding: 0 10px;
+                    /* Визуальное оформление */
+                    margin-bottom: 10px;
+                    padding-right: 5px; /* Отступ от скроллбара */
                     font-family: 'Inter', sans-serif;
-                    border-bottom: 1px dashed #F3F4F6; /* Легкий разделитель снизу */
                 }
                 
+                /* Кастомизация скроллбара (для Chrome/Safari) */
+                .flat-content::-webkit-scrollbar {
+                    width: 4px;
+                }
+                .flat-content::-webkit-scrollbar-track {
+                    background: #f1f1f1; 
+                }
+                .flat-content::-webkit-scrollbar-thumb {
+                    background: #c1c1c1; 
+                    border-radius: 2px;
+                }
+
                 .flat-footer {
-                    flex-shrink: 0; /* Футер не сжимается */
+                    flex-shrink: 0; /* Футер жесткого размера, не сжимается */
                     margin-top: auto;
                 }
                 
                 .flat-rel-label {
-                    text-align: center;
-                    font-size: 11px;
+                    display: flex;
+                    justify-content: space-between;
+                    font-size: 10px;
                     font-weight: 700;
                     color: #9CA3AF;
                     text-transform: uppercase;
-                    margin-bottom: 8px;
-                    letter-spacing: 0.5px;
+                    margin-bottom: 4px;
                 }
                 
                 .flat-progress-bg {
@@ -2152,48 +2163,46 @@ with tab_seo_main:
                     height: 6px; 
                     border-radius: 3px;
                     overflow: hidden;
-                    margin-bottom: 5px;
+                    margin-bottom: 8px;
                 }
                 .flat-progress-fill {
                     height: 100%;
                     transition: width 0.6s ease;
                 }
                 
-                .flat-score-num {
-                    text-align: center;
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: #6B7280;
-                    margin-bottom: 10px;
-                }
-                
-                /* Блок тегов */
+                /* Блок тегов - БЕЗ СКРОЛЛА */
                 .flat-missing-block {
-                    margin-top: 10px;
-                    text-align: center;
-                    /* Ограничиваем высоту блока тегов, если их ОЧЕНЬ много */
-                    max-height: 80px; 
-                    overflow-y: auto;
+                    margin-top: 8px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
                 }
                 
-                /* УВЕЛИЧЕННЫЕ ТЕГИ */
+                .flat-tags-wrapper {
+                    display: flex;
+                    flex-wrap: wrap; /* Теги переносятся на новую строку */
+                    gap: 4px;
+                    /* Нет скролла, они просто занимают место */
+                }
+                
                 .flat-miss-tag {
                     display: inline-block;
                     border: 1px solid #FECACA;
-                    color: #991B1B; /* Более темный красный для читаемости */
-                    background-color: #FEF2F2;
-                    padding: 4px 8px; /* Больше отступы */
-                    margin: 3px;
-                    font-size: 13px; /* Крупнее шрифт */
+                    color: #991B1B;
+                    background-color: #FFF5F5;
+                    padding: 2px 6px;
+                    font-size: 11px; /* Компактный шрифт */
                     font-weight: 600;
-                    border-radius: 6px;
+                    border-radius: 4px;
+                    white-space: nowrap;
                 }
+                
                 .flat-ok {
                     color: #059669;
                     font-weight: 600;
-                    font-size: 14px;
+                    font-size: 13px;
                     text-align: center;
-                    margin-top: 15px;
+                    margin-top: 10px;
                 }
             </style>
             """, unsafe_allow_html=True)
@@ -2216,12 +2225,12 @@ with tab_seo_main:
                 # Рекомендации
                 rec_html = ""
                 if score < 100 and missing_list:
-                    # Убрали срез [:12], чтобы показать больше, раз есть скролл
-                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list])
+                    # Ограничиваем количество тегов (10-12), чтобы они влезли в компактную карточку без скролла
+                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
                     rec_html = (
                         f'<div class="flat-missing-block">'
-                        f'<div style="font-size:11px; font-weight:700; color:#6B7280; margin-bottom:5px; text-transform:uppercase;">Добавить:</div>'
-                        f'{tags}'
+                        f'<div style="font-size:10px; font-weight:700; color:#6B7280; text-transform:uppercase;">Добавить:</div>'
+                        f'<div class="flat-tags-wrapper">{tags}</div>'
                         f'</div>'
                     )
                 elif score >= 100:
@@ -2237,11 +2246,13 @@ with tab_seo_main:
 </div>
 
 <div class="flat-footer">
-<div class="flat-rel-label">Релевантность</div>
+<div class="flat-rel-label">
+<span>Релевантность</span>
+<span style="color: {color}">{score}%</span>
+</div>
 <div class="flat-progress-bg">
 <div class="flat-progress-fill" style="width: {score}%; background-color: {color};"></div>
 </div>
-<div class="flat-score-num">{score}%</div>
 {rec_html}
 </div>
 </div>
@@ -3853,6 +3864,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
