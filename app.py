@@ -2327,7 +2327,7 @@ with tab_seo_main:
 </div>
 <div class="flat-footer">
 <div class="flat-metric-row">
-<span>Длина</span>
+<span></span>
 {len_badge_html}
 </div>
 <div class="flat-metric-row" style="margin-top:5px;">
@@ -3948,6 +3948,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
