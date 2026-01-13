@@ -2537,73 +2537,83 @@ with tab_seo_main:
                         st.rerun()
 
         # --- УПУЩЕННАЯ СЕМАНТИКА ---
+# --- УПУЩЕННАЯ СЕМАНТИКА (В EXPANDER) ---
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
+        
         if high or low:
             with st.expander(f"🧩 Упущенная семантика ({len(high)+len(low)})", expanded=False):
                 if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
                 if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
-        render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
+        # 1. ТАБЛИЦА ГЛУБИНЫ (В EXPANDER)
+        with st.expander("📉 1. Анализ Глубины (Частотность слов)", expanded=False):
+            render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
-        # === ТАБЛИЦА №2 (Рекомендации по названию) ===
-        if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
-            df_naming = st.session_state.naming_table_df
-            
-            st.markdown("### 2. Рекомендации по названию товаров")
-            
-            # ФОРМУЛА
-            if 'ideal_h1_result' in st.session_state:
-                res_ideal = st.session_state.ideal_h1_result
-                if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
-                    example_name = res_ideal[0]
-                    report_list = res_ideal[1]
-                    formula_str = "Формула не определена"
-                    for line in report_list:
-                        if "структура" in line or "Схема" in line:
-                            formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
-                            break
-                    with st.container(border=True):
-                        st.markdown("#### 🧪 Идеальная формула названия")
-                        st.info(f"**{formula_str}**", icon="🧩")
-                        st.markdown(f"**Пример генерации:** _{example_name}_")
+        # 2. ТАБЛИЦА НАЗВАНИЙ (В EXPANDER)
+        with st.expander("🏷️ 2. Рекомендации по названию товаров", expanded=False):
+            if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
+                df_naming = st.session_state.naming_table_df
+                
+                # ФОРМУЛА
+                if 'ideal_h1_result' in st.session_state:
+                    res_ideal = st.session_state.ideal_h1_result
+                    if isinstance(res_ideal, (tuple, list)) and len(res_ideal) >= 2:
+                        example_name = res_ideal[0]
+                        report_list = res_ideal[1]
+                        formula_str = "Формула не определена"
+                        for line in report_list:
+                            if "структура" in line or "Схема" in line:
+                                formula_str = line.replace("**Самая частая структура:**", "").replace("**Схема:**", "").strip()
+                                break
+                        with st.container(border=True):
+                            st.markdown("#### 🧪 Идеальная формула названия")
+                            st.info(f"**{formula_str}**", icon="🧩")
+                            st.markdown(f"**Пример генерации:** _{example_name}_")
+                    else:
+                        st.warning("⚠️ Данные устарели.")
+
+                # ТАБЛИЦА
+                st.markdown("##### Детальный анализ характеристик")
+                if not df_naming.empty:
+                    col_ctrl1, col_ctrl2 = st.columns([1, 3])
+                    with col_ctrl1:
+                        show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
+                    
+                    df_display = df_naming.copy()
+                    if not show_tech:
+                        df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
+
+                    if 'cat_sort' in df_display.columns:
+                        df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
+                    
+                    cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
+                    existing_cols = [c for c in cols_to_show if c in df_display.columns]
+                    df_display = df_display[existing_cols]
+
+                    def style_rows(row):
+                        val = str(row.get('Добавить', ''))
+                        if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row)
+                        if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row)
+                        return [''] * len(row)
+
+                    st.dataframe(
+                        df_display.style.apply(style_rows, axis=1),
+                        use_container_width=True,
+                        hide_index=True,
+                        height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
+                    )
                 else:
-                    st.warning("⚠️ Данные устарели.")
-
-            # ТАБЛИЦА
-            st.markdown("##### Детальный анализ характеристик")
-            if not df_naming.empty:
-                col_ctrl1, col_ctrl2 = st.columns([1, 3])
-                with col_ctrl1:
-                    show_tech = st.toggle("Показать размеры и цифры", value=False, key="toggle_show_tech_specs_unique")
-                
-                df_display = df_naming.copy()
-                if not show_tech:
-                    df_display = df_display[~df_display['Тип хар-ки'].str.contains("Размеры", na=False)]
-
-                if 'cat_sort' in df_display.columns:
-                    df_display = df_display.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
-                
-                cols_to_show = ["Тип хар-ки", "Слово", "Частотность (%)", "У Вас", "Медиана", "Добавить"]
-                existing_cols = [c for c in cols_to_show if c in df_display.columns]
-                df_display = df_display[existing_cols]
-
-                def style_rows(row):
-                    val = str(row.get('Добавить', ''))
-                    if "+" in val: return ['background-color: #fff1f2; color: #9f1239'] * len(row)
-                    if "✅" in val: return ['background-color: #f0fdf4; color: #166534'] * len(row)
-                    return [''] * len(row)
-
-                st.dataframe(
-                    df_display.style.apply(style_rows, axis=1),
-                    use_container_width=True,
-                    hide_index=True,
-                    height=(len(df_display) * 35) + 38 if len(df_display) < 15 else 500
-                )
+                    st.warning("Нет данных для отображения.")
             else:
-                st.warning("Нет данных для отображения.")
-                
+                st.info("Данные для анализа названий отсутствуют.")
+
+        # 3. ТАБЛИЦА TF-IDF (В EXPANDER)
+        with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
             render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
+
+        # 4. ТАБЛИЦА РЕЛЕВАНТНОСТИ (В EXPANDER)
+        with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=False):
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ==========================================
@@ -4030,6 +4040,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
