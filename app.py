@@ -2538,7 +2538,7 @@ with tab_seo_main:
                         time.sleep(0.5)
                         st.rerun()
 
-        # --- УПУЩЕННАЯ СЕМАНТИКА (Скрыто) ---
+# --- УПУЩЕННАЯ СЕМАНТИКА (Скрыто) ---
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         
@@ -2547,12 +2547,12 @@ with tab_seo_main:
                 if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
                 if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
-        # 6. ТАБЛИЦА ГЛУБИНЫ (Скрыто)
+        # 1. ТАБЛИЦА ГЛУБИНЫ (Скрыто)
         with st.expander("📉 1. Анализ Глубины (Частотность слов)", expanded=False):
             render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
-        # 7. ТАБЛИЦА НАЗВАНИЙ (Скрыто)
-        with st.expander("🏷️ 2. Рекомендации по названию товаров", expanded=False):
+        # 2. ТАБЛИЦА НАЗВАНИЙ (ОТКРЫТО ПО УМОЛЧАНИЮ)
+        with st.expander("🏷️ 2. Рекомендации по названию товаров", expanded=True):
             if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
                 df_naming = st.session_state.naming_table_df
                 
@@ -2609,12 +2609,12 @@ with tab_seo_main:
             else:
                 st.info("Данные для анализа названий отсутствуют.")
 
-        # 8. ТАБЛИЦА TF-IDF (Скрыто)
+        # 3. ТАБЛИЦА TF-IDF (Скрыто)
         with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
             render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
 
-        # 9. ТАБЛИЦА РЕЛЕВАНТНОСТИ (Скрыто)
-        with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=False):
+        # 4. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ОТКРЫТО ПО УМОЛЧАНИЮ)
+        with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ==========================================
@@ -4041,6 +4041,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
