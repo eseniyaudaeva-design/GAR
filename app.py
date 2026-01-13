@@ -2145,7 +2145,7 @@ with tab_seo_main:
         if meta_res:
             import textwrap 
             
-            st.markdown("### 🧬 Рекомендации Title, Description и H1")
+            st.markdown("### 🧬 Рекомендации по мета-данным")
             
             # --- CSS STYLES ---
             st.markdown("""
@@ -2430,7 +2430,7 @@ with tab_seo_main:
             # =======================================================
 
             # 1. СЕМАНТИЧЕСКОЕ ЯДРО (ОТКРЫТО)
-            with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
+            with st.expander("🛒 Семантическое ядро", expanded=True):
                 if not st.session_state.get('orig_products'):
                     st.info("⚠️ Данные отсутствуют. Запустите анализ.")
                 else:
@@ -2506,7 +2506,7 @@ with tab_seo_main:
                             st.rerun()
 
             # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ОТКРЫТО)
-            with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
+            with st.expander("🏆 Таблица релевантности", expanded=True):
                 render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Позиция", default_sort_order="Возрастание")
 
             # =======================================================
@@ -2572,7 +2572,7 @@ with tab_seo_main:
                     st.info("Данные для анализа названий отсутствуют.")
 
             # 4. ДЕТАЛИ META (ЗАКРЫТО)
-            with st.expander("🕵️ Детальное сравнение Meta-тегов", expanded=False):
+            with st.expander("🕵️ Мета-данные конкурентов", expanded=False):
                 df_meta = pd.DataFrame(meta_res['detailed'])
                 my_row = pd.DataFrame([{
                     'URL': 'ВАШ САЙТ', 
@@ -2603,11 +2603,11 @@ with tab_seo_main:
                     if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
             # 6. ГЛУБИНА (ЗАКРЫТО)
-            with st.expander("📉 1. Анализ Глубины (Частотность слов)", expanded=False):
+            with st.expander("📉 Глубина", expanded=False):
                 render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
 
             # 7. TF-IDF (ЗАКРЫТО)
-            with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
+            with st.expander("🧮 TF-IDF", expanded=False):
                 render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
 
 # ==========================================
@@ -4034,6 +4034,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
