@@ -947,86 +947,95 @@ def parse_page(url, settings, query_context=""):
 
 def analyze_meta_gaps(comp_data_full, my_data, settings):
     """
-    Анализирует Title, Description и H1 конкурентов.
-    Выявляет слова, которые есть у топов, но нет у вас.
-    (Улучшенная версия: фильтрация предлогов и союзов)
+    УМНЫЙ АНАЛИЗАТОР META-ТЕГОВ v2.1
+    1. Учитывает вес позиции (слова топов важнее).
+    2. Порог вхождения: СТРОГО 50% (слово должно быть у половины конкурентов).
+    3. Фильтрует предлоги и союзы.
     """
     if not comp_data_full: return None
+    
+    # === 1. НАСТРОЙКИ АЛГОРИТМА ===
+    TOTAL_COMPS = len(comp_data_full)
+    
+    # !!! ИСПРАВЛЕНО: СТРОГО 50% !!!
+    MIN_OCCURRENCE_PCT = 0.5 
+    
+    # Минимум 2 сайта, даже если конкурентов всего 3
+    MIN_COUNT = max(2, int(TOTAL_COMPS * MIN_OCCURRENCE_PCT))
 
-    # Вспомогательная функция токенизации (УЛУЧШЕННАЯ)
+    # Вспомогательная функция токенизации (Чистка мусора)
     def fast_tokenize(text):
         if not text: return set()
         
-        # 1. Жесткий список мусора (предлоги, союзы, единицы измерения)
+        # Список стоп-слов
         stop_garbage = {
             'в', 'на', 'и', 'с', 'со', 'по', 'для', 'от', 'до', 'из', 'к', 'у', 
-            'о', 'об', 'за', 'над', 'под', 'при', 'про', 'без', 'через',
+            'о', 'об', 'за', 'над', 'под', 'при', 'про', 'без', 'через', 'между',
             'а', 'но', 'или', 'да', 'как', 'что', 'чтобы', 'если', 'то', 'ли', 'бы', 'же', 
             'г', 'обл', 'р', 'руб', 'мм', 'см', 'м', 'кг', 'т', 'шт', 'дн',
-            'весь', 'все', 'всё', 'свой', 'ваш', 'наш' # Местоимения
+            'весь', 'все', 'всё', 'свой', 'ваш', 'наш', 'мы', 'вы', 'он', 'она', 'они',
+            'купить', 'цена', 'заказать', 'стоимость', 'продажа', 'недорого', 
+            'москва', 'спб' 
         }
+        # Убираем коммерческие штампы из стоп-листа, чтобы они попадали в рекомендации
+        if 'купить' in stop_garbage: stop_garbage.remove('купить') 
+        if 'цена' in stop_garbage: stop_garbage.remove('цена')
         
-        # Добавляем пользовательские стоп-слова из настроек, если есть
         if settings.get('custom_stops'):
             stop_garbage.update(set(settings['custom_stops']))
 
         lemmas = set()
-        # Оставляем только буквы и цифры
         words = re.findall(r'[а-яА-Яa-zA-Z0-9]+', text.lower())
         
         for w in words:
-            if len(w) < 2: continue # Пропускаем однобуквенные (кроме тех, что в словаре, но их мы и так удалим)
+            if len(w) < 2: continue 
             if w in stop_garbage: continue
             
-            # Лемматизация и проверка части речи
+            # NLP Фильтр
             if morph:
                 try:
                     p = morph.parse(w)[0]
-                    
-                    # === ГЛАВНЫЙ ФИЛЬТР ЧАСТЕЙ РЕЧИ ===
-                    # PREP = Предлог
-                    # CONJ = Союз
-                    # PRCL = Частица
-                    # NPRO = Местоимение (я, ты, мы, вы, он...)
-                    # INTJ = Междометие
+                    # Исключаем Предлоги, Союзы, Частицы, Местоимения, Междометия
                     if p.tag.POS in {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ'}:
                         continue
-                    
-                    # Дополнительная проверка: иногда предлоги определяются как наречия или иное
                     if p.normal_form in stop_garbage:
                         continue
-
                     lemmas.add(p.normal_form)
                 except: 
                     lemmas.add(w)
             else:
                 lemmas.add(w)
-                
         return lemmas
 
-    # 1. Мои данные
-    my_t_tokens = fast_tokenize(my_data.get('meta_title', ''))
-    my_d_tokens = fast_tokenize(my_data.get('meta_desc', ''))
-    my_h_tokens = fast_tokenize(my_data.get('h1', ''))
-
-    # 2. Сбор статистики конкурентов
-    stats = {
-        'title': Counter(),
-        'desc': Counter(),
-        'h1': Counter()
+    # === 2. СБОР ДАННЫХ С ВЕСАМИ ===
+    # Структура: word -> {'count': 0, 'score': 0.0}
+    stats_map = {
+        'title': defaultdict(lambda: {'count': 0, 'score': 0.0}),
+        'desc': defaultdict(lambda: {'count': 0, 'score': 0.0}),
+        'h1': defaultdict(lambda: {'count': 0, 'score': 0.0})
     }
     
-    # Для детальной таблицы
     detailed_rows = []
 
-    for item in comp_data_full:
+    for i, item in enumerate(comp_data_full):
+        # Вес позиции: 1-е место = весомее, чем 10-е
+        rank_weight = 1.0 + ( (TOTAL_COMPS - i) / TOTAL_COMPS ) * 1.5
+        
         t_tok = fast_tokenize(item.get('meta_title', ''))
         d_tok = fast_tokenize(item.get('meta_desc', ''))
         h_tok = fast_tokenize(item.get('h1', ''))
         
-        stats['title'].update(t_tok)
-        stats['desc'].update(d_tok)
-        stats['h1'].update(h_tok)
+        for w in t_tok:
+            stats_map['title'][w]['count'] += 1
+            stats_map['title'][w]['score'] += rank_weight
+            
+        for w in d_tok:
+            stats_map['desc'][w]['count'] += 1
+            stats_map['desc'][w]['score'] += rank_weight
+            
+        for w in h_tok:
+            stats_map['h1'][w]['count'] += 1
+            stats_map['h1'][w]['score'] += rank_weight
 
         detailed_rows.append({
             'URL': item['url'],
@@ -1035,38 +1044,58 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
             'H1': item.get('h1', '')
         })
 
-    # 3. Формирование рекомендаций
-    # Берем слова, которые встречаются хотя бы у 25-30% конкурентов
-    threshold = max(2, int(len(comp_data_full) * 0.25))
+    # === 3. АНАЛИЗ РАЗРЫВОВ (GAPS) ===
     
-    def get_missing(source_counter, my_tokens):
+    my_tokens = {
+        'title': fast_tokenize(my_data.get('meta_title', '')),
+        'desc': fast_tokenize(my_data.get('meta_desc', '')),
+        'h1': fast_tokenize(my_data.get('h1', ''))
+    }
+
+    def process_category(cat_key):
+        data = stats_map[cat_key]
+        important_words = []
+        
+        for word, metrics in data.items():
+            # 1. Отсекаем слова, которые встречаются реже, чем у 50% конкурентов
+            if metrics['count'] < MIN_COUNT:
+                continue
+            
+            # Сохраняем слово и его "важность" (Score)
+            important_words.append((word, metrics['score']))
+        
+        # Сортируем по важности (Score)
+        important_words.sort(key=lambda x: x[1], reverse=True)
+        
+        # Оставляем только ядро (Топ-15 слов, прошедших фильтр 50%)
+        core_semantics = [x[0] for x in important_words[:15]]
+        
+        if not core_semantics:
+            return 100, [] 
+            
+        matches = 0
         missing = []
-        total_important = 0
-        found_important = 0
         
-        # Сортируем по частоте (берем топ-25 популярных слов)
-        for word, count in source_counter.most_common(25):
-            if count >= threshold:
-                total_important += 1
-                if word in my_tokens:
-                    found_important += 1
-                else:
-                    missing.append(word)
+        for w in core_semantics:
+            if w in my_tokens[cat_key]:
+                matches += 1
+            else:
+                missing.append(w)
         
-        # Расчет скора (Релевантность)
-        score = 100
-        if total_important > 0:
-            score = int((found_important / total_important) * 100)
-        
+        if len(core_semantics) > 0:
+            score = int((matches / len(core_semantics)) * 100)
+        else:
+            score = 100
+            
         return score, missing
 
-    score_t, miss_t = get_missing(stats['title'], my_t_tokens)
-    score_d, miss_d = get_missing(stats['desc'], my_d_tokens)
-    score_h, miss_h = get_missing(stats['h1'], my_h_tokens)
+    s_t, m_t = process_category('title')
+    s_d, m_d = process_category('desc')
+    s_h, m_h = process_category('h1')
 
     return {
-        'scores': {'title': score_t, 'desc': score_d, 'h1': score_h},
-        'missing': {'title': miss_t, 'desc': miss_d, 'h1': miss_h},
+        'scores': {'title': s_t, 'desc': s_d, 'h1': s_h},
+        'missing': {'title': m_t, 'desc': m_d, 'h1': m_h},
         'detailed': detailed_rows,
         'my_data': {
             'Title': my_data.get('meta_title', 'Не определен'),
@@ -3876,6 +3905,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
