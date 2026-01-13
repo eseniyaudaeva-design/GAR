@@ -2072,26 +2072,23 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (КОМПАКТНЫЙ ДИЗАЙН v2)
+# 4. Отрисовка (КОМПАКТНЫЙ ДИЗАЙН v2 - ИСПРАВЛЕННЫЙ)
         if meta_res:
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
             # --- CSS STYLES (Compact) ---
             st.markdown("""
             <style>
-                /* Компактная карточка */
                 .meta-card-compact {
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 8px;
-                    padding: 12px; /* Меньше отступы */
+                    padding: 12px;
                     height: 100%;
                     display: flex;
                     flex-direction: column;
                     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
                 }
-                
-                /* Заголовок */
                 .compact-header {
                     display: flex;
                     justify-content: space-between;
@@ -2099,7 +2096,7 @@ with tab_seo_main:
                     margin-bottom: 8px;
                 }
                 .compact-label {
-                    font-size: 14px; /* Меньше шрифт */
+                    font-size: 14px;
                     font-weight: 700;
                     color: #374151;
                     display: flex;
@@ -2112,33 +2109,27 @@ with tab_seo_main:
                     padding: 2px 8px;
                     border-radius: 12px;
                 }
-                
-                /* Текст контента (Title/Desc) */
                 .compact-text-box {
                     background-color: #F9FAFB;
                     border: 1px solid #F3F4F6;
                     border-radius: 6px;
                     padding: 8px;
-                    font-size: 11px; /* Мелкий шрифт */
+                    font-size: 11px;
                     line-height: 1.4;
                     color: #4B5563;
                     font-family: monospace;
                     margin-bottom: 10px;
-                    
-                    /* Ограничение высоты + троеточие, если очень длинно */
                     display: -webkit-box;
-                    -webkit-line-clamp: 3; /* Макс 3 строки */
+                    -webkit-line-clamp: 3;
                     -webkit-box-orient: vertical;
                     overflow: hidden;
                     min-height: 45px;
                 }
-
-                /* Тонкий прогресс бар */
                 .compact-progress-bg {
                     width: 100%;
                     background-color: #F3F4F6;
                     border-radius: 3px;
-                    height: 6px; /* Тоньше */
+                    height: 6px;
                     margin-bottom: 10px;
                     overflow: hidden;
                 }
@@ -2146,8 +2137,6 @@ with tab_seo_main:
                     height: 100%;
                     border-radius: 3px;
                 }
-
-                /* Блок тегов */
                 .compact-rec-title {
                     font-size: 10px;
                     font-weight: 600;
@@ -2166,7 +2155,7 @@ with tab_seo_main:
                     border: 1px solid #FECACA;
                     padding: 2px 6px;
                     border-radius: 4px;
-                    font-size: 10px; /* Мелкие теги */
+                    font-size: 10px;
                     font-weight: 600;
                 }
                 .compact-ok-msg {
@@ -2183,6 +2172,7 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
+            def render_meta_card_compact(col, label, icon, text_content, score, missing_list):
                 # 1. Логика цветов
                 if score >= 90:
                     color = "#10B981"; bg_score = "#D1FAE5"; text_score = "#065F46"
@@ -2196,14 +2186,11 @@ with tab_seo_main:
                 rec_label = "Статус:"
                 if score < 100 and missing_list:
                     rec_label = "Добавить:"
-                    # Берем до 15 слов
                     tags_html = "".join([f'<span class="compact-miss-tag">{w}</span>' for w in missing_list[:15]])
                 elif score >= 100:
                     tags_html = '<span class="compact-ok-msg">✔ Отлично</span>'
 
-                # 3. Сборка HTML
-                # ВАЖНО: Весь HTML код ниже прижат к левому краю (без отступов), 
-                # чтобы Markdown не превратил его в блок кода.
+                # 3. Сборка HTML (Прижат к левому краю, чтобы не было бага с pre-formatted text)
                 html_code = f"""
 <div class="meta-card-compact">
     <div class="compact-header">
@@ -2238,7 +2225,6 @@ with tab_seo_main:
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # Таблица деталей (оставляем)
             with st.expander("🕵️ Детальное сравнение с конкурентами"):
                 df_meta = pd.DataFrame(meta_res['detailed'])
                 my_row = pd.DataFrame([{
@@ -2258,7 +2244,7 @@ with tab_seo_main:
                         "Description": st.column_config.TextColumn("Description", width="large"),
                         "H1": st.column_config.TextColumn("H1", width="small"),
                     },
-                    height=300 # Сделали чуть меньше высоту таблицы
+                    height=300
                 )
 
         # ==========================================
@@ -3835,6 +3821,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
