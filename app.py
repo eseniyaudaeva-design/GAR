@@ -2333,64 +2333,75 @@ with tab_seo_main:
                 return f"""<div class="tooltip-container">?<span class="tooltip-text">{rules.get(type_key, "")}</span></div>"""
 
             # === УМНЫЙ ГЕНЕРАТОР (Сохраняет стиль сайта) ===
+# === УМНЫЙ ГЕНЕРАТОР v2 (ИСПРАВЛЕННЫЙ) ===
             def generate_smart_suggestions(current_text, base_h1, missing_words, type_key):
+                # 1. Базовая очистка H1
                 base = base_h1 if base_h1 and len(base_h1) > 2 else "Товар"
+                # Убираем коммерческие слова из H1, если они там есть
+                clean_base = re.sub(r'(?i)\s(купить|цена|оптом|в москве|заказать|прайс).*', '', base).strip()
                 
-                # Чистим базовое название от лишнего (например "Труба алюминиевая купить") -> "Труба алюминиевая"
-                clean_base = re.sub(r'(?i)\s(купить|цена|оптом|в москве).*', '', base).strip()
-                
-                # Топ-3 упущенных слова
-                missing = [w for w in missing_words if len(w) > 2][:4] 
-                keywords_str = ", ".join(missing)
-                
+                # 2. Обработка регистра (Если не капс, то делаем маленькой)
+                # Пример: "Труба Алюминиевая" -> "труба алюминиевая"
+                if not clean_base.isupper():
+                    clean_base_lower = clean_base.lower()
+                else:
+                    clean_base_lower = clean_base # Оставляем аббревиатуры как есть (ГОСТ, AISI)
+
+                # 3. Фильтрация слов для вставки (Убираем глаголы и мусор)
+                bad_words_for_text = {'звонить', 'цена', 'купить', 'заказ', 'москва', 'спб', 'доставка'}
+                valid_missing = [w for w in missing_words if len(w) > 2 and w.lower() not in bad_words_for_text][:5]
+                keywords_str = ", ".join(valid_missing)
+
                 suggestions = []
 
+                # === ГЕНЕРАЦИЯ TITLE ===
                 if type_key == "Title":
-                    # 1. Пытаемся найти "хвост" бренда в текущем Title
-                    # Ищем разделители: | - —
+                    # Пытаемся найти бренд (хвост после | или —)
                     brand_tail = ""
                     if current_text:
                         match = re.search(r'(\s[|—]\s.*$)', current_text)
-                        if match:
-                            brand_tail = match.group(1) # Например: " | Стальметурал"
-                    
-                    if not brand_tail:
-                        brand_tail = "" # Если не нашли, хвоста не будет
+                        if match: brand_tail = match.group(1)
+                    if not brand_tail: brand_tail = "" # Если нет бренда
 
-                    # Вариант 1: Сборка с сохранением бренда
-                    if missing:
-                        s1 = f"Купить {clean_base} {keywords_str}{brand_tail}"
+                    # Шаблон 1: Безопасный (через двоеточие)
+                    # "Труба алюминиевая: купить в Москве, цена..."
+                    s1 = f"{clean_base}: купить оптом в Москве, цена{brand_tail}"
+                    
+                    # Шаблон 2: С характеристиками
+                    if keywords_str:
+                        # "Труба алюминиевая (круглый, 100мм) — в наличии..."
+                        s2 = f"{clean_base} ({keywords_str}) — купить недорого{brand_tail}"
                     else:
-                        s1 = f"Купить {clean_base} в Москве, цена оптом{brand_tail}"
+                        s2 = f"Купить {clean_base_lower} от производителя — прайс-лист{brand_tail}"
                     
-                    suggestions.append(s1)
+                    suggestions = [s1, s2]
 
+                # === ГЕНЕРАЦИЯ DESCRIPTION ===
                 elif type_key == "Description":
-                    # 1. Пытаемся найти телефон и "хвост"
-                    # Пример: ... по телефону +7 (499) ... ▪ Поставка по России...
+                    # Извлекаем ТОЛЬКО контакты и условия из старого текста
                     phone_part = ""
-                    benefits_part = ""
-                    
                     if current_text:
-                        # Ищем телефон
-                        phone_match = re.search(r'(\+7\s?\(?\d{3}\)?[\d\-\s]+)', current_text)
-                        if phone_match:
-                            phone_part = f" Тел: {phone_match.group(1)}."
-                        
-                        # Ищем разделитель ▪ или | для преимуществ
-                        sep_match = re.search(r'([▪|]\s.*$)', current_text)
-                        if sep_match:
-                            benefits_part = " " + sep_match.group(1)
-                    
-                    # Если ничего не нашли, ставим заглушку
-                    if not benefits_part:
-                        benefits_part = " ▪ Доставка по РФ, скидки, ГОСТ."
+                        # Ищем телефон +7... или 8...
+                        phone_match = re.search(r'([\+\d\(\)\s-]{10,18})', current_text)
+                        if phone_match and len(phone_match.group(1)) > 9:
+                            phone_part = f" Тел: {phone_match.group(1).strip()}."
 
-                    # Вариант 1: Интеграция слов в начало
-                    kw_insert = f" В наличии: {keywords_str}." if missing else " Большой выбор."
+                    # Стандартный хвост преимуществ (лучше, чем парсить мусор)
+                    benefits = "Доставка по РФ, резка в размер, скидки."
                     
-                    s1 = f"{clean_base.capitalize()} — продажа оптом и в розницу.{kw_insert}{phone_part}{benefits_part}"
-                    suggestions.append(s1)
+                    # Формируем перечисление характеристик
+                    specs_part = ""
+                    if valid_missing:
+                        specs_part = f" Характеристики: {keywords_str}."
+
+                    # Шаблон 1: Классический B2B
+                    # "Труба алюминиевая в наличии на складе. Характеристики: ... Тел: ..."
+                    s1 = f"{clean_base} в наличии на складе. Продажа оптом и в розницу.{specs_part}{phone_part} {benefits}"
+                    
+                    # Шаблон 2: Акцент на выгоду
+                    s2 = f"Предлагаем купить {clean_base_lower} по выгодной цене. Сертификаты ГОСТ.{specs_part} Быстрая отгрузка.{phone_part}"
+                    
+                    suggestions = [s1, s2]
 
                 return suggestions
 
@@ -3929,6 +3940,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
