@@ -2072,17 +2072,125 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-        # 4. Отрисовка
+# 4. Отрисовка (ОБНОВЛЕННЫЙ ДИЗАЙН)
         if meta_res:
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
+            # --- CSS STYLES ---
             st.markdown("""
             <style>
-                .meta-box { border: 1px solid #E0E0E0; border-radius: 8px; padding: 15px; height: 100%; background: #FFF; }
-                .meta-title { font-weight: bold; font-size: 16px; margin-bottom: 5px; color: #333; }
-                .meta-content { font-size: 13px; color: #555; margin-bottom: 10px; font-style: italic; min-height: 40px;}
-                .missing-tag { display: inline-block; background: #ffebee; color: #c62828; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 4px; margin-bottom: 4px; border: 1px solid #ef9a9a; }
-                .perfect-tag { color: #2E7D32; font-weight: bold; font-size: 13px; }
+                /* Основной контейнер карточки */
+                .meta-card {
+                    background-color: #FFFFFF;
+                    border: 1px solid #E5E7EB;
+                    border-radius: 12px;
+                    padding: 20px;
+                    height: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+                    transition: transform 0.2s;
+                }
+                .meta-card:hover {
+                    border-color: #277EFF;
+                    transform: translateY(-2px);
+                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+                }
+                
+                /* Заголовок карточки */
+                .meta-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 15px;
+                    border-bottom: 1px solid #F3F4F6;
+                    padding-bottom: 10px;
+                }
+                .meta-label {
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: #1F2937;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .meta-score {
+                    font-size: 14px;
+                    font-weight: 800;
+                    padding: 4px 10px;
+                    border-radius: 20px;
+                }
+                
+                /* Блок с текстом (Title/Desc) */
+                .meta-text-box {
+                    background-color: #F9FAFB;
+                    border: 1px solid #E5E7EB;
+                    border-radius: 8px;
+                    padding: 12px;
+                    font-size: 13px;
+                    line-height: 1.5;
+                    color: #4B5563;
+                    font-family: monospace;
+                    margin-bottom: 15px;
+                    min-height: 80px; /* Фикс высоты */
+                    max-height: 80px; /* Чтобы не разъезжалось */
+                    overflow-y: auto; /* Скролл для длинных */
+                }
+
+                /* Прогресс бар кастомный */
+                .progress-container {
+                    width: 100%;
+                    background-color: #E5E7EB;
+                    border-radius: 6px;
+                    height: 8px;
+                    margin-bottom: 15px;
+                    overflow: hidden;
+                }
+                .progress-fill {
+                    height: 100%;
+                    border-radius: 6px;
+                    transition: width 0.5s ease-in-out;
+                }
+
+                /* Блок рекомендаций */
+                .rec-block {
+                    flex-grow: 1;
+                    display: flex;
+                    flex-direction: column;
+                }
+                .rec-title {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #6B7280;
+                    text-transform: uppercase;
+                    margin-bottom: 8px;
+                }
+                .tags-container {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                }
+                .miss-tag {
+                    background-color: #FEF2F2;
+                    color: #991B1B;
+                    border: 1px solid #FECACA;
+                    padding: 4px 8px;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+                .ok-msg {
+                    color: #059669;
+                    font-size: 13px;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    background: #ECFDF5;
+                    padding: 8px;
+                    border-radius: 6px;
+                }
             </style>
             """, unsafe_allow_html=True)
 
@@ -2092,32 +2200,62 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
-            def render_meta_card(col, label, text, score, missing_list):
-                with col:
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="meta-box">
-                            <div class="meta-title">{label}</div>
-                            <div class="meta-content">"{text}"</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        st.markdown(f"**Релевантность: {score}%**")
-                        st.progress(score / 100)
-                        
-                        if score < 100 and missing_list:
-                            st.markdown("**Добавить:**")
-                            html_tags = "".join([f'<span class="missing-tag">{w}</span>' for w in missing_list[:10]])
-                            st.markdown(html_tags, unsafe_allow_html=True)
-                        elif score == 100:
-                            st.markdown("<span class='perfect-tag'>✅ Идеально (по конкурентам)</span>", unsafe_allow_html=True)
+            def render_meta_card_html(col, label, icon, text_content, score, missing_list):
+                # Определение цветов
+                if score >= 90:
+                    color = "#10B981"; bg_score = "#D1FAE5"; text_score = "#065F46" # Green
+                elif score >= 50:
+                    color = "#F59E0B"; bg_score = "#FEF3C7"; text_score = "#92400E" # Yellow
+                else:
+                    color = "#EF4444"; bg_score = "#FEE2E2"; text_score = "#991B1B" # Red
 
-            render_meta_card(col_m1, "Title", m_self['Title'], m_scores['title'], m_miss['title'])
-            render_meta_card(col_m2, "Description", m_self['Description'], m_scores['desc'], m_miss['desc'])
-            render_meta_card(col_m3, "H1 Заголовок", m_self['H1'], m_scores['h1'], m_miss['h1'])
+                # Генерация HTML тегов
+                tags_html = ""
+                if score < 100 and missing_list:
+                    tags_html = "".join([f'<span class="miss-tag">{w}</span>' for w in missing_list[:12]]) # Лимит 12 слов
+                elif score >= 100:
+                    tags_html = '<div class="ok-msg">✅ Идеально соответствует топу</div>'
+
+                html_code = f"""
+                <div class="meta-card">
+                    <div>
+                        <div class="meta-header">
+                            <div class="meta-label"><span>{icon}</span> {label}</div>
+                            <div class="meta-score" style="background: {bg_score}; color: {text_score}">{score}%</div>
+                        </div>
+                        
+                        <div class="meta-text-box" title="{text_content}">
+                            {text_content if text_content else "<span style='color:#9CA3AF'>Нет данных</span>"}
+                        </div>
+
+                        <div class="progress-container">
+                            <div class="progress-fill" style="width: {score}%; background-color: {color};"></div>
+                        </div>
+                    </div>
+
+                    <div class="rec-block">
+                        <div class="rec-title">
+                            { "Нужно добавить слова:" if (score < 100 and missing_list) else "Статус:" }
+                        </div>
+                        <div class="tags-container">
+                            {tags_html}
+                        </div>
+                    </div>
+                </div>
+                """
+                with col:
+                    st.markdown(html_code, unsafe_allow_html=True)
+
+            # Вызов отрисовки для 3 колонок
+            render_meta_card_html(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
+            render_meta_card_html(col_m2, "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
+            render_meta_card_html(col_m3, "H1 Заголовок", "heading", m_self['H1'], m_scores['h1'], m_miss['h1'])
 
             st.markdown("<br>", unsafe_allow_html=True)
-
+            
+            # (Дальше идет ваш expander с таблицей, его можно оставить как есть)
             with st.expander("🕵️ Детальное сравнение с конкурентами (Нажмите, чтобы раскрыть)"):
+                # ... (код таблицы остается прежним) ...
                 df_meta = pd.DataFrame(meta_res['detailed'])
                 my_row = pd.DataFrame([{
                     'URL': 'ВАШ САЙТ', 
@@ -3714,6 +3852,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
