@@ -48,6 +48,7 @@ try:
     import google.generativeai as genai
 except ImportError:
     genai = None
+
 # ==========================================
 # 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ
 # ==========================================
@@ -1869,7 +1870,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     # Настройка API
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro') # Используем быструю и дешевую модель
+        model = genai.GenerativeModel('gemini-1.5-flash') # Используем быструю и дешевую модель
     except Exception as e:
         return [f"API Config Error: {str(e)}"] * num_blocks
 
@@ -3470,15 +3471,11 @@ with tab_wholesale_main:
     else:
         if not main_category_url: ready_to_go = False
 
-# === ИСПРАВЛЕНИЕ: Проверяем gemini_api_key вместо pplx_api_key ===
-    if (use_text or use_tables) and not gemini_api_key: ready_to_go = False
-    
+    if (use_text or use_tables) and not pplx_api_key: ready_to_go = False
     # Убираем жесткие проверки контента здесь, так как подгрузим файлы принудительно ниже
     # if use_tags and not tags_file_content: ready_to_go = False 
     if use_promo and df_db_promo is None: ready_to_go = False
-    
-    # === ИСПРАВЛЕНИЕ: Здесь тоже меняем на gemini_api_key ===
-    if use_geo and not gemini_api_key: ready_to_go = False
+    if use_geo and not pplx_api_key: ready_to_go = False
     
     if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         # === ОЧИСТКА ПРЕДЫДУЩИХ РЕЗУЛЬТАТОВ ===
@@ -3822,7 +3819,7 @@ with tab_wholesale_main:
         if genai and (use_text or use_tables or use_geo) and gemini_api_key:
             try:
                 genai.configure(api_key=gemini_api_key)
-                model = genai.GenerativeModel('gemini-pro') # <--- ИСПРАВЛЕНО
+                model = genai.GenerativeModel('gemini-1.5-flash')
             except:
                 status_box.error("Ошибка авторизации Gemini")
 
@@ -4151,7 +4148,3 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
-
-
-
-
