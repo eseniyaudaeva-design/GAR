@@ -3672,6 +3672,8 @@ with tab_wholesale_main:
                 status_box.error("Ошибка ключа Gemini")
 
         progress_bar = status_box.progress(0)
+
+        total_steps = len(target_pages) if len(target_pages) > 0 else 1
         
         for idx, page in enumerate(target_pages):
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
@@ -3985,6 +3987,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
