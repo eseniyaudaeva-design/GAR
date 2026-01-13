@@ -3545,7 +3545,7 @@ with tab_wholesale_main:
                         transport='rest'  # <--- ВОТ ЭТО ГЛАВНОЕ ИСПРАВЛЕНИЕ
                     )
                     # Используем модель из вашего списка
-                    test_model = genai.GenerativeModel('gemini-2.0-flash')
+                    test_model = genai.GenerativeModel('gemini-2.5-flash')
                     with st.spinner("Отправка запроса..."):
                         response = test_model.generate_content("Say OK")
                     
@@ -3600,7 +3600,7 @@ with tab_wholesale_main:
             try:
                 genai.configure(api_key=gemini_api_key)
                 # !!! ВАЖНАЯ ЗАМЕНА !!!
-                model = genai.GenerativeModel('gemini-2.0-flash')
+                model = genai.GenerativeModel('gemini-2.5-flash')
             except Exception as e:
                 status_box.error(f"Ошибка подключения к Gemini: {e}")
 
@@ -4054,6 +4054,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
