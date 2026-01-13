@@ -2129,7 +2129,7 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (COMPACT CARD + TALLER FOOTER + NO HTML INDENT)
+# 4. Отрисовка (FINAL: LENGTH CHECK + COMPACT LAYOUT)
         if meta_res:
             import textwrap 
             
@@ -2147,8 +2147,8 @@ with tab_seo_main:
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 12px;
-                    /* 1. УМЕНЬШИЛИ ОБЩУЮ ВЫСОТУ (было 400px) */
-                    height: 340px; 
+                    /* Общая высота (чуть увеличили под новую строку) */
+                    height: 360px; 
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
@@ -2175,10 +2175,8 @@ with tab_seo_main:
                     font-size: 13px;
                     line-height: 1.4;
                     color: #374151;
-                    overflow-y: auto; /* Скролл для текста */
+                    overflow-y: auto;
                     background: transparent;
-                    
-                    /* Центрируем текст по вертикали, чтобы убрать пустоту */
                     display: flex;
                     flex-direction: column;
                     justify-content: center;
@@ -2188,9 +2186,9 @@ with tab_seo_main:
                 .flat-content::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
 
                 .flat-footer {
-                    /* 2. УВЕЛИЧИЛИ ВЫСОТУ ФУТЕРА (было 130px) */
-                    height: 150px; 
-                    min-height: 150px;
+                    /* Высота футера (под теги, длину и релевантность) */
+                    height: 170px; 
+                    min-height: 170px;
                     padding: 12px 20px;
                     border-top: 1px solid #F3F4F6;
                     background-color: #FAFAFA;
@@ -2199,23 +2197,32 @@ with tab_seo_main:
                     flex-direction: column;
                 }
                 
-                .flat-rel-row {
+                /* Строка с метриками (Длина / Релевантность) */
+                .flat-metric-row {
                     display: flex;
                     justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 4px;
                     font-size: 10px;
                     font-weight: 700;
-                    color: #6B7280;
+                    color: #9CA3AF;
                     text-transform: uppercase;
-                    margin-bottom: 6px;
                 }
                 
+                .flat-len-badge {
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    font-weight: 600;
+                    font-size: 10px;
+                }
+
                 .flat-progress-bg {
                     width: 100%;
                     background-color: #E5E7EB;
                     height: 6px; 
                     border-radius: 3px;
                     overflow: hidden;
-                    margin-bottom: 10px;
+                    margin-bottom: 12px; /* Отступ до тегов */
                     flex-shrink: 0;
                 }
                 
@@ -2261,22 +2268,49 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
-            def render_flat_card_fixed(col, label, icon, text_content, score, missing_list):
-                if score >= 90: color = "#10B981"
-                elif score >= 50: color = "#F59E0B"
-                else: color = "#EF4444"
+            # === ЛОГИКА ПРОВЕРКИ ДЛИНЫ ===
+            def check_len_status(text, type_key):
+                length = len(text) if text else 0
+                
+                # Настройки диапазонов
+                limits = {
+                    'Title': {'good': (30, 70), 'ok_min': 10, 'ok_max': 90},
+                    'Description': {'good': (150, 250), 'ok_min': 75, 'ok_max': 300},
+                    'H1': {'good': (20, 60), 'ok_min': 5, 'ok_max': 70}
+                }
+                
+                rule = limits.get(type_key, {'good': (0,0), 'ok_min': 0, 'ok_max': 0})
+                
+                if rule['good'][0] <= length <= rule['good'][1]:
+                    return length, "Хорошо", "#059669", "#ECFDF5" # Green
+                elif rule['ok_min'] <= length <= rule['ok_max']:
+                    return length, "Приемлемо", "#D97706", "#FFFBEB" # Orange
+                else:
+                    return length, "Плохо", "#DC2626", "#FEF2F2" # Red
 
+            def render_flat_card_fixed(col, label, type_key, icon, text_content, score, missing_list):
+                # 1. Цвет релевантности
+                if score >= 90: rel_color = "#10B981"
+                elif score >= 50: rel_color = "#F59E0B"
+                else: rel_color = "#EF4444"
+
+                # 2. Анализ длины
+                curr_len, len_status, len_text_color, len_bg_color = check_len_status(text_content, type_key)
+                
+                # HTML бейджика длины
+                len_badge_html = f'<span class="flat-len-badge" style="background:{len_bg_color}; color:{len_text_color};">{curr_len} симв. ({len_status})</span>'
+
+                # 3. Блок рекомендаций (Теги)
                 rec_content = ""
                 if score < 100 and missing_list:
-                    # Чуть больше тегов влезет в увеличенный футер
-                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:14]])
+                    tags = "".join([f'<span class="flat-miss-tag">{w}</span>' for w in missing_list[:12]])
                     rec_content = f"""<div style="font-size:10px; font-weight:700; color:#9CA3AF; margin-bottom:6px; text-transform:uppercase;">НУЖНО ДОБАВИТЬ:</div><div class="flat-tags-wrapper">{tags}</div>"""
                 elif score >= 100:
-                    rec_content = f"""<div class="flat-ok-msg">✔</div>"""
+                    rec_content = f"""<div class="flat-ok-msg">✔ Идеально соответствует топу</div>"""
 
                 display_text = text_content if text_content else "<span style='color:#ccc'>— Нет данных —</span>"
 
-                # 3. HTML СТРОГО БЕЗ ОТСТУПОВ СЛЕВА
+                # 4. Сборка HTML (Без отступов)
                 raw_html = f"""
 <div class="flat-card">
 <div class="flat-header">
@@ -2286,12 +2320,16 @@ with tab_seo_main:
 {display_text}
 </div>
 <div class="flat-footer">
-<div class="flat-rel-row">
+<div class="flat-metric-row">
+<span>Длина</span>
+{len_badge_html}
+</div>
+<div class="flat-metric-row" style="margin-top:5px;">
 <span>Релевантность</span>
-<span style="color: {color}">{score}%</span>
+<span style="color: {rel_color}">{score}%</span>
 </div>
 <div class="flat-progress-bg">
-<div style="width: {score}%; height: 100%; background-color: {color};"></div>
+<div style="width: {score}%; height: 100%; background-color: {rel_color};"></div>
 </div>
 <div class="flat-tags-area">
 {rec_content}
@@ -2299,14 +2337,14 @@ with tab_seo_main:
 </div>
 </div>
 """
-                
                 with col:
                     st.markdown(raw_html, unsafe_allow_html=True)
 
             # Вывод колонок
-            render_flat_card_fixed(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
-            render_flat_card_fixed(col_m2, "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
-            render_flat_card_fixed(col_m3, "H1 Заголовок", "#️⃣", m_self['H1'], m_scores['h1'], m_miss['h1'])
+            # Важно передать type_key ("Title", "Description", "H1") для правильной проверки длины
+            render_flat_card_fixed(col_m1, "Title", "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
+            render_flat_card_fixed(col_m2, "Description", "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
+            render_flat_card_fixed(col_m3, "H1 Заголовок", "H1", "#️⃣", m_self['H1'], m_scores['h1'], m_miss['h1'])
 
             st.markdown("<br>", unsafe_allow_html=True)
             
@@ -3905,6 +3943,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
