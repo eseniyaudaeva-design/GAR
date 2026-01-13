@@ -2435,7 +2435,7 @@ with tab_seo_main:
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            with st.expander("🕵️ Детальное сравнение с конкурентами"):
+            with st.expander("🕵️ Мета конкурентов"):
                 df_meta = pd.DataFrame(meta_res['detailed'])
                 my_row = pd.DataFrame([{
                     'URL': 'ВАШ САЙТ', 
@@ -2547,7 +2547,7 @@ with tab_seo_main:
                 if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
         # 1. ТАБЛИЦА ГЛУБИНЫ (В EXPANDER)
-        with st.expander("📉 1. Анализ Глубины (Частотность слов)", expanded=False):
+        with st.expander("📉 1. Глубина", expanded=False):
             render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
         # 2. ТАБЛИЦА НАЗВАНИЙ (В EXPANDER)
@@ -2609,11 +2609,11 @@ with tab_seo_main:
                 st.info("Данные для анализа названий отсутствуют.")
 
         # 3. ТАБЛИЦА TF-IDF (В EXPANDER)
-        with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
+        with st.expander("🧮 3. TF-IDF", expanded=False):
             render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
 
         # 4. ТАБЛИЦА РЕЛЕВАНТНОСТИ (В EXPANDER)
-        with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=False):
+        with st.expander("🏆 4. Релевантность конкурентов", expanded=False):
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ==========================================
@@ -4040,6 +4040,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
