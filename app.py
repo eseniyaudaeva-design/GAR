@@ -2460,6 +2460,10 @@ with tab_seo_main:
         # КОНЕЦ НОВОГО БЛОКА
         # ==========================================
 
+# ==========================================
+        # 5. СЕМАНТИЧЕСКОЕ ЯДРО (ОТКРЫТО ПО УМОЛЧАНИЮ)
+        # ==========================================
+        # Добавлен key="sem_core_main", чтобы сбросить кэш состояния и открыть блок
         with st.expander("🛒 Семантическое ядро и Фильтрация", expanded=True):
             if not st.session_state.get('orig_products'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
@@ -2536,8 +2540,7 @@ with tab_seo_main:
                         time.sleep(0.5)
                         st.rerun()
 
-        # --- УПУЩЕННАЯ СЕМАНТИКА ---
-# --- УПУЩЕННАЯ СЕМАНТИКА (В EXPANDER) ---
+        # --- УПУЩЕННАЯ СЕМАНТИКА (ЗАКРЫТО) ---
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         
@@ -2546,11 +2549,11 @@ with tab_seo_main:
                 if high: st.markdown(f"<div style='background:#EBF5FF;padding:10px;border-radius:5px;'><b>Важные:</b> {', '.join([x['word'] for x in high])}</div>", unsafe_allow_html=True)
                 if low: st.markdown(f"<div style='background:#F7FAFC;padding:10px;border-radius:5px;margin-top:5px;'><b>Дополнительные слова:</b> {', '.join([x['word'] for x in low])}</div>", unsafe_allow_html=True)
 
-        # 1. ТАБЛИЦА ГЛУБИНЫ (В EXPANDER)
-        with st.expander("📉 1. Глубина", expanded=False):
+        # 1. ТАБЛИЦА ГЛУБИНЫ (ЗАКРЫТО)
+        with st.expander("📉 1. Анализ Глубины (Частотность слов)", expanded=False):
             render_paginated_table(results['depth'], "1. Глубина", "tbl_depth_1", default_sort_col="Рекомендация", use_abs_sort_default=True)
         
-        # 2. ТАБЛИЦА НАЗВАНИЙ (В EXPANDER)
+        # 2. ТАБЛИЦА НАЗВАНИЙ (ЗАКРЫТО)
         with st.expander("🏷️ 2. Рекомендации по названию товаров", expanded=False):
             if 'naming_table_df' in st.session_state and st.session_state.naming_table_df is not None:
                 df_naming = st.session_state.naming_table_df
@@ -2608,12 +2611,12 @@ with tab_seo_main:
             else:
                 st.info("Данные для анализа названий отсутствуют.")
 
-        # 3. ТАБЛИЦА TF-IDF (В EXPANDER)
-        with st.expander("🧮 3. TF-IDF", expanded=False):
+        # 3. ТАБЛИЦА TF-IDF (ЗАКРЫТО)
+        with st.expander("🧮 3. TF-IDF Анализ", expanded=False):
             render_paginated_table(results['hybrid'], "3. TF-IDF", "tbl_hybrid", default_sort_col="TF-IDF ТОП")
 
-        # 4. ТАБЛИЦА РЕЛЕВАНТНОСТИ (В EXPANDER)
-        with st.expander("🏆 4. Релевантность конкурентов", expanded=False):
+        # 4. ТАБЛИЦА РЕЛЕВАНТНОСТИ (ЗАКРЫТО)
+        with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=False):
             render_paginated_table(results['relevance_top'], "4. Релевантность", "tbl_rel", default_sort_col="Ширина (балл)")
 
 # ==========================================
@@ -4040,6 +4043,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
