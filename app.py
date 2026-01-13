@@ -2441,9 +2441,9 @@ with tab_seo_main:
                 with col:
                     st.markdown(raw_html, unsafe_allow_html=True)
 
-            render_flat_card_fixed(col_m1, "Title", "Title", m_self['Title'], m_scores['title'], m_miss['title'])
-            render_flat_card_fixed(col_m2, "Description", "Description", m_self['Description'], m_scores['desc'], m_miss['desc'])
-            render_flat_card_fixed(col_m3, "H1", "H1", m_self['H1'], m_scores['h1'], m_miss['h1'])
+            render_flat_card_fixed(col_m1, "Title", m_self['Title'], m_scores['title'], m_miss['title'])
+            render_flat_card_fixed(col_m2, "Description", m_self['Description'], m_scores['desc'], m_miss['desc'])
+            render_flat_card_fixed(col_m3, "H1", m_self['H1'], m_scores['h1'], m_miss['h1'])
 
             st.markdown("<br>", unsafe_allow_html=True)
             
@@ -4059,6 +4059,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
