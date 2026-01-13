@@ -2352,7 +2352,7 @@ with tab_seo_main:
                 elif ok_min <= length < g_min:
                     return length, "Можно увеличить объем", "#D97706", "#FFFBEB"
                 elif g_max < length <= ok_max:
-                    return length, "Можно уменьшить объем", "#D97706", "#FFFBEB"
+                    return length, "Можно сократить объем", "#D97706", "#FFFBEB"
                 elif length < ok_min:
                     return length, "Критически мало", "#DC2626", "#FEF2F2"
                 else: 
@@ -4030,6 +4030,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
