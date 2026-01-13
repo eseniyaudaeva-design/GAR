@@ -2846,6 +2846,7 @@ with tab_seo_main:
                 final_clean_data = clean_data_pool[:user_target_top_n]
             else:
                 # В ручном режиме используем ВСЕХ скачанных, не фильтруем "слабых"
+                st.session_state['raw_comp_data'] = final_clean_data
                 final_clean_data = data_for_graph 
             
             final_clean_targets = [{'url': d['url'], 'pos': d['pos']} for d in final_clean_data]
@@ -4152,4 +4153,5 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
