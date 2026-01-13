@@ -2072,100 +2072,123 @@ with tab_seo_main:
         if 'raw_comp_data' in st.session_state and my_data:
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
-# 4. Отрисовка (ФИНАЛЬНАЯ ПОПЫТКА - ПРИЖАТЫЙ HTML)
+# 4. Отрисовка (ФИНАЛЬНЫЙ ВАРИАНТ - БЕЗ СКРОЛЛА, РОВНЫЕ КАРТОЧКИ)
         if meta_res:
+            import textwrap 
+            
             st.markdown("### 🧬 Рекомендации Title, Description и H1")
             
-            # --- CSS STYLES (Compact & Flexbox) ---
+            # --- CSS STYLES (Clean & Auto-Height) ---
             st.markdown("""
             <style>
-                .meta-card-compact {
+                /* Карточка растягивается на всю высоту колонки */
+                div[data-testid="column"] {
+                    display: flex;
+                    flex-direction: column; 
+                }
+                
+                .meta-card-clean {
                     background-color: #FFFFFF;
                     border: 1px solid #E5E7EB;
-                    border-radius: 8px;
-                    padding: 15px;
-                    height: 100%;
+                    border-radius: 12px;
+                    padding: 20px;
+                    flex-grow: 1; /* Заставляет карточку занимать все доступное место */
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                    min-height: 280px; /* Минимальная высота для визуального равенства */
                 }
-                .compact-header {
+                
+                /* Заголовок */
+                .clean-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    margin-bottom: 10px;
+                    margin-bottom: 15px;
                     border-bottom: 1px solid #F3F4F6;
-                    padding-bottom: 5px;
+                    padding-bottom: 10px;
                 }
-                .compact-label {
-                    font-size: 14px;
+                .clean-label {
+                    font-size: 16px;
                     font-weight: 700;
+                    color: #1F2937;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .clean-score-badge {
+                    font-size: 13px;
+                    font-weight: 800;
+                    padding: 4px 10px;
+                    border-radius: 6px;
+                }
+                
+                /* Текст контента - БЕЗ СКРОЛЛА, РАСТЯГИВАЕТСЯ */
+                .clean-text-box {
+                    background-color: #F9FAFB;
+                    border: 1px solid #E5E7EB;
+                    border-radius: 8px;
+                    padding: 12px;
+                    font-size: 13px;
+                    line-height: 1.5;
                     color: #374151;
+                    font-family: 'Inter', sans-serif; /* Обычный шрифт, не код */
+                    margin-bottom: 15px;
+                    height: auto; /* Авто-высота */
+                    min-height: 60px;
+                    overflow: visible; /* Никаких скроллов */
+                    white-space: pre-wrap; /* Перенос строк */
+                }
+
+                /* Тонкая полоска прогресса */
+                .clean-progress-bg {
+                    width: 100%;
+                    background-color: #F3F4F6;
+                    border-radius: 10px;
+                    height: 6px; /* Тонкая */
+                    margin-bottom: 15px;
+                    overflow: hidden;
+                }
+                .clean-progress-fill {
+                    height: 100%;
+                    border-radius: 10px;
+                    transition: width 0.6s ease;
+                }
+
+                /* Блок рекомендаций (всегда внизу) */
+                .clean-footer {
+                    margin-top: auto;
+                }
+                .clean-rec-title {
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: #6B7280;
+                    text-transform: uppercase;
+                    margin-bottom: 8px;
+                    letter-spacing: 0.5px;
+                }
+                .clean-tags-container {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                }
+                .clean-miss-tag {
+                    background-color: #FEF2F2;
+                    color: #B91C1C;
+                    border: 1px solid #FECACA;
+                    padding: 3px 8px;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+                .clean-ok-msg {
+                    color: #059669;
+                    font-size: 13px;
+                    font-weight: 600;
                     display: flex;
                     align-items: center;
                     gap: 6px;
-                }
-                .compact-score {
-                    font-size: 12px;
-                    font-weight: 800;
-                    padding: 2px 8px;
-                    border-radius: 12px;
-                }
-                .compact-text-box {
-                    background-color: #F9FAFB;
-                    border: 1px solid #E5E7EB;
-                    border-radius: 6px;
-                    padding: 8px;
-                    font-size: 12px;
-                    line-height: 1.4;
-                    color: #4B5563;
-                    font-family: monospace;
-                    margin-bottom: 10px;
-                    height: 60px; /* Фиксированная высота для ровности */
-                    overflow-y: auto;
-                }
-                .compact-progress-bg {
-                    width: 100%;
-                    background-color: #F3F4F6;
-                    border-radius: 4px;
-                    height: 6px;
-                    margin-bottom: 10px;
-                    overflow: hidden;
-                }
-                .compact-progress-fill {
-                    height: 100%;
-                    border-radius: 4px;
-                }
-                .compact-footer {
-                    margin-top: auto;
-                }
-                .compact-rec-title {
-                    font-size: 11px;
-                    font-weight: 600;
-                    color: #9CA3AF;
-                    text-transform: uppercase;
-                    margin-bottom: 5px;
-                }
-                .compact-tags-container {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 4px;
-                    min-height: 24px;
-                }
-                .compact-miss-tag {
-                    background-color: #FEF2F2;
-                    color: #991B1B;
-                    border: 1px solid #FECACA;
-                    padding: 2px 6px;
-                    border-radius: 4px;
-                    font-size: 11px;
-                    font-weight: 600;
-                }
-                .compact-ok-msg {
-                    color: #059669;
-                    font-size: 12px;
-                    font-weight: 600;
                 }
             </style>
             """, unsafe_allow_html=True)
@@ -2176,53 +2199,60 @@ with tab_seo_main:
 
             col_m1, col_m2, col_m3 = st.columns(3)
 
-            def render_meta_card_compact(col, label, icon, text_content, score, missing_list):
-                # 1. Логика цветов
+            def render_meta_card_clean(col, label, icon, text_content, score, missing_list):
+                # Цвета
                 if score >= 90:
-                    color = "#10B981"; bg_score = "#D1FAE5"; text_score = "#065F46"
+                    color = "#10B981"; bg_score = "#ECFDF5"; text_score = "#047857"
                 elif score >= 50:
-                    color = "#F59E0B"; bg_score = "#FEF3C7"; text_score = "#92400E"
+                    color = "#F59E0B"; bg_score = "#FFFBEB"; text_score = "#B45309"
                 else:
-                    color = "#EF4444"; bg_score = "#FEE2E2"; text_score = "#991B1B"
+                    color = "#EF4444"; bg_score = "#FEF2F2"; text_score = "#B91C1C"
 
-                # 2. Логика тегов/сообщений
+                # Логика тегов
                 tags_html = ""
                 rec_label = "Статус:"
                 if score < 100 and missing_list:
-                    rec_label = "Добавить:"
-                    tags_html = "".join([f'<span class="compact-miss-tag">{w}</span>' for w in missing_list[:12]])
+                    rec_label = "Нужно добавить:"
+                    # Показываем все слова, так как скролла нет
+                    tags_html = "".join([f'<span class="clean-miss-tag">{w}</span>' for w in missing_list[:20]])
                 elif score >= 100:
-                    tags_html = '<span class="compact-ok-msg">✔ Отлично</span>'
+                    tags_html = '<span class="clean-ok-msg">✅ Идеально соответствует топу</span>'
 
-                # 3. Сборка HTML (ПРИЖАТ К ЛЕВОМУ КРАЮ - ЭТО ВАЖНО!)
-                html_code = f"""
-<div class="meta-card-compact">
-<div class="compact-header">
-<div class="compact-label"><span>{icon}</span> {label}</div>
-<div class="compact-score" style="background: {bg_score}; color: {text_score}">{score}%</div>
+                # Сборка HTML (Без отступов для корректного рендера)
+                raw_html = f"""
+<div class="meta-card-clean">
+<div>
+<div class="clean-header">
+<div class="clean-label"><span>{icon}</span> {label}</div>
+<div class="clean-score-badge" style="background: {bg_score}; color: {text_score}">{score}%</div>
 </div>
-<div class="compact-text-box" title="{text_content}">
-{text_content if text_content else "Нет данных"}
+
+<div class="clean-text-box">
+{text_content if text_content else "— Нет данных —"}
 </div>
-<div class="compact-progress-bg">
-<div class="compact-progress-fill" style="width: {score}%; background-color: {color};"></div>
+
+<div class="clean-progress-bg">
+<div class="clean-progress-fill" style="width: {score}%; background-color: {color};"></div>
 </div>
-<div class="compact-footer">
-<div class="compact-rec-title">{rec_label}</div>
-<div class="compact-tags-container">
+</div>
+
+<div class="clean-footer">
+<div class="clean-rec-title">{rec_label}</div>
+<div class="clean-tags-container">
 {tags_html}
 </div>
 </div>
 </div>
 """
+                clean_html = textwrap.dedent(raw_html)
                 
                 with col:
-                    st.markdown(html_code, unsafe_allow_html=True)
+                    st.markdown(clean_html, unsafe_allow_html=True)
 
             # Вывод колонок
-            render_meta_card_compact(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
-            render_meta_card_compact(col_m2, "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
-            render_meta_card_compact(col_m3, "H1", "#️⃣", m_self['H1'], m_scores['h1'], m_miss['h1'])
+            render_meta_card_clean(col_m1, "Title", "📑", m_self['Title'], m_scores['title'], m_miss['title'])
+            render_meta_card_clean(col_m2, "Description", "📝", m_self['Description'], m_scores['desc'], m_miss['desc'])
+            render_meta_card_clean(col_m3, "H1 Заголовок", "#️⃣", m_self['H1'], m_scores['h1'], m_miss['h1'])
 
             st.markdown("<br>", unsafe_allow_html=True)
             
@@ -3821,6 +3851,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
