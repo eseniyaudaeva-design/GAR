@@ -2056,6 +2056,26 @@ with tab_seo_main:
         
         meta_res = None
         if 'raw_comp_data' in st.session_state and my_data:
+        # === ВСТАВИТЬ ЭТОТ БЛОК ПЕРЕД СТРОКОЙ С ОШИБКОЙ ===
+        
+        # 1. Восстанавливаем данные о вашем сайте
+        my_data = st.session_state.get('saved_my_data')
+        
+        # 2. Восстанавливаем настройки (они тоже нужны функции)
+        settings = {
+            'noindex': st.session_state.get('settings_noindex', True), 
+            'alt_title': st.session_state.get('settings_alt', False), 
+            'numbers': st.session_state.get('settings_numbers', False), 
+            'norm': st.session_state.get('settings_norm', True), 
+            'ua': st.session_state.get('settings_ua', "Mozilla/5.0"), 
+            'custom_stops': st.session_state.get('settings_stops', "").split()
+        }
+        # ==================================================
+
+        # Ваша строка с ошибкой теперь должна быть ниже:
+        meta_res = None
+        if 'raw_comp_data' in st.session_state and my_data:
+            meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data, settings)
 
         if meta_res:
@@ -3732,6 +3752,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
