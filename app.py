@@ -3151,7 +3151,7 @@ with tab_wholesale_main:
                     from openai import OpenAI
                     client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1")
                     response = client.chat.completions.create(
-                        model="openai/gpt-4o",
+                        model="google/gemini-2.5-pro",
                         messages=[{"role": "user", "content": "Say OK"}]
                     )
                     st.success(f"✅ УСПЕХ! Ответ: {response.choices[0].message.content}")
@@ -3392,7 +3392,7 @@ with tab_wholesale_main:
                     try:
                         # ИСПОЛЬЗУЕМ client.models.generate_content
                         resp = client.chat.completions.create(
-                            model="openai/gpt-4o", 
+                            model="google/gemini-2.5-pro", 
                             messages=[{"role": "user", "content": prompt}]
                         )
                         row_data[f'Table_{t_i+1}_HTML'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
@@ -3405,7 +3405,7 @@ with tab_wholesale_main:
                     try:
                         # ИСПОЛЬЗУЕМ client.models.generate_content
                         resp = client.chat.completions.create(
-                            model="openai/gpt-4o",
+                            model="google/gemini-2.5-pro",
                             messages=[{"role": "user", "content": prompt}]
                         )
                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
@@ -3663,6 +3663,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
