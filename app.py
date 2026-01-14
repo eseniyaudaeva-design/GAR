@@ -1880,32 +1880,27 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     if not base_text: return ["Error: No base text"] * num_blocks
     
     from openai import OpenAI
-    # Подключаемся к вашему новому шлюзу
+    # Используем ваш шлюз Tokengate
     client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     
     seo_words = seo_words or []
     seo_instruction_block = ""
     
     if seo_words:
-        # ХИТРОСТЬ: Оформляем список слов как "Чек-лист для проверки"
-        # Это заставляет модель воспринимать каждое слово как отдельную подзадачу
-        seo_count = len(seo_words)
-        seo_list_formatted = ", ".join([f"«{w}»" for w in seo_words])
-        
+        seo_list_str = ", ".join(seo_words)
         seo_instruction_block = f"""
 --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
-ВНИМАНИЕ: Ты ОБЯЗАН использовать ровно {seo_count} слов из этого проверочного списка: {seo_list_formatted}
+Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме: {{{seo_list_str}}}
 
 ПРАВИЛА ВНЕДРЕНИЯ И ВЫДЕЛЕНИЯ:
 1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем {num_blocks} блокам.
 2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b>..."
 3. СТРОГИЙ ЗАПРЕТ: Используй тег <b> ТОЛЬКО для этих SEO-слов. Не выделяй жирным ничего другого.
-4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь. 
-5. ОБЯЗАТЕЛЬНОСТЬ: Если в списке есть слова 'имя', 'метр', 'наименование' — найди им место в технических характеристиках или описании заказа (например: «наименование продукции», «цена за метр»).
+4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь.
 -------------------------------------------
 """
 
-    # 2. ПРОМТЫ (ТЕКСТ ОСТАВЛЕН БЕЗ ИЗМЕНЕНИЙ ПО ВАШЕМУ ТРЕБОВАНИЮ)
+    # 2. ПРОМТЫ (ТЕКСТ ОСТАВЛЕН БЕЗ ИЗМЕНЕНИЙ)
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
         "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
@@ -1963,16 +1958,16 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     
     try:
         response = client.chat.completions.create(
-            model="openai/gpt-4o",
+            model="google/gemini-2.5-pro", # УСТАНОВЛЕНА ВАША МОДЕЛЬ
             messages=[
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=3 # СТАВИМ 0 ДЛЯ МАКСИМАЛЬНОЙ ТОЧНОСТИ И ИСПОЛНИТЕЛЬНОСТИ
+            temperature=2.0 # МАКСИМАЛЬНО ДОПУСТИМАЯ ДЛЯ ЭТОГО API
         )
         content = response.choices[0].message.content
         
-        # --- ПРОГРАММНАЯ ОЧИСТКА ОТ КАВЫЧЕК ---
+        # ПРОГРАММНАЯ ОЧИСТКА ОТ КАВЫЧЕК (Markdown)
         content = content.replace("```html", "").replace("```", "").strip()
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
@@ -3668,6 +3663,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
