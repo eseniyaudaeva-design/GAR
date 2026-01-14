@@ -1887,6 +1887,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     seo_instruction_block = ""
     
     if seo_words:
+        seo_list_str = "\n".join([f"{i+1}. {word}" for i, word in enumerate(seo_words)])
         seo_list_str = ", ".join(seo_words)
         seo_instruction_block = f"""
 --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
@@ -1963,7 +1964,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.2 # СНИЖЕНО: для строгого следования вашему промту
+            temperature=0 # СНИЖЕНО: для строгого следования вашему промту
         )
         content = response.choices[0].message.content
         
@@ -3663,6 +3664,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
