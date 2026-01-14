@@ -3480,18 +3480,16 @@ with tab_wholesale_main:
 '''
                     injections.append(tags_block)
 
-# 2. ТАБЛИЦЫ
+# 2. ТАБЛИЦЫ (С ЖЕСТКОЙ ЧИСТКОЙ ПУСТЫХ СТРОК)
             if use_tables and client:
                 for t_topic in table_prompts:
                     ctx = f"Данные: {tech_context_final_str}"
                     prompt_tbl = f"""Create HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. 
                     
                     STRICT RULES:
-                    1. NO empty rows.
-                    2. NO <caption> tag (strictly forbidden).
-                    3. NO title inside the table (like <h3> or <p> before <thead>).
-                    4. Start output DIRECTLY with <table...>.
-                    5. NO empty <tr></tr>.
+                    1. Start directly with <tr>. DO NOT use <thead> or <tbody> tags.
+                    2. First row MUST contain text (Headers).
+                    3. NO empty rows allowed.
                     
                     STYLE REQUIREMENTS:
                     - <table style="border-collapse: collapse; width: 100%; border: 2px solid black;">
@@ -3501,8 +3499,15 @@ with tab_wholesale_main:
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0)
                         raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                         
-                        # Принудительная вставка стилей (на случай если AI забыл)
-                        st_table = raw_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
+                        # 1. Убираем thead/tbody, чтобы таблица была сплошной (убирает разрывы)
+                        clean_table = raw_table.replace("<thead>", "").replace("</thead>", "").replace("<tbody>", "").replace("</tbody>", "")
+                        
+                        # 2. Regex: Находим и удаляем строки <tr>, в которых ячейки пустые (><) или содержат только пробелы
+                        # Паттерн ищет <tr>, внутри которого только теги td/th без контента
+                        clean_table = re.sub(r'<tr>\s*(<t[dh][^>]*>\s*</t[dh]>\s*)+</tr>', '', clean_table, flags=re.IGNORECASE)
+                        
+                        # 3. Принудительная вставка стилей
+                        st_table = clean_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
                         st_table = st_table.replace('<th', '<th style="border: 2px solid black; padding: 5px;"').replace('<td', '<td style="border: 2px solid black; padding: 5px;"')
                         
                         injections.append(st_table)
@@ -3786,6 +3791,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
