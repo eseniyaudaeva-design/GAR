@@ -3452,18 +3452,40 @@ with tab_wholesale_main:
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
-            # 1. Заполняем базовые данные и статику из твоего словаря STATIC_DATA_GEN
-            row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
-            for k, v in STATIC_DATA_GEN.items(): 
-                row_data[k] = v
+            # 1. Сразу создаем строку со всеми IP_PROP в нужном тебе порядке
+            row_data = {
+                'IP_PROP4839': "", # Сюда пойдет текст (блоки 1-5)
+                'IP_PROP4817': STATIC_DATA_GEN.get('IP_PROP4817', ""),
+                'IP_PROP4818': STATIC_DATA_GEN.get('IP_PROP4818', ""),
+                'IP_PROP4819': STATIC_DATA_GEN.get('IP_PROP4819', ""), # ГЕО
+                'IP_PROP4820': STATIC_DATA_GEN.get('IP_PROP4820', ""),
+                'IP_PROP4821': STATIC_DATA_GEN.get('IP_PROP4821', ""),
+                'IP_PROP4822': STATIC_DATA_GEN.get('IP_PROP4822', ""),
+                'IP_PROP4823': STATIC_DATA_GEN.get('IP_PROP4823', ""),
+                'IP_PROP4824': STATIC_DATA_GEN.get('IP_PROP4824', ""),
+                'IP_PROP4816': "", # Теги
+                'IP_PROP4825': STATIC_DATA_GEN.get('IP_PROP4825', ""),
+                'IP_PROP4826': STATIC_DATA_GEN.get('IP_PROP4826', ""),
+                'IP_PROP4834': STATIC_DATA_GEN.get('IP_PROP4834', ""),
+                'IP_PROP4835': STATIC_DATA_GEN.get('IP_PROP4835', ""),
+                'IP_PROP4836': STATIC_DATA_GEN.get('IP_PROP4836', ""),
+                'IP_PROP4837': STATIC_DATA_GEN.get('IP_PROP4837', ""),
+                'IP_PROP4838': "", # Сайдбар
+                'IP_PROP4829': "", # Таблица 1
+                'IP_PROP4831': "", # Таблица 2
+            }
             
-            # 2. ТЕКСТ (Блоки 1-5) -> склеиваем в IP_PROP4839
+            # Добавим для справки (по желанию, можно удалить)
+            row_data['Page URL'] = page['url']
+            row_data['Product Name'] = header_for_ai
+
+            # 2. ГЕНЕРАЦИЯ ТЕКСТА -> IP_PROP4839
             if use_text and client:
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
-                # Объединяем блоки в одну ячейку, как того требует порядок колонок
+                # Склеиваем блоки в одну ячейку
                 row_data['IP_PROP4839'] = "\n\n".join([b for b in blocks if b and "Error" not in b])
 
-            # 3. ГЕО -> IP_PROP4819 (перезаписываем статику, если включено ГЕО)
+            # 3. ГЕО -> IP_PROP4819
             if use_geo and client:
                 if actual_geo_list:
                     cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
@@ -3486,41 +3508,38 @@ with tab_wholesale_main:
                 if html_tags: 
                     row_data['IP_PROP4816'] = '<div class="popular-tags">' + "\n".join(html_tags) + '</div>'
 
-            # 5. САЙДБАР -> IP_PROP4838
-            if use_sidebar:
-                row_data['IP_PROP4838'] = full_sidebar_code
-
-            # 6. ТАБЛИЦЫ -> IP_PROP4829 и IP_PROP4831
+            # 5. ТАБЛИЦЫ -> IP_PROP4829 и IP_PROP4831
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
-                    target_prop = 'IP_PROP4829' if t_i == 0 else ('IP_PROP4831' if t_i == 1 else None)
-                    if not target_prop: break # Берем только первые две таблицы
-                    
+                    target_key = 'IP_PROP4829' if t_i == 0 else ('IP_PROP4831' if t_i == 1 else None)
+                    if not target_key: break
                     ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
                     prompt_tbl = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
                     try:
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=2.0)
-                        row_data[target_prop] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                        row_data[target_key] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                     except: pass
+
+            # 6. САЙДБАР -> IP_PROP4838
+            if use_sidebar:
+                row_data['IP_PROP4838'] = full_sidebar_code
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
 
-        # === ФИНАЛЬНАЯ СОРТИРОВКА КОЛОНОК ДЛЯ EXCEL ===
+        # === ФИНАЛЬНЫЙ ПОРЯДОК СТОЛБЦОВ В EXCEL ===
         df_result = pd.DataFrame(final_data)
         
-        # Твой строгий список колонок
-        ordered_columns = [
-            'Page URL', 'Product Name',
-            'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 
-            'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
-            'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 
-            'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 
-            'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
+        # Список в твоем порядке
+        ordered_props = [
+            'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 'IP_PROP4820', 
+            'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 'IP_PROP4824', 'IP_PROP4816', 
+            'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 
+            'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
         ]
         
-        # Оставляем только те, что есть в данных, в нужном порядке
-        df_result = df_result[[c for c in ordered_columns if c in df_result.columns]]
+        # Оставляем только эти колонки в этом порядке
+        df_result = df_result[ordered_props]
         
         st.session_state.gen_result_df = df_result
         
@@ -3767,6 +3786,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
