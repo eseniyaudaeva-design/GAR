@@ -3397,7 +3397,7 @@ with tab_wholesale_main:
 
             # === AI RUN (gemini-2.0-flash) ===
             
-            if use_text and model:
+            if use_text and client:
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
                 for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
 
@@ -3679,6 +3679,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
