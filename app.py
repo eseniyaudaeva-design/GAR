@@ -235,27 +235,27 @@ def render_clean_block(title, icon, words_list):
         content_html = ", ".join(unique_words)
         html_code = f"""
         {style_html}
-        <div class="semantic-card">
-            <details>
-                <summary class="semantic-summary">
-                    <div>{icon} {title}</div>
-                    <span class="semantic-count">{count}</span>
-                </summary>
-                <div class="semantic-content">
-                    {content_html}
-                </div>
-            </details>
-        </div>
+<div class="semantic-card">
+<details>
+<summary class="semantic-summary">
+<div>{icon} {title}</div>
+<span class="semantic-count">{count}</span>
+</summary>
+<div class="semantic-content">
+{content_html}
+</div>
+</details>
+</div>
         """
     else:
         html_code = f"""
         {style_html}
-        <div class="semantic-card" style="opacity: 0.5;">
-            <div class="semantic-summary" style="cursor: default;">
-                <div>{icon} {title}</div>
-                <span class="semantic-count">0</span>
-            </div>
-        </div>
+<div class="semantic-card" style="opacity: 0.5;">
+<div class="semantic-summary" style="cursor: default;">
+<div>{icon} {title}</div>
+<span class="semantic-count">0</span>
+</div>
+</div>
         """
     
     st.markdown(html_code, unsafe_allow_html=True)
@@ -3744,6 +3744,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
