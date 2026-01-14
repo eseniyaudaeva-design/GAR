@@ -2722,7 +2722,7 @@ with tab_wholesale_main:
     cat_products = st.session_state.get('categorized_products', [])
     cat_services = st.session_state.get('categorized_services', [])
     
-    # 1. Для Тегов и Промо
+    # 1. Для Тегов и Промо (Сайдбар исключен)
     structure_keywords = cat_products + cat_services
     count_struct = len(structure_keywords)
 
@@ -2734,23 +2734,17 @@ with tab_wholesale_main:
             if count_struct < 10:
                 tags_list_source = structure_keywords
                 promo_list_source = []
-            elif count_struct < 30:
+            else:
+                # Делим всегда пополам (Теги / Промо), Сайдбар игнорируем
                 mid = math.ceil(count_struct / 2)
                 tags_list_source = structure_keywords[:mid]
                 promo_list_source = structure_keywords[mid:]
-            else:
-                part = math.ceil(count_struct / 3)
-                tags_list_source = structure_keywords[:part]
-                promo_list_source = structure_keywords[part:part*2]
          else:
              tags_list_source = []
              promo_list_source = []
     
-    # Дефолтный текст для сайдбара
+    # Сайдбар всегда пустой
     sidebar_default_text = ""
-    if count_struct >= 30 and 'auto_tags_words' not in st.session_state:
-         part = math.ceil(count_struct / 3)
-         sidebar_default_text = "\n".join(structure_keywords[part*2:])
 
     tags_default_text = ", ".join(tags_list_source)
     promo_default_text = ", ".join(promo_list_source)
@@ -2772,15 +2766,10 @@ with tab_wholesale_main:
     geo_context_default = ", ".join(cat_geo)
 
     # --- АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ АКТИВНОСТИ МОДУЛЕЙ ---
-    # Если список слов не пуст -> ставим галочку True, иначе False
     auto_check_text = bool(text_context_list_raw)
     auto_check_tags = bool(tags_list_source)
     auto_check_tables = bool(cat_dimensions)
     auto_check_promo = bool(promo_list_source)
-    
-    # ИСПРАВЛЕНИЕ: Сайдбар включаем только если для него реально есть текст
-    auto_check_sidebar = bool(sidebar_default_text.strip())
-    
     auto_check_geo = bool(cat_geo)
 
     # ==========================================
@@ -2811,31 +2800,29 @@ with tab_wholesale_main:
                 manual_html_source = None
 
         with col_key:
-    # 1. Пробуем достать ключ из безопасного хранилища Streamlit
             try:
-                # Мы ищем ключ с именем GEMINI_KEY
                 key_from_secrets = st.secrets["GEMINI_KEY"]
             except (FileNotFoundError, KeyError):
                 key_from_secrets = ""
 
-    # 2. Логика: если в сессии (кэше) есть ключ - берем его, если нет - берем из секретов
-    default_key = st.session_state.get('gemini_key_cache', key_from_secrets)
-    
-    gemini_api_key = st.text_input("Google Gemini API Key", value=default_key, type="password")
+            default_key = st.session_state.get('gemini_key_cache', key_from_secrets)
+            gemini_api_key = st.text_input("Google Gemini API Key", value=default_key, type="password")
 
     # ==========================================
     # 2. ВЫБОР МОДУЛЕЙ
     # ==========================================
     st.subheader("2. Какие блоки генерируем?")
-    st.info("ℹ️ **Авто-настройка:** Галочки активированы автоматически там, где после анализа нашлись подходящие слова. Вы можете изменить выбор вручную.")
+    st.info("ℹ️ **Авто-настройка:** Галочки активированы автоматически там, где после анализа нашлись подходящие слова.")
     col_ch1, col_ch2, col_ch3, col_ch4, col_ch5, col_ch6 = st.columns(6)
     
-    # Вставляем авто-значения в value=...
     with col_ch1: use_text = st.checkbox("🤖 AI Тексты", value=auto_check_text)
     with col_ch2: use_tags = st.checkbox("🏷️ Теги", value=auto_check_tags)
     with col_ch3: use_tables = st.checkbox("🧩 Таблицы", value=auto_check_tables)
     with col_ch4: use_promo = st.checkbox("🔥 Промо", value=auto_check_promo)
-    with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар", value=auto_check_sidebar)
+    
+    # ОТКЛЮЧАЕМ САЙДБАР ЗДЕСЬ
+    with col_ch5: use_sidebar = st.checkbox("📑 Сайдбар (Откл)", value=False, disabled=True, key="sidebar_disabled_ui")
+    
     with col_ch6: use_geo = st.checkbox("🌍 Гео-блок", value=auto_check_geo)
 
     # ==========================================
@@ -3281,7 +3268,7 @@ with tab_wholesale_main:
         final_data = [] 
 
         # ==========================================
-        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ (БАЗА)
+        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ
         # ==========================================
         all_tags_links = []
         if use_tags:
@@ -3292,33 +3279,30 @@ with tab_wholesale_main:
                     all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
 
         # ==========================================
-        # 2. ЛОГИКА ТЕГОВ (СБОР URL)
+        # 2. ЛОГИКА ТЕГОВ (СБОР URL + FALLBACK)
         # ==========================================
-        tags_data_prepared = [] # Список кортежей (keyword, url)
+        tags_data_prepared = [] 
         moved_words = []
         
         if use_tags:
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                # Ищем ссылку в базе
                 matches = [u for u in all_tags_links if tr in u.lower()]
                 
                 if matches:
-                    # Если нашли - берем случайную (пока что)
-                    # Фильтрация "не на саму себя" будет внутри цикла страниц
                     tags_data_prepared.append((kw, matches)) 
                 else:
-                    # Если не нашли - переносим в Текст
+                    # Если ссылок нет, переносим в текст
                     if kw not in actual_text_list:
                         actual_text_list.append(kw)
                         moved_words.append(kw)
             
             if moved_words:
                 cnt = len(moved_words)
-                st.toast(f"🔀 {cnt} слов не найдены в базе ссылок и перенесены в Текст", icon="ℹ️")
+                st.toast(f"🔀 {cnt} слов не найдены в базе и перенесены в Текст", icon="ℹ️")
 
         # ==========================================
-        # 3. ЛОГИКА ПРОМО (СБОР URL)
+        # 3. ЛОГИКА ПРОМО
         # ==========================================
         p_img_map = {}
         if use_promo and df_db_promo is not None:
@@ -3327,33 +3311,21 @@ with tab_wholesale_main:
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
         # ==========================================
-        # 4. ФУНКЦИЯ ПАРСИНГА ИМЕН (ХЛЕБНЫЕ КРОШКИ)
+        # 4. ФУНКЦИЯ ПАРСИНГА ИМЕН (ХЛЕБНЫЕ КРОШКИ) - ВОССТАНОВЛЕНО
         # ==========================================
         def resolve_real_names(urls_list):
-            """
-            Заходит на список URL и достает название из хлебных крошек.
-            Возвращает словарь {url: real_name}
-            """
             if not urls_list: return {}
             results_map = {}
-            # Используем ThreadPool для ускорения (до 10 потоков)
+            # Используем ThreadPool для ускорения
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                # Запускаем задачи
                 future_to_url = {executor.submit(get_breadcrumb_only, u, st.session_state.settings_ua): u for u in urls_list}
                 for future in concurrent.futures.as_completed(future_to_url):
                     url_key = future_to_url[future]
                     try:
                         extracted_name = future.result()
-                        if extracted_name:
-                            results_map[url_key] = extracted_name
+                        if extracted_name: results_map[url_key] = extracted_name
                     except: pass
             return results_map
-
-        # --- ГЕНЕРАЦИЯ HTML ДЛЯ САЙДБАРА ---
-        current_full_sidebar_code = ""
-        # ВСТАВЬТЕ СЮДА БЛОК SIDEBAR_ASSETS (из предыдущих ответов), ЕСЛИ ЕГО НЕТ
-        if use_sidebar and 'SIDEBAR_ASSETS' not in locals():
-             pass 
 
         # СБОР СТРАНИЦ
         target_pages = []
@@ -3380,7 +3352,7 @@ with tab_wholesale_main:
 
         progress_bar = status_box.progress(0)
         
-        # === ОСНОВНОЙ ЦИКЛ ПО СТРАНИЦАМ ===
+        # === ОСНОВНОЙ ЦИКЛ ===
         for idx, page in enumerate(target_pages):
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
@@ -3397,32 +3369,29 @@ with tab_wholesale_main:
             # 1. ТЕГИ (С ПАРСИНГОМ КРОШЕК)
             # ----------------------------------------
             if use_tags and tags_data_prepared:
-                # 1. Выбираем ссылки
-                selected_urls_map = {} # {url: original_keyword}
+                selected_urls_map = {} 
                 for kw, links in tags_data_prepared:
+                    # Исключаем ссылку на текущую страницу
                     valid = [u for u in links if u.rstrip('/') != page['url'].rstrip('/')]
                     if valid:
                         sel = random.choice(valid)
                         selected_urls_map[sel] = kw
                 
-                # 2. Парсим реальные названия (если включен парсинг)
-                # Чтобы не ждать долго, парсим только выбранные 10-15 ссылок
+                # Парсим реальные названия (чтобы не было транслита)
                 urls_to_fetch = list(selected_urls_map.keys())
                 real_names_map = resolve_real_names(urls_to_fetch)
                 
-                # 3. Собираем HTML
                 html_t = []
                 for u in urls_to_fetch:
-                    # Если спарсили крошку - берем её. Если нет - берем исходное ключевое слово.
+                    # Если есть имя из крошек - берем его, иначе берем ключевое слово
                     display_name = real_names_map.get(u, selected_urls_map[u])
-                    # Принудительно делаем первую букву заглавной, если это просто слово
                     if display_name == selected_urls_map[u]: 
                         display_name = display_name.capitalize()
-                        
+                    
                     html_t.append(f'<a href="{u}" class="tag-item">{display_name}</a>')
                 
                 if html_t:
-                    # Ваша структура + join через \n чтобы не склеивались
+                    # ВАЖНО: \n.join чтобы теги не слипались
                     tags_block = f'''
 <div class="popular-tags-text">
 <div class="popular-tags-inner-text">
@@ -3460,13 +3429,11 @@ with tab_wholesale_main:
                 p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                 if p_cands:
                     sel_p = random.sample(p_cands, min(4, len(p_cands)))
-                    
-                    # Парсим названия для промо
                     promo_names_map = resolve_real_names(sel_p)
                     
                     p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
                     for u in sel_p:
-                        # Имя из крошек ИЛИ (fallback) транслит (если не спарсилось)
+                        # Если есть крошка - берем её, иначе транслит (фоллбек)
                         nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
                         p_html += f'<div class="promo-card" style="min-width:200px;"><a href="{u}"><img src="{p_img_map[u]}" style="max-width:100%;"><br>{nm}</a></div>'
                     p_html += '</div></div>'
@@ -3480,46 +3447,37 @@ with tab_wholesale_main:
                 blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, 5, actual_text_list)
                 blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
 
-            # 5. СЛИЯНИЕ ВСЕГО
-            # Сайдбар -> В начало IP_PROP4839 (Блок 1)
-            if use_sidebar and 'current_full_sidebar_code' in locals() and current_full_sidebar_code:
-                blocks[0] = current_full_sidebar_code + "\n" + blocks[0]
-            
-            # Инъекции -> В конец блоков по очереди
+            # 5. СЛИЯНИЕ ВСЕГО (Сайдбар удален)
+            # Просто распределяем инъекции (Теги, Таблицы, Промо) по блокам
             for i, inj in enumerate(injections):
                 t_idx = i % 5
+                # Добавляем отступы \n\n, чтобы верстка не слипалась с текстом
                 blocks[t_idx] = blocks[t_idx] + "\n\n" + inj
 
-            # ----------------------------------------
-            # 6. ГЕО (ИСПРАВЛЕННЫЙ ПРОМПТ)
-            # ----------------------------------------
+            # 6. ГЕО
             if use_geo and client:
                 cities = ", ".join(random.sample(actual_geo_list, min(15, len(actual_geo_list))))
-                # ЖЕСТКИЙ ПРОМПТ: ЗАПРЕТ НА БОЛТОВНЮ
                 prompt_geo = f"""
                 Write ONE HTML paragraph (<p>) regarding delivery to these cities: {cities}.
                 RULES:
                 1. STRICTLY HTML only. No Markdown.
-                2. NO introductory text like "Here is the text".
-                3. NO titles. Just the paragraph content.
-                4. Start directly with "Мы осуществляем доставку..." or similar.
+                2. NO introductory text. NO titles.
+                3. Start directly with "Мы осуществляем доставку..." or similar.
                 """
                 try:
-                    resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.1) # Температура ниже для точности
+                    resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.1)
                     clean_geo = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                    # Убираем кавычки если вдруг есть
                     clean_geo = re.sub(r'^["\']|["\']$', '', clean_geo)
                     row_data['IP_PROP4819'] = clean_geo
                 except: pass
 
-            # Маппинг 5 блоков в нужные колонки
             for i, c_name in enumerate(TEXT_CONTAINERS):
                 row_data[c_name] = blocks[i]
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / len(target_pages))
 
-        # ФИНАЛИЗАЦИЯ ТАБЛИЦЫ
+        # ФИНАЛИЗАЦИЯ
         df_result = pd.DataFrame(final_data)
         df_result = df_result.reindex(columns=EXCEL_COLUMN_ORDER).fillna("")
         st.session_state.gen_result_df = df_result 
@@ -3530,7 +3488,6 @@ with tab_wholesale_main:
         st.session_state.unified_excel_data = buffer.getvalue()
         status_box.update(label="✅ Готово!", state="complete", expanded=False)
 
-    # КНОПКА СКАЧИВАНИЯ
     if st.session_state.get('unified_excel_data') is not None:
         st.download_button(
             label="📥 СКАЧАТЬ ЕДИНЫЙ EXCEL",
@@ -3681,6 +3638,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
