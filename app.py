@@ -3251,7 +3251,7 @@ with tab_wholesale_main:
         st.session_state.gen_result_df = None
         st.session_state.unified_excel_data = None
         
-        # 1. СТРОГИЙ ПОРЯДОК КОЛОНОК ДЛЯ EXCEL
+        # 1. ПОРЯДОК КОЛОНОК
         EXCEL_COLUMN_ORDER = [
             'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
             'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
@@ -3262,7 +3262,7 @@ with tab_wholesale_main:
         # Контейнеры для 5 блоков AI текста
         TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
-        # Подготовка базовых списков слов (Текст + Гео)
+        # Подготовка данных
         raw_txt_val = st.session_state.get("ai_text_context_editable", "")
         if not raw_txt_val: raw_txt_val = text_context_default
         actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
@@ -3283,11 +3283,10 @@ with tab_wholesale_main:
 
         final_data = [] 
 
-        # --- ОБРАБОТКА ТЕГОВ С ПЕРЕНОСОМ ---
+        # --- ОБРАБОТКА ТЕГОВ ---
         tags_map = {}
         if use_tags:
             all_tags_links = []
-            # Загрузка базы ссылок
             if tags_file_content:
                 all_tags_links = [l.strip() for l in io.StringIO(tags_file_content).readlines() if l.strip()]
             elif os.path.exists("data/links_base.txt"):
@@ -3297,31 +3296,205 @@ with tab_wholesale_main:
             moved_tags_count = 0
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                # Ищем ссылки
                 matches = [u for u in all_tags_links if tr in u.lower()]
                 
                 if matches:
-                    # Ссылка есть -> добавляем в карту тегов
                     tags_map[kw] = matches
                 else:
-                    # Ссылки НЕТ -> переносим слово в список для AI Текста
-                    if kw not in actual_text_list:
-                        actual_text_list.append(kw)
-                        moved_tags_count += 1
-            
-            # Уведомление пользователю
-            if moved_tags_count > 0:
-                st.toast(f"🔀 {moved_tags_count} тегов перенесены в Текст (нет ссылок в базе)", icon="ℹ️")
+                    # Если ссылки нет - ставим заглушку #, но оставляем тег
+                    tags_map[kw] = ['#']
 
-        # --- ЗАГРУЗКА БАЗЫ ПРОМО ---
+            if moved_tags_count > 0:
+                st.toast(f"🔀 {moved_tags_count} тегов перенесены в Текст", icon="ℹ️")
+
+        # --- БАЗА ПРОМО ---
         p_img_map = {}
         if use_promo and df_db_promo is not None:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
-        # --- ГЕНЕРАЦИЯ HTML ДЛЯ САЙДБАРА ---
+        # --- ГЕНЕРАЦИЯ HTML ДЛЯ САЙДБАРА (НОВАЯ СТРУКТУРА) ---
         current_full_sidebar_code = ""
+        
+        # Огромный блок стилей и скриптов от пользователя
+        SIDEBAR_ASSETS = """
+<style>
+    :root { font-size: 14px; }
+    @media (min-width: 2201px) { font-size: 16px; }
+    
+    #sidebar-menu ul, #sidebar-menu li { list-style: none !important; margin: 0 !important; padding: 0 !important; }
+
+    #sidebar-menu .list-unstyled a,
+    #sidebar-menu .list-unstyled span.dropdown-toggle {
+        font-size: 0.85em; padding: 0.5rem 0.5rem; padding-right: 1.5rem; display: block;
+        text-decoration: none; color: #3D4858; transition: all 0.2s ease-in-out;
+        position: relative; font-weight: 600; cursor: pointer;
+    }
+    
+    #sidebar-menu .level-1-header > span.dropdown-toggle,
+    #sidebar-menu .level-1-header > a { border-bottom: 1px solid #e9ecef; }
+
+    #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 1rem; }
+    #sidebar-menu .level-3-link > a { padding-left: 2rem; color: #555; font-weight: 400; }
+    
+    #sidebar-menu .level-2-link-special { background: #F6F7FC; }
+    #sidebar-menu .level-2-link-special > a { padding-left: 1rem; font-weight: 600; color: #3D4858; position: relative; padding-right: 1rem; }
+    #sidebar-menu .level-2-link-special > a::after { content: none !important; }
+    #sidebar-menu .level-2-link-special > a:hover { color: #277EFF; background: #EBF5FF; }
+    
+    #sidebar-menu .list-unstyled a:hover,
+    #sidebar-menu .level-3-link a:hover,
+    #sidebar-menu .list-unstyled span.dropdown-toggle:hover { color: #277EFF; background: #EBF5FF; }
+    
+    #sidebar-menu .level-1-header.active > span.dropdown-toggle,
+    #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #F6F7FC; color: #277EFF; }
+    
+    #sidebar-menu .collapse-menu { list-style: none; padding: 0; background: #F6F7FC; display: none; }
+    
+    #sidebar-menu .dropdown-toggle::after {
+        content: '▶'; position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%);
+        transition: transform 0.3s; font-size: 0.7em; color: #999;
+    }
+    #sidebar-menu .dropdown-toggle.active::after { content: '▼'; transform: translateY(-50%) rotate(0deg); color: #277EFF; }
+    
+    #sidebar-menu .level-1-header > a::after { content: none !important; }
+
+    .page-content-with-sidebar { margin-left: 0 !important; }
+    .sidebar-wrapper { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; z-index: 1001; }
+    #sidebar-menu, #sidebar-menu * { box-sizing: border-box; }
+
+    .menu-toggle-button {
+        position: fixed; top: 20px; right: 10px; background: #277EFF; color: white; border: none;
+        padding: 5px 10px; font-size: 24px; line-height: 1; cursor: pointer; z-index: 1002;
+        border-radius: 5px; display: none; transition: all 0.3s ease;
+    }
+
+    #sidebar-menu {
+        z-index: 1000; background: #FFFFFF; color: #3D4858; transition: transform 0.3s ease;
+        font-family: 'Open Sans', sans-serif; box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
+        position: fixed; top: 0; left: 0; width: auto; max-width: 350px; height: 100vh;
+        max-height: 100vh; transform: translateX(-100%); padding-top: 60px; border-radius: 0;
+        display: block; overflow-y: auto;
+    }
+
+    #sidebar-menu.active { transform: translateX(0); }
+    
+    @media (max-width: 1800px) {
+        .menu-toggle-button { display: block; top: 20px; }
+        @media (min-width: 1180px) and (max-width: 1580px) {
+            .menu-toggle-button { right: 183px; top: 30px; transition: right 0.3s ease, top 0.3s ease; }
+        }
+        #sidebar-menu .list-unstyled a, #sidebar-menu .list-unstyled span.dropdown-toggle {
+            font-size: 16px !important; padding: 10px 15px !important; padding-right: 30px !important;
+        }
+        #sidebar-menu .level-2-header > span.dropdown-toggle { padding-left: 25px !important; }
+        #sidebar-menu .level-3-link > a { padding-left: 40px !important; }
+        #sidebar-menu .level-2-link-special > a { padding-left: 25px !important; padding-right: 25px !important; }
+    }
+
+    @media (max-width: 350px) {
+        #sidebar-menu { width: 100%; max-width: 100%; }
+        .menu-toggle-button { right: 5px; padding: 5px 8px; }
+    }
+
+    @media (min-width: 1801px) {
+        #sidebar-menu { width: 14.28rem; }
+        .page-content-with-sidebar { margin-left: 15.7rem; }
+        .menu-toggle-button { display: none; }
+        .sidebar-wrapper { position: static; width: auto; height: auto; overflow: visible; }
+        #sidebar-menu {
+            height: auto; position: fixed; top: calc(150px + 70px); left: 10px;
+            max-height: calc(100vh - 250px - 70px); transform: translateX(0);
+            padding-top: 0; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
+            border-radius: 10px; display: block; overflow-y: hidden;
+        }
+        #sidebar-menu .list-unstyled.components { max-height: calc(100vh - 250px - 70px); overflow-y: auto; }
+        #sidebar-menu .level-1-header.active > span.dropdown-toggle,
+        #sidebar-menu .level-2-header.active > span.dropdown-toggle { background: #FFFFFF !important; color: #3D4858; }
+        #sidebar-menu .level-1-header:hover > span.dropdown-toggle,
+        #sidebar-menu .level-2-header:hover > span.dropdown-toggle { background: #EBF5FF; color: #277EFF; }
+        #sidebar-menu .level-2-link-special { background: #FFFFFF; }
+        #sidebar-menu .level-2-link-special > a:hover { background: #EBF5FF; }
+        #sidebar-menu .level-1-header > a:hover { background: #EBF5FF; color: #277EFF; }
+    }
+</style>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const menu = document.getElementById('sidebar-menu');
+        const listComponents = menu ? menu.querySelector('.list-unstyled.components') : null;
+        const mobileToggle = document.getElementById('mobile-menu-toggle'); 
+        if (!menu || !listComponents || !mobileToggle) return; 
+
+        const toggles = menu.querySelectorAll('.dropdown-toggle');
+        const desktopBreakpoint = 1801;
+
+        function resetMenuState() {
+            menu.querySelectorAll('.collapse-menu').forEach(sub => { sub.style.display = 'none'; });
+            menu.querySelectorAll('.level-1-header, .level-2-header').forEach(li => {
+                li.classList.remove('active');
+                const toggle = li.querySelector('.dropdown-toggle');
+                if(toggle) toggle.classList.remove('active');
+            });
+        }
+
+        function handleResize() {
+            if (window.innerWidth >= desktopBreakpoint) {
+                menu.classList.remove('active');
+                if (mobileToggle) mobileToggle.textContent = '☰';
+                resetMenuState();
+            }
+        }
+        handleResize();
+        window.addEventListener('resize', handleResize);
+
+        if (mobileToggle) {
+            mobileToggle.addEventListener('click', function() {
+                if (window.innerWidth < desktopBreakpoint) {
+                    menu.classList.toggle('active');
+                    if (menu.classList.contains('active')) { this.textContent = '✖'; } else { this.textContent = '☰'; }
+                }
+            });
+        }
+        
+        menu.querySelectorAll('a').forEach(link => {
+            if (link.closest('.level-3-link') || link.closest('.level-2-link-special') || link.parentElement.classList.contains('level-1-header')) {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth < desktopBreakpoint) {
+                        menu.classList.remove('active');
+                        if (mobileToggle) mobileToggle.textContent = '☰';
+                    }
+                });
+            }
+        });
+
+        toggles.forEach(toggle => {
+            toggle.addEventListener('click', function(event) {
+                event.preventDefault();
+                const parentLi = this.parentElement;
+                const parentUl = parentLi.parentElement;
+                const targetMenu = parentLi.querySelector('.collapse-menu');
+                if (!targetMenu) return;
+                const isActive = parentLi.classList.contains('active');
+                const activeSiblings = parentUl.querySelectorAll('.level-1-header.active, .level-2-header.active');
+                activeSiblings.forEach(sibling => {
+                    if (sibling !== parentLi) {
+                        sibling.classList.remove('active');
+                        const siblingToggle = sibling.querySelector('.dropdown-toggle');
+                        if (siblingToggle) siblingToggle.classList.remove('active');
+                        const siblingMenu = sibling.querySelector('.collapse-menu');
+                        if (siblingMenu) siblingMenu.style.display = 'none';
+                    }
+                });
+                parentLi.classList.toggle('active', !isActive);
+                this.classList.toggle('active', !isActive);
+                if (!isActive) { targetMenu.style.display = 'block'; } else { targetMenu.style.display = 'none'; }
+            });
+        });
+    });
+</script>
+"""
+
         if use_sidebar:
             all_menu_urls = []
             if sidebar_content:
@@ -3354,25 +3527,60 @@ with tab_wholesale_main:
                         curr[part]['__name__'] = force_cyrillic_name_global(part)
                     curr = curr[part]
 
+            # РЕКУРСИВНАЯ ФУНКЦИЯ (ИСПРАВЛЕНАЯ ПОД НОВУЮ СТРУКТУРУ)
             def render_tree_internal(node, level=1):
                 html = ""
                 keys = sorted([k for k in node.keys() if not k.startswith('__')])
+                
                 for key in keys:
                     child = node[key]
                     name = child.get('__name__', force_cyrillic_name_global(key))
                     url = child.get('__url__', '#')
                     has_children = any(k for k in child.keys() if not k.startswith('__'))
+                    
                     if level == 1:
-                        html += f'<li class="level-1-header">'
-                        if has_children: html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu">{render_tree_internal(child, level=2)}</ul>'
-                        else: html += f'<a href="{url}">{name}</a>'
+                        html += '<li class="level-1-header">'
+                        if has_children:
+                            html += f'<span class="dropdown-toggle">{name}</span>'
+                            html += f'<ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=2)}</ul>'
+                        else:
+                            html += f'<a href="{url}">{name}</a>'
                         html += '</li>'
+                    
+                    elif level == 2:
+                        html += '<li class="level-2-header">'
+                        if has_children:
+                            html += f'<span class="dropdown-toggle">{name}</span>'
+                            html += f'<ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=3)}</ul>'
+                        else:
+                            # Особый случай для ссылок 2 уровня без детей (опционально level-2-link-special или просто header с ссылкой)
+                            html += f'<a href="{url}">{name}</a>'
+                        html += '</li>'
+                    
                     else:
-                        html += f'<li><a href="{url}">{name}</a>'
-                        if has_children: html += f'<ul>{render_tree_internal(child, level+1)}</ul>'
-                        html += '</li>'
+                        # 3 уровень и глубже - это level-3-link
+                        html += f'<li class="level-3-link"><a href="{url}">{name}</a></li>'
+                        if has_children:
+                             # Если вдруг есть 4 уровень, просто вкладываем (стили рассчитаны на 3)
+                             html += f'<ul>{render_tree_internal(child, level+1)}</ul>'
+
                 return html
-            current_full_sidebar_code = f'<div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{render_tree_internal(tree, level=1)}</ul></nav></div>'
+
+            # СБОРКА ИТОГОВОГО КОДА
+            sidebar_body = f'''
+            <div class="page-content-with-sidebar">
+                <button id="mobile-menu-toggle" class="menu-toggle-button">☰</button>
+                <div class="sidebar-wrapper">
+                    <nav id="sidebar-menu">
+                        <ul class="list-unstyled components">
+                            {render_tree_internal(tree, level=1)}
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+            '''
+            # Добавляем стили и скрипты в конец
+            current_full_sidebar_code = sidebar_body + SIDEBAR_ASSETS
 
         # СБОР СТРАНИЦ
         target_pages = []
@@ -3410,20 +3618,32 @@ with tab_wholesale_main:
             for k, v in STATIC_DATA_GEN.items():
                 if k in row_data: row_data[k] = v
 
-            # Список инъекций (Теги, Таблицы, Промо)
+            # Список инъекций
             injections = []
 
-            # 1. ТЕГИ (Только те, у которых нашлись ссылки)
+            # 1. ТЕГИ (НОВЫЙ ФОРМАТ)
             if use_tags:
                 html_t = []
                 for kw, links in tags_map.items():
                     valid = [u for u in links if u.rstrip('/') != page['url'].rstrip('/')]
                     if valid:
                         sel = random.choice(valid)
-                        # Используем ту же логику именования, что и была
                         nm = force_cyrillic_name_global(sel.split('/')[-1])
-                        html_t.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
-                if html_t: injections.append('<div class="popular-tags">' + "\n".join(html_t) + '</div>')
+                        # КЛАСС tag-item
+                        html_t.append(f'<a href="{sel}" class="tag-item">{nm}</a>')
+                
+                if html_t:
+                    # НОВАЯ ВЛОЖЕННОСТЬ
+                    tags_block = f'''
+                    <div class="popular-tags-text">
+                        <div class="popular-tags-inner-text">
+                            <div class="tag-items">
+                                {"".join(html_t)}
+                            </div>
+                        </div>
+                    </div>
+                    '''
+                    injections.append(tags_block)
 
             # 2. ТАБЛИЦЫ
             if use_tables and client:
@@ -3453,11 +3673,10 @@ with tab_wholesale_main:
                     p_html += '</div></div>'
                     injections.append(p_html)
 
-            # 4. ГЕНЕРАЦИЯ ТЕКСТА (Здесь уже обновленный actual_text_list)
+            # 4. ГЕНЕРАЦИЯ ТЕКСТА
             blocks = [""] * 5
             if use_text and client:
                 blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, 5, actual_text_list)
-                # Дополнительная защита при склейке
                 blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
 
             # 5. СЛИЯНИЕ ВСЕГО
@@ -3479,14 +3698,14 @@ with tab_wholesale_main:
                     row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                 except: pass
 
-            # Маппинг 5 блоков в нужные колонки
+            # Маппинг
             for i, c_name in enumerate(TEXT_CONTAINERS):
                 row_data[c_name] = blocks[i]
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / len(target_pages))
 
-        # ФИНАЛИЗАЦИЯ ТАБЛИЦЫ
+        # ФИНАЛИЗАЦИЯ
         df_result = pd.DataFrame(final_data)
         df_result = df_result.reindex(columns=EXCEL_COLUMN_ORDER).fillna("")
         st.session_state.gen_result_df = df_result 
@@ -3648,6 +3867,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
