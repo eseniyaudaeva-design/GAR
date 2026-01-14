@@ -3280,80 +3280,115 @@ with tab_wholesale_main:
 
         final_data = [] 
 
-        # ==========================================
-        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ (БАЗА)
-        # ==========================================
-        all_tags_links = []
+        # --- ОБРАБОТКА ТЕГОВ ---
+        tags_map = {}
         if use_tags:
+            all_tags_links = []
             if tags_file_content:
                 all_tags_links = [l.strip() for l in io.StringIO(tags_file_content).readlines() if l.strip()]
             elif os.path.exists("data/links_base.txt"):
                 with open("data/links_base.txt", "r", encoding="utf-8") as f:
                     all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
-
-        # ==========================================
-        # 2. ЛОГИКА ТЕГОВ (СБОР URL)
-        # ==========================================
-        tags_data_prepared = [] # Список кортежей (keyword, url)
-        moved_words = []
-        
-        if use_tags:
+            
+            moved_words = []
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                # Ищем ссылку в базе
                 matches = [u for u in all_tags_links if tr in u.lower()]
                 
                 if matches:
-                    # Если нашли - берем случайную (пока что)
-                    # Фильтрация "не на саму себя" будет внутри цикла страниц
-                    tags_data_prepared.append((kw, matches)) 
+                    tags_map[kw] = matches
                 else:
-                    # Если не нашли - переносим в Текст
                     if kw not in actual_text_list:
                         actual_text_list.append(kw)
                         moved_words.append(kw)
             
             if moved_words:
                 cnt = len(moved_words)
-                st.toast(f"🔀 {cnt} слов не найдены в базе ссылок и перенесены в Текст", icon="ℹ️")
+                st.toast(f"⚠️ {cnt} слов перенесены в Текст (нет ссылок): {', '.join(moved_words[:3])}...", icon="🔀")
 
-        # ==========================================
-        # 3. ЛОГИКА ПРОМО (СБОР URL)
-        # ==========================================
+        # --- БАЗА ПРОМО ---
         p_img_map = {}
         if use_promo and df_db_promo is not None:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
-        # ==========================================
-        # 4. ФУНКЦИЯ ПАРСИНГА ИМЕН (ХЛЕБНЫЕ КРОШКИ)
-        # ==========================================
-        def resolve_real_names(urls_list):
-            """
-            Заходит на список URL и достает название из хлебных крошек.
-            Возвращает словарь {url: real_name}
-            """
-            if not urls_list: return {}
-            results_map = {}
-            # Используем ThreadPool для ускорения (до 10 потоков)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                # Запускаем задачи
-                future_to_url = {executor.submit(get_breadcrumb_only, u, st.session_state.settings_ua): u for u in urls_list}
-                for future in concurrent.futures.as_completed(future_to_url):
-                    url_key = future_to_url[future]
-                    try:
-                        extracted_name = future.result()
-                        if extracted_name:
-                            results_map[url_key] = extracted_name
-                    except: pass
-            return results_map
-
-        # --- ГЕНЕРАЦИЯ HTML ДЛЯ САЙДБАРА ---
+        # --- ГЕНЕРАЦИЯ САЙДБАРА (НОВАЯ ЛОГИКА С ЧТЕНИЕМ ФАЙЛА) ---
         current_full_sidebar_code = ""
-        # ВСТАВЬТЕ СЮДА БЛОК SIDEBAR_ASSETS (из предыдущих ответов), ЕСЛИ ЕГО НЕТ
-        if use_sidebar and 'SIDEBAR_ASSETS' not in locals():
-             pass 
+        if use_sidebar:
+            all_menu_urls = []
+            if sidebar_content:
+                all_menu_urls = [l.strip() for l in io.StringIO(sidebar_content).readlines() if l.strip()]
+            elif os.path.exists("data/menu_structure.txt"):
+                with open("data/menu_structure.txt", "r", encoding="utf-8") as f:
+                    all_menu_urls = [l.strip() for l in f.readlines() if l.strip()]
+            
+            sidebar_matched_urls = []
+            if global_sidebar_list:
+                for kw in global_sidebar_list:
+                    tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                    roots = [tr, tr[:-1], tr[:-2]] if len(tr)>5 else [tr]
+                    found = [u for u in all_menu_urls if any(r in u for r in roots)]
+                    sidebar_matched_urls.extend(found)
+                sidebar_matched_urls = list(set(sidebar_matched_urls))
+            else: sidebar_matched_urls = all_menu_urls
+
+            tree = {}
+            for s_url in sidebar_matched_urls:
+                path = urlparse(s_url).path.strip('/')
+                parts = [p for p in path.split('/') if p]
+                idx_st = parts.index('catalog') + 1 if 'catalog' in parts else 0
+                rel_parts = parts[idx_st:] if parts[idx_st:] else parts
+                curr = tree
+                for i, part in enumerate(rel_parts):
+                    if part not in curr: curr[part] = {}
+                    if i == len(rel_parts) - 1:
+                        curr[part]['__url__'] = s_url
+                        curr[part]['__name__'] = force_cyrillic_name_global(part)
+                    curr = curr[part]
+
+            def render_tree_internal(node, level=1):
+                html = ""
+                keys = sorted([k for k in node.keys() if not k.startswith('__')])
+                for key in keys:
+                    child = node[key]
+                    name = child.get('__name__', force_cyrillic_name_global(key))
+                    url = child.get('__url__', '#')
+                    has_children = any(k for k in child.keys() if not k.startswith('__'))
+                    if level == 1:
+                        html += '<li class="level-1-header">'
+                        if has_children:
+                            html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=2)}</ul>'
+                        else:
+                            html += f'<a href="{url}">{name}</a>'
+                        html += '</li>'
+                    elif level == 2:
+                        html += '<li class="level-2-header">'
+                        if has_children:
+                            html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=3)}</ul>'
+                        else:
+                            html += f'<a href="{url}">{name}</a>'
+                        html += '</li>'
+                    else:
+                        html += f'<li class="level-3-link"><a href="{url}">{name}</a></li>'
+                        if has_children: html += f'<ul>{render_tree_internal(child, level+1)}</ul>'
+                return html
+
+            # 1. Генерируем только список <li>
+            menu_items_html = render_tree_internal(tree, level=1)
+            
+            # 2. Читаем шаблон из файла и подставляем <li>
+            try:
+                # Пытаемся найти файл. Если у вас другое название папки, исправьте путь.
+                with open("data/sidebar_template.html", "r", encoding="utf-8") as f:
+                    template_html = f.read()
+                
+                # Заменяем метку {{GENERATED_MENU_ITEMS}} на сгенерированный HTML
+                current_full_sidebar_code = template_html.replace("{{GENERATED_MENU_ITEMS}}", menu_items_html)
+                
+            except FileNotFoundError:
+                st.error("❌ Файл шаблона data/sidebar_template.html не найден! Сайдбар не сгенерирован.")
+                current_full_sidebar_code = ""
 
         # СБОР СТРАНИЦ
         target_pages = []
@@ -3380,7 +3415,7 @@ with tab_wholesale_main:
 
         progress_bar = status_box.progress(0)
         
-        # === ОСНОВНОЙ ЦИКЛ ПО СТРАНИЦАМ ===
+        # ОСНОВНОЙ ЦИКЛ ПО СТРАНИЦАМ
         for idx, page in enumerate(target_pages):
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
@@ -3393,50 +3428,28 @@ with tab_wholesale_main:
 
             injections = []
 
-            # ----------------------------------------
-            # 1. ТЕГИ (С ПАРСИНГОМ КРОШЕК)
-            # ----------------------------------------
-            if use_tags and tags_data_prepared:
-                # 1. Выбираем ссылки
-                selected_urls_map = {} # {url: original_keyword}
-                for kw, links in tags_data_prepared:
+            # 1. ТЕГИ
+            if use_tags and tags_map:
+                html_t = []
+                for kw, links in tags_map.items():
                     valid = [u for u in links if u.rstrip('/') != page['url'].rstrip('/')]
                     if valid:
                         sel = random.choice(valid)
-                        selected_urls_map[sel] = kw
-                
-                # 2. Парсим реальные названия (если включен парсинг)
-                # Чтобы не ждать долго, парсим только выбранные 10-15 ссылок
-                urls_to_fetch = list(selected_urls_map.keys())
-                real_names_map = resolve_real_names(urls_to_fetch)
-                
-                # 3. Собираем HTML
-                html_t = []
-                for u in urls_to_fetch:
-                    # Если спарсили крошку - берем её. Если нет - берем исходное ключевое слово.
-                    display_name = real_names_map.get(u, selected_urls_map[u])
-                    # Принудительно делаем первую букву заглавной, если это просто слово
-                    if display_name == selected_urls_map[u]: 
-                        display_name = display_name.capitalize()
-                        
-                    html_t.append(f'<a href="{u}" class="tag-item">{display_name}</a>')
+                        html_t.append(f'<a href="{sel}" class="tag-item">{kw}</a>')
                 
                 if html_t:
-                    # Ваша структура + join через \n чтобы не склеивались
                     tags_block = f'''
 <div class="popular-tags-text">
-<div class="popular-tags-inner-text">
-<div class="tag-items">
-{"\n".join(html_t)}
-</div>
-</div>
+    <div class="popular-tags-inner-text">
+        <div class="tag-items">
+            {"".join(html_t)}
+        </div>
+    </div>
 </div>
 '''
                     injections.append(tags_block)
 
-            # ----------------------------------------
             # 2. ТАБЛИЦЫ
-            # ----------------------------------------
             if use_tables and client:
                 for t_topic in table_prompts:
                     ctx = f"Данные: {tech_context_final_str}"
@@ -3453,28 +3466,18 @@ with tab_wholesale_main:
                         injections.append(st_table)
                     except: pass
 
-            # ----------------------------------------
-            # 3. ПРОМО (С ПАРСИНГОМ КРОШЕК)
-            # ----------------------------------------
+            # 3. ПРОМО
             if use_promo and p_img_map:
                 p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                 if p_cands:
                     sel_p = random.sample(p_cands, min(4, len(p_cands)))
-                    
-                    # Парсим названия для промо
-                    promo_names_map = resolve_real_names(sel_p)
-                    
                     p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
                     for u in sel_p:
-                        # Имя из крошек ИЛИ (fallback) транслит (если не спарсилось)
-                        nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
-                        p_html += f'<div class="promo-card" style="min-width:200px;"><a href="{u}"><img src="{p_img_map[u]}" style="max-width:100%;"><br>{nm}</a></div>'
+                        p_html += f'<div class="promo-card" style="min-width:200px;"><a href="{u}"><img src="{p_img_map[u]}" style="max-width:100%;"><br>{force_cyrillic_name_global(u.split("/")[-1])}</a></div>'
                     p_html += '</div></div>'
                     injections.append(p_html)
 
-            # ----------------------------------------
             # 4. ГЕНЕРАЦИЯ ТЕКСТА
-            # ----------------------------------------
             blocks = [""] * 5
             if use_text and client:
                 blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, 5, actual_text_list)
@@ -3482,7 +3485,7 @@ with tab_wholesale_main:
 
             # 5. СЛИЯНИЕ ВСЕГО
             # Сайдбар -> В начало IP_PROP4839 (Блок 1)
-            if use_sidebar and 'current_full_sidebar_code' in locals() and current_full_sidebar_code:
+            if use_sidebar and current_full_sidebar_code:
                 blocks[0] = current_full_sidebar_code + "\n" + blocks[0]
             
             # Инъекции -> В конец блоков по очереди
@@ -3490,24 +3493,20 @@ with tab_wholesale_main:
                 t_idx = i % 5
                 blocks[t_idx] = blocks[t_idx] + "\n\n" + inj
 
-            # ----------------------------------------
-            # 6. ГЕО (ИСПРАВЛЕННЫЙ ПРОМПТ)
-            # ----------------------------------------
+            # 6. ГЕО
             if use_geo and client:
                 cities = ", ".join(random.sample(actual_geo_list, min(15, len(actual_geo_list))))
-                # ЖЕСТКИЙ ПРОМПТ: ЗАПРЕТ НА БОЛТОВНЮ
                 prompt_geo = f"""
                 Write ONE HTML paragraph (<p>) regarding delivery to these cities: {cities}.
                 RULES:
                 1. STRICTLY HTML only. No Markdown.
-                2. NO introductory text like "Here is the text".
-                3. NO titles. Just the paragraph content.
+                2. NO introductory text.
+                3. NO titles.
                 4. Start directly with "Мы осуществляем доставку..." or similar.
                 """
                 try:
-                    resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.1) # Температура ниже для точности
+                    resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.1)
                     clean_geo = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                    # Убираем кавычки если вдруг есть
                     clean_geo = re.sub(r'^["\']|["\']$', '', clean_geo)
                     row_data['IP_PROP4819'] = clean_geo
                 except: pass
@@ -3539,7 +3538,6 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_fixed"
         )
-
 # ==========================================
 # 5. БЛОК ПРЕДПРОСМОТРА
 # ==========================================
@@ -3681,6 +3679,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
