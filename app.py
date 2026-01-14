@@ -1887,8 +1887,8 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     seo_instruction_block = ""
     
     if seo_words:
-        seo_list_str = "\n".join([f"{i+1}. {word}" for i, word in enumerate(seo_words)])
-        seo_list_str = ", ".join(seo_words)
+        seo_count = len(seo_words)
+        seo_list_formatted = ", ".join([f"«{w}»" for w in seo_words])
         seo_instruction_block = f"""
 --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
 Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме: {{{seo_list_str}}}
@@ -3664,6 +3664,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
