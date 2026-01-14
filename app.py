@@ -3244,6 +3244,7 @@ with tab_wholesale_main:
             'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 
             'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
         ]
+        # 5 контейнеров под текст
         TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
         # Подготовка списков
@@ -3254,6 +3255,9 @@ with tab_wholesale_main:
         raw_geo_val = st.session_state.get("kws_geo_auto", "")
         if not raw_geo_val: raw_geo_val = geo_context_default
         actual_geo_list = [x.strip() for x in re.split(r'[,\n]+', raw_geo_val) if x.strip()]
+
+        # Получаем выбор пользователя по кол-ву блоков (по умолчанию 5)
+        user_num_blocks = st.session_state.get("sb_num_blocks", 5)
 
         status_box = st.status("🛠️ Подготовка и запуск генерации...", expanded=True)
         
@@ -3268,7 +3272,7 @@ with tab_wholesale_main:
         final_data = [] 
 
         # ==========================================
-        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ (БАЗА)
+        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ
         # ==========================================
         all_tags_links = []
         if use_tags:
@@ -3326,7 +3330,7 @@ with tab_wholesale_main:
             return results_map
 
         # ==========================================
-        # 5. ГЕНЕРАЦИЯ САЙДБАРА (ИЗ ФАЙЛА!)
+        # 5. ГЕНЕРАЦИЯ САЙДБАРА (ИЗ ФАЙЛА)
         # ==========================================
         current_full_sidebar_code = ""
         if use_sidebar:
@@ -3345,7 +3349,14 @@ with tab_wholesale_main:
                     found = [u for u in all_menu_urls if any(r in u for r in roots)]
                     sidebar_matched_urls.extend(found)
                 sidebar_matched_urls = list(set(sidebar_matched_urls))
-            else: sidebar_matched_urls = all_menu_urls
+            else: 
+                sidebar_matched_urls = all_menu_urls
+
+            # Парсинг имен для сайдбара
+            sidebar_names_map = {}
+            if sidebar_matched_urls:
+                urls_to_resolve = sidebar_matched_urls[:30] 
+                sidebar_names_map = resolve_real_names(urls_to_resolve)
 
             tree = {}
             for s_url in sidebar_matched_urls:
@@ -3353,12 +3364,13 @@ with tab_wholesale_main:
                 parts = [p for p in path.split('/') if p]
                 idx_st = parts.index('catalog') + 1 if 'catalog' in parts else 0
                 rel_parts = parts[idx_st:] if parts[idx_st:] else parts
+                
                 curr = tree
                 for i, part in enumerate(rel_parts):
                     if part not in curr: curr[part] = {}
                     if i == len(rel_parts) - 1:
                         curr[part]['__url__'] = s_url
-                        curr[part]['__name__'] = force_cyrillic_name_global(part)
+                        curr[part]['__name__'] = sidebar_names_map.get(s_url, force_cyrillic_name_global(part))
                     curr = curr[part]
 
             def render_tree_internal(node, level=1):
@@ -3437,7 +3449,7 @@ with tab_wholesale_main:
             injections = []
 
             # ----------------------------------------
-            # 1. ТЕГИ (С ПАРСИНГОМ КРОШЕК)
+            # 1. ТЕГИ
             # ----------------------------------------
             if use_tags and tags_data_prepared:
                 selected_urls_map = {} 
@@ -3488,16 +3500,14 @@ with tab_wholesale_main:
                     except: pass
 
             # ----------------------------------------
-            # 3. ПРОМО (НОВЫЙ ШАБЛОН "АКЦИЯ")
+            # 3. ПРОМО
             # ----------------------------------------
             if use_promo and p_img_map:
                 p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                 if p_cands:
-                    # Выбираем от 3 до 8 товаров
                     sel_p = random.sample(p_cands, min(8, max(3, len(p_cands))))
                     promo_names_map = resolve_real_names(sel_p)
                     
-                    # Сборка HTML элементов
                     gallery_items = []
                     for u in sel_p:
                         nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
@@ -3515,7 +3525,6 @@ with tab_wholesale_main:
             </div>'''
                         gallery_items.append(item_html)
 
-                    # Сборка общего блока
                     p_html = f'''
 <style>
 .outer-full-width-section {{ padding: 25px 0; width: 100%; }}
@@ -3544,20 +3553,46 @@ h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; paddi
                     injections.append(p_html)
 
             # ----------------------------------------
-            # 4. ГЕНЕРАЦИЯ ТЕКСТА
+            # 4. ГЕНЕРАЦИЯ ТЕКСТА (ФИКС КОЛИЧЕСТВА БЛОКОВ)
             # ----------------------------------------
+            
+            # Инициализация пустыми строками для 5 колонок Excel
             blocks = [""] * 5
+            
             if use_text and client:
-                blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, 5, actual_text_list)
-                blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
+                # Передаем user_num_blocks, а не 5!
+                blocks_raw = generate_ai_content_blocks(
+                    gemini_api_key, 
+                    base_text_raw or "", 
+                    page['name'], 
+                    header_for_ai, 
+                    user_num_blocks,  # <--- ИСПОЛЬЗУЕМ ВЫБОР ПОЛЬЗОВАТЕЛЯ
+                    actual_text_list
+                )
+                
+                cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
+                
+                # Заполняем только нужное количество слотов
+                # Если пользователь выбрал 1 блок, заполнится только blocks[0], остальные останутся ""
+                for i in range(len(cleaned_blocks)):
+                    if i < 5:
+                        blocks[i] = cleaned_blocks[i]
 
             # 5. СЛИЯНИЕ ВСЕГО
             if use_sidebar and current_full_sidebar_code:
                 blocks[0] = current_full_sidebar_code + "\n" + blocks[0]
             
+            # Распределение инъекций (Теги, Таблицы, Промо)
+            # Они добавляются к существующим блокам.
+            # Если блоков текста меньше, чем инъекций, добавляем их к последнему существующему блоку
+            # или циклично распределяем по имеющимся (user_num_blocks).
+            
+            effective_blocks_count = max(1, user_num_blocks) # Чтобы делить на 0 не пришлось
+            
             for i, inj in enumerate(injections):
-                t_idx = i % 5
-                blocks[t_idx] = blocks[t_idx] + "\n\n" + inj
+                # Распределяем по доступным текстовым блокам
+                target_idx = i % effective_blocks_count
+                blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
 
             # 6. ГЕО
             if use_geo and client:
@@ -3742,6 +3777,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
