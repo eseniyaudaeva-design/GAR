@@ -187,30 +187,73 @@ def render_clean_block(title, icon, words_list):
     unique_words = sorted(list(set(words_list))) if words_list else []
     count = len(unique_words)
     
+    # Стили прямо внутри функции для надежности
+    style_html = """
+    <style>
+        .semantic-card {
+            background-color: #ffffff !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 10px !important;
+            margin-bottom: 10px !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .semantic-summary {
+            padding: 12px 16px !important;
+            cursor: pointer;
+            font-weight: 700 !important;
+            font-size: 15px !important; /* Крупный текст заголовка */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            list-style: none;
+            user-select: none;
+        }
+        .semantic-summary::-webkit-details-marker { display: none; }
+        .semantic-summary:hover { color: #277EFF; }
+        
+        .semantic-content {
+            padding: 0 16px 16px 16px !important;
+            font-size: 15px !important; /* Крупный текст слов */
+            line-height: 1.6 !important;
+            color: #334155 !important;
+            word-wrap: break-word;
+            border-top: 1px solid #F1F5F9;
+            padding-top: 10px !important;
+        }
+        .semantic-count {
+            background: #F1F5F9;
+            color: #475569;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+    </style>
+    """
+    
     if count > 0:
         content_html = ", ".join(unique_words)
-        # Карточка раскрывается
         html_code = f"""
-        <details class="details-card">
-            <summary class="card-summary">
-                <div>
-                    <span class="arrow-icon">▶</span>
-                    {icon} {title}
+        {style_html}
+        <div class="semantic-card">
+            <details>
+                <summary class="semantic-summary">
+                    <div>{icon} {title}</div>
+                    <span class="semantic-count">{count}</span>
+                </summary>
+                <div class="semantic-content">
+                    {content_html}
                 </div>
-                <span class="count-tag">{count}</span>
-            </summary>
-            <div class="card-content">
-                {content_html}
-            </div>
-        </details>
+            </details>
+        </div>
         """
     else:
-        # Если пусто - карточка неактивна (без контента)
         html_code = f"""
-        <div class="details-card">
-            <div class="card-summary" style="cursor: default; color: #9ca3af;">
+        {style_html}
+        <div class="semantic-card" style="opacity: 0.5;">
+            <div class="semantic-summary" style="cursor: default;">
                 <div>{icon} {title}</div>
-                <span class="count-tag">0</span>
+                <span class="semantic-count">0</span>
             </div>
         </div>
         """
@@ -2166,23 +2209,6 @@ with tab_seo_main:
             d_color = "#D32F2F"; d_status = "Низкая"
 
         st.success("Анализ готов!")
-        
-        # Стили
-        st.markdown("""
-        <style>
-            details > summary { list-style: none; }
-            details > summary::-webkit-details-marker { display: none; }
-            .details-card { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 10px; }
-            .card-summary { padding: 12px 15px; cursor: pointer; font-weight: 700; display: flex; justify-content: space-between; }
-            .count-tag { background: #e5e7eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
-            .flat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; height: 340px; display: flex; flex-direction: column; }
-            .flat-header { height: 50px; padding: 0 20px; font-weight: 700; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }
-            .flat-content { flex-grow: 1; padding: 15px 20px; overflow-y: auto; font-size: 13px; line-height: 1.4; }
-            .flat-footer { height: 150px; padding: 12px 20px; border-top: 1px solid #f3f4f6; background: #fafafa; }
-            .flat-len-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; }
-            .flat-miss-tag { border: 1px solid #fecaca; color: #991b1b; padding: 2px 6px; font-size: 11px; border-radius: 4px; margin: 2px; display: inline-block; }
-        </style>
-        """, unsafe_allow_html=True)
 
         # Вывод баллов
         st.markdown(f"""
@@ -3718,6 +3744,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
