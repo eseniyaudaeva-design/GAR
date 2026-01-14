@@ -1965,7 +1965,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         
         # 3. Отправляем запрос (используем модель 2.5, на которую есть квоты)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-pro",
             contents=full_prompt
         )
         
@@ -3163,7 +3163,7 @@ with tab_wholesale_main:
                 try:
                     client = genai.Client(api_key=gemini_api_key)
                     response = client.models.generate_content(
-                        model="gemini-2.5-flash", 
+                        model="gemini-2.5-pro", 
                         contents="Say OK"
                     )
                     
@@ -3408,7 +3408,7 @@ with tab_wholesale_main:
                     try:
                         # ИСПОЛЬЗУЕМ client.models.generate_content
                         resp = client.models.generate_content(
-                            model="gemini-2.5-flash", 
+                            model="gemini-2.5-pro", 
                             contents=prompt
                         )
                         row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
@@ -3421,7 +3421,7 @@ with tab_wholesale_main:
                     try:
                         # ИСПОЛЬЗУЕМ client.models.generate_content
                         resp = client.models.generate_content(
-                            model="gemini-2.5-flash",
+                            model="gemini-2.5-pro",
                             contents=prompt
                         )
                         row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
@@ -3679,6 +3679,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
