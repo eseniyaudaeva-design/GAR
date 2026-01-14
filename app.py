@@ -3658,6 +3658,7 @@ with tab_wholesale_main:
         st.markdown("---")
         st.header("👀 Предпросмотр по колонкам")
         
+        # Обновленные стили (убрал моноширинный шрифт из общего класса)
         st.markdown("""
         <style>
             .preview-box {
@@ -3665,13 +3666,16 @@ with tab_wholesale_main:
                 background-color: #ffffff;
                 padding: 20px;
                 border-radius: 8px;
-                max-height: 500px;
+                max-height: 600px;
                 overflow-y: auto;
+                box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+            }
+            /* Стили для режима кода */
+            .preview-code {
                 font-family: 'Courier New', monospace;
                 font-size: 13px;
-                line-height: 1.5;
                 white-space: pre-wrap;
-                box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+                color: #d63384;
             }
         </style>
         """, unsafe_allow_html=True)
@@ -3682,34 +3686,37 @@ with tab_wholesale_main:
             sel_p = st.selectbox("Страница:", df_p['Product Name'].tolist(), key="ws_prev_sel")
             row_p = df_p[df_p['Product Name'] == sel_p].iloc[0]
             
-            # --- ЛОГИКА ФИЛЬТРАЦИИ ТАБОВ ---
-            # Собираем список колонок, которые ИМЕЕТ СМЫСЛ показывать,
-            # исходя из того, какие галочки нажал пользователь.
-            
+            # Логика фильтрации (показываем только выбранные модули)
             relevant_cols = []
-            
-            # 1. Основные текстовые блоки (Текст, Сайдбар, Теги, Таблицы, Промо попадают сюда)
-            # Если хоть что-то из этого выбрано, показываем 5 текстовых колонок
             if use_text or use_sidebar or use_tags or use_tables or use_promo:
                 relevant_cols.extend(['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'])
-            
-            # 2. Гео блок (IP_PROP4819) - показываем ТОЛЬКО если выбрана галочка Гео
             if use_geo:
                 relevant_cols.append('IP_PROP4819')
 
-            # Финальный фильтр: 
-            # 1. Колонка должна быть в списке "разрешенных" (relevant_cols)
-            # 2. В ячейке должно быть содержимое (не пусто)
             active_tabs = [c for c in relevant_cols if str(row_p.get(c, "")).strip() != ""]
             
             if active_tabs:
                 tabs = st.tabs(active_tabs)
                 for i, col in enumerate(active_tabs):
                     with tabs[i]:
-                        st.caption(f"Содержимое колонки: {col}")
+                        # Переключатель режимов
+                        mode = st.radio(
+                            f"Режим просмотра ({col}):", 
+                            ["👁️ Визуально", "👨‍💻 Код"], 
+                            horizontal=True, 
+                            label_visibility="collapsed",
+                            key=f"view_mode_{i}"
+                        )
+                        
                         content_to_show = str(row_p[col])
-                        import html
-                        st.markdown(f"<div class='preview-box'>{html.escape(content_to_show)}</div>", unsafe_allow_html=True)
+                        
+                        if "Код" in mode:
+                            import html
+                            # Показываем исходный код (экранированный)
+                            st.markdown(f"<div class='preview-box preview-code'>{html.escape(content_to_show)}</div>", unsafe_allow_html=True)
+                        else:
+                            # Показываем отрендеренный HTML (таблицы, картинки, жирный шрифт)
+                            st.markdown(f"<div class='preview-box'>{content_to_show}</div>", unsafe_allow_html=True)
             else:
                 st.info("Нет данных для отображения по выбранным настройкам.")
 # ==========================================
@@ -3830,6 +3837,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
