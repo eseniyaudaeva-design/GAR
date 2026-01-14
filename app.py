@@ -3452,12 +3452,15 @@ with tab_wholesale_main:
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
-            # 1. Сразу создаем строку со всеми IP_PROP в нужном тебе порядке
+            # 1. Собираем строку. Сначала технические поля для UI, потом IP_PROP
             row_data = {
-                'IP_PROP4839': "", # Сюда пойдет текст (блоки 1-5)
+                'Page URL': page['url'],
+                'Product Name': header_for_ai,
+                # Твой строгий порядок блоков:
+                'IP_PROP4839': "", # AI Текст
                 'IP_PROP4817': STATIC_DATA_GEN.get('IP_PROP4817', ""),
                 'IP_PROP4818': STATIC_DATA_GEN.get('IP_PROP4818', ""),
-                'IP_PROP4819': STATIC_DATA_GEN.get('IP_PROP4819', ""), # ГЕО
+                'IP_PROP4819': "", # AI ГЕО
                 'IP_PROP4820': STATIC_DATA_GEN.get('IP_PROP4820', ""),
                 'IP_PROP4821': STATIC_DATA_GEN.get('IP_PROP4821', ""),
                 'IP_PROP4822': STATIC_DATA_GEN.get('IP_PROP4822', ""),
@@ -3474,18 +3477,12 @@ with tab_wholesale_main:
                 'IP_PROP4829': "", # Таблица 1
                 'IP_PROP4831': "", # Таблица 2
             }
-            
-            # Добавим для справки (по желанию, можно удалить)
-            row_data['Page URL'] = page['url']
-            row_data['Product Name'] = header_for_ai
 
-            # 2. ГЕНЕРАЦИЯ ТЕКСТА -> IP_PROP4839
+            # --- ГЕНЕРАЦИЯ ---
             if use_text and client:
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
-                # Склеиваем блоки в одну ячейку
                 row_data['IP_PROP4839'] = "\n\n".join([b for b in blocks if b and "Error" not in b])
 
-            # 3. ГЕО -> IP_PROP4819
             if use_geo and client:
                 if actual_geo_list:
                     cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
@@ -3493,9 +3490,9 @@ with tab_wholesale_main:
                     try:
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=2.0)
                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                    except: pass
+                    except: row_data['IP_PROP4819'] = STATIC_DATA_GEN.get('IP_PROP4819', "")
+                else: row_data['IP_PROP4819'] = STATIC_DATA_GEN.get('IP_PROP4819', "")
 
-            # 4. ТЕГИ -> IP_PROP4816
             if use_tags:
                 html_tags = []
                 for kw in global_tags_list:
@@ -3505,10 +3502,8 @@ with tab_wholesale_main:
                             sel = random.choice(valid)
                             nm = url_name_cache.get(sel.rstrip('/'), kw)
                             html_tags.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
-                if html_tags: 
-                    row_data['IP_PROP4816'] = '<div class="popular-tags">' + "\n".join(html_tags) + '</div>'
+                if html_tags: row_data['IP_PROP4816'] = '<div class="popular-tags">' + "\n".join(html_tags) + '</div>'
 
-            # 5. ТАБЛИЦЫ -> IP_PROP4829 и IP_PROP4831
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
                     target_key = 'IP_PROP4829' if t_i == 0 else ('IP_PROP4831' if t_i == 1 else None)
@@ -3520,35 +3515,37 @@ with tab_wholesale_main:
                         row_data[target_key] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                     except: pass
 
-            # 6. САЙДБАР -> IP_PROP4838
-            if use_sidebar:
-                row_data['IP_PROP4838'] = full_sidebar_code
+            if use_sidebar: row_data['IP_PROP4838'] = full_sidebar_code
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
 
-        # === ФИНАЛЬНЫЙ ПОРЯДОК СТОЛБЦОВ В EXCEL ===
+        # 2. Создаем DataFrame
         df_result = pd.DataFrame(final_data)
         
-        # Список в твоем порядке
-        ordered_props = [
+        # 3. ПРИНУДИТЕЛЬНЫЙ ПОРЯДОК КОЛОНОК (все старые + IP_PROP в ряд)
+        cols_order = [
+            'Page URL', 'Product Name', 
             'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 'IP_PROP4820', 
             'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 'IP_PROP4824', 'IP_PROP4816', 
             'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 
             'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
         ]
         
-        # Оставляем только эти колонки в этом порядке
-        df_result = df_result[ordered_props]
+        # Перестраиваем колонки (берем только те, что реально создались)
+        existing_cols = [c for c in cols_order if c in df_result.columns]
+        df_result = df_result[existing_cols]
+
+        st.session_state.gen_result_df = df_result 
         
-        st.session_state.gen_result_df = df_result
-        
+        # 4. Формируем Excel байты
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_result.to_excel(writer, index=False)
         st.session_state.unified_excel_data = buffer.getvalue()
         
         status_box.update(label="✅ Готово!", state="complete", expanded=False)
+
     # КНОПКА СКАЧИВАНИЯ
     if st.session_state.get('unified_excel_data') is not None:
         st.success("Файл успешно сгенерирован!")
@@ -3786,6 +3783,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
