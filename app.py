@@ -3657,22 +3657,61 @@ with tab_wholesale_main:
     if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not None:
         st.markdown("---")
         st.header("👀 Предпросмотр по колонкам")
+        
+        st.markdown("""
+        <style>
+            .preview-box {
+                border: 1px solid #e2e8f0;
+                background-color: #ffffff;
+                padding: 20px;
+                border-radius: 8px;
+                max-height: 500px;
+                overflow-y: auto;
+                font-family: 'Courier New', monospace;
+                font-size: 13px;
+                line-height: 1.5;
+                white-space: pre-wrap;
+                box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
         df_p = st.session_state.gen_result_df
         
         if 'Product Name' in df_p.columns:
             sel_p = st.selectbox("Страница:", df_p['Product Name'].tolist(), key="ws_prev_sel")
             row_p = df_p[df_p['Product Name'] == sel_p].iloc[0]
             
-            # Вкладки для просмотра каждой колонки отдельно
-            target_cols = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819']
-            active_tabs = [c for c in target_cols if str(row_p.get(c, "")).strip() != ""]
+            # --- ЛОГИКА ФИЛЬТРАЦИИ ТАБОВ ---
+            # Собираем список колонок, которые ИМЕЕТ СМЫСЛ показывать,
+            # исходя из того, какие галочки нажал пользователь.
+            
+            relevant_cols = []
+            
+            # 1. Основные текстовые блоки (Текст, Сайдбар, Теги, Таблицы, Промо попадают сюда)
+            # Если хоть что-то из этого выбрано, показываем 5 текстовых колонок
+            if use_text or use_sidebar or use_tags or use_tables or use_promo:
+                relevant_cols.extend(['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'])
+            
+            # 2. Гео блок (IP_PROP4819) - показываем ТОЛЬКО если выбрана галочка Гео
+            if use_geo:
+                relevant_cols.append('IP_PROP4819')
+
+            # Финальный фильтр: 
+            # 1. Колонка должна быть в списке "разрешенных" (relevant_cols)
+            # 2. В ячейке должно быть содержимое (не пусто)
+            active_tabs = [c for c in relevant_cols if str(row_p.get(c, "")).strip() != ""]
             
             if active_tabs:
                 tabs = st.tabs(active_tabs)
                 for i, col in enumerate(active_tabs):
                     with tabs[i]:
-                        st.caption(f"Колонка: {col}")
-                        st.markdown(f"<div class='preview-box'>{row_p[col]}</div>", unsafe_allow_html=True)
+                        st.caption(f"Содержимое колонки: {col}")
+                        content_to_show = str(row_p[col])
+                        import html
+                        st.markdown(f"<div class='preview-box'>{html.escape(content_to_show)}</div>", unsafe_allow_html=True)
+            else:
+                st.info("Нет данных для отображения по выбранным настройкам.")
 # ==========================================
 # TAB 3: PROJECT MANAGER (SAVE/LOAD)
 # ==========================================
@@ -3791,6 +3830,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
