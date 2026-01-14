@@ -2330,47 +2330,38 @@ with tab_seo_main:
                 with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
                 with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
 
-# --- БЛОК СТОП-СЛОВ (CLEAN UI) ---
+# --- БЛОК СТОП-СЛОВ (PREMIUM UI v3) ---
                 st.markdown("---")
                 st.markdown("<h4 style='color: #1e293b; margin-bottom: 5px; font-weight: 700;'>🛑 Стоп-лист (исключения)</h4>", unsafe_allow_html=True)
                 st.markdown("<p style='color: #64748b; font-size: 15px; margin-bottom: 20px;'>Слова из списка ниже автоматически исключаются из групп семантики и генерации текстов.</p>", unsafe_allow_html=True)
 
-                # Используем две колонки: широкая для ввода и узкая для управления
                 col_left, col_right = st.columns([2.5, 1.5])
                 
                 with col_left:
-                    # Поле ввода
+                    # Поле ввода (высота чуть больше для баланса с правой колонкой)
                     st.text_area(
                         "Исключения",
-                        height=110, 
+                        height=165, 
                         key="sensitive_words_input_final", 
                         label_visibility="collapsed",
                         placeholder="Введите слова для исключения (через запятую или с новой строки)..."
                     )
                 
                 with col_right:
-                    # Кнопка
-                    st.button(
-                        "🚀 Обновить и пересчитать", 
-                        type="primary", 
-                        use_container_width=True,
-                        on_click=sync_semantics_with_stoplist
-                    )
-                    
-                    # Аккуратная и читаемая карточка-инструкция
+                    # Пояснялка ТЕПЕРЬ СВЕРХУ
                     st.markdown(
                         """
                         <div style="
                             background: #f8fafc; 
                             border: 1px solid #e2e8f0; 
                             border-radius: 12px; 
-                            padding: 12px 16px; 
-                            margin-top: 10px;
+                            padding: 14px 18px; 
+                            margin-bottom: 15px;
                         ">
-                            <div style="display: flex; align-items: flex-start; gap: 10px;">
-                                <span style="font-size: 18px;">💡</span>
-                                <div style="font-size: 13.5px; color: #475569; line-height: 1.5;">
-                                    <b>Как управлять:</b><br>
+                            <div style="display: flex; align-items: flex-start; gap: 12px;">
+                                <span style="font-size: 20px;">💡</span>
+                                <div style="font-size: 14px; color: #334155; line-height: 1.5;">
+                                    <b style="color: #1e293b;">Как управлять:</b><br>
                                     Добавьте слово в список — оно исчезнет из групп выше.<br>
                                     Удалите слово — оно вернется в свою группу.
                                 </div>
@@ -2378,6 +2369,14 @@ with tab_seo_main:
                         </div>
                         """, 
                         unsafe_allow_html=True
+                    )
+                    
+                    # Кнопка ПОД пояснялкой
+                    st.button(
+                        "🚀 Обновить и пересчитать", 
+                        type="primary", 
+                        use_container_width=True,
+                        on_click=sync_semantics_with_stoplist
                     )
 
         # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ
@@ -3765,6 +3764,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
