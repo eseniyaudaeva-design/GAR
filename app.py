@@ -2358,8 +2358,15 @@ with tab_seo_main:
                         use_container_width=True,
                         on_click=sync_semantics_with_stoplist
                     )
-                    # Короткая понятная приписка под кнопкой
-                    st.markdown("<div style='font-size:11px; color:#64748B; line-height:1.1; margin-top:4px;'>Нажмите для пересчета семантики</div>", unsafe_allow_html=True)
+                    # Увеличенная и читабельная подсказка
+                    st.markdown(
+                        """
+                        <div style='font-size: 13.5px; color: #475569; line-height: 1.2; margin-top: 8px; font-weight: 500;'>
+                            Нажмите для пересчета семантики
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
                 
                 with col_spacer:
                     st.empty() # Просто занимает место, чтобы поле не растягивалось
@@ -3749,6 +3756,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
