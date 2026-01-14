@@ -187,46 +187,44 @@ def render_clean_block(title, icon, words_list):
     unique_words = sorted(list(set(words_list))) if words_list else []
     count = len(unique_words)
     
-    # Стили прямо внутри функции для надежности
     style_html = """
     <style>
         .semantic-card {
             background-color: #ffffff !important;
             border: 1px solid #E2E8F0 !important;
-            border-radius: 10px !important;
-            margin-bottom: 10px !important;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            border-radius: 14px !important;
+            margin-bottom: 12px !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
         }
         .semantic-summary {
-            padding: 12px 16px !important;
+            padding: 16px 20px !important;
             cursor: pointer;
             font-weight: 700 !important;
-            font-size: 15px !important; /* Крупный текст заголовка */
+            font-size: 18px !important; /* КРУПНЫЙ ШРИФТ ЗАГОЛОВКА */
             display: flex;
             justify-content: space-between;
             align-items: center;
             list-style: none;
-            user-select: none;
         }
         .semantic-summary::-webkit-details-marker { display: none; }
-        .semantic-summary:hover { color: #277EFF; }
+        .semantic-summary:hover { background-color: #F8FAFC; color: #277EFF; }
         
         .semantic-content {
-            padding: 0 16px 16px 16px !important;
-            font-size: 15px !important; /* Крупный текст слов */
-            line-height: 1.6 !important;
-            color: #334155 !important;
+            padding: 0 20px 20px 20px !important;
+            font-size: 16px !important; /* УВЕЛИЧЕННЫЙ ШРИФТ СЛОВ */
+            line-height: 1.7 !important;
+            color: #1E293B !important;
             word-wrap: break-word;
             border-top: 1px solid #F1F5F9;
-            padding-top: 10px !important;
+            padding-top: 15px !important;
         }
         .semantic-count {
-            background: #F1F5F9;
-            color: #475569;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 700;
+            background: #277EFF;
+            color: white;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 800;
         }
     </style>
     """
@@ -250,14 +248,13 @@ def render_clean_block(title, icon, words_list):
     else:
         html_code = f"""
         {style_html}
-<div class="semantic-card" style="opacity: 0.5;">
-<div class="semantic-summary" style="cursor: default;">
+<div class="semantic-card" style="opacity: 0.5; background: #F8FAFC !important;">
+<div class="semantic-summary" style="cursor: default; padding: 12px 20px !important; font-size: 15px !important;">
 <div>{icon} {title}</div>
-<span class="semantic-count">0</span>
+<span class="semantic-count" style="background: #94A3B8;">0</span>
 </div>
 </div>
         """
-    
     st.markdown(html_code, unsafe_allow_html=True)
 
 def render_relevance_chart(df_rel, unique_key="default"):
@@ -2333,31 +2330,32 @@ with tab_seo_main:
                 with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
                 with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
 
-                # --- БЛОК СТОП-СЛОВ (РЕДАКТИРУЕМЫЙ) ---
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("#### 🛑 Стоп-лист")
-                st.caption("Сюда автоматически попали слова из внутреннего списка стоп-слов, они не будут влиять на расчеты при анализе. Добавьте свои или удалите лишние.")
+# --- БЛОК СТОП-СЛОВ (КОМПАКТНЫЙ) ---
+                st.markdown("---")
+                st.markdown("<h5 style='margin-bottom:0px;'>🛑 Стоп-лист (исключения)</h5>", unsafe_allow_html=True)
+                st.caption("Слова ниже не учитываются в расчетах. Редактируйте список и жмите кнопку для пересчета.")
 
+                # Делаем колонки: 80% на текст, 20% на кнопку
                 col_text, col_btn = st.columns([4, 1])
                 
                 with col_text:
-                    # Используем key, чтобы значение сохранялось в session_state
                     st.text_area(
                         "Список исключений",
-                        height=150,
+                        height=80, # СДЕЛАЛИ НИЖЕ (было 150)
                         key="sensitive_words_input_final", 
                         label_visibility="collapsed"
                     )
                 
                 with col_btn:
-                    st.write("") # Отступ
+                    # Кнопка теперь аккуратно встанет сбоку
                     st.button(
-                        "🔄 Применить и пересчитать", 
+                        "🔄 Применить", 
                         type="primary", 
                         use_container_width=True,
                         on_click=sync_semantics_with_stoplist
                     )
-                    st.info("Удалите слово из списка слева, чтобы вернуть его в группы выше.")
+                    # Маленькая подсказка под кнопкой
+                    st.markdown("<div style='font-size:11px; color:#64748B; line-height:1.2; margin-top:5px;'>Удалите слово и нажмите кнопку, чтобы вернуть его в группы.</div>", unsafe_allow_html=True)
 
         # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ
         with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
@@ -3744,6 +3742,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
