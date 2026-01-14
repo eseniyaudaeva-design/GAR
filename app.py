@@ -1972,6 +1972,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         content = re.sub(r'\s*```$', '', content.strip())
         # 2. Удаляем артефакты типа ` или . в самом начале, если они случайно вылезли
         content = content.strip().lstrip('`.').strip()
+        content = re.sub(r'</?(b|strong)>', '', content, flags=re.IGNORECASE)
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
         
@@ -3813,6 +3814,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
