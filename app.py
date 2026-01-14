@@ -3280,23 +3280,30 @@ with tab_wholesale_main:
 
         final_data = [] 
 
-        # --- ОБРАБОТКА ТЕГОВ ---
-        tags_map = {}
+        # ==========================================
+        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ (БАЗА)
+        # ==========================================
+        all_tags_links = []
         if use_tags:
-            all_tags_links = []
             if tags_file_content:
                 all_tags_links = [l.strip() for l in io.StringIO(tags_file_content).readlines() if l.strip()]
             elif os.path.exists("data/links_base.txt"):
                 with open("data/links_base.txt", "r", encoding="utf-8") as f:
                     all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
-            
-            moved_words = []
+
+        # ==========================================
+        # 2. ЛОГИКА ТЕГОВ (СБОР URL + FALLBACK)
+        # ==========================================
+        tags_data_prepared = [] 
+        moved_words = []
+        
+        if use_tags:
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                 matches = [u for u in all_tags_links if tr in u.lower()]
                 
                 if matches:
-                    tags_map[kw] = matches
+                    tags_data_prepared.append((kw, matches)) 
                 else:
                     if kw not in actual_text_list:
                         actual_text_list.append(kw)
@@ -3304,16 +3311,36 @@ with tab_wholesale_main:
             
             if moved_words:
                 cnt = len(moved_words)
-                st.toast(f"⚠️ {cnt} слов перенесены в Текст (нет ссылок): {', '.join(moved_words[:3])}...", icon="🔀")
+                st.toast(f"🔀 {cnt} слов не найдены в базе и перенесены в Текст", icon="ℹ️")
 
-        # --- БАЗА ПРОМО ---
+        # ==========================================
+        # 3. ЛОГИКА ПРОМО
+        # ==========================================
         p_img_map = {}
         if use_promo and df_db_promo is not None:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
-        # --- ГЕНЕРАЦИЯ САЙДБАРА (НОВАЯ ЛОГИКА С ЧТЕНИЕМ ФАЙЛА) ---
+        # ==========================================
+        # 4. ФУНКЦИЯ ПАРСИНГА ИМЕН (ВОССТАНОВЛЕНО!)
+        # ==========================================
+        def resolve_real_names(urls_list):
+            if not urls_list: return {}
+            results_map = {}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_url = {executor.submit(get_breadcrumb_only, u, st.session_state.settings_ua): u for u in urls_list}
+                for future in concurrent.futures.as_completed(future_to_url):
+                    url_key = future_to_url[future]
+                    try:
+                        extracted_name = future.result()
+                        if extracted_name: results_map[url_key] = extracted_name
+                    except: pass
+            return results_map
+
+        # ==========================================
+        # 5. ГЕНЕРАЦИЯ САЙДБАРА (ИЗ ФАЙЛА!)
+        # ==========================================
         current_full_sidebar_code = ""
         if use_sidebar:
             all_menu_urls = []
@@ -3374,20 +3401,15 @@ with tab_wholesale_main:
                         if has_children: html += f'<ul>{render_tree_internal(child, level+1)}</ul>'
                 return html
 
-            # 1. Генерируем только список <li>
             menu_items_html = render_tree_internal(tree, level=1)
             
-            # 2. Читаем шаблон из файла и подставляем <li>
             try:
-                # Пытаемся найти файл. Если у вас другое название папки, исправьте путь.
+                # ЧИТАЕМ ШАБЛОН ИЗ ФАЙЛА В РЕПОЗИТОРИИ
                 with open("data/sidebar_template.html", "r", encoding="utf-8") as f:
                     template_html = f.read()
-                
-                # Заменяем метку {{GENERATED_MENU_ITEMS}} на сгенерированный HTML
                 current_full_sidebar_code = template_html.replace("{{GENERATED_MENU_ITEMS}}", menu_items_html)
-                
             except FileNotFoundError:
-                st.error("❌ Файл шаблона data/sidebar_template.html не найден! Сайдбар не сгенерирован.")
+                st.error("❌ Файл шаблона data/sidebar_template.html не найден!")
                 current_full_sidebar_code = ""
 
         # СБОР СТРАНИЦ
@@ -3415,7 +3437,7 @@ with tab_wholesale_main:
 
         progress_bar = status_box.progress(0)
         
-        # ОСНОВНОЙ ЦИКЛ ПО СТРАНИЦАМ
+        # === ОСНОВНОЙ ЦИКЛ ===
         for idx, page in enumerate(target_pages):
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
@@ -3428,28 +3450,43 @@ with tab_wholesale_main:
 
             injections = []
 
-            # 1. ТЕГИ
-            if use_tags and tags_map:
-                html_t = []
-                for kw, links in tags_map.items():
+            # ----------------------------------------
+            # 1. ТЕГИ (С ПАРСИНГОМ КРОШЕК)
+            # ----------------------------------------
+            if use_tags and tags_data_prepared:
+                selected_urls_map = {} 
+                for kw, links in tags_data_prepared:
                     valid = [u for u in links if u.rstrip('/') != page['url'].rstrip('/')]
                     if valid:
                         sel = random.choice(valid)
-                        html_t.append(f'<a href="{sel}" class="tag-item">{kw}</a>')
+                        selected_urls_map[sel] = kw
+                
+                # Парсим реальные названия
+                urls_to_fetch = list(selected_urls_map.keys())
+                real_names_map = resolve_real_names(urls_to_fetch)
+                
+                html_t = []
+                for u in urls_to_fetch:
+                    display_name = real_names_map.get(u, selected_urls_map[u])
+                    if display_name == selected_urls_map[u]: display_name = display_name.capitalize()
+                    html_t.append(f'<a href="{u}" class="tag-item">{display_name}</a>')
                 
                 if html_t:
+                    # ВАЖНО: Используем \n.join, чтобы теги не склеивались
                     tags_block = f'''
 <div class="popular-tags-text">
-    <div class="popular-tags-inner-text">
-        <div class="tag-items">
-            {"".join(html_t)}
-        </div>
-    </div>
+<div class="popular-tags-inner-text">
+<div class="tag-items">
+{"\n".join(html_t)}
+</div>
+</div>
 </div>
 '''
                     injections.append(tags_block)
 
+            # ----------------------------------------
             # 2. ТАБЛИЦЫ
+            # ----------------------------------------
             if use_tables and client:
                 for t_topic in table_prompts:
                     ctx = f"Данные: {tech_context_final_str}"
@@ -3466,29 +3503,34 @@ with tab_wholesale_main:
                         injections.append(st_table)
                     except: pass
 
-            # 3. ПРОМО
+            # ----------------------------------------
+            # 3. ПРОМО (С ПАРСИНГОМ КРОШЕК)
+            # ----------------------------------------
             if use_promo and p_img_map:
                 p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                 if p_cands:
                     sel_p = random.sample(p_cands, min(4, len(p_cands)))
+                    promo_names_map = resolve_real_names(sel_p)
+                    
                     p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
                     for u in sel_p:
-                        p_html += f'<div class="promo-card" style="min-width:200px;"><a href="{u}"><img src="{p_img_map[u]}" style="max-width:100%;"><br>{force_cyrillic_name_global(u.split("/")[-1])}</a></div>'
+                        nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
+                        p_html += f'<div class="promo-card" style="min-width:200px;"><a href="{u}"><img src="{p_img_map[u]}" style="max-width:100%;"><br>{nm}</a></div>'
                     p_html += '</div></div>'
                     injections.append(p_html)
 
+            # ----------------------------------------
             # 4. ГЕНЕРАЦИЯ ТЕКСТА
+            # ----------------------------------------
             blocks = [""] * 5
             if use_text and client:
                 blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, 5, actual_text_list)
                 blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
 
             # 5. СЛИЯНИЕ ВСЕГО
-            # Сайдбар -> В начало IP_PROP4839 (Блок 1)
             if use_sidebar and current_full_sidebar_code:
                 blocks[0] = current_full_sidebar_code + "\n" + blocks[0]
             
-            # Инъекции -> В конец блоков по очереди
             for i, inj in enumerate(injections):
                 t_idx = i % 5
                 blocks[t_idx] = blocks[t_idx] + "\n\n" + inj
@@ -3500,9 +3542,8 @@ with tab_wholesale_main:
                 Write ONE HTML paragraph (<p>) regarding delivery to these cities: {cities}.
                 RULES:
                 1. STRICTLY HTML only. No Markdown.
-                2. NO introductory text.
-                3. NO titles.
-                4. Start directly with "Мы осуществляем доставку..." or similar.
+                2. NO introductory text. NO titles.
+                3. Start directly with "Мы осуществляем доставку..." or similar.
                 """
                 try:
                     resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.1)
@@ -3511,14 +3552,13 @@ with tab_wholesale_main:
                     row_data['IP_PROP4819'] = clean_geo
                 except: pass
 
-            # Маппинг 5 блоков в нужные колонки
             for i, c_name in enumerate(TEXT_CONTAINERS):
                 row_data[c_name] = blocks[i]
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / len(target_pages))
 
-        # ФИНАЛИЗАЦИЯ ТАБЛИЦЫ
+        # ФИНАЛИЗАЦИЯ
         df_result = pd.DataFrame(final_data)
         df_result = df_result.reindex(columns=EXCEL_COLUMN_ORDER).fillna("")
         st.session_state.gen_result_df = df_result 
@@ -3529,7 +3569,6 @@ with tab_wholesale_main:
         st.session_state.unified_excel_data = buffer.getvalue()
         status_box.update(label="✅ Готово!", state="complete", expanded=False)
 
-    # КНОПКА СКАЧИВАНИЯ
     if st.session_state.get('unified_excel_data') is not None:
         st.download_button(
             label="📥 СКАЧАТЬ ЕДИНЫЙ EXCEL",
@@ -3679,6 +3718,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
