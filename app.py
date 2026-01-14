@@ -1878,10 +1878,11 @@ def get_page_data_for_gen(url):
 
 def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
     if not base_text: return ["Error: No base text"] * num_blocks
-    # Проверка библиотеки (теперь это модуль google.genai)
-    if not genai: return ["Error: google-genai lib not installed"] * num_blocks
     
-    # 1. ПОДГОТОВКА СПИСКА СЛОВ
+    from openai import OpenAI
+    # Подключаемся к вашему новому шлюзу
+    client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
+    
     seo_words = seo_words or []
     seo_instruction_block = ""
     
@@ -1956,34 +1957,18 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     """
     
     try:
-        # === ОБНОВЛЕННАЯ ЛОГИКА ДЛЯ google-genai ===
-        # 1. Создаем клиента (новая библиотека)
-        client = genai.Client(api_key=api_key)
-        
-        # 2. Собираем полный промпт
-        full_prompt = system_instruction + "\n\n" + user_prompt
-        
-        # 3. Отправляем запрос (используем модель 2.5, на которую есть квоты)
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=full_prompt
+        response = client.chat.completions.create(
+            model="openai/gpt-4o", # Указываем модель как в вашем примере
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7
         )
-        
-        # 4. Получаем текст
-        content = response.text
-        
-        # Чистка от мусора
-        content = re.sub(r'\[\d+\]', '', content)
-        content = content.replace("```html", "").replace("```", "").strip()
-        
-        # Разбиваем на блоки
+        content = response.choices[0].message.content
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
-        
-        # Добиваем пустыми строками, если блоков не хватило
         while len(blocks) < num_blocks: blocks.append("")
-        
         return blocks[:num_blocks]
-        
     except Exception as e:
         return [f"API Error: {str(e)}"] * num_blocks
 
@@ -3157,20 +3142,15 @@ with tab_wholesale_main:
         if st.button("📡 ПРОВЕРИТЬ GEMINI 2.0"):
             if not gemini_api_key:
                 st.error("❌ Ключ API не введен!")
-            elif not genai:
-                st.error("❌ Библиотека google-generativeai не установлена!")
             else:
                 try:
-                    client = genai.Client(api_key=gemini_api_key)
-                    response = client.models.generate_content(
-                        model="gemini-2.5-pro", 
-                        contents="Say OK"
+                    from openai import OpenAI
+                    client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1")
+                    response = client.chat.completions.create(
+                        model="openai/gpt-4o",
+                        messages=[{"role": "user", "content": "Say OK"}]
                     )
-                    
-                    if response and response.text:
-                        st.success(f"✅ УСПЕХ! Ответ: {response.text}")
-                    else:
-                        st.warning("⚠️ Ответ пустой.")
+                    st.success(f"✅ УСПЕХ! Ответ: {response.choices[0].message.content}")
                 except Exception as e:
                     st.error(f"❌ ОШИБКА: {str(e)}")
                     if "404" in str(e):
@@ -3212,14 +3192,14 @@ with tab_wholesale_main:
         status_box.write(f"📝 Слов для текста: {len(actual_text_list)}")
         status_box.write(f"🌍 Городов для Гео: {len(actual_geo_list)}")
 
-# === ИНИЦИАЛИЗАЦИЯ CLIENT (ВМЕСТО MODEL) ===
+# === ИНИЦИАЛИЗАЦИЯ CLIENT (OpenAI совместимый) ===
         client = None
-        if genai and (use_text or use_tables or use_geo) and gemini_api_key:
+        if (use_text or use_tables or use_geo) and gemini_api_key:
             try:
-                # Убираем configure, создаем Client
-                client = genai.Client(api_key=gemini_api_key)
+                from openai import OpenAI
+                client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1")
             except Exception as e:
-                status_box.error(f"Ошибка подключения к Gemini: {e}")
+                status_box.error(f"Ошибка подключения: {e}")
 
         final_data = [] 
         
@@ -3407,11 +3387,11 @@ with tab_wholesale_main:
                     prompt = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
                     try:
                         # ИСПОЛЬЗУЕМ client.models.generate_content
-                        resp = client.models.generate_content(
-                            model="gemini-2.5-pro", 
-                            contents=prompt
+                        resp = client.chat.completions.create(
+                            model="openai/gpt-4o", 
+                            messages=[{"role": "user", "content": prompt}]
                         )
-                        row_data[f'Table_{t_i+1}_HTML'] = resp.text.replace("```html", "").replace("```", "").strip()
+                        row_data[f'Table_{t_i+1}_HTML'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
 
             if use_geo and client:
@@ -3420,11 +3400,11 @@ with tab_wholesale_main:
                     prompt = f"Write HTML <p> regarding delivery. You MUST mention these specific cities: {cities}. No Markdown. No links."
                     try:
                         # ИСПОЛЬЗУЕМ client.models.generate_content
-                        resp = client.models.generate_content(
-                            model="gemini-2.5-pro",
-                            contents=prompt
+                        resp = client.chat.completions.create(
+                            model="openai/gpt-4o",
+                            messages=[{"role": "user", "content": prompt}]
                         )
-                        row_data['IP_PROP4819'] = resp.text.replace("```html", "").replace("```", "").strip()
+                        row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                     except Exception as e: row_data['IP_PROP4819'] = f"Geo Error: {e}"
                 else: row_data['IP_PROP4819'] = "Geo list empty."
 
@@ -3679,6 +3659,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
