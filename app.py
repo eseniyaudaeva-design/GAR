@@ -3452,77 +3452,77 @@ with tab_wholesale_main:
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
+            # 1. Заполняем базовые данные и статику из твоего словаря STATIC_DATA_GEN
             row_data = {'Page URL': page['url'], 'Product Name': header_for_ai}
-            for k, v in STATIC_DATA_GEN.items(): row_data[k] = v
+            for k, v in STATIC_DATA_GEN.items(): 
+                row_data[k] = v
             
-            # Чистим статику
-            if use_geo: row_data['IP_PROP4819'] = ""
+            # 2. ТЕКСТ (Блоки 1-5) -> склеиваем в IP_PROP4839
+            if use_text and client:
+                blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
+                # Объединяем блоки в одну ячейку, как того требует порядок колонок
+                row_data['IP_PROP4839'] = "\n\n".join([b for b in blocks if b and "Error" not in b])
 
-            # VISUAL
-            row_data['Tags HTML'] = "" 
+            # 3. ГЕО -> IP_PROP4819 (перезаписываем статику, если включено ГЕО)
+            if use_geo and client:
+                if actual_geo_list:
+                    cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
+                    prompt_geo = f"Write HTML <p> regarding delivery. You MUST mention these specific cities: {cities}. No Markdown. No links."
+                    try:
+                        resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=2.0)
+                        row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                    except: pass
+
+            # 4. ТЕГИ -> IP_PROP4816
             if use_tags:
-                html_c = []
+                html_tags = []
                 for kw in global_tags_list:
                     if kw in tags_map:
                         valid = [u for u in tags_map[kw] if u.rstrip('/') != page['url'].rstrip('/')]
                         if valid:
                             sel = random.choice(valid)
                             nm = url_name_cache.get(sel.rstrip('/'), kw)
-                            html_c.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
-                if html_c: row_data['Tags HTML'] = '<div class="popular-tags">' + "\n".join(html_c) + '</div>'
+                            html_tags.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
+                if html_tags: 
+                    row_data['IP_PROP4816'] = '<div class="popular-tags">' + "\n".join(html_tags) + '</div>'
 
-            row_data['Promo HTML'] = ""
-            if use_promo:
-                cands = [p for p in promo_items_pool if p['url'].rstrip('/') != page['url'].rstrip('/')]
-                random.shuffle(cands)
-                if cands:
-                    p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
-                    for item in cands:
-                        nm = url_name_cache.get(item['url'].rstrip('/'), "Товар")
-                        p_html += f'<div class="promo-card" style="min-width:220px;"><a href="{item["url"]}"><img src="{item["img"]}" style="max-height:100px;"><br>{nm}</a></div>'
-                    p_html += '</div></div>'
-                    row_data['Promo HTML'] = p_html
+            # 5. САЙДБАР -> IP_PROP4838
+            if use_sidebar:
+                row_data['IP_PROP4838'] = full_sidebar_code
 
-            # === AI RUN (gemini-2.0-flash) ===
-            
-            if use_text and client:
-                blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
-                for i, b in enumerate(blocks): row_data[f'Text_Block_{i+1}'] = b
-
+            # 6. ТАБЛИЦЫ -> IP_PROP4829 и IP_PROP4831
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
+                    target_prop = 'IP_PROP4829' if t_i == 0 else ('IP_PROP4831' if t_i == 1 else None)
+                    if not target_prop: break # Берем только первые две таблицы
+                    
                     ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
-                    prompt = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
+                    prompt_tbl = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
                     try:
-                        # ИСПОЛЬЗУЕМ client.models.generate_content
-                        resp = client.chat.completions.create(
-                            model="google/gemini-2.5-pro", 
-                            messages=[{"role": "user", "content": prompt}]
-                        )
-                        row_data[f'Table_{t_i+1}_HTML'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                    except Exception as e: row_data[f'Table_{t_i+1}_HTML'] = f"Error: {e}"
-
-            if use_geo and client:
-                if actual_geo_list:
-                    cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
-                    prompt = f"Write HTML <p> regarding delivery. You MUST mention these specific cities: {cities}. No Markdown. No links."
-                    try:
-                        # ИСПОЛЬЗУЕМ client.models.generate_content
-                        resp = client.chat.completions.create(
-                            model="google/gemini-2.5-pro",
-                            messages=[{"role": "user", "content": prompt}]
-                        )
-                        row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                    except Exception as e: row_data['IP_PROP4819'] = f"Geo Error: {e}"
-                else: row_data['IP_PROP4819'] = "Geo list empty."
-
-            if use_sidebar: row_data['Sidebar HTML'] = full_sidebar_code
+                        resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=2.0)
+                        row_data[target_prop] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                    except: pass
 
             final_data.append(row_data)
             progress_bar.progress((idx + 1) / total_steps)
 
+        # === ФИНАЛЬНАЯ СОРТИРОВКА КОЛОНОК ДЛЯ EXCEL ===
         df_result = pd.DataFrame(final_data)
-        st.session_state.gen_result_df = df_result 
+        
+        # Твой строгий список колонок
+        ordered_columns = [
+            'Page URL', 'Product Name',
+            'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 
+            'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
+            'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 
+            'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 
+            'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
+        ]
+        
+        # Оставляем только те, что есть в данных, в нужном порядке
+        df_result = df_result[[c for c in ordered_columns if c in df_result.columns]]
+        
+        st.session_state.gen_result_df = df_result
         
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -3767,6 +3767,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
