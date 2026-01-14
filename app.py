@@ -1968,7 +1968,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0 # СТАВИМ 0 ДЛЯ МАКСИМАЛЬНОЙ ТОЧНОСТИ И ИСПОЛНИТЕЛЬНОСТИ
+            temperature=3 # СТАВИМ 0 ДЛЯ МАКСИМАЛЬНОЙ ТОЧНОСТИ И ИСПОЛНИТЕЛЬНОСТИ
         )
         content = response.choices[0].message.content
         
@@ -3668,6 +3668,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
