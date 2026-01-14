@@ -1900,7 +1900,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 -------------------------------------------
 """
 
-    # 2. ПРОМТЫ
+    # 2. ПРОМТЫ (ТЕКСТ ОСТАВЛЕН БЕЗ ИЗМЕНЕНИЙ ПО ВАШЕМУ ТРЕБОВАНИЮ)
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
         "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
@@ -1958,14 +1958,18 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     
     try:
         response = client.chat.completions.create(
-            model="openai/gpt-4o", # Указываем модель как в вашем примере
+            model="openai/gpt-4o",
             messages=[
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.7
+            temperature=0.2 # СНИЖЕНО: для строгого следования вашему промту
         )
         content = response.choices[0].message.content
+        
+        # --- ПРОГРАММНАЯ ОЧИСТКА (без изменения промта) ---
+        content = content.replace("```html", "").replace("```", "").strip()
+        
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
         while len(blocks) < num_blocks: blocks.append("")
         return blocks[:num_blocks]
@@ -3659,6 +3663,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
