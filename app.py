@@ -2263,11 +2263,40 @@ with tab_seo_main:
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-        # 1. СЕМАНТИЧЕСКОЕ ЯДРО
+# 1. СЕМАНТИЧЕСКОЕ ЯДРО
         with st.expander("🛒 Семантическое ядро", expanded=True):
-            if not st.session_state.get('orig_products'):
-                st.info("⚠️ Данные отсутствуют.")
+            if not st.session_state.get('orig_products') and not st.session_state.get('categorized_general'):
+                st.info("⚠️ Данные отсутствуют. Запустите анализ.")
             else:
+                # --- ФУНКЦИЯ ПЕРЕСЧЕТА (CALLBACK) ---
+                def sync_semantics_with_stoplist():
+                    # 1. Считываем, что пользователь оставил/написал в поле стоп-слов
+                    raw_input = st.session_state.get('sensitive_words_input_final', "")
+                    # Создаем сет (множество) для быстрого поиска, переводим в нижний регистр
+                    current_stop_set = set(w.strip().lower() for w in raw_input.split('\n') if w.strip())
+
+                    # 2. Пересобираем отображаемые списки из Мастер-списков (orig_...)
+                    # Проверяем: если слова нет в стоп-листе — оно идет в работу
+                    st.session_state.categorized_products = [w for w in st.session_state.orig_products if w.lower() not in current_stop_set]
+                    st.session_state.categorized_services = [w for w in st.session_state.orig_services if w.lower() not in current_stop_set]
+                    st.session_state.categorized_commercial = [w for w in st.session_state.orig_commercial if w.lower() not in current_stop_set]
+                    st.session_state.categorized_geo = [w for w in st.session_state.orig_geo if w.lower() not in current_stop_set]
+                    st.session_state.categorized_dimensions = [w for w in st.session_state.orig_dimensions if w.lower() not in current_stop_set]
+                    st.session_state.categorized_general = [w for w in st.session_state.orig_general if w.lower() not in current_stop_set]
+
+                    # 3. Синхронизируем с генератором (чтобы мусор не попал в теги)
+                    all_active_products = st.session_state.categorized_products
+                    if len(all_active_products) < 20:
+                        st.session_state.auto_tags_words = all_active_products
+                        st.session_state.auto_promo_words = []
+                    else:
+                        mid = math.ceil(len(all_active_products) / 2)
+                        st.session_state.auto_tags_words = all_active_products[:mid]
+                        st.session_state.auto_promo_words = all_active_products[mid:]
+                    
+                    st.toast("Списки обновлены!", icon="✅")
+
+                # --- ОТОБРАЖЕНИЕ КАРТОЧЕК ---
                 c1, c2, c3 = st.columns(3)
                 with c1: render_clean_block("Товары", "🧱", st.session_state.categorized_products)
                 with c2: render_clean_block("Гео", "🌍", st.session_state.categorized_geo)
@@ -2277,6 +2306,32 @@ with tab_seo_main:
                 with c4: render_clean_block("Услуги", "🛠️", st.session_state.categorized_services)
                 with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
                 with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
+
+                # --- БЛОК СТОП-СЛОВ (РЕДАКТИРУЕМЫЙ) ---
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("#### 🛑 Редактируемый стоп-лист")
+                st.caption("Сюда автоматически попали слова из SENSITIVE_STOPLIST.json. Добавьте свои или удалите лишние.")
+
+                col_text, col_btn = st.columns([4, 1])
+                
+                with col_text:
+                    # Используем key, чтобы значение сохранялось в session_state
+                    st.text_area(
+                        "Список исключений",
+                        height=150,
+                        key="sensitive_words_input_final", 
+                        label_visibility="collapsed"
+                    )
+                
+                with col_btn:
+                    st.write("") # Отступ
+                    st.button(
+                        "🔄 Применить и пересчитать", 
+                        type="primary", 
+                        use_container_width=True,
+                        on_click=sync_semantics_with_stoplist
+                    )
+                    st.info("Удалите слово из списка слева, чтобы вернуть его в группы выше.")
 
         # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ
         with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
@@ -3663,6 +3718,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
