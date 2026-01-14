@@ -1958,21 +1958,33 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     
     try:
         response = client.chat.completions.create(
-            model="google/gemini-2.5-pro", # УСТАНОВЛЕНА ВАША МОДЕЛЬ
+            model="google/gemini-2.5-pro",
             messages=[
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=2.0 # МАКСИМАЛЬНО ДОПУСТИМАЯ ДЛЯ ЭТОГО API
+            temperature=0.7 
         )
         content = response.choices[0].message.content
         
-        # ПРОГРАММНАЯ ОЧИСТКА ОТ КАВЫЧЕК (Markdown)
-        content = content.replace("```html", "").replace("```", "").strip()
+        # === ЖЕСТКАЯ ЧИСТКА ОТ МУСОРА ===
+        # 1. Удаляем ```html и ``` с краев
+        content = re.sub(r'^```[a-zA-Z]*\s*', '', content.strip())
+        content = re.sub(r'\s*```$', '', content.strip())
+        # 2. Удаляем артефакты типа ` или . в самом начале, если они случайно вылезли
+        content = content.strip().lstrip('`.').strip()
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
-        while len(blocks) < num_blocks: blocks.append("")
-        return blocks[:num_blocks]
+        
+        # Чистим каждый блок отдельно
+        cleaned_blocks = []
+        for b in blocks:
+            # Убираем ``` и прочий мусор, который мог попасть внутрь разделителей
+            cb = re.sub(r'^```[a-zA-Z]*', '', b).strip().lstrip('`.').strip()
+            if cb: cleaned_blocks.append(cb)
+            
+        while len(cleaned_blocks) < num_blocks: cleaned_blocks.append("")
+        return cleaned_blocks[:num_blocks]
     except Exception as e:
         return [f"API Error: {str(e)}"] * num_blocks
 
@@ -3239,7 +3251,7 @@ with tab_wholesale_main:
         st.session_state.gen_result_df = None
         st.session_state.unified_excel_data = None
         
-        # 1. СТРОГИЙ ПОРЯДОК КОЛОНОК ДЛЯ EXCEL (КАК ВЫ ПРОСИЛИ)
+        # 1. СТРОГИЙ ПОРЯДОК КОЛОНОК ДЛЯ EXCEL
         EXCEL_COLUMN_ORDER = [
             'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
             'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
@@ -3250,7 +3262,7 @@ with tab_wholesale_main:
         # Контейнеры для 5 блоков AI текста
         TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
-        # Подготовка данных
+        # Подготовка базовых списков слов (Текст + Гео)
         raw_txt_val = st.session_state.get("ai_text_context_editable", "")
         if not raw_txt_val: raw_txt_val = text_context_default
         actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
@@ -3271,27 +3283,44 @@ with tab_wholesale_main:
 
         final_data = [] 
 
-        # --- СБОР ВСПОМОГАТЕЛЬНЫХ ДАННЫХ (ТЕГИ, КАРТИНКИ, САЙДБАР) ---
+        # --- ОБРАБОТКА ТЕГОВ С ПЕРЕНОСОМ ---
         tags_map = {}
         if use_tags:
             all_tags_links = []
+            # Загрузка базы ссылок
             if tags_file_content:
                 all_tags_links = [l.strip() for l in io.StringIO(tags_file_content).readlines() if l.strip()]
             elif os.path.exists("data/links_base.txt"):
                 with open("data/links_base.txt", "r", encoding="utf-8") as f:
                     all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
+            
+            moved_tags_count = 0
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                # Ищем ссылки
                 matches = [u for u in all_tags_links if tr in u.lower()]
-                if matches: tags_map[kw] = matches
+                
+                if matches:
+                    # Ссылка есть -> добавляем в карту тегов
+                    tags_map[kw] = matches
+                else:
+                    # Ссылки НЕТ -> переносим слово в список для AI Текста
+                    if kw not in actual_text_list:
+                        actual_text_list.append(kw)
+                        moved_tags_count += 1
+            
+            # Уведомление пользователю
+            if moved_tags_count > 0:
+                st.toast(f"🔀 {moved_tags_count} тегов перенесены в Текст (нет ссылок в базе)", icon="ℹ️")
 
+        # --- ЗАГРУЗКА БАЗЫ ПРОМО ---
         p_img_map = {}
         if use_promo and df_db_promo is not None:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
-        # --- ГЕНЕРАЦИЯ КОДА САЙДБАРА ВНУТРИ КНОПКИ (ИСПРАВЛЕНИЕ NameError) ---
+        # --- ГЕНЕРАЦИЯ HTML ДЛЯ САЙДБАРА ---
         current_full_sidebar_code = ""
         if use_sidebar:
             all_menu_urls = []
@@ -3370,6 +3399,7 @@ with tab_wholesale_main:
 
         progress_bar = status_box.progress(0)
         
+        # ОСНОВНОЙ ЦИКЛ ПО СТРАНИЦАМ
         for idx, page in enumerate(target_pages):
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
@@ -3383,18 +3413,19 @@ with tab_wholesale_main:
             # Список инъекций (Теги, Таблицы, Промо)
             injections = []
 
-            # 1. ТЕГИ
+            # 1. ТЕГИ (Только те, у которых нашлись ссылки)
             if use_tags:
                 html_t = []
                 for kw, links in tags_map.items():
                     valid = [u for u in links if u.rstrip('/') != page['url'].rstrip('/')]
                     if valid:
                         sel = random.choice(valid)
+                        # Используем ту же логику именования, что и была
                         nm = force_cyrillic_name_global(sel.split('/')[-1])
                         html_t.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
                 if html_t: injections.append('<div class="popular-tags">' + "\n".join(html_t) + '</div>')
 
-            # 2. ТАБЛИЦЫ (С ЖЕСТКИМ ФОРМАТИРОВАНИЕМ)
+            # 2. ТАБЛИЦЫ
             if use_tables and client:
                 for t_topic in table_prompts:
                     ctx = f"Данные: {tech_context_final_str}"
@@ -3422,10 +3453,11 @@ with tab_wholesale_main:
                     p_html += '</div></div>'
                     injections.append(p_html)
 
-            # 4. ГЕНЕРАЦИЯ ТЕКСТА
+            # 4. ГЕНЕРАЦИЯ ТЕКСТА (Здесь уже обновленный actual_text_list)
             blocks = [""] * 5
             if use_text and client:
                 blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, 5, actual_text_list)
+                # Дополнительная защита при склейке
                 blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
 
             # 5. СЛИЯНИЕ ВСЕГО
@@ -3616,6 +3648,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
