@@ -3234,11 +3234,12 @@ with tab_wholesale_main:
     if (use_text or use_tables or use_geo) and not gemini_api_key: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
     
-if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
+# КНОПКА ЗАПУСКА
+    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
         st.session_state.gen_result_df = None
         st.session_state.unified_excel_data = None
         
-        # --- 1. СТРОГИЙ ПОРЯДОК КОЛОНОК ДЛЯ EXCEL ---
+        # 1. ФИКСИРОВАННЫЙ ПОРЯДОК КОЛОНОК ДЛЯ ЭКСЕЛЯ
         EXCEL_COLUMN_ORDER = [
             'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
             'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
@@ -3246,10 +3247,10 @@ if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disab
             'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
         ]
 
-        # Контейнеры, в которые мы распределяем 5 блоков текста AI
+        # Соответствие: Текст 1 -> 4839, Текст 2 -> 4816, Текст 3 -> 4838, Текст 4 -> 4829, Текст 5 -> 4831
         TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
-        # --- 2. ОПРЕДЕЛЕНИЕ ПЕРЕМЕННЫХ (ЧТОБЫ НЕ БЫЛО NameError) ---
+        # ПОДГОТОВКА ДАННЫХ
         raw_txt_val = st.session_state.get("ai_text_context_editable", "")
         if not raw_txt_val: raw_txt_val = text_context_default
         actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
@@ -3266,11 +3267,11 @@ if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disab
                 from openai import OpenAI
                 client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1")
             except Exception as e:
-                status_box.error(f"Ошибка подключения к API: {e}")
+                status_box.error(f"Ошибка API: {e}")
 
         final_data = [] 
 
-        # --- СБОР ВСПОМОГАТЕЛЬНЫХ ДАННЫХ (ТЕГИ, КАРТИНКИ) ---
+        # СБОР ВСПОМОГАТЕЛЬНЫХ ДАННЫХ
         tags_map = {}
         if use_tags:
             all_tags_links = []
@@ -3290,7 +3291,7 @@ if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disab
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
-        # --- СБОР СТРАНИЦ ---
+        # СБОР СТРАНИЦ
         target_pages = []
         try:
             if use_manual_html:
@@ -3314,23 +3315,23 @@ if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disab
             st.stop()
 
         progress_bar = status_box.progress(0)
+        total_pages = len(target_pages)
         
         for idx, page in enumerate(target_pages):
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
-            # Инициализация строки (все колонки пустые)
+            # Строка данных (все колонки из списка)
             row_data = {col: "" for col in EXCEL_COLUMN_ORDER}
             row_data['Page URL'] = page['url']
             row_data['Product Name'] = header_for_ai
-            
-            # Заполняем статичные блоки
             for k, v in STATIC_DATA_GEN.items():
                 if k in row_data: row_data[k] = v
 
-            # --- 3. СБОР ИНЪЕКЦИЙ (Теги, Таблицы, Промо) ---
+            # Список добавок (Теги, Таблицы, Промо)
             injections = []
 
+            # 1. ТЕГИ
             if use_tags:
                 html_t = []
                 for kw, links in tags_map.items():
@@ -3341,129 +3342,118 @@ if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disab
                         html_t.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
                 if html_t: injections.append('<div class="popular-tags">' + "\n".join(html_t) + '</div>')
 
+            # 2. ТАБЛИЦЫ (С ЖЕСТКИМ ФОРМАТИРОВАНИЕМ)
             if use_tables and client:
                 for t_topic in table_prompts:
                     ctx = f"Данные: {tech_context_final_str}"
-                    prompt_tbl = f"""Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. 
-                    REQUIREMENTS: Use style="border-collapse: collapse; width: 100%; border: 2px solid black;" for table. 
-                    Every th and td MUST have style="border: 2px solid black; padding: 5px;". No Markdown."""
+                    prompt_tbl = f"""Create HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. 
+                    STYLE REQUIREMENTS:
+                    - <table style="border-collapse: collapse; width: 100%; border: 2px solid black;">
+                    - Every <th> and <td> MUST have style="border: 2px solid black; padding: 5px;"
+                    - HTML only, no Markdown."""
                     try:
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0)
-                        table_html = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                        # Форсированное форматирование (на случай если AI забыл стили)
-                        table_html = table_html.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
-                        table_html = table_html.replace('<th', '<th style="border: 2px solid black; padding: 5px;"')
-                        table_html = table_html.replace('<td', '<td style="border: 2px solid black; padding: 5px;"')
-                        injections.append(table_html)
+                        raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                        # Принудительная замена стилей для надежности
+                        st_table = raw_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
+                        st_table = st_table.replace('<th', '<th style="border: 2px solid black; padding: 5px;"').replace('<td', '<td style="border: 2px solid black; padding: 5px;"')
+                        injections.append(st_table)
                     except: pass
 
+            # 3. ПРОМО
             if use_promo and p_img_map:
                 p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                 if p_cands:
                     sel_p = random.sample(p_cands, min(4, len(p_cands)))
-                    p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
+                    p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;">'
                     for u in sel_p:
                         p_html += f'<div class="promo-card" style="min-width:200px;"><a href="{u}"><img src="{p_img_map[u]}" style="max-width:100%;"><br>{force_cyrillic_name_global(u.split("/")[-1])}</a></div>'
                     p_html += '</div></div>'
                     injections.append(p_html)
 
-            # --- 4. ГЕНЕРАЦИЯ ТЕКСТА (5 БЛОКОВ) ---
+            # 4. ГЕНЕРАЦИЯ ТЕКСТА
             blocks = [""] * 5
             if use_text and client:
                 blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, 5, actual_text_list)
                 blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
 
-            # --- 5. СЛИЯНИЕ ВСЕГО В БЛОКИ ---
-            # Сайдбар всегда в начало первого блока
+            # 5. СЛИЯНИЕ ВСЕГО
+            # Сайдбар -> В начало первого блока
             if use_sidebar:
                 blocks[0] = full_sidebar_code + "\n" + blocks[0]
-
-            # Остальные инъекции распределяем в конец блоков
+            
+            # Добавки -> В конец блоков
             for i, inj in enumerate(injections):
-                target_idx = i % 5
-                blocks[target_idx] = blocks[target_idx] + "\n" + inj
+                t_idx = i % 5
+                blocks[t_idx] = blocks[t_idx] + "\n" + inj
 
-            # ГЕО (пишется в отдельную колонку IP_PROP4819, если сгенерировано)
+            # ГЕО (Спец. колонка)
             if use_geo and client:
-                cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
-                prompt_geo = f"Write 1 paragraph about delivery to {cities}. HTML only."
+                cities = ", ".join(random.sample(actual_geo_list, min(15, len(actual_geo_list))))
+                prompt_geo = f"Write 1 short delivery paragraph mentioning: {cities}. HTML only."
                 try:
                     resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0)
                     row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                 except: pass
 
-            # Раскладываем 5 блоков текста по заданным IP_PROP колонкам
-            for i, col_name in enumerate(TEXT_CONTAINERS):
-                row_data[col_name] = blocks[i]
+            # Маппинг блоков в контейнеры
+            for i, c_name in enumerate(TEXT_CONTAINERS):
+                row_data[c_name] = blocks[i]
 
             final_data.append(row_data)
-            progress_bar.progress((idx + 1) / len(target_pages))
+            progress_bar.progress((idx + 1) / total_pages)
 
-        # --- 6. ФИНАЛИЗАЦИЯ И EXCEL ---
+        # ФИНАЛИЗАЦИЯ ТАБЛИЦЫ
         df_result = pd.DataFrame(final_data)
-        # reindex гарантирует наличие всех колонок и их порядок
         df_result = df_result.reindex(columns=EXCEL_COLUMN_ORDER).fillna("")
 
         st.session_state.gen_result_df = df_result 
         
+        # ЭКСПОРТ В EXCEL
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_result.to_excel(writer, index=False)
         st.session_state.unified_excel_data = buffer.getvalue()
-        status_box.update(label="✅ Готово!", state="complete", expanded=False)
+        
+        status_box.update(label="✅ Контент готов!", state="complete", expanded=False)
 
-    # Кнопка скачивания
+    # КНОПКА СКАЧИВАНИЯ
     if st.session_state.get('unified_excel_data') is not None:
         st.download_button(
             label="📥 СКАЧАТЬ ЕДИНЫЙ EXCEL",
             data=st.session_state.unified_excel_data,
-            file_name="unified_content_order.xlsx",
+            file_name="wholesale_order_fixed.xlsx",
             mime="application/vnd.ms-excel",
-            key="btn_dl_unified"
+            key="btn_dl_wholesale"
         )
 
 # ==========================================
-# 5. БЛОК ПРЕДПРОСМОТРА (Preview) — ОБНОВЛЕННЫЙ
+# 5. БЛОК ПРЕДПРОСМОТРА (ПЕРЕКЛЮЧЕНИЕ ПО КОЛОНКАМ)
 # ==========================================
 with tab_wholesale_main: 
     if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not None:
         st.markdown("---")
-        st.header("👀 Предпросмотр распределения по колонкам")
+        st.header("👀 Предпросмотр по колонкам IP_PROP")
         
-        df = st.session_state.gen_result_df
+        df_p = st.session_state.gen_result_df
         
-        if 'Product Name' in df.columns:
-            page_options = df['Product Name'].tolist()
-            selected_page_name = st.selectbox("Выберите страницу для просмотра:", page_options, key="preview_selector")
-            row = df[df['Product Name'] == selected_page_name].iloc[0]
+        if 'Product Name' in df_p.columns:
+            p_options = df_p['Product Name'].tolist()
+            sel_page = st.selectbox("Страница для просмотра:", p_options, key="wholesale_preview_sel")
+            row_p = df_p[df_p['Product Name'] == sel_page].iloc[0]
             
-            # Словарь для удобного именования вкладок
-            display_map = {
-                'IP_PROP4839': 'Блок 1 (Sidebar+)',
-                'IP_PROP4816': 'Блок 2',
-                'IP_PROP4838': 'Блок 3',
-                'IP_PROP4829': 'Блок 4',
-                'IP_PROP4831': 'Блок 5',
-                'IP_PROP4819': '🚚 Доставка (ГЕО)'
-            }
-
-            # Создаем вкладки только для тех колонок, где есть контент
-            active_cols = [col for col in display_map.keys() if col in row and str(row[col]).strip() != ""]
+            # Список колонок, где реально есть текст (фарш из текста, таблиц и прочего)
+            target_cols = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819']
+            valid_tabs = [c for c in target_cols if str(row_p.get(c, "")).strip() != ""]
             
-            if not active_cols:
-                st.warning("⚠️ Контент в колонках IP_PROP пуст.")
+            if valid_tabs:
+                tabs = st.tabs(valid_tabs)
+                for i, col_key in enumerate(valid_tabs):
+                    with tabs[i]:
+                        st.caption(f"Содержимое колонки: {col_key}")
+                        st.markdown(f"<div class='preview-box'>{row_p[col_key]}</div>", unsafe_allow_html=True)
             else:
-                # Создаем объекты вкладок с понятными названиями
-                tabs_objects = st.tabs([display_map[c] for c in active_cols])
-                
-                for i, col_name in enumerate(active_cols):
-                    with tabs_objects[i]:
-                        st.caption(f"Содержимое колонки: {col_name}")
-                        # Выводим «фарш» из текста, таблиц и тегов как он есть
-                        st.markdown(f"<div class='preview-box'>{row[col_name]}</div>", unsafe_allow_html=True)
-        else:
-            st.error("Колонка 'Product Name' не найдена в результатах.")
-
+                st.warning("Все колонки пусты.")
 # ==========================================
 # TAB 3: PROJECT MANAGER (SAVE/LOAD)
 # ==========================================
@@ -3582,5 +3572,6 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
