@@ -3452,12 +3452,11 @@ with tab_wholesale_main:
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
-            # 1. Собираем строку. Сначала технические поля для UI, потом IP_PROP
+            # 1. Создаем строку. Сохраняем и служебные поля, и IP_PROP
             row_data = {
                 'Page URL': page['url'],
                 'Product Name': header_for_ai,
-                # Твой строгий порядок блоков:
-                'IP_PROP4839': "", # AI Текст
+                'IP_PROP4839': "", # AI Текст (Блоки 1-5)
                 'IP_PROP4817': STATIC_DATA_GEN.get('IP_PROP4817', ""),
                 'IP_PROP4818': STATIC_DATA_GEN.get('IP_PROP4818', ""),
                 'IP_PROP4819': "", # AI ГЕО
@@ -3478,11 +3477,12 @@ with tab_wholesale_main:
                 'IP_PROP4831': "", # Таблица 2
             }
 
-            # --- ГЕНЕРАЦИЯ ---
+            # --- ГЕНЕРАЦИЯ ТЕКСТА ---
             if use_text and client:
                 blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
                 row_data['IP_PROP4839'] = "\n\n".join([b for b in blocks if b and "Error" not in b])
 
+            # --- ГЕНЕРАЦИЯ ГЕО ---
             if use_geo and client:
                 if actual_geo_list:
                     cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
@@ -3493,6 +3493,7 @@ with tab_wholesale_main:
                     except: row_data['IP_PROP4819'] = STATIC_DATA_GEN.get('IP_PROP4819', "")
                 else: row_data['IP_PROP4819'] = STATIC_DATA_GEN.get('IP_PROP4819', "")
 
+            # --- ГЕНЕРАЦИЯ ТЕГОВ ---
             if use_tags:
                 html_tags = []
                 for kw in global_tags_list:
@@ -3504,6 +3505,7 @@ with tab_wholesale_main:
                             html_tags.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
                 if html_tags: row_data['IP_PROP4816'] = '<div class="popular-tags">' + "\n".join(html_tags) + '</div>'
 
+            # --- ГЕНЕРАЦИЯ ТАБЛИЦ ---
             if use_tables and client:
                 for t_i, t_topic in enumerate(table_prompts):
                     target_key = 'IP_PROP4829' if t_i == 0 else ('IP_PROP4831' if t_i == 1 else None)
@@ -3523,24 +3525,25 @@ with tab_wholesale_main:
         # 2. Создаем DataFrame
         df_result = pd.DataFrame(final_data)
         
-        # 3. ПРИНУДИТЕЛЬНЫЙ ПОРЯДОК КОЛОНОК (все старые + IP_PROP в ряд)
+        # 3. ПОРЯДОК КОЛОНОК (Product Name остается!)
         cols_order = [
             'Page URL', 'Product Name', 
-            'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 'IP_PROP4820', 
-            'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 'IP_PROP4824', 'IP_PROP4816', 
-            'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 
-            'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
+            'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 
+            'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
+            'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 
+            'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 
+            'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
         ]
         
-        # Перестраиваем колонки (берем только те, что реально создались)
         existing_cols = [c for c in cols_order if c in df_result.columns]
         df_result = df_result[existing_cols]
 
         st.session_state.gen_result_df = df_result 
         
-        # 4. Формируем Excel байты
+        # 4. Формируем Excel (только IP_PROP в файл, если хочешь)
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            # Для файла можно убрать Page URL и Product Name, если они мешают импорту
             df_result.to_excel(writer, index=False)
         st.session_state.unified_excel_data = buffer.getvalue()
         
@@ -3566,104 +3569,61 @@ with tab_wholesale_main:
         
         df = st.session_state.gen_result_df
         
-        # 1. Выбор страницы
-        page_options = df['Product Name'].tolist()
-        selected_page_name = st.selectbox("Выберите страницу для просмотра:", page_options, key="preview_selector")
-        
-        # Получаем строку данных
-        row = df[df['Product Name'] == selected_page_name].iloc[0]
-        
-        # 2. Определяем наличие данных
-        has_text = any(
-            (f'Text_Block_{i}' in row and pd.notna(row[f'Text_Block_{i}']) and str(row[f'Text_Block_{i}']).strip())
-            for i in range(1, 6)
-        )
-        
-        table_cols = [c for c in df.columns if 'Table_' in c and '_HTML' in c and pd.notna(row[c]) and str(row[c]).strip()]
-        has_tables = len(table_cols) > 0
-        
-        has_tags = 'Tags HTML' in row and pd.notna(row['Tags HTML']) and str(row['Tags HTML']).strip()
-        has_sidebar = 'Sidebar HTML' in row and pd.notna(row['Sidebar HTML']) and str(row['Sidebar HTML']).strip()
-        has_geo = 'IP_PROP4819' in row and pd.notna(row['IP_PROP4819']) and str(row['IP_PROP4819']).strip()
-        
-        # --- ПРОВЕРКА ПРОМО ---
-        has_promo = 'Promo HTML' in row and pd.notna(row['Promo HTML']) and str(row['Promo HTML']).strip()
-        
-        has_visual = has_tags or has_sidebar or has_geo or has_promo # <-- Добавили промо в условие
-
-        # 3. Активные вкладки
-        active_tabs = []
-        if has_text: active_tabs.append("📝 Текст")
-        if has_tables: active_tabs.append("🧩 Таблицы")
-        if has_visual: active_tabs.append("🎨 Визуал")
-
-        # Стили
-        st.markdown("""
-        <style>
-            .preview-box { border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; background: #fff; margin-bottom: 20px; }
-            .preview-label { font-size: 12px; font-weight: bold; color: #888; text-transform: uppercase; margin-bottom: 5px; }
-            .popular-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-            .tag-link { background: #f0f2f5; color: #333; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 13px; }
-            table { width: 100%; border-collapse: collapse; font-size: 14px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; font-weight: bold; }
-            .sidebar-wrapper ul { list-style-type: none; padding-left: 10px; }
-            .level-1-header { font-weight: bold; margin-top: 10px; color: #277EFF; }
-            /* Стили для карточек Промо */
-            .promo-grid { display: flex !important; flex-wrap: wrap; gap: 10px; }
-            .promo-card { width: 23%; box-sizing: border-box; }
-            .promo-card img { max-width: 100%; height: auto; }
-        </style>
-        """, unsafe_allow_html=True)
-
-        if not active_tabs:
-            st.warning("⚠️ Контент пуст.")
-        else:
-            tabs_objects = st.tabs(active_tabs)
-            tabs_map = dict(zip(active_tabs, tabs_objects))
+        # Проверка на наличие колонки перед созданием списка
+        if 'Product Name' in df.columns:
+            page_options = df['Product Name'].tolist()
+            selected_page_name = st.selectbox("Выберите страницу для просмотра:", page_options, key="preview_selector")
+            row = df[df['Product Name'] == selected_page_name].iloc[0]
             
-            # --- ТЕКСТ ---
-            if "📝 Текст" in tabs_map:
-                with tabs_map["📝 Текст"]:
-                    st.subheader(row['Product Name'])
-                    for i in range(1, 6):
-                        col_key = f'Text_Block_{i}'
-                        if col_key in row and pd.notna(row[col_key]):
-                            content = str(row[col_key]).strip()
-                            if content:
-                                with st.container():
-                                    st.caption(f"Блок {i}")
-                                    st.markdown(f"<div class='preview-box'>{content}</div>", unsafe_allow_html=True)
+            # Новая логика проверки данных (так как мы используем IP_PROP)
+            has_text = pd.notna(row.get('IP_PROP4839')) and str(row.get('IP_PROP4839')).strip() != ""
+            has_table1 = pd.notna(row.get('IP_PROP4829')) and str(row.get('IP_PROP4829')).strip() != ""
+            has_table2 = pd.notna(row.get('IP_PROP4831')) and str(row.get('IP_PROP4831')).strip() != ""
+            has_visual = any([
+                pd.notna(row.get('IP_PROP4816')), # Теги
+                pd.notna(row.get('IP_PROP4819')), # ГЕО
+                pd.notna(row.get('IP_PROP4838'))  # Сайдбар
+            ])
 
-            # --- ТАБЛИЦЫ ---
-            if "🧩 Таблицы" in tabs_map:
-                with tabs_map["🧩 Таблицы"]:
-                    for t_col in table_cols:
-                        content = row[t_col]
-                        clean_title = t_col.replace('_HTML', '').replace('_', ' ')
-                        st.caption(clean_title)
-                        st.markdown(content, unsafe_allow_html=True)
+            active_tabs = []
+            if has_text: active_tabs.append("📝 Текст")
+            if has_table1 or has_table2: active_tabs.append("🧩 Таблицы")
+            if has_visual: active_tabs.append("🎨 Визуал")
 
-            # --- ВИЗУАЛ ---
-            if "🎨 Визуал" in tabs_map:
-                with tabs_map["🎨 Визуал"]:
-                    # Вывод Промо
-                    if has_promo:
-                         st.markdown('<div class="preview-label">Промо-блок (Рекомендации)</div>', unsafe_allow_html=True)
-                         st.markdown(f"<div class='preview-box'>{row['Promo HTML']}</div>", unsafe_allow_html=True)
-                    
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        if has_tags:
-                            st.markdown('<div class="preview-label">Теги</div>', unsafe_allow_html=True)
-                            st.markdown(f"<div class='preview-box'>{row['Tags HTML']}</div>", unsafe_allow_html=True)
-                        if has_geo:
-                            st.markdown('<div class="preview-label">Гео-блок</div>', unsafe_allow_html=True)
-                            st.markdown(f"<div class='preview-box'>{row['IP_PROP4819']}</div>", unsafe_allow_html=True)
-                    with c2:
-                        if has_sidebar:
-                            st.markdown('<div class="preview-label">Сайдбар</div>', unsafe_allow_html=True)
-                            st.markdown(f"<div class='preview-box' style='max-height: 400px; overflow-y: auto;'>{row['Sidebar HTML']}</div>", unsafe_allow_html=True)
+            if not active_tabs:
+                st.warning("⚠️ Контент пуст.")
+            else:
+                t_objs = st.tabs(active_tabs)
+                t_map = dict(zip(active_tabs, t_objs))
+                
+                if "📝 Текст" in t_map:
+                    with t_map["📝 Текст"]:
+                        st.subheader(row['Product Name'])
+                        st.markdown(f"<div class='preview-box'>{row['IP_PROP4839']}</div>", unsafe_allow_html=True)
+
+                if "🧩 Таблицы" in t_map:
+                    with t_map["🧩 Таблицы"]:
+                        if has_table1:
+                            st.caption("Таблица 1 (IP_PROP4829)")
+                            st.markdown(row['IP_PROP4829'], unsafe_allow_html=True)
+                        if has_table2:
+                            st.write("---")
+                            st.caption("Таблица 2 (IP_PROP4831)")
+                            st.markdown(row['IP_PROP4831'], unsafe_allow_html=True)
+
+                if "🎨 Визуал" in t_map:
+                    with t_map["🎨 Визуал"]:
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            if pd.notna(row.get('IP_PROP4816')):
+                                st.markdown('<div class="preview-label">Теги (IP_PROP4816)</div>', unsafe_allow_html=True)
+                                st.markdown(f"<div class='preview-box'>{row['IP_PROP4816']}</div>", unsafe_allow_html=True)
+                        with c2:
+                            if pd.notna(row.get('IP_PROP4819')):
+                                st.markdown('<div class="preview-label">ГЕО (IP_PROP4819)</div>', unsafe_allow_html=True)
+                                st.markdown(f"<div class='preview-box'>{row['IP_PROP4819']}</div>", unsafe_allow_html=True)
+        else:
+            st.error("Ошибка данных: колонка 'Product Name' не найдена.")
 
 # ==========================================
 # TAB 3: PROJECT MANAGER (SAVE/LOAD)
@@ -3783,6 +3743,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
