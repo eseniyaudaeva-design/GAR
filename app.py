@@ -3268,7 +3268,7 @@ with tab_wholesale_main:
         final_data = [] 
 
         # ==========================================
-        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ
+        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ (БАЗА)
         # ==========================================
         all_tags_links = []
         if use_tags:
@@ -3292,7 +3292,6 @@ with tab_wholesale_main:
                 if matches:
                     tags_data_prepared.append((kw, matches)) 
                 else:
-                    # Если ссылок нет, переносим в текст
                     if kw not in actual_text_list:
                         actual_text_list.append(kw)
                         moved_words.append(kw)
@@ -3311,12 +3310,11 @@ with tab_wholesale_main:
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
         # ==========================================
-        # 4. ФУНКЦИЯ ПАРСИНГА ИМЕН (ХЛЕБНЫЕ КРОШКИ) - ВОССТАНОВЛЕНО
+        # 4. ФУНКЦИЯ ПАРСИНГА ИМЕН (ХЛЕБНЫЕ КРОШКИ)
         # ==========================================
         def resolve_real_names(urls_list):
             if not urls_list: return {}
             results_map = {}
-            # Используем ThreadPool для ускорения
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 future_to_url = {executor.submit(get_breadcrumb_only, u, st.session_state.settings_ua): u for u in urls_list}
                 for future in concurrent.futures.as_completed(future_to_url):
@@ -3326,6 +3324,79 @@ with tab_wholesale_main:
                         if extracted_name: results_map[url_key] = extracted_name
                     except: pass
             return results_map
+
+        # ==========================================
+        # 5. ГЕНЕРАЦИЯ САЙДБАРА (ИЗ ФАЙЛА!)
+        # ==========================================
+        current_full_sidebar_code = ""
+        if use_sidebar:
+            all_menu_urls = []
+            if sidebar_content:
+                all_menu_urls = [l.strip() for l in io.StringIO(sidebar_content).readlines() if l.strip()]
+            elif os.path.exists("data/menu_structure.txt"):
+                with open("data/menu_structure.txt", "r", encoding="utf-8") as f:
+                    all_menu_urls = [l.strip() for l in f.readlines() if l.strip()]
+            
+            sidebar_matched_urls = []
+            if global_sidebar_list:
+                for kw in global_sidebar_list:
+                    tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                    roots = [tr, tr[:-1], tr[:-2]] if len(tr)>5 else [tr]
+                    found = [u for u in all_menu_urls if any(r in u for r in roots)]
+                    sidebar_matched_urls.extend(found)
+                sidebar_matched_urls = list(set(sidebar_matched_urls))
+            else: sidebar_matched_urls = all_menu_urls
+
+            tree = {}
+            for s_url in sidebar_matched_urls:
+                path = urlparse(s_url).path.strip('/')
+                parts = [p for p in path.split('/') if p]
+                idx_st = parts.index('catalog') + 1 if 'catalog' in parts else 0
+                rel_parts = parts[idx_st:] if parts[idx_st:] else parts
+                curr = tree
+                for i, part in enumerate(rel_parts):
+                    if part not in curr: curr[part] = {}
+                    if i == len(rel_parts) - 1:
+                        curr[part]['__url__'] = s_url
+                        curr[part]['__name__'] = force_cyrillic_name_global(part)
+                    curr = curr[part]
+
+            def render_tree_internal(node, level=1):
+                html = ""
+                keys = sorted([k for k in node.keys() if not k.startswith('__')])
+                for key in keys:
+                    child = node[key]
+                    name = child.get('__name__', force_cyrillic_name_global(key))
+                    url = child.get('__url__', '#')
+                    has_children = any(k for k in child.keys() if not k.startswith('__'))
+                    if level == 1:
+                        html += '<li class="level-1-header">'
+                        if has_children:
+                            html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=2)}</ul>'
+                        else:
+                            html += f'<a href="{url}">{name}</a>'
+                        html += '</li>'
+                    elif level == 2:
+                        html += '<li class="level-2-header">'
+                        if has_children:
+                            html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=3)}</ul>'
+                        else:
+                            html += f'<a href="{url}">{name}</a>'
+                        html += '</li>'
+                    else:
+                        html += f'<li class="level-3-link"><a href="{url}">{name}</a></li>'
+                        if has_children: html += f'<ul>{render_tree_internal(child, level+1)}</ul>'
+                return html
+
+            menu_items_html = render_tree_internal(tree, level=1)
+            
+            try:
+                with open("data/sidebar_template.html", "r", encoding="utf-8") as f:
+                    template_html = f.read()
+                current_full_sidebar_code = template_html.replace("{{GENERATED_MENU_ITEMS}}", menu_items_html)
+            except FileNotFoundError:
+                st.error("❌ Файл шаблона data/sidebar_template.html не найден!")
+                current_full_sidebar_code = ""
 
         # СБОР СТРАНИЦ
         target_pages = []
@@ -3371,27 +3442,21 @@ with tab_wholesale_main:
             if use_tags and tags_data_prepared:
                 selected_urls_map = {} 
                 for kw, links in tags_data_prepared:
-                    # Исключаем ссылку на текущую страницу
                     valid = [u for u in links if u.rstrip('/') != page['url'].rstrip('/')]
                     if valid:
                         sel = random.choice(valid)
                         selected_urls_map[sel] = kw
                 
-                # Парсим реальные названия (чтобы не было транслита)
                 urls_to_fetch = list(selected_urls_map.keys())
                 real_names_map = resolve_real_names(urls_to_fetch)
                 
                 html_t = []
                 for u in urls_to_fetch:
-                    # Если есть имя из крошек - берем его, иначе берем ключевое слово
                     display_name = real_names_map.get(u, selected_urls_map[u])
-                    if display_name == selected_urls_map[u]: 
-                        display_name = display_name.capitalize()
-                    
+                    if display_name == selected_urls_map[u]: display_name = display_name.capitalize()
                     html_t.append(f'<a href="{u}" class="tag-item">{display_name}</a>')
                 
                 if html_t:
-                    # ВАЖНО: \n.join чтобы теги не слипались
                     tags_block = f'''
 <div class="popular-tags-text">
 <div class="popular-tags-inner-text">
@@ -3423,20 +3488,59 @@ with tab_wholesale_main:
                     except: pass
 
             # ----------------------------------------
-            # 3. ПРОМО (С ПАРСИНГОМ КРОШЕК)
+            # 3. ПРОМО (НОВЫЙ ШАБЛОН "АКЦИЯ")
             # ----------------------------------------
             if use_promo and p_img_map:
                 p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                 if p_cands:
-                    sel_p = random.sample(p_cands, min(4, len(p_cands)))
+                    # Выбираем от 3 до 8 товаров
+                    sel_p = random.sample(p_cands, min(8, max(3, len(p_cands))))
                     promo_names_map = resolve_real_names(sel_p)
                     
-                    p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
+                    # Сборка HTML элементов
+                    gallery_items = []
                     for u in sel_p:
-                        # Если есть крошка - берем её, иначе транслит (фоллбек)
                         nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
-                        p_html += f'<div class="promo-card" style="min-width:200px;"><a href="{u}"><img src="{p_img_map[u]}" style="max-width:100%;"><br>{nm}</a></div>'
-                    p_html += '</div></div>'
+                        img_src = p_img_map[u]
+                        item_html = f'''
+            <div class="gallery-item">
+                <h3><a href="{u}" target="_blank">{nm}</a></h3>
+                <figure>
+                    <a href="{u}" target="_blank">
+                        <picture>
+                            <img src="{img_src}" loading="lazy">
+                        </picture>
+                    </a>
+                </figure>
+            </div>'''
+                        gallery_items.append(item_html)
+
+                    # Сборка общего блока
+                    p_html = f'''
+<style>
+.outer-full-width-section {{ padding: 25px 0; width: 100%; }}
+.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}
+h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}
+.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}
+.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}
+.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}
+.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}
+.gallery-item h3 a:hover {{ color: #007bff; }}
+.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}
+.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}
+.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}
+.gallery-item figure a:hover img {{ transform: scale(1.05); }}
+</style>
+
+<div class="outer-full-width-section">
+    <div class="gallery-content-wrapper"> 
+        <h3 class="gallery-title">{promo_title}</h3>
+        <div class="five-col-gallery">
+            {"".join(gallery_items)}
+        </div>
+    </div>
+</div>
+'''
                     injections.append(p_html)
 
             # ----------------------------------------
@@ -3447,11 +3551,12 @@ with tab_wholesale_main:
                 blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, 5, actual_text_list)
                 blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
 
-            # 5. СЛИЯНИЕ ВСЕГО (Сайдбар удален)
-            # Просто распределяем инъекции (Теги, Таблицы, Промо) по блокам
+            # 5. СЛИЯНИЕ ВСЕГО
+            if use_sidebar and current_full_sidebar_code:
+                blocks[0] = current_full_sidebar_code + "\n" + blocks[0]
+            
             for i, inj in enumerate(injections):
                 t_idx = i % 5
-                # Добавляем отступы \n\n, чтобы верстка не слипалась с текстом
                 blocks[t_idx] = blocks[t_idx] + "\n\n" + inj
 
             # 6. ГЕО
@@ -3496,7 +3601,6 @@ with tab_wholesale_main:
             mime="application/vnd.ms-excel",
             key="btn_dl_fixed"
         )
-
 # ==========================================
 # 5. БЛОК ПРЕДПРОСМОТРА
 # ==========================================
@@ -3638,6 +3742,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
