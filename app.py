@@ -3238,48 +3238,41 @@ with tab_wholesale_main:
         st.session_state.gen_result_df = None
         st.session_state.unified_excel_data = None
         
-        # 1. ЧТЕНИЕ ДАННЫХ
-        raw_txt_val = st.session_state.get("ai_text_context_editable", "")
-        if not raw_txt_val: raw_txt_val = text_context_default
-        actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
+        # 1. СТРОГИЙ ПОРЯДОК КОЛОНОК ДЛЯ EXCEL
+        EXCEL_COLUMN_ORDER = [
+            'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
+            'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
+            'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 
+            'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
+        ]
 
-        raw_geo_val = st.session_state.get("kws_geo_auto", "")
-        if not raw_geo_val: raw_geo_val = geo_context_default
-        actual_geo_list = [x.strip() for x in re.split(r'[,\n]+', raw_geo_val) if x.strip()]
+        # Соответствие "Текстовый блок №" -> "Колонка в Excel"
+        TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
-        status_box = st.status("🛠️ Подготовка данных...", expanded=True)
-        status_box.write(f"📝 Слов для текста: {len(actual_text_list)}")
-        status_box.write(f"🌍 Городов для Гео: {len(actual_geo_list)}")
-
-# === ИНИЦИАЛИЗАЦИЯ CLIENT (OpenAI совместимый) ===
+        status_box = st.status("🛠️ Запуск генерации контента...", expanded=True)
+        
         client = None
         if (use_text or use_tables or use_geo) and gemini_api_key:
             try:
                 from openai import OpenAI
                 client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1")
             except Exception as e:
-                status_box.error(f"Ошибка подключения: {e}")
+                status_box.error(f"Ошибка API: {e}")
 
         final_data = [] 
-        
-        # --- БАЗЫ ДАННЫХ ---
+
+        # --- СБОР ТЕГОВ, КАРТИН ПЕРЕД ЦИКЛОМ ---
         tags_map = {}
-        all_tags_links = []
         if use_tags:
+            all_tags_links = []
             if tags_file_content:
-                s_io = io.StringIO(tags_file_content)
-                all_tags_links = [l.strip() for l in s_io.readlines() if l.strip()]
+                all_tags_links = [l.strip() for l in io.StringIO(tags_file_content).readlines() if l.strip()]
             elif os.path.exists("data/links_base.txt"):
                 with open("data/links_base.txt", "r", encoding="utf-8") as f:
                     all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                search_roots = {tr}
-                if len(tr) > 5: search_roots.update([tr[:-1], tr[:-2]])
-                matches = []
-                for u in all_tags_links:
-                    if any(root in u.lower() for root in search_roots):
-                        matches.append(u); break
+                matches = [u for u in all_tags_links if tr in u.lower()]
                 if matches: tags_map[kw] = matches
 
         p_img_map = {}
@@ -3287,214 +3280,125 @@ with tab_wholesale_main:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
-        
-        all_menu_urls = []
-        if use_sidebar:
-            if sidebar_content:
-                s_io = io.StringIO(sidebar_content)
-                all_menu_urls = [l.strip() for l in s_io.readlines() if l.strip()]
-            elif os.path.exists("data/menu_structure.txt"):
-                with open("data/menu_structure.txt", "r", encoding="utf-8") as f:
-                    all_menu_urls = [l.strip() for l in f.readlines() if l.strip()]
 
-        # --- СБОР ---
+        # --- СБОР СТРАНИЦ ---
         target_pages = []
         try:
             if use_manual_html:
                 soup = BeautifulSoup(manual_html_source, 'html.parser')
             else:
                 session = requests.Session()
-                retry = Retry(connect=3, read=3, redirect=3, backoff_factor=0.5)
-                session.mount('https://', HTTPAdapter(max_retries=retry))
-                headers = {'User-Agent': 'Mozilla/5.0'}
-                r = session.get(main_category_url, headers=headers, timeout=30, verify=False)
+                r = session.get(main_category_url, timeout=30, verify=False)
                 if r.status_code == 200: soup = BeautifulSoup(r.text, 'html.parser')
-                else: st.stop()
             
             if soup:
                 tags_container = soup.find(class_='popular-tags-inner')
                 if tags_container:
                     for link in tags_container.find_all('a'):
-                        full_url = urljoin(main_category_url or "http://localhost", link.get('href'))
-                        target_pages.append({'url': full_url, 'name': link.get_text(strip=True)})
+                        target_pages.append({'url': urljoin(main_category_url or "http://localhost", link.get('href')), 'name': link.get_text(strip=True)})
                 if not target_pages:
                     h1 = soup.find('h1')
                     target_pages.append({'url': main_category_url or "local", 'name': h1.get_text(strip=True) if h1 else "Товар"})
-        except Exception: st.stop()
-
-        # --- ВСПОМОГАТЕЛЬНЫЕ ---
-        urls_to_fetch_names = set()
-        promo_items_pool = []
-        if use_tags:
-            for matches in tags_map.values(): urls_to_fetch_names.update(matches)
-        if use_promo:
-            used_urls = set()
-            for kw in global_promo_list:
-                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                roots = [tr, tr[:-1], tr[:-2]] if len(tr)>5 else [tr]
-                matches = [u for u in p_img_map.keys() if any(r in u for r in roots)]
-                if matches:
-                    m = random.choice(matches)
-                    if m not in used_urls:
-                        urls_to_fetch_names.add(m); promo_items_pool.append({'url': m, 'img': p_img_map[m]}); used_urls.add(m)
-        
-        sidebar_matched_urls = []
-        if use_sidebar:
-            if global_sidebar_list:
-                for kw in global_sidebar_list:
-                    tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                    roots = [tr, tr[:-1], tr[:-2]] if len(tr)>5 else [tr]
-                    found = [u for u in all_menu_urls if any(r in u for r in roots)]
-                    sidebar_matched_urls.extend(found)
-                sidebar_matched_urls = list(set(sidebar_matched_urls))
-            else: sidebar_matched_urls = all_menu_urls
-            urls_to_fetch_names.update(sidebar_matched_urls)
-
-        url_name_cache = {}
-        if urls_to_fetch_names:
-            def fetch_w(u): return u, get_breadcrumb_only(u)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-                for f in concurrent.futures.as_completed({executor.submit(fetch_w, u): u for u in urls_to_fetch_names}):
-                    u_res, name_res = f.result()
-                    url_name_cache[u_res.rstrip('/')] = name_res or force_cyrillic_name_global(u_res.split('/')[-1])
-
-        # --- САЙДБАР ---
-        full_sidebar_code = ""
-        if use_sidebar:
-            tree = {}
-            for url in sidebar_matched_urls:
-                path = urlparse(url).path.strip('/')
-                parts = [p for p in path.split('/') if p]
-                idx_start = parts.index('catalog') + 1 if 'catalog' in parts else 0
-                rel_parts = parts[idx_start:] if parts[idx_start:] else parts
-                curr = tree
-                for i, part in enumerate(rel_parts):
-                    if part not in curr: curr[part] = {}
-                    if i == len(rel_parts) - 1:
-                        curr[part]['__url__'] = url
-                        curr[part]['__name__'] = url_name_cache.get(url.rstrip('/'), force_cyrillic_name_global(part))
-                    curr = curr[part]
-            def render_tree_internal(node, level=1):
-                html = ""
-                keys = sorted([k for k in node.keys() if not k.startswith('__')])
-                for key in keys:
-                    child = node[key]
-                    name = child.get('__name__', force_cyrillic_name_global(key))
-                    url = child.get('__url__')
-                    has_children = any(k for k in child.keys() if not k.startswith('__'))
-                    if level == 1:
-                        html += '<li class="level-1-header">\n'
-                        if has_children: html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=2)}</ul>'
-                        else: html += f'<a href="{url or "#"}">{name}</a>'
-                        html += '</li>\n'
-                    elif level == 2:
-                        html += '<li class="level-2-header">\n' if has_children else '<li class="level-2-link-special">\n'
-                        if has_children: html += f'<span class="dropdown-toggle">{name}</span><ul class="collapse-menu list-unstyled">{render_tree_internal(child, level=3)}</ul>'
-                        else: html += f'<a href="{url or "#"}">{name}</a>'
-                        html += '</li>\n'
-                    elif level >= 3: html += f'<li class="level-3-link"><a href="{url or "#"}">{name}</a></li>\n'
-                return html
-            full_sidebar_code = f'<div class="page-content-with-sidebar"><button id="mobile-menu-toggle" class="menu-toggle-button">☰</button><div class="sidebar-wrapper"><nav id="sidebar-menu"><ul class="list-unstyled components">{render_tree_internal(tree, level=1)}</ul></nav></div></div>'
+        except: st.stop()
 
         progress_bar = status_box.progress(0)
-        total_steps = len(target_pages) if target_pages else 1
         
         for idx, page in enumerate(target_pages):
             base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
             header_for_ai = real_header_h2 if real_header_h2 else page['name']
             
-            # 1. Собираем данные. Сначала Page URL и Name, потом IP_PROP
-            row_data = {
-                'Page URL': page['url'],
-                'Product Name': header_for_ai,
-                'IP_PROP4839': "", # AI Текст (Блоки 1-5)
-                'IP_PROP4817': STATIC_DATA_GEN.get('IP_PROP4817', ""),
-                'IP_PROP4818': STATIC_DATA_GEN.get('IP_PROP4818', ""),
-                'IP_PROP4819': "", # AI ГЕО
-                'IP_PROP4820': STATIC_DATA_GEN.get('IP_PROP4820', ""),
-                'IP_PROP4821': STATIC_DATA_GEN.get('IP_PROP4821', ""),
-                'IP_PROP4822': STATIC_DATA_GEN.get('IP_PROP4822', ""),
-                'IP_PROP4823': STATIC_DATA_GEN.get('IP_PROP4823', ""),
-                'IP_PROP4824': STATIC_DATA_GEN.get('IP_PROP4824', ""),
-                'IP_PROP4816': "", # Теги
-                'IP_PROP4825': STATIC_DATA_GEN.get('IP_PROP4825', ""),
-                'IP_PROP4826': STATIC_DATA_GEN.get('IP_PROP4826', ""),
-                'IP_PROP4834': STATIC_DATA_GEN.get('IP_PROP4834', ""),
-                'IP_PROP4835': STATIC_DATA_GEN.get('IP_PROP4835', ""),
-                'IP_PROP4836': STATIC_DATA_GEN.get('IP_PROP4836', ""),
-                'IP_PROP4837': STATIC_DATA_GEN.get('IP_PROP4837', ""),
-                'IP_PROP4838': "", # Сайдбар
-                'IP_PROP4829': "", # Таблица 1
-                'IP_PROP4831': "", # Таблица 2
-            }
+            # Инициализируем строку всеми колонками
+            row_data = {col: "" for col in EXCEL_COLUMN_ORDER}
+            row_data['Page URL'] = page['url']
+            row_data['Product Name'] = header_for_ai
+            
+            # Заполняем статику
+            for k, v in STATIC_DATA_GEN.items():
+                if k in row_data: row_data[k] = v
 
-            # --- САМА ГЕНЕРАЦИЯ ---
-            if use_text and client:
-                blocks = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, num_text_blocks_val, actual_text_list)
-                row_data['IP_PROP4839'] = "\n\n".join([b for b in blocks if b and "Error" not in b])
+            # 1. СОБИРАЕМ "ИНЪЕКЦИИ" (Теги, Таблицы, Промо)
+            injections = []
 
-            if use_geo and client:
-                if actual_geo_list:
-                    cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
-                    prompt_geo = f"Write HTML <p> regarding delivery. You MUST mention these specific cities: {cities}. No Markdown. No links."
-                    try:
-                        resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=2.0)
-                        row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                    except: row_data['IP_PROP4819'] = STATIC_DATA_GEN.get('IP_PROP4819', "")
-                else: row_data['IP_PROP4819'] = STATIC_DATA_GEN.get('IP_PROP4819', "")
-
+            # Теги
             if use_tags:
-                html_tags = []
-                for kw in global_tags_list:
-                    if kw in tags_map:
-                        valid = [u for u in tags_map[kw] if u.rstrip('/') != page['url'].rstrip('/')]
-                        if valid:
-                            sel = random.choice(valid)
-                            nm = url_name_cache.get(sel.rstrip('/'), kw)
-                            html_tags.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
-                if html_tags: row_data['IP_PROP4816'] = '<div class="popular-tags">' + "\n".join(html_tags) + '</div>'
+                html_t = []
+                for kw, links in tags_map.items():
+                    valid = [u for u in links if u.rstrip('/') != page['url'].rstrip('/')]
+                    if valid:
+                        sel = random.choice(valid)
+                        nm = force_cyrillic_name_global(sel.split('/')[-1])
+                        html_t.append(f'<a href="{sel}" class="tag-link">{nm}</a>')
+                if html_t: injections.append('<div class="popular-tags">' + "\n".join(html_t) + '</div>')
 
+            # Таблицы (с жестким стилем)
             if use_tables and client:
-                for t_i, t_topic in enumerate(table_prompts):
-                    target_key = 'IP_PROP4829' if t_i == 0 else ('IP_PROP4831' if t_i == 1 else None)
-                    if not target_key: break
-                    ctx = f"Данные: {tech_context_final_str}" if tech_context_final_str else ""
-                    prompt_tbl = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No Markdown."
+                for t_topic in table_prompts:
+                    ctx = f"Данные: {tech_context_final_str}"
+                    prompt_tbl = f"Create strictly HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}."
                     try:
-                        resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=2.0)
-                        row_data[target_key] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                        resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0)
+                        table_html = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                        # ФОРМАТИРОВАНИЕ
+                        table_html = table_html.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
+                        table_html = table_html.replace('<th', '<th style="border: 2px solid black; padding: 5px;"')
+                        table_html = table_html.replace('<td', '<td style="border: 2px solid black; padding: 5px;"')
+                        injections.append(table_html)
                     except: pass
 
-            if use_sidebar: row_data['IP_PROP4838'] = full_sidebar_code
+            # Промо
+            if use_promo and p_img_map:
+                p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
+                if p_cands:
+                    sel_p = random.sample(p_cands, min(4, len(p_cands)))
+                    p_html = f'<div class="promo-section"><h3>{promo_title}</h3><div class="promo-grid" style="display:flex;gap:15px;overflow-x:auto;">'
+                    for u in sel_p:
+                        p_html += f'<div class="promo-card" style="min-width:200px;"><a href="{u}"><img src="{p_img_map[u]}" style="max-width:100%;"><br>{force_cyrillic_name_global(u.split("/")[-1])}</a></div>'
+                    p_html += '</div></div>'
+                    injections.append(p_html)
+
+            # 2. ГЕНЕРИРУЕМ 5 БЛОКОВ ТЕКСТА
+            blocks = [""] * 5
+            if use_text and client:
+                blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, 5, actual_text_list)
+                blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
+
+            # 3. ВНЕДРЯЕМ САЙДБАР В НАЧАЛО ПЕРВОГО БЛОКА
+            if use_sidebar:
+                blocks[0] = full_sidebar_code + "\n" + blocks[0]
+
+            # 4. РАСПРЕДЕЛЯЕМ ОСТАЛЬНОЕ В КОНЕЦ БЛОКОВ
+            for i, inj in enumerate(injections):
+                # Вставляем по очереди, начиная с первого или второго блока
+                target_idx = i % 5
+                blocks[target_idx] = blocks[target_idx] + "\n" + inj
+
+            # 5. ГЕО (Спец. поле)
+            if use_geo and client:
+                cities = ", ".join(random.sample(actual_geo_list, min(20, len(actual_geo_list))))
+                prompt_geo = f"Write delivery paragraph with cities: {cities}. HTML only."
+                try:
+                    resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0)
+                    row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                except: pass
+
+            # 6. ЗАПИСЫВАЕМ ТЕКСТ В НУЖНЫЕ КОЛОНКИ
+            for i, col_name in enumerate(TEXT_CONTAINERS):
+                row_data[col_name] = blocks[i]
 
             final_data.append(row_data)
-            progress_bar.progress((idx + 1) / total_steps)
+            progress_bar.progress((idx + 1) / len(target_pages))
 
-        # 2. Создаем DataFrame
+        # --- СБОРКА ТАБЛИЦЫ С ФИКСИРОВАННЫМИ КОЛОНКАМИ ---
         df_result = pd.DataFrame(final_data)
-        
-        # 3. ПРИНУДИТЕЛЬНЫЙ ПОРЯДОК КОЛОНОК (Включая Product Name!)
-        cols_order = [
-            'Page URL', 'Product Name', 
-            'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 'IP_PROP4819', 
-            'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
-            'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 
-            'IP_PROP4834', 'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 
-            'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
-        ]
-        
-        # Фильтруем только те колонки, которые реально есть в данных
-        existing_cols = [c for c in cols_order if c in df_result.columns]
-        df_result = df_result[existing_cols]
+        # reindex создаст недостающие колонки (если чекбоксы были выключены) и расставит их по порядку
+        df_result = df_result.reindex(columns=EXCEL_COLUMN_ORDER).fillna("")
 
         st.session_state.gen_result_df = df_result 
         
-        # 4. Формируем Excel байты
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_result.to_excel(writer, index=False)
         st.session_state.unified_excel_data = buffer.getvalue()
-        
         status_box.update(label="✅ Готово!", state="complete", expanded=False)
     # КНОПКА СКАЧИВАНИЯ
     if st.session_state.get('unified_excel_data') is not None:
@@ -3693,3 +3597,4 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
