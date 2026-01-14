@@ -1965,7 +1965,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         
         # 3. Отправляем запрос (используем модель 2.5, на которую есть квоты)
         response = client.models.generate_content(
-            model="gemini-2.5-pro",
+            model="gemini-2.5-flash",
             contents=full_prompt
         )
         
