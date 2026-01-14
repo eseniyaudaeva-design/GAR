@@ -2330,55 +2330,55 @@ with tab_seo_main:
                 with c5: render_clean_block("Размеры/ГОСТ", "📏", st.session_state.categorized_dimensions)
                 with c6: render_clean_block("Общие", "📂", st.session_state.categorized_general)
 
-# --- БЛОК СТОП-СЛОВ (PREMIUM UI) ---
+# --- БЛОК СТОП-СЛОВ (CLEAN UI) ---
                 st.markdown("---")
-                st.markdown("<h5 style='margin-bottom:0px; color:#1E293B;'>🛑 Стоп-лист (исключения)</h5>", unsafe_allow_html=True)
-                st.caption("Слова ниже автоматически исключаются из всех расчетов и генераций.")
+                st.markdown("<h4 style='color: #1e293b; margin-bottom: 5px; font-weight: 700;'>🛑 Стоп-лист (исключения)</h4>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #64748b; font-size: 15px; margin-bottom: 20px;'>Слова из списка ниже автоматически исключаются из групп семантики и генерации текстов.</p>", unsafe_allow_html=True)
 
-                # Сетка: [Поле ввода] [Кнопка с подсказкой] [Пустота для ширины]
-                col_inp, col_action, col_spacer = st.columns([2.5, 1.2, 1.3])
+                # Используем две колонки: широкая для ввода и узкая для управления
+                col_left, col_right = st.columns([2.5, 1.5])
                 
-                with col_inp:
+                with col_left:
+                    # Поле ввода
                     st.text_area(
-                        "Список исключений",
-                        height=90, 
+                        "Исключения",
+                        height=110, 
                         key="sensitive_words_input_final", 
                         label_visibility="collapsed",
-                        placeholder="Введите слова для исключения..."
+                        placeholder="Введите слова для исключения (через запятую или с новой строки)..."
                     )
                 
-                with col_action:
-                    st.write("") # Выравнивание
+                with col_right:
+                    # Кнопка
                     st.button(
-                        "🚀 Применить изменения", 
+                        "🚀 Обновить и пересчитать", 
                         type="primary", 
                         use_container_width=True,
                         on_click=sync_semantics_with_stoplist
                     )
-                    # Красивая статус-подсказка
+                    
+                    # Аккуратная и читаемая карточка-инструкция
                     st.markdown(
                         """
                         <div style="
+                            background: #f8fafc; 
+                            border: 1px solid #e2e8f0; 
+                            border-radius: 12px; 
+                            padding: 12px 16px; 
                             margin-top: 10px;
-                            padding: 8px 12px;
-                            background: #F1F5F9;
-                            border-radius: 8px;
-                            border-left: 4px solid #277EFF;
-                            display: flex;
-                            align-items: center;
-                            gap: 8px;
                         ">
-                            <span style="font-size: 14px;">ℹ️</span>
-                            <span style="font-size: 12.5px; color: #475569; font-weight: 600; line-height: 1.2;">
-                                Нажмите для мгновенного пересчета групп
-                            </span>
+                            <div style="display: flex; align-items: flex-start; gap: 10px;">
+                                <span style="font-size: 18px;">💡</span>
+                                <div style="font-size: 13.5px; color: #475569; line-height: 1.5;">
+                                    <b>Как управлять:</b><br>
+                                    Добавьте слово в список — оно исчезнет из групп выше.<br>
+                                    Удалите слово — оно вернется в свою группу.
+                                </div>
+                            </div>
                         </div>
                         """, 
                         unsafe_allow_html=True
                     )
-                
-                with col_spacer:
-                    st.empty()
 
         # 2. ТАБЛИЦА РЕЛЕВАНТНОСТИ
         with st.expander("🏆 4. Релевантность конкурентов (Таблица)", expanded=True):
@@ -3765,6 +3765,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
