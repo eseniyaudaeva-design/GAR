@@ -2334,7 +2334,7 @@ with tab_seo_main:
                 st.markdown("---")
                 
                 # Обернули всё в раскрывающийся блок, который закрыт по умолчанию
-                with st.expander("🛠️ Настройка Стоп-листа (Исключений)", expanded=False):
+                with st.expander("🛠️ Стоп-лист", expanded=False):
                     st.markdown("<h4 style='color: #1e293b; margin-top: 10px; margin-bottom: 5px; font-weight: 700;'>🛑 Стоп-лист</h4>", unsafe_allow_html=True)
                     st.markdown("<p style='color: #64748b; font-size: 15px; margin-bottom: 20px;'>Слова из списка ниже автоматически исключаются из групп семантики и генерации текстов.</p>", unsafe_allow_html=True)
 
@@ -3767,6 +3767,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
