@@ -3482,12 +3482,6 @@ with tab_wholesale_main:
                         key=f"dl_live_{int(time.time())}_{i}",
                         help="Нажимать ТОЛЬКО при ошибке! Это остановит скрипт."
                     )
-                        label=f"📥 СКАЧАТЬ ПРОМЕЖУТОЧНЫЙ РЕЗУЛЬТАТ ({len(st.session_state.gen_result_df)} стр.)",
-                        data=st.session_state.unified_excel_data,
-                        file_name=f"wholesale_PARTIAL_{int(time.time())}.xlsx",
-                        mime="application/vnd.ms-excel",
-                        key=f"dl_live_{int(time.time())}_{i}" # Уникальный ключ для каждого шага
-                    )
 
             except Exception as e:
                 log_container.error(f"Ошибка на товаре {page['name']}: {e}")
@@ -3669,6 +3663,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
