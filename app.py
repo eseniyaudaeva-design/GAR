@@ -3228,19 +3228,50 @@ with tab_wholesale_main:
     if (use_text or use_tables or use_geo) and not gemini_api_key: ready_to_go = False
     if use_promo and df_db_promo is None: ready_to_go = False
 
-    st.markdown("### 🚀 Управление запуском")
-    
-    # === НАСТРОЙКИ ПАКЕТНОЙ ГЕНЕРАЦИИ ===
-    col_batch1, col_batch2 = st.columns(2)
-    with col_batch1:
-        start_index = st.number_input("Начать с товара № (с 0)", min_value=0, value=0, step=1, help="Полезно, если генерация прервалась. Поставьте номер следующего товара.")
-    with col_batch2:
-        batch_size = st.number_input("Количество товаров за раз (0 = все)", min_value=0, value=0, step=1, help="Если товаров много (>20), ставьте по 10-20 шт, чтобы избежать тайм-аутов.")
+# ==========================================
+    # 4. УМНЫЙ ЗАПУСК (АВТО-ЦЕПОЧКА) - ПОЛНАЯ ВЕРСИЯ
+    # ==========================================
+    st.markdown("### 🚀 Управление запуском (Авто-цепочка)")
 
-# КНОПКА ЗАПУСКА
-    if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", disabled=not ready_to_go, use_container_width=True):
+    # Инициализация переменных состояния для авто-режима
+    if 'auto_run_active' not in st.session_state: st.session_state.auto_run_active = False
+    if 'auto_current_index' not in st.session_state: st.session_state.auto_current_index = 0
+
+    col_batch1, col_batch2, col_batch3 = st.columns([1, 1, 2])
+    
+    with col_batch1:
+        # Если авто-режим активен, берем индекс из памяти, иначе из виджета
+        if st.session_state.auto_run_active:
+            # Блокируем ввод во время работы
+            start_val = st.session_state.auto_current_index
+            st.text_input("Текущий старт:", value=str(start_val), disabled=True)
+            start_index = start_val
+        else:
+            start_index = st.number_input("Начать с товара № (с 0)", min_value=0, value=0, step=1)
+
+    with col_batch2:
+        # Размер пачки (безопасный размер)
+        safe_batch_size = st.number_input("Размер пачки (шт)", min_value=1, value=5, help="Делайте по 3-5 шт, чтобы не было вылетов.")
         
-        # Инициализация таблицы результатов (если её нет)
+    with col_batch3:
+        st.write("")
+        st.write("")
+        # Чекбокс для включения "Бесконечного режима"
+        enable_auto_chain = st.checkbox("🔄 Включить АВТО-ЦЕПОЧКУ", value=True, help="Скрипт будет сам перезагружаться после каждой пачки и продолжать работу, пока не сделает всё. Это защищает от вылетов.")
+
+    # Логика определения кнопки
+    btn_label = "🚀 ЗАПУСТИТЬ ЦЕПОЧКУ" if enable_auto_chain else "🚀 ЗАПУСТИТЬ ОДНУ ПАЧКУ"
+    
+    # Кнопка нажата ИЛИ мы уже в процессе авто-цепочки
+    should_run = st.button(btn_label, type="primary", disabled=not ready_to_go, use_container_width=True) or st.session_state.auto_run_active
+
+    if should_run:
+        # Если это первый запуск цепочки - ставим флаг
+        if enable_auto_chain and not st.session_state.auto_run_active:
+             st.session_state.auto_run_active = True
+             st.session_state.auto_current_index = start_index
+
+        # Инициализация таблицы результатов (если нет)
         if 'gen_result_df' not in st.session_state or st.session_state.gen_result_df is None:
              st.session_state.gen_result_df = pd.DataFrame(columns=[
                 'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
@@ -3252,7 +3283,7 @@ with tab_wholesale_main:
         EXCEL_COLUMN_ORDER = st.session_state.gen_result_df.columns.tolist()
         TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
-        # Подготовка списков
+        # Подготовка контекста (текст, гео)
         raw_txt_val = st.session_state.get("ai_text_context_editable", "")
         if not raw_txt_val: raw_txt_val = text_context_default
         actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
@@ -3263,13 +3294,12 @@ with tab_wholesale_main:
 
         user_num_blocks = st.session_state.get("sb_num_blocks", 5)
 
-        # === 1. СОЗДАЕМ МЕСТА ДЛЯ ВЫВОДА (ПЛЕЙСХОЛДЕРЫ) ===
-        # Они создаются ДО цикла, чтобы мы могли в них писать внутри цикла
-        live_download_placeholder = st.empty()  # Сюда будем класть кнопку скачивания
-        live_table_placeholder = st.empty()     # Сюда будем класть таблицу
-        log_container = st.status("🚀 Инициализация...", expanded=True) # Лог действий
-        
-        # Инициализация клиента AI
+        # Плейсхолдеры
+        live_download_placeholder = st.empty()
+        live_table_placeholder = st.empty()
+        log_container = st.status(f"🚀 Обработка пачки (Старт: {start_index})...", expanded=True)
+
+        # API Client Init
         client = None
         if (use_text or use_tables or use_geo) and gemini_api_key:
             try:
@@ -3277,41 +3307,33 @@ with tab_wholesale_main:
                 client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1")
             except Exception as e:
                 log_container.error(f"Ошибка API: {e}")
+                st.session_state.auto_run_active = False # Остановить при ошибке API
                 st.stop()
-
-        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ
+        
+        # --- БЛОК ПОДГОТОВКИ ТЕГОВ (ВОССТАНОВЛЕННЫЙ) ---
         all_tags_links = []
         if use_tags:
-            if tags_file_content:
-                all_tags_links = [l.strip() for l in io.StringIO(tags_file_content).readlines() if l.strip()]
+            if tags_file_content: all_tags_links = [l.strip() for l in io.StringIO(tags_file_content).readlines() if l.strip()]
             elif os.path.exists("data/links_base.txt"):
-                with open("data/links_base.txt", "r", encoding="utf-8") as f:
-                    all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
+                with open("data/links_base.txt", "r", encoding="utf-8") as f: all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
 
         tags_data_prepared = [] 
-        moved_words = []
         if use_tags:
-            log_container.write("🔍 Анализ базы тегов...")
             for kw in global_tags_list:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                 matches = [u for u in all_tags_links if tr in u.lower()]
-                if matches:
-                    tags_data_prepared.append((kw, matches)) 
+                if matches: tags_data_prepared.append((kw, matches)) 
                 else:
-                    if kw not in actual_text_list:
-                        actual_text_list.append(kw)
-                        moved_words.append(kw)
-            
-            if moved_words:
-                log_container.warning(f"⚠️ {len(moved_words)} тегов без ссылок перенесены в Текст.")
+                    if kw not in actual_text_list: actual_text_list.append(kw)
 
         p_img_map = {}
         if use_promo and df_db_promo is not None:
             for _, row in df_db_promo.iterrows():
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
+        # -----------------------------------------------
 
-        # Функция парсинга (оставляем как есть)
+        # Функция парсинга
         def resolve_real_names(urls_list, status_msg=""):
             if not urls_list: return {}
             results_map = {}
@@ -3327,7 +3349,7 @@ with tab_wholesale_main:
             return results_map
 
         # СБОР СТРАНИЦ
-        log_container.write("📥 Сбор страниц категории...")
+        log_container.write("📥 Проверка списка страниц...")
         target_pages = []
         try:
             if use_manual_html:
@@ -3348,37 +3370,38 @@ with tab_wholesale_main:
                     target_pages.append({'url': main_category_url or "local", 'name': h1_found.get_text(strip=True) if h1_found else "Товар"})
         except Exception as e:
             log_container.error(f"Ошибка сбора страниц: {e}")
+            st.session_state.auto_run_active = False
             st.stop()
 
-        # ПРИМЕНЕНИЕ ЛИМИТОВ
+        # === РАСЧЕТ ПАЧКИ ===
         total_found = len(target_pages)
-        end_index = start_index + batch_size if batch_size > 0 else total_found
+        # Если мы вышли за пределы - стоп
+        if start_index >= total_found:
+             st.session_state.auto_run_active = False
+             st.success("🎉 Все товары обработаны!")
+             st.stop()
+
+        end_index = min(start_index + safe_batch_size, total_found)
         target_pages_batch = target_pages[start_index:end_index]
         
-        log_container.write(f"📊 Обрабатываем: с {start_index+1} по {min(end_index, total_found)} (Всего: {len(target_pages_batch)})")
+        log_container.write(f"📊 ПАЧКА: {start_index+1} — {end_index} из {total_found}")
 
-        # === ГЛАВНЫЙ ЦИКЛ ===
+        # === ЦИКЛ ГЕНЕРАЦИИ ===
         for i, page in enumerate(target_pages_batch):
             current_num = start_index + i + 1
             log_container.write(f"▶️ **[{current_num}/{total_found}] {page['name']}**")
             
             try:
-                # 1. Скачиваем страницу
                 base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
                 header_for_ai = real_header_h2 if real_header_h2 else page['name']
-                
                 row_data = {col: "" for col in EXCEL_COLUMN_ORDER}
-                row_data['Page URL'] = page['url']
-                row_data['Product Name'] = header_for_ai
+                row_data['Page URL'] = page['url']; row_data['Product Name'] = header_for_ai
                 for k, v in STATIC_DATA_GEN.items():
                     if k in row_data: row_data[k] = v
-
+                
                 injections = []
 
-                # --- (ЗДЕСЬ ВАШ КОД ГЕНЕРАЦИИ ТЕГОВ, ТАБЛИЦ, ПРОМО, ТЕКСТА БЕЗ ИЗМЕНЕНИЙ) ---
-                # ... вставляем инъекции, генерируем текст через API ...
-                
-                # 2. ТЕГИ
+                # --- 1. ТЕГИ ---
                 if use_tags and tags_data_prepared:
                     tags_pool = tags_data_prepared
                     if len(tags_pool) > 15: tags_pool = random.sample(tags_pool, 15)
@@ -3386,8 +3409,7 @@ with tab_wholesale_main:
                     for kw, links in tags_pool:
                         valid = [u for u in links if u.rstrip('/') != page['url'].rstrip('/')]
                         if valid:
-                            sel = random.choice(valid)
-                            selected_urls_map[sel] = kw
+                             sel = random.choice(valid); selected_urls_map[sel] = kw
                     urls_to_fetch = list(selected_urls_map.keys())
                     real_names_map = resolve_real_names(urls_to_fetch)
                     html_t = []
@@ -3399,7 +3421,7 @@ with tab_wholesale_main:
                         tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                         injections.append(tags_block)
 
-                # 3. ТАБЛИЦЫ
+                # --- 2. ТАБЛИЦЫ ---
                 if use_tables and client:
                     for t_topic in table_prompts:
                         ctx = f"Данные: {tech_context_final_str}"
@@ -3409,60 +3431,103 @@ with tab_wholesale_main:
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                             injections.append(raw_table)
                         except: pass
-
-                # 4. ПРОМО
+                
+                # --- 3. ПРОМО (ПОЛНЫЙ КОД С CSS) ---
                 if use_promo and p_img_map:
-                    # (Ваш код промо...)
-                    pass 
-                    # Я сократил этот кусок для читаемости, но в реальном коде оставьте логику промо!
-                    
-                    # ПРИМЕЧАНИЕ: Если вы копируете этот блок, убедитесь, что блок ПРОМО 
-                    # и блок ТЕКСТА (ниже) присутствуют полностью, как в вашем исходнике.
+                    p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
+                    if p_cands:
+                        sel_p = random.sample(p_cands, min(8, max(3, len(p_cands))))
+                        promo_names_map = resolve_real_names(sel_p)
+                        
+                        gallery_items = []
+                        for u in sel_p:
+                            nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
+                            img_src = p_img_map[u]
+                            item_html = f'''
+            <div class="gallery-item">
+                <h3><a href="{u}" target="_blank">{nm}</a></h3>
+                <figure>
+                    <a href="{u}" target="_blank">
+                        <picture>
+                            <img src="{img_src}" loading="lazy">
+                        </picture>
+                    </a>
+                </figure>
+            </div>'''
+                            gallery_items.append(item_html)
 
-                # 5. ГЕНЕРАЦИЯ ТЕКСТА
+                        p_html = f'''
+<style>
+.outer-full-width-section {{ padding: 25px 0; width: 100%; }}
+.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}
+h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}
+.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}
+.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}
+.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}
+.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}
+.gallery-item h3 a:hover {{ color: #007bff; }}
+.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}
+.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}
+.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}
+.gallery-item figure a:hover img {{ transform: scale(1.05); }}
+</style>
+
+<div class="outer-full-width-section">
+    <div class="gallery-content-wrapper"> 
+        <h3 class="gallery-title">{promo_title}</h3>
+        <div class="five-col-gallery">
+            {"".join(gallery_items)}
+        </div>
+    </div>
+</div>
+'''
+                        injections.append(p_html)
+
+                # --- 4. ТЕКСТ ---
                 blocks = [""] * 5
                 if use_text and client:
-                    log_container.write(f"   ↳ 🤖 Пишем текст ({user_num_blocks} блоков)...")
-                    blocks_raw = generate_ai_content_blocks(
-                        gemini_api_key, base_text_raw or "", page['name'], header_for_ai, user_num_blocks, actual_text_list
-                    )
+                    log_container.write(f"   ↳ 🤖 Пишем текст...")
+                    blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw or "", page['name'], header_for_ai, user_num_blocks, actual_text_list)
                     cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
                     for i_b in range(len(cleaned_blocks)):
                         if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
 
-                # 6. СЛИЯНИЕ
+                # --- 5. СЛИЯНИЕ ---
                 effective_blocks_count = max(1, user_num_blocks)
                 for i_inj, inj in enumerate(injections):
                     target_idx = i_inj % effective_blocks_count
                     blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
 
-                # 7. ГЕО
+                # --- 6. ГЕО ---
                 if use_geo and client:
                     log_container.write(f"   ↳ 🌍 Пишем доставку...")
-                    # (Ваш код гео...)
-                    pass
+                    try:
+                         cities = ", ".join(random.sample(actual_geo_list, min(15, len(actual_geo_list))))
+                         prompt_geo = f"Write ONE HTML paragraph about delivery to {cities}. No markdown."
+                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.1)
+                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                    except: pass
 
                 for i_c, c_name in enumerate(TEXT_CONTAINERS):
                     row_data[c_name] = blocks[i_c]
 
-                # === [ВАЖНО] СОХРАНЕНИЕ НА ЛЕТУ ПОСЛЕ КАЖДОГО ТОВАРА ===
+                # === СОХРАНЕНИЕ ===
                 new_row_df = pd.DataFrame([row_data])
-                
-                # Обновляем основной датафрейм в сессии
                 st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, new_row_df], ignore_index=True)
                 
-                # 1. Генерируем Excel ПРЯМО СЕЙЧАС
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     st.session_state.gen_result_df.to_excel(writer, index=False)
                 st.session_state.unified_excel_data = buffer.getvalue()
                 
-                # 2. Обновляем таблицу (показываем последние 3)
-                live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
+                # ЖЕЛЕЗОБЕТОННОЕ АВТО-СОХРАНЕНИЕ НА ДИСК
+                try: st.session_state.gen_result_df.to_excel("backup_auto.xlsx", index=False)
+                except: pass
 
-# 3. Обновляем КНОПКУ СКАЧИВАНИЯ (С ПРЕДУПРЕЖДЕНИЕМ)
+                live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
+                
+                # КНОПКА СКАЧИВАНИЯ (С КРАСНЫМ ПРЕДУПРЕЖДЕНИЕМ)
                 with live_download_placeholder.container():
-                    # Красная памятка
                     st.markdown("""
                     <div style="border: 2px solid #DC2626; background-color: #FEF2F2; padding: 10px; border-radius: 8px; margin-bottom: 10px; color: #991B1B;">
                         <h4 style="margin:0; color: #DC2626;">🛑 НЕ НАЖИМАТЬ ВО ВРЕМЯ РАБОТЫ!</h4>
@@ -3484,10 +3549,22 @@ with tab_wholesale_main:
                     )
 
             except Exception as e:
-                log_container.error(f"Ошибка на товаре {page['name']}: {e}")
-                # Даже если ошибка, кнопка скачивания останется с данными до этого момента
+                log_container.error(f"Сбой: {e}")
 
-        log_container.update(label="✅ Генерация завершена!", state="complete", expanded=False)
+        log_container.update(label=f"✅ Пачка {start_index}-{end_index} готова!", state="complete", expanded=False)
+        
+        # === ЛОГИКА АВТО-ПЕРЕЗАПУСКА ===
+        if enable_auto_chain:
+            next_start = end_index
+            if next_start < total_found:
+                st.session_state.auto_current_index = next_start
+                st.info(f"⏳ Перезагрузка через 1 сек... Следующая пачка с {next_start}.")
+                time.sleep(1)
+                st.rerun() # ПЕРЕЗАГРУЗКА ДЛЯ СБРОСА ТАЙМЕРА
+            else:
+                st.session_state.auto_run_active = False
+                st.balloons()
+                st.success("🏁 ГЕНЕРАЦИЯ ПОЛНОСТЬЮ ЗАВЕРШЕНА!")
 
     # КНОПКА СКАЧИВАНИЯ (ПОЯВЛЯЕТСЯ СРАЗУ ПОСЛЕ ПЕРВОЙ СТРОКИ)
     if st.session_state.get('unified_excel_data') is not None:
@@ -3663,6 +3740,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
