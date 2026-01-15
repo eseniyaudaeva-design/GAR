@@ -2160,6 +2160,13 @@ with tab_seo_main:
         </style>
         """, unsafe_allow_html=True)
 
+# Вывод ОТЛАДКИ для Ширины (чтобы понять, почему 95)
+        if 'debug_width' in results:
+            found = results['debug_width']['found']
+            needed = results['debug_width']['needed']
+            pct = int((found / needed * 100)) if needed > 0 else 0
+            st.caption(f"🔍 Диагностика Ширины: Найдено **{found}** из **{needed}** обязательных слов ({pct}%).")
+        
         # Вывод баллов
         st.markdown(f"""
         <div style='display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;'>
@@ -3698,6 +3705,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
