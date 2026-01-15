@@ -3460,11 +3460,28 @@ with tab_wholesale_main:
                 # 2. Обновляем таблицу (показываем последние 3)
                 live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
 
-                # 3. Обновляем КНОПКУ СКАЧИВАНИЯ (чтобы она всегда была актуальна)
-                # Мы используем уникальный ключ key=f"dl_temp_{i}", чтобы Streamlit не ругался на дубликаты
+# 3. Обновляем КНОПКУ СКАЧИВАНИЯ (С ПРЕДУПРЕЖДЕНИЕМ)
                 with live_download_placeholder.container():
-                    st.success(f"✅ Обработано: {len(st.session_state.gen_result_df)} стр.")
+                    # Красная памятка
+                    st.markdown("""
+                    <div style="border: 2px solid #DC2626; background-color: #FEF2F2; padding: 10px; border-radius: 8px; margin-bottom: 10px; color: #991B1B;">
+                        <h4 style="margin:0; color: #DC2626;">🛑 НЕ НАЖИМАТЬ ВО ВРЕМЯ РАБОТЫ!</h4>
+                        <ul style="margin-bottom:0; padding-left: 20px; font-size: 13px;">
+                            <li>Нажатие <b>ОСТАНОВИТ</b> генерацию и сбросит процесс.</li>
+                            <li>Нажимайте эту кнопку <b>ТОЛЬКО</b> если скрипт завис или выдал ошибку.</li>
+                            <li>Это "аварийное сохранение" того, что успело сделаться.</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
                     st.download_button(
+                        label=f"💾 СПАСТИ ДАННЫЕ (Скачать {len(st.session_state.gen_result_df)} готовых стр.)",
+                        data=st.session_state.unified_excel_data,
+                        file_name=f"EMERGENCY_SAVE_{int(time.time())}.xlsx",
+                        mime="application/vnd.ms-excel",
+                        key=f"dl_live_{int(time.time())}_{i}",
+                        help="Нажимать ТОЛЬКО при ошибке! Это остановит скрипт."
+                    )
                         label=f"📥 СКАЧАТЬ ПРОМЕЖУТОЧНЫЙ РЕЗУЛЬТАТ ({len(st.session_state.gen_result_df)} стр.)",
                         data=st.session_state.unified_excel_data,
                         file_name=f"wholesale_PARTIAL_{int(time.time())}.xlsx",
@@ -3652,6 +3669,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
