@@ -3279,9 +3279,37 @@ with tab_wholesale_main:
                 log_container.error(f"Ошибка API: {e}")
                 st.stop()
 
-        # (Логика подготовки тегов и ссылок остается прежней...)
-        # ... [код подготовки tags_data_prepared и p_img_map пропущен для краткости, он не меняется] ...
-        # ...
+        # 1. ПОДГОТОВКА ДАННЫХ ДЛЯ ТЕГОВ
+        all_tags_links = []
+        if use_tags:
+            if tags_file_content:
+                all_tags_links = [l.strip() for l in io.StringIO(tags_file_content).readlines() if l.strip()]
+            elif os.path.exists("data/links_base.txt"):
+                with open("data/links_base.txt", "r", encoding="utf-8") as f:
+                    all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
+
+        tags_data_prepared = [] 
+        moved_words = []
+        if use_tags:
+            log_container.write("🔍 Анализ базы тегов...")
+            for kw in global_tags_list:
+                tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                matches = [u for u in all_tags_links if tr in u.lower()]
+                if matches:
+                    tags_data_prepared.append((kw, matches)) 
+                else:
+                    if kw not in actual_text_list:
+                        actual_text_list.append(kw)
+                        moved_words.append(kw)
+            
+            if moved_words:
+                log_container.warning(f"⚠️ {len(moved_words)} тегов без ссылок перенесены в Текст.")
+
+        p_img_map = {}
+        if use_promo and df_db_promo is not None:
+            for _, row in df_db_promo.iterrows():
+                u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
+                if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
         # Функция парсинга (оставляем как есть)
         def resolve_real_names(urls_list, status_msg=""):
@@ -3624,6 +3652,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
