@@ -3229,49 +3229,62 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
 
 # ==========================================
-    # 4. УМНЫЙ ЗАПУСК (АВТО-ЦЕПОЧКА) - ПОЛНАЯ ВЕРСИЯ
+    # 4. УМНЫЙ ЗАПУСК (АВТО-ЦЕПОЧКА) - ВЕРСИЯ С ЗАЩИТОЙ ОТ ДУБЛЕЙ
     # ==========================================
     st.markdown("### 🚀 Управление запуском (Авто-цепочка)")
 
-    # Инициализация переменных состояния для авто-режима
+    # Инициализация переменных
     if 'auto_run_active' not in st.session_state: st.session_state.auto_run_active = False
     if 'auto_current_index' not in st.session_state: st.session_state.auto_current_index = 0
 
+    # КОЛОНКИ УПРАВЛЕНИЯ
     col_batch1, col_batch2, col_batch3 = st.columns([1, 1, 2])
     
     with col_batch1:
-        # Если авто-режим активен, берем индекс из памяти, иначе из виджета
+        # Если авто-режим активен - поле заблокировано и показывает текущий прогресс
         if st.session_state.auto_run_active:
-            # Блокируем ввод во время работы
             start_val = st.session_state.auto_current_index
             st.text_input("Текущий старт:", value=str(start_val), disabled=True)
             start_index = start_val
         else:
+            # Если стоим - можно менять руками
             start_index = st.number_input("Начать с товара № (с 0)", min_value=0, value=0, step=1)
 
     with col_batch2:
-        # Размер пачки (безопасный размер)
-        safe_batch_size = st.number_input("Размер пачки (шт)", min_value=1, value=5, help="Делайте по 3-5 шт, чтобы не было вылетов.")
+        safe_batch_size = st.number_input("Размер пачки (шт)", min_value=1, value=5, help="Лучше 3-5 шт.")
         
     with col_batch3:
         st.write("")
         st.write("")
-        # Чекбокс для включения "Бесконечного режима"
-        enable_auto_chain = st.checkbox("🔄 Включить АВТО-ЦЕПОЧКУ", value=True, help="Скрипт будет сам перезагружаться после каждой пачки и продолжать работу, пока не сделает всё. Это защищает от вылетов.")
+        enable_auto_chain = st.checkbox("🔄 Включить АВТО-ЦЕПОЧКУ", value=True, help="Скрипт будет сам перезагружаться и продолжать.")
 
-    # Логика определения кнопки
-    btn_label = "🚀 ЗАПУСТИТЬ ЦЕПОЧКУ" if enable_auto_chain else "🚀 ЗАПУСТИТЬ ОДНУ ПАЧКУ"
+    # === КНОПКИ СТАРТ / СТОП ===
+    c_start, c_stop = st.columns([2, 1])
+    with c_start:
+        # Кнопка СТАРТ
+        # Если авто-режим уже идет, кнопка выглядит нажатой (но неактивна для клика, чтобы не двоилось)
+        btn_label = "🚀 ЗАПУСТИТЬ ПРОЦЕСС"
+        start_clicked = st.button(btn_label, type="primary", disabled=(not ready_to_go or st.session_state.auto_run_active), use_container_width=True)
     
-    # Кнопка нажата ИЛИ мы уже в процессе авто-цепочки
-    should_run = st.button(btn_label, type="primary", disabled=not ready_to_go, use_container_width=True) or st.session_state.auto_run_active
+    with c_stop:
+        # Кнопка СТОП
+        if st.button("🛑 СТОП", type="secondary", use_container_width=True, help="Нажмите, чтобы остановить цепочку после текущей пачки."):
+            st.session_state.auto_run_active = False
+            st.warning("⛔ Команда остановки принята. Скрипт остановится после текущей пачки.")
+            # Мы не делаем st.stop() тут, чтобы дать скрипту возможность отрисовать интерфейс, 
+            # просто снимаем флаг активности.
+
+    # ЛОГИКА ЗАПУСКА
+    # Мы запускаемся, если нажали Старт ИЛИ если флаг активности уже True (после перезагрузки)
+    should_run = start_clicked or st.session_state.auto_run_active
 
     if should_run:
-        # Если это первый запуск цепочки - ставим флаг
-        if enable_auto_chain and not st.session_state.auto_run_active:
+        # Включаем флаг, если это первый клик
+        if not st.session_state.auto_run_active:
              st.session_state.auto_run_active = True
              st.session_state.auto_current_index = start_index
 
-        # Инициализация таблицы результатов (если нет)
+        # Инициализация таблицы (если нет)
         if 'gen_result_df' not in st.session_state or st.session_state.gen_result_df is None:
              st.session_state.gen_result_df = pd.DataFrame(columns=[
                 'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
@@ -3283,7 +3296,7 @@ with tab_wholesale_main:
         EXCEL_COLUMN_ORDER = st.session_state.gen_result_df.columns.tolist()
         TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
-        # Подготовка контекста (текст, гео)
+        # Подготовка контекста
         raw_txt_val = st.session_state.get("ai_text_context_editable", "")
         if not raw_txt_val: raw_txt_val = text_context_default
         actual_text_list = [x.strip() for x in re.split(r'[,\n]+', raw_txt_val) if x.strip()]
@@ -3297,9 +3310,9 @@ with tab_wholesale_main:
         # Плейсхолдеры
         live_download_placeholder = st.empty()
         live_table_placeholder = st.empty()
-        log_container = st.status(f"🚀 Обработка пачки (Старт: {start_index})...", expanded=True)
+        log_container = st.status(f"🚀 Работаем... (Начали с {start_index})", expanded=True)
 
-        # API Client Init
+        # API Client
         client = None
         if (use_text or use_tables or use_geo) and gemini_api_key:
             try:
@@ -3307,10 +3320,10 @@ with tab_wholesale_main:
                 client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1")
             except Exception as e:
                 log_container.error(f"Ошибка API: {e}")
-                st.session_state.auto_run_active = False # Остановить при ошибке API
+                st.session_state.auto_run_active = False
                 st.stop()
         
-        # --- БЛОК ПОДГОТОВКИ ТЕГОВ (ВОССТАНОВЛЕННЫЙ) ---
+        # --- ПОДГОТОВКА ТЕГОВ ---
         all_tags_links = []
         if use_tags:
             if tags_file_content: all_tags_links = [l.strip() for l in io.StringIO(tags_file_content).readlines() if l.strip()]
@@ -3375,7 +3388,6 @@ with tab_wholesale_main:
 
         # === РАСЧЕТ ПАЧКИ ===
         total_found = len(target_pages)
-        # Если мы вышли за пределы - стоп
         if start_index >= total_found:
              st.session_state.auto_run_active = False
              st.success("🎉 Все товары обработаны!")
@@ -3388,6 +3400,14 @@ with tab_wholesale_main:
 
         # === ЦИКЛ ГЕНЕРАЦИИ ===
         for i, page in enumerate(target_pages_batch):
+            
+            # [ВАЖНО] ЗАЩИТА ОТ ДУБЛЕЙ
+            # Проверяем, есть ли уже этот URL в нашей таблице результатов
+            current_urls_in_df = st.session_state.gen_result_df['Page URL'].values
+            if page['url'] in current_urls_in_df:
+                log_container.warning(f"⚠️ Пропуск дубля: {page['name']} (Уже есть в таблице)")
+                continue  # Пропускаем итерацию, переходим к следующему
+
             current_num = start_index + i + 1
             log_container.write(f"▶️ **[{current_num}/{total_found}] {page['name']}**")
             
@@ -3401,7 +3421,7 @@ with tab_wholesale_main:
                 
                 injections = []
 
-                # --- 1. ТЕГИ ---
+                # ТЕГИ
                 if use_tags and tags_data_prepared:
                     tags_pool = tags_data_prepared
                     if len(tags_pool) > 15: tags_pool = random.sample(tags_pool, 15)
@@ -3421,7 +3441,7 @@ with tab_wholesale_main:
                         tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                         injections.append(tags_block)
 
-                # --- 2. ТАБЛИЦЫ ---
+                # ТАБЛИЦЫ
                 if use_tables and client:
                     for t_topic in table_prompts:
                         ctx = f"Данные: {tech_context_final_str}"
@@ -3432,58 +3452,25 @@ with tab_wholesale_main:
                             injections.append(raw_table)
                         except: pass
                 
-                # --- 3. ПРОМО (ПОЛНЫЙ КОД С CSS) ---
+                # ПРОМО
                 if use_promo and p_img_map:
                     p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                     if p_cands:
                         sel_p = random.sample(p_cands, min(8, max(3, len(p_cands))))
                         promo_names_map = resolve_real_names(sel_p)
-                        
                         gallery_items = []
                         for u in sel_p:
                             nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
                             img_src = p_img_map[u]
-                            item_html = f'''
-            <div class="gallery-item">
-                <h3><a href="{u}" target="_blank">{nm}</a></h3>
-                <figure>
-                    <a href="{u}" target="_blank">
-                        <picture>
-                            <img src="{img_src}" loading="lazy">
-                        </picture>
-                    </a>
-                </figure>
-            </div>'''
+                            item_html = f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>'''
                             gallery_items.append(item_html)
 
                         p_html = f'''
-<style>
-.outer-full-width-section {{ padding: 25px 0; width: 100%; }}
-.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}
-h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}
-.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}
-.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}
-.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}
-.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}
-.gallery-item h3 a:hover {{ color: #007bff; }}
-.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}
-.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}
-.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}
-.gallery-item figure a:hover img {{ transform: scale(1.05); }}
-</style>
-
-<div class="outer-full-width-section">
-    <div class="gallery-content-wrapper"> 
-        <h3 class="gallery-title">{promo_title}</h3>
-        <div class="five-col-gallery">
-            {"".join(gallery_items)}
-        </div>
-    </div>
-</div>
-'''
+<style>.outer-full-width-section {{ padding: 25px 0; width: 100%; }}.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}.gallery-item h3 a:hover {{ color: #007bff; }}.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}.gallery-item figure a:hover img {{ transform: scale(1.05); }}</style>
+<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>'''
                         injections.append(p_html)
 
-                # --- 4. ТЕКСТ ---
+                # ТЕКСТ
                 blocks = [""] * 5
                 if use_text and client:
                     log_container.write(f"   ↳ 🤖 Пишем текст...")
@@ -3492,13 +3479,13 @@ h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; paddi
                     for i_b in range(len(cleaned_blocks)):
                         if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
 
-                # --- 5. СЛИЯНИЕ ---
+                # СЛИЯНИЕ
                 effective_blocks_count = max(1, user_num_blocks)
                 for i_inj, inj in enumerate(injections):
                     target_idx = i_inj % effective_blocks_count
                     blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
 
-                # --- 6. ГЕО ---
+                # ГЕО
                 if use_geo and client:
                     log_container.write(f"   ↳ 🌍 Пишем доставку...")
                     try:
@@ -3520,32 +3507,18 @@ h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; paddi
                     st.session_state.gen_result_df.to_excel(writer, index=False)
                 st.session_state.unified_excel_data = buffer.getvalue()
                 
-                # ЖЕЛЕЗОБЕТОННОЕ АВТО-СОХРАНЕНИЕ НА ДИСК
                 try: st.session_state.gen_result_df.to_excel("backup_auto.xlsx", index=False)
                 except: pass
 
                 live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
                 
-                # КНОПКА СКАЧИВАНИЯ (С КРАСНЫМ ПРЕДУПРЕЖДЕНИЕМ)
                 with live_download_placeholder.container():
-                    st.markdown("""
-                    <div style="border: 2px solid #DC2626; background-color: #FEF2F2; padding: 10px; border-radius: 8px; margin-bottom: 10px; color: #991B1B;">
-                        <h4 style="margin:0; color: #DC2626;">🛑 НЕ НАЖИМАТЬ ВО ВРЕМЯ РАБОТЫ!</h4>
-                        <ul style="margin-bottom:0; padding-left: 20px; font-size: 13px;">
-                            <li>Нажатие <b>ОСТАНОВИТ</b> генерацию и сбросит процесс.</li>
-                            <li>Нажимайте эту кнопку <b>ТОЛЬКО</b> если скрипт завис или выдал ошибку.</li>
-                            <li>Это "аварийное сохранение" того, что успело сделаться.</li>
-                        </ul>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
                     st.download_button(
-                        label=f"💾 СПАСТИ ДАННЫЕ (Скачать {len(st.session_state.gen_result_df)} готовых стр.)",
+                        label=f"💾 СКАЧАТЬ ТЕКУЩИЙ РЕЗУЛЬТАТ ({len(st.session_state.gen_result_df)} стр.)",
                         data=st.session_state.unified_excel_data,
-                        file_name=f"EMERGENCY_SAVE_{int(time.time())}.xlsx",
+                        file_name=f"FULL_RESULT_{int(time.time())}.xlsx",
                         mime="application/vnd.ms-excel",
-                        key=f"dl_live_{int(time.time())}_{i}",
-                        help="Нажимать ТОЛЬКО при ошибке! Это остановит скрипт."
+                        key=f"dl_live_{int(time.time())}_{i}"
                     )
 
             except Exception as e:
@@ -3555,16 +3528,20 @@ h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; paddi
         
         # === ЛОГИКА АВТО-ПЕРЕЗАПУСКА ===
         if enable_auto_chain:
-            next_start = end_index
-            if next_start < total_found:
-                st.session_state.auto_current_index = next_start
-                st.info(f"⏳ Перезагрузка через 1 сек... Следующая пачка с {next_start}.")
-                time.sleep(1)
-                st.rerun() # ПЕРЕЗАГРУЗКА ДЛЯ СБРОСА ТАЙМЕРА
+            # Проверяем, не нажали ли СТОП в процессе
+            if not st.session_state.auto_run_active:
+                st.warning("⛔ Цепочка была остановлена вручную.")
             else:
-                st.session_state.auto_run_active = False
-                st.balloons()
-                st.success("🏁 ГЕНЕРАЦИЯ ПОЛНОСТЬЮ ЗАВЕРШЕНА!")
+                next_start = end_index
+                if next_start < total_found:
+                    st.session_state.auto_current_index = next_start
+                    st.info(f"⏳ Перезагрузка через 1 сек... Следующая пачка с {next_start}.")
+                    time.sleep(1)
+                    st.rerun() 
+                else:
+                    st.session_state.auto_run_active = False
+                    st.balloons()
+                    st.success("🏁 ГЕНЕРАЦИЯ ПОЛНОСТЬЮ ЗАВЕРШЕНА!")
 
     # КНОПКА СКАЧИВАНИЯ (ПОЯВЛЯЕТСЯ СРАЗУ ПОСЛЕ ПЕРВОЙ СТРОКИ)
     if st.session_state.get('unified_excel_data') is not None:
@@ -3740,6 +3717,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
