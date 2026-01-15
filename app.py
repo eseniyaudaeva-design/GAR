@@ -3415,24 +3415,43 @@ with tab_wholesale_main:
                 
                 injections = []
 
-                if use_tags and final_tags_prepared:
-                    tags_pool = final_tags_prepared
-                    if len(tags_pool) > 15: tags_pool = random.sample(tags_pool, 15)
-                    selected_urls_map = {} 
-                    for kw, links in tags_pool:
-                        valid = [u for u in links if u.rstrip('/') != page['url'].rstrip('/')]
-                        if valid:
-                             sel = random.choice(valid); selected_urls_map[sel] = kw
-                    urls_to_fetch = list(selected_urls_map.keys())
-                    real_names_map = resolve_real_names(urls_to_fetch)
-                    html_t = []
-                    for u in urls_to_fetch:
-                        display_name = real_names_map.get(u, selected_urls_map[u])
-                        if display_name == selected_urls_map[u]: display_name = display_name.capitalize()
-                        html_t.append(f'<a href="{u}" class="tag-item">{display_name}</a>')
-                    if html_t:
-                        tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
-                        injections.append(tags_block)
+# --- 1. ТЕГИ (ГИБРИД: ПОИСК ПО СЛОВАМ + ИМЕНА ИЗ КРОШЕК) ---
+                if use_tags and all_tags_links:
+                    # 1. Все доступные ссылки
+                    tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != page['url'].rstrip('/')]
+
+                    if tags_cands_all:
+                        target_tag_urls = []
+
+                        # 2. ЭТАП 1: Ищем ссылки по вашим словам
+                        for kw in list_tags_initial:
+                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                            for url in tags_cands_all:
+                                if tr_kw in url.lower() and url not in target_tag_urls:
+                                    target_tag_urls.append(url)
+                                    break 
+
+                        # 3. ЭТАП 2: Добиваем рандомом до 15 штук
+                        needed_tags = 15
+                        if len(target_tag_urls) < needed_tags:
+                            missing = needed_tags - len(target_tag_urls)
+                            pool_random = [u for u in tags_cands_all if u not in target_tag_urls]
+                            if pool_random:
+                                target_tag_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
+
+                        # 4. ЭТАП 3: Парсим реальные названия (Крошки) для ВСЕХ ссылок
+                        if target_tag_urls:
+                            # Отправляем список на скачивание имен (как в промо)
+                            tags_names_map = resolve_real_names(target_tag_urls)
+
+                            html_t = []
+                            for u in target_tag_urls:
+                                # Берем имя с сайта. Если не удалось скачать — генерируем из URL
+                                name = tags_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
+                                html_t.append(f'<a href="{u}" class="tag-item">{name}</a>')
+
+                            tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
+                            injections.append(tags_block)
 
                 if use_tables and client:
                     for t_topic in table_prompts:
@@ -3775,6 +3794,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
