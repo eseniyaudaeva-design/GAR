@@ -3204,7 +3204,7 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
 
 # ==========================================
-    # 4. УМНЫЙ ЗАПУСК (РАЗДЕЛЬНЫЕ СПИСКИ + ЛОГИКА ПЕРЕНОСА)
+    # 4. УМНЫЙ ЗАПУСК (С SEO-СЧЕТЧИКОМ)
     # ==========================================
     st.markdown("### 🚀 Управление запуском (Авто-цепочка)")
 
@@ -3257,7 +3257,7 @@ with tab_wholesale_main:
         EXCEL_COLUMN_ORDER = st.session_state.gen_result_df.columns.tolist()
         TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
-        # === 1. ЗАГРУЗКА БАЗ ДАННЫХ (Ссылки и Картинки) ===
+        # === 1. ЗАГРУЗКА БАЗ ===
         all_tags_links = []
         if use_tags:
             if tags_file_content: 
@@ -3272,81 +3272,67 @@ with tab_wholesale_main:
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
-        # === 2. СБОР СЫРЫХ СПИСКОВ ИЗ ПОЛЕЙ ===
-        # Текст
+        # === 2. СБОР СПИСКОВ И ПОДСЧЕТ ПЛАНА (ЗНАМЕНАТЕЛЬ) ===
         raw_txt = st.session_state.get("ai_text_context_editable", "")
         list_text_initial = [x.strip() for x in re.split(r'[,\n]+', raw_txt) if x.strip()]
         
-        # Теги
         raw_tags = st.session_state.get("kws_tags_auto", "")
         list_tags_initial = [x.strip() for x in re.split(r'[,\n]+', raw_tags) if x.strip()]
         
-        # Таблицы (Спец. список для таблиц)
         raw_tables = st.session_state.get("table_context_editable", "")
-        list_tables_final = [x.strip() for x in re.split(r'[,\n]+', raw_tables) if x.strip()] # Этот список идет ТОЛЬКО в таблицы
-        str_tables_final = ", ".join(list_tables_final) # Строка для промпта таблиц
+        list_tables_final = [x.strip() for x in re.split(r'[,\n]+', raw_tables) if x.strip()] 
+        str_tables_final = ", ".join(list_tables_final)
 
-        # Промо
         raw_promo = st.session_state.get("kws_promo_auto", "")
         list_promo_initial = [x.strip() for x in re.split(r'[,\n]+', raw_promo) if x.strip()]
 
-        # Гео
         raw_geo = st.session_state.get("kws_geo_auto", "")
         list_geo_final = [x.strip() for x in re.split(r'[,\n]+', raw_geo) if x.strip()]
 
-        # === 3. ЛОГИКА ПЕРЕНОСА (РАСПРЕДЕЛЕНИЕ) ===
-        final_tags_prepared = []
-        final_promo_list = []
-        final_text_seo_list = list(list_text_initial) # Начинаем с того, что было в поле Текст
+        # Считаем ОБЩЕЕ количество уникальных слов, которые мы хотим внедрить
+        # (Просто объединяем все множества)
+        unique_seo_goals = set()
+        if use_text: unique_seo_goals.update(list_text_initial)
+        if use_tags: unique_seo_goals.update(list_tags_initial)
+        if use_tables: unique_seo_goals.update(list_tables_final)
+        if use_promo: unique_seo_goals.update(list_promo_initial)
+        # Гео обычно не считаем в общее ядро товара, но можно добавить:
+        # if use_geo: unique_seo_goals.update(list_geo_final) 
+        
+        total_seo_goal = len(unique_seo_goals)
 
-        # Обработка ТЕГОВ: Есть ссылка -> в теги. Нет ссылки -> в текст.
+        # === 3. ЛОГИКА ПЕРЕНОСА ===
+        final_tags_prepared = []
+        final_text_seo_list = list(list_text_initial)
+
         if use_tags:
             for kw in list_tags_initial:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                # Ищем совпадения в базе ссылок
                 matches = [u for u in all_tags_links if tr in u.lower()]
                 if matches:
                     final_tags_prepared.append((kw, matches))
                 else:
-                    # Если ссылки нет, слово перелетает в ТЕКСТ
-                    if kw not in final_text_seo_list:
-                        final_text_seo_list.append(kw)
+                    if kw not in final_text_seo_list: final_text_seo_list.append(kw)
 
-        # Обработка ПРОМО: Есть картинка -> в промо. Нет картинки -> в текст.
         if use_promo and p_img_map:
             for kw in list_promo_initial:
-                # Пытаемся найти ссылку по транслиту (как пример логики поиска)
-                # В вашем коде промо строилось на случайной выборке, но если нужно привязать к словам:
-                # Если логика была "просто список слов для красоты" - оставляем.
-                # Если логика "найти товар по слову" - ищем.
-                
-                # В текущей версии промо - это список ТОВАРОВ.
-                # Мы проверяем, есть ли такой товар в базе p_img_map (хотя бы примерно)
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                 found_link = False
                 for link in p_img_map.keys():
                     if tr in link.lower():
-                        final_promo_list.append(kw) # Слово остается в промо (как маркер, что такой товар есть)
-                        found_link = True
-                        break
-                
+                        found_link = True; break
                 if not found_link:
-                    # Если товара нет в базе картинок -> слово летит в ТЕКСТ
-                    if kw not in final_text_seo_list:
-                        final_text_seo_list.append(kw)
-        
-        # Если промо отключено или база пуста, но слова были - переносим всё в текст
+                    if kw not in final_text_seo_list: final_text_seo_list.append(kw)
         elif list_promo_initial: 
              for kw in list_promo_initial:
                  if kw not in final_text_seo_list: final_text_seo_list.append(kw)
 
-        # === ГОТОВЫЕ СПИСКИ ДЛЯ ГЕНЕРАЦИИ ===
-        # final_text_seo_list -> идет в generate_ai_content_blocks
-        # final_tags_prepared -> идет в блок генерации тегов
-        # list_tables_final -> идет в промпт таблиц
-        # list_geo_final -> идет в промпт гео
+        # Строка для промпта таблиц и гео
+        seo_keywords_string = ", ".join(final_text_seo_list)
 
         user_num_blocks = st.session_state.get("sb_num_blocks", 5)
+        
+        # ПЛЕЙСХОЛДЕРЫ
         live_download_placeholder = st.empty()
         live_table_placeholder = st.empty()
         log_container = st.status(f"🚀 Работаем... (Начали с {start_index})", expanded=True)
@@ -3429,7 +3415,6 @@ with tab_wholesale_main:
                 
                 injections = []
 
-                # --- 1. ТЕГИ (ИСПОЛЬЗУЕМ ОТФИЛЬТРОВАННЫЙ СПИСОК final_tags_prepared) ---
                 if use_tags and final_tags_prepared:
                     tags_pool = final_tags_prepared
                     if len(tags_pool) > 15: tags_pool = random.sample(tags_pool, 15)
@@ -3449,42 +3434,34 @@ with tab_wholesale_main:
                         tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                         injections.append(tags_block)
 
-                # --- 2. ТАБЛИЦЫ (ИСПОЛЬЗУЕМ СПЕЦ СПИСОК list_tables_final) ---
                 if use_tables and client:
                     for t_topic in table_prompts:
-                        # Используем контекст из поля таблиц, а не общий
-                        ctx = f"Данные (марки, госты, размеры): {str_tables_final}" 
-                        
+                        ctx = f"Данные: {str_tables_final}" 
                         prompt_tbl = (
                             f"Create HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. "
-                            f"STRICT RULES: Use <tr>...</tr> for rows. Use <th> for headers. "
-                            f"NO <caption>. NO markdown. NO empty rows."
+                            f"IMPORTANT: Try to include these SEO keywords in content: {seo_keywords_string}. "
+                            f"STRICT RULES: Use <tr>...</tr> for rows. Use <th> for headers. NO <caption>. NO markdown. NO empty rows."
                         )
                         try:
                             resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0)
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                            
-                            # ЧИСТКА МУСОРА
+                            # Чистка
                             raw_table = re.sub(r'(</th>)\s*(<td)', r'\1</tr><tr>\2', raw_table, flags=re.IGNORECASE)
                             raw_table = re.sub(r'<caption[\s\S]*?<\/caption>', '', raw_table, flags=re.IGNORECASE)
                             raw_table = re.sub(r'<tr[^>]*>\s*(?:<(?:td|th)[^>]*>\s*<\/(?:td|th)>\s*)+<\/tr>', '', raw_table, flags=re.IGNORECASE)
                             raw_table = re.sub(r'<\/?(thead|tbody|tfoot)[^>]*>', '', raw_table)
-                            raw_table = re.sub(r'(<table[^>]*>)\s*<(?:th|td)[^>]*>(\s*<tr)', r'\1\2', raw_table) # Убираем мусорный th в начале
-
-                            # СТИЛИ (ЭТАЛОН)
+                            raw_table = re.sub(r'(<table[^>]*>)\s*<(?:th|td)[^>]*>(\s*<tr)', r'\1\2', raw_table) 
+                            
                             styled_table = raw_table
                             styled_table = styled_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
                             styled_table = styled_table.replace('<th', '<th style="border: 2px solid black; padding: 5px;"')
                             styled_table = styled_table.replace('<td', '<td style="border: 2px solid black; padding: 5px;"')
                             
-                            # ФИНАЛЬНАЯ ОБЕРТКА TBODY
                             if '<tbody>' not in styled_table:
                                 styled_table = re.sub(r'(<table[^>]*>)([\s\S]*?)(<\/table>)', r'\1<tbody>\2</tbody>\3', styled_table)
-                            
                             injections.append(styled_table)
                         except: pass
                 
-                # --- 3. ПРОМО (ИСПОЛЬЗУЕМ БАЗУ КАРТИНОК) ---
                 if use_promo and p_img_map:
                     p_cands = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                     if p_cands:
@@ -3496,17 +3473,12 @@ with tab_wholesale_main:
                             img_src = p_img_map[u]
                             item_html = f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>'''
                             gallery_items.append(item_html)
-
-                        p_html = f'''
-<style>.outer-full-width-section {{ padding: 25px 0; width: 100%; }}.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}.gallery-item h3 a:hover {{ color: #007bff; }}.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}.gallery-item figure a:hover img {{ transform: scale(1.05); }}</style>
-<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>'''
+                        p_html = f'''<style>.outer-full-width-section {{ padding: 25px 0; width: 100%; }}.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}.gallery-item h3 a:hover {{ color: #007bff; }}.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}.gallery-item figure a:hover img {{ transform: scale(1.05); }}</style><div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>'''
                         injections.append(p_html)
 
-                # --- 4. ТЕКСТ (ИСПОЛЬЗУЕМ ОБЪЕДИНЕННЫЙ СПИСОК final_text_seo_list) ---
                 blocks = [""] * 5
                 if use_text and client:
                     log_container.write(f"   ↳ 🤖 Пишем текст...")
-                    # В функцию передаем ОБНОВЛЕННЫЙ список (родные слова + потеряшки из промо/тегов)
                     blocks_raw = generate_ai_content_blocks(
                         gemini_api_key, 
                         base_text_raw or "", 
@@ -3519,19 +3491,16 @@ with tab_wholesale_main:
                     for i_b in range(len(cleaned_blocks)):
                         if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
 
-                # --- 5. СЛИЯНИЕ ---
                 effective_blocks_count = max(1, user_num_blocks)
                 for i_inj, inj in enumerate(injections):
                     target_idx = i_inj % effective_blocks_count
                     blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
 
-                # --- 6. ГЕО (ИСПОЛЬЗУЕМ СПИСОК ГЕО list_geo_final) ---
                 if use_geo and client:
                     log_container.write(f"   ↳ 🌍 Пишем доставку...")
                     try:
-                         # Берем города из поля ГЕО
                          cities = ", ".join(random.sample(list_geo_final, min(15, len(list_geo_final))))
-                         prompt_geo = f"Write ONE HTML paragraph about delivery to {cities}. No markdown."
+                         prompt_geo = f"Write ONE HTML paragraph about delivery to {cities}. Include SEO words: {seo_keywords_string}. No markdown."
                          resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.1)
                          row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                     except: pass
@@ -3547,13 +3516,27 @@ with tab_wholesale_main:
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     st.session_state.gen_result_df.to_excel(writer, index=False)
                 st.session_state.unified_excel_data = buffer.getvalue()
-                
                 try: st.session_state.gen_result_df.to_excel("backup_auto.xlsx", index=False)
                 except: pass
 
                 live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
                 
+                # === ПОДСЧЕТ ФАКТА (СЧЕТЧИК) ===
+                # Считаем количество <b> во всей строке (все ячейки текста)
+                full_row_html = "".join([str(val) for val in row_data.values()])
+                bolds_fact = full_row_html.count("<b>")
+                
                 with live_download_placeholder.container():
+                    # ЦВЕТНОЙ БЛОК СЧЕТЧИКА
+                    score_color = "#16A34A" if bolds_fact >= (total_seo_goal * 0.7) else "#CA8A04"
+                    st.markdown(f"""
+                    <div style="background-color: #F3F4F6; border: 1px solid #E5E7EB; padding: 10px; border-radius: 8px; margin-bottom: 10px; text-align: center;">
+                        <span style="font-size: 14px; color: #4B5563;">SEO-насыщенность последней стр:</span><br>
+                        <span style="font-size: 24px; font-weight: bold; color: {score_color};">{bolds_fact} / {total_seo_goal}</span>
+                        <div style="font-size: 11px; color: #9CA3AF;">(жирные теги / всего уникальных слов в задании)</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
                     st.markdown("""
                     <div style="border: 2px solid #DC2626; background-color: #FEF2F2; padding: 10px; border-radius: 8px; margin-bottom: 10px; color: #991B1B;">
                         <h4 style="margin:0; color: #DC2626;">🛑 НЕ НАЖИМАТЬ ВО ВРЕМЯ РАБОТЫ!</h4>
@@ -3769,6 +3752,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
