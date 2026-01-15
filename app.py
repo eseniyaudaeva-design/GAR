@@ -3584,52 +3584,6 @@ h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; paddi
             else:
                 st.info("Нет данных для отображения.")
 # ==========================================
-# 5. БЛОК ПРЕДПРОСМОТРА
-# ==========================================
-with tab_wholesale_main: 
-    if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not None:
-        st.markdown("---")
-        st.header("👀 Предпросмотр по колонкам")
-        
-        st.markdown("""
-        <style>
-            .preview-box {
-                border: 1px solid #e2e8f0;
-                background-color: #ffffff;
-                padding: 20px;
-                border-radius: 8px;
-                max-height: 600px;
-                overflow-y: auto;
-                box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
-        df_p = st.session_state.gen_result_df
-        
-        if 'Product Name' in df_p.columns:
-            sel_p = st.selectbox("Страница:", df_p['Product Name'].tolist(), key="ws_prev_sel")
-            row_p = df_p[df_p['Product Name'] == sel_p].iloc[0]
-            
-            # Логика фильтрации (показываем только выбранные модули)
-            relevant_cols = []
-            if use_text or use_sidebar or use_tags or use_tables or use_promo:
-                relevant_cols.extend(['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'])
-            if use_geo:
-                relevant_cols.append('IP_PROP4819')
-
-            active_tabs = [c for c in relevant_cols if str(row_p.get(c, "")).strip() != ""]
-            
-            if active_tabs:
-                tabs = st.tabs(active_tabs)
-                for i, col in enumerate(active_tabs):
-                    with tabs[i]:
-                        content_to_show = str(row_p[col])
-                        # Всегда показываем как HTML (визуально)
-                        st.markdown(f"<div class='preview-box'>{content_to_show}</div>", unsafe_allow_html=True)
-            else:
-                st.info("Нет данных для отображения по выбранным настройкам.")
-# ==========================================
 # TAB 3: PROJECT MANAGER (SAVE/LOAD)
 # ==========================================
 with tab_projects:
@@ -3747,6 +3701,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
