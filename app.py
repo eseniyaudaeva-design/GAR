@@ -3441,15 +3441,28 @@ with tab_wholesale_main:
                         tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                         injections.append(tags_block)
 
-                # ТАБЛИЦЫ
+# --- 2. ТАБЛИЦЫ (СТРОГИЙ ДИЗАЙН: 2px RAMKA) ---
                 if use_tables and client:
                     for t_topic in table_prompts:
                         ctx = f"Данные: {tech_context_final_str}"
-                        prompt_tbl = f"Create HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. No markdown."
+                        prompt_tbl = f"Create HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. Use <th> for headers. No markdown."
                         try:
                             resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0)
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                            injections.append(raw_table)
+                            
+                            # === ПРИНУДИТЕЛЬНОЕ ОФОРМЛЕНИЕ ===
+                            styled_table = raw_table
+                            
+                            # 1. Сама таблица (схлопнутые границы, ширина 100%, рамка 2px)
+                            styled_table = styled_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
+                            
+                            # 2. Заголовки (рамка 2px, отступ 5px)
+                            styled_table = styled_table.replace('<th', '<th style="border: 2px solid black; padding: 5px;"')
+                            
+                            # 3. Ячейки (рамка 2px, отступ 5px)
+                            styled_table = styled_table.replace('<td', '<td style="border: 2px solid black; padding: 5px;"')
+                            
+                            injections.append(styled_table)
                         except: pass
                 
                 # ПРОМО
@@ -3717,6 +3730,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
