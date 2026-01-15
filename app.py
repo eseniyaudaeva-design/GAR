@@ -1158,14 +1158,12 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
     }
         
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
-    # Внутренняя функция округления
-    def math_round(number):
-        return int(number + 0.5)
+    def math_round(number): return int(number + 0.5)
 
     all_forms_map = defaultdict(set)
     global_forms_counter = defaultdict(Counter) 
     
-    # 1. ОБРАБОТКА МОЕГО САЙТА
+    # 1. МОЙ САЙТ
     if not my_data or not my_data.get('body_text'): 
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
         my_clean_domain = "local"
@@ -1176,13 +1174,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for k, v in my_forms.items(): all_forms_map[k].update(v)
         my_clean_domain = my_data['domain'].lower().replace('www.', '').split(':')[0]
 
-    # 2. ОБРАБОТКА КОНКУРЕНТОВ
+    # 2. КОНКУРЕНТЫ
     comp_docs = []
     for p in comp_data_full:
         if not p.get('body_text'): continue
-        
         body, c_forms = process_text_detailed(p['body_text'], settings)
         
+        # Статистика реальных форм
         raw_words_for_stats = re.findall(r'[а-яА-ЯёЁ0-9a-zA-Z]+', p['body_text'].lower())
         for rw in raw_words_for_stats:
             if len(rw) < 2: continue
@@ -1199,7 +1197,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     if not comp_docs:
         return { "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}, "missing_semantics_high": [], "missing_semantics_low": [] }
 
-    # Метрики корпуса
+    # МЕТРИКИ КОРПУСА
     c_lens = [len(d['body']) for d in comp_docs]
     avg_dl = np.mean(c_lens) if c_lens else 1
     N = len(comp_docs)
@@ -1229,8 +1227,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     
     words_with_median_gt_0 = set() 
     my_found_words_from_median = set() 
-    
-    # Pre-calculate my_lemmas set for speed
     my_lemmas_set = set(my_lemmas)
 
     for lemma in vocab:
@@ -1251,35 +1247,30 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             for i in range(N):
                 raw_cnt = raw_counts[i]
                 comp_len = c_lens[i]
-                if comp_len > 0:
-                    normalized_val = raw_cnt * (my_len / comp_len)
-                    norm_counts.append(normalized_val)
-                else:
-                    norm_counts.append(0)
-            if norm_counts:
-                rec_median_target = math_round(np.median(sorted(norm_counts)))
-            else:
-                rec_median_target = 0
+                normalized_val = raw_cnt * (my_len / comp_len) if comp_len > 0 else 0
+                norm_counts.append(normalized_val)
+            rec_median_target = math_round(np.median(sorted(norm_counts))) if norm_counts else 0
         else:
             rec_median_target = rec_median_absolute
 
-        # --- МОЯ СТАТИСТИКА (С УЛУЧШЕННЫМ ПОИСКОМ) ---
+        # --- ПОИСК ВХОЖДЕНИЙ (SMART FUZZY) ---
         my_tf_count = my_lemmas.count(lemma)
         
-        # === FIX: МЯГКИЙ ПОИСК ===
-        # Если точного совпадения нет, но слово нужно, ищем похожие корни
+        # Мягкий поиск, если прямого вхождения нет
         if my_tf_count == 0 and rec_median_target > 0:
-            # Проверяем, входит ли лемма как часть в другие слова (или наоборот)
-            # Например: lemma="алюминий", my_word="алюминиевый" -> засчитываем
             for my_word in my_lemmas_set:
                 if len(lemma) > 3 and len(my_word) > 3:
                     if lemma in my_word or my_word in lemma:
-                        my_tf_count = 1 # Засчитываем хотя бы 1 вхождение
-                        break
-        # =========================
+                        my_tf_count = 1; break
+                # Корень (4 буквы)
+                if len(lemma) >= 5 and len(my_word) >= 5:
+                    if lemma[:4] == my_word[:4]: 
+                        my_tf_count = 1; break
+        # -------------------------------------
 
         if obs_max == 0 and my_tf_count == 0: continue
 
+        # Собираем базу для ШИРИНЫ
         if rec_median_target >= 1:
             words_with_median_gt_0.add(lemma)
             if my_tf_count > 0:
@@ -1323,12 +1314,17 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Переспам": obs_max
         })
 
+    # ============================================
+    # 4. ФИНАЛЬНЫЙ РАСЧЕТ БАЛЛОВ (СТРОГИЙ)
+    # ============================================
     total_needed = len(words_with_median_gt_0)
     total_found = len(my_found_words_from_median)
     
     if total_needed > 0:
         ratio = total_found / total_needed
-        my_width_score_final = int(min(100, ratio * 120))
+        # БЫЛО: ratio * 120 (83% = 100 баллов)
+        # СТАЛО: ratio * 105 (95% = 100 баллов)
+        my_width_score_final = int(min(100, ratio * 105))
     else:
         my_width_score_final = 0
 
@@ -1353,10 +1349,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for i, doc in enumerate(comp_docs):
         c_found = len(set(doc['body']).intersection(S_WIDTH_CORE))
         if total_needed > 0:
-            c_width_val = int(min(100, (c_found / total_needed) * 120))
+            c_width_val = int(min(100, (c_found / total_needed) * 105)) # Тут тоже 105
         else:
             c_width_val = 0
-            
         raw_val = calculate_raw_power(doc['body'], c_lens[i])
         comp_raw_scores.append(raw_val)
         competitor_scores_map[doc['url']] = {'width_final': c_width_val, 'raw_depth': raw_val}
@@ -1419,13 +1414,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     st.session_state['detected_anomalies'] = bad_urls_dicts
     st.session_state['serp_trend_info'] = trend_info
 
+    # Возвращаем ещё и отладочные данные
     return { 
         "depth": pd.DataFrame(table_depth), 
         "hybrid": pd.DataFrame(table_hybrid), 
         "relevance_top": pd.DataFrame(table_rel).sort_values(by='Позиция', ascending=True).reset_index(drop=True), 
         "my_score": {"width": my_width_score_final, "depth": my_depth_score_final}, 
         "missing_semantics_high": missing_semantics_high, 
-        "missing_semantics_low": missing_semantics_low 
+        "missing_semantics_low": missing_semantics_low,
+        "debug_width": {"found": total_found, "needed": total_needed} # <--- ВОТ ЭТО ДОБАВИЛ
     }
     
 def get_hybrid_word_type(word, main_marker_root, specs_dict=None):
@@ -3701,6 +3698,7 @@ with tab_projects:
                         st.error("❌ Неверный формат файла проекта.")
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
+
 
 
 
