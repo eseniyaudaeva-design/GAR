@@ -861,27 +861,25 @@ def process_text_detailed(text, settings, n_gram=1):
         forms_map[lemma].add(w)
     return lemmas, forms_map
 
-def get_pos_arsenkin_FINAL(query, target_url, region_name, api_token):
+def get_pos_arsenkin_DEBUG(query, target_url, region_name, api_token):
     """
-    Финальная версия функции с новым именем, чтобы избежать кэширования.
-    Параметр alt_urls удален ГАРАНТИРОВАННО.
+    Функция с выводом отладки прямо в интерфейс.
     """
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
-    
     headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
     
+    # Регион
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # === JSON БЕЗ ЛИШНИХ ПОЛЕЙ ===
+    # JSON (Format 0 - Простой)
     payload = {
         "tools_name": "positions",
         "data": {
             "queries": [str(query)],       
             "url": str(target_url).strip(),
-            # "alt_urls": [], <--- ЭТОЙ СТРОКИ ТУТ НЕТ ФИЗИЧЕСКИ
             "subdomain": True,             
             "se": [{"type": 2, "region": region_id_int}],
             "format": 0
@@ -889,45 +887,49 @@ def get_pos_arsenkin_FINAL(query, target_url, region_name, api_token):
     }
 
     try:
-        # 1. ОТПРАВКА
+        # 1. ЗАПУСК
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
         resp = r.json()
         
-        if "error" in resp: 
-            return None, f"API Error: {resp.get('msg') or resp}"
+        if "error" in resp: return 0, f"API Error: {resp}"
         
         task_id = resp.get("task_id")
-        if not task_id: 
-            return None, f"No ID. Server sent: {str(resp)}"
+        if not task_id: return 0, f"No Task ID. Raw: {resp}"
+        
+        # ВИЗУАЛЬНОЕ УВЕДОМЛЕНИЕ (Как вы просили)
+        st.toast(f"✅ Задача {task_id} запущена...", icon="⏳")
 
         # 2. ОЖИДАНИЕ
-        for _ in range(40):
+        for i in range(40):
             time.sleep(2)
             r_c = requests.post(url_check, headers=headers, json={"task_id": task_id})
             if r_c.json().get("status") == "finish":
                 break
         else:
-            return None, "Timeout"
+            return 0, "Timeout (долго нет ответа)"
 
-        # 3. ПОЛУЧЕНИЕ
+        # 3. РЕЗУЛЬТАТ
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
+        # Парсинг
         res_list = data.get("result", [])
-        if not res_list: return 0, f"Empty Result: {str(data)}"
+        if not res_list: return 0, f"Пустой список result: {data}"
             
-        item = res_list[0]
+        item = res_list[0] # Берем первый результат
         
+        # Ищем позицию
         pos = item.get('position')
         if pos is None: pos = item.get('pos')
         
+        # ЕСЛИ 0 ИЛИ НЕТ ПОЗИЦИИ — ВОЗВРАЩАЕМ ВЕСЬ JSON
         if str(pos) in ['0', '-', '', 'None']:
-            return 0, f"RAW: {str(item)}"
+            return 0, item # Возвращаем словарь целиком для показа
             
         return int(pos), None
 
     except Exception as e:
-        return None, f"PyErr: {str(e)}"
+        return 0, f"Crash: {str(e)}"
 
 def parse_page(url, settings, query_context=""):
     import streamlit as st
@@ -3892,34 +3894,31 @@ def add_to_tracking(url, keyword):
         f.write(f"{url};{keyword};{today};0\n")
 
 # ==========================================
-# МОНИТОРИНГ (ВЫЗОВ НОВОЙ ФУНКЦИИ)
+# МОНИТОРИНГ (РЕЖИМ ОТЛАДКИ)
 # ==========================================
 with tab_monitoring:
     st.header("📉 Трекер позиций")
 
-    # Выбор региона
+    # Регион
     default_reg_val = st.session_state.get('settings_region', 'Москва')
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
 
+    # СЕЛЕКТОР РЕГИОНА
     selected_mon_region = st.selectbox(
-        "🌍 Сначала выберите регион для проверки:", 
+        "🌍 Регион (Важно!):", 
         list(REGION_MAP.keys()), 
         index=def_index,
-        key="mon_region_selector_final_v2"
+        key="mon_region_debug"
     )
+    
+    # Предупреждение, если выбран не тот регион
+    if "stalmetural" in str(pd.read_csv(TRACK_FILE, sep=";").to_dict()) and selected_mon_region == "Москва":
+        st.warning("⚠️ Вы проверяете Уральский сайт в регионе МОСКВА. Скорее всего, позиций не будет. Смените регион на Екатеринбург!")
+
     st.markdown("---")
 
-    if not os.path.exists(TRACK_FILE):
-        st.info("Список пуст.")
-        with st.form("add_manual_final_v2"):
-            c1, c2 = st.columns(2)
-            u = c1.text_input("URL")
-            k = c2.text_input("Ключевое слово")
-            if st.form_submit_button("Добавить"):
-                add_to_tracking(u, k)
-                st.rerun()
-    else:
+    if os.path.exists(TRACK_FILE):
         df_mon = pd.read_csv(TRACK_FILE, sep=";")
         t_place = st.empty()
 
@@ -3936,13 +3935,13 @@ with tab_monitoring:
             t_place.dataframe(
                 df.style.map(style_pos, subset=['Position']),
                 use_container_width=True,
-                column_config={"URL": st.column_config.LinkColumn("Ссылка"), "Position": st.column_config.NumberColumn("Позиция", format="%d")}
+                column_config={"URL": st.column_config.LinkColumn("Ссылка"), "Position": st.column_config.NumberColumn(f"Позиция ({selected_mon_region})", format="%d")}
             )
 
         render_table(df_mon)
         st.markdown("---")
         
-        if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ (Регион: {selected_mon_region})", type="primary", use_container_width=True):
+        if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ", type="primary", use_container_width=True):
             if not ARSENKIN_TOKEN:
                 st.error("Нет токена!")
             else:
@@ -3953,27 +3952,33 @@ with tab_monitoring:
                     kw = row['Keyword']
                     url = row['URL']
                     
-                    # === ВЫЗЫВАЕМ НОВУЮ ФУНКЦИЮ ===
-                    pos, debug_msg = get_pos_arsenkin_FINAL(kw, url, selected_mon_region, ARSENKIN_TOKEN)
+                    # Запрос
+                    pos, debug_data = get_pos_arsenkin_DEBUG(kw, url, selected_mon_region, ARSENKIN_TOKEN)
                     
-                    if debug_msg and pos is None:
-                        logs.error(f"❌ {kw}: {debug_msg}")
-                    elif pos == 0 and debug_msg:
-                         logs.warning(f"⚪ {kw}: 0. Данные: {debug_msg}")
-                         df_mon.at[i, 'Position'] = 0
-                    else:
-                        if pos > 0: logs.success(f"✅ {kw}: **{pos}**")
-                        else: logs.warning(f"⚪ {kw}: Не в топе")
+                    if pos > 0:
+                        logs.success(f"✅ {kw}: **{pos}**")
                         df_mon.at[i, 'Position'] = pos
+                    else:
+                        # ЕСЛИ 0 - ПОКАЗЫВАЕМ ПОЧЕМУ
+                        logs.error(f"❌ {kw}: Позиция 0")
+                        with logs.expander(f"🔍 Ответ сервера Арсенкина для '{kw}'"):
+                            st.json(debug_data) # <--- ВОТ ТУТ БУДЕТ ВИДНО ВСЁ
+                            
+                        df_mon.at[i, 'Position'] = 0
                     
                     df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
                     bar.progress((i + 1) / len(df_mon))
                 
                 df_mon.to_csv(TRACK_FILE, sep=";", index=False)
                 render_table(df_mon)
-                logs.success(f"Проверка завершена!")
-        
-        with st.expander("Управление"):
-            if st.button("🗑️ Сброс"):
+                
+        with st.expander("🗑️ Сброс"):
+            if st.button("Стереть базу"):
                 os.remove(TRACK_FILE)
                 st.rerun()
+    else:
+        st.info("Добавьте URL")
+        with st.form("add_m"):
+            u = st.text_input("URL"); k = st.text_input("Ключ")
+            if st.form_submit_button("Ok"):
+                add_to_tracking(u,k); st.rerun()
