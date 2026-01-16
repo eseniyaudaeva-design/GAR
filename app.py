@@ -3903,22 +3903,40 @@ def add_to_tracking(url, keyword):
         f.write(f"{url};{keyword};{today};0\n")
 
 # ==========================================
-# МОНИТОРИНГ С ВЫБОРОМ РЕГИОНА
+# МОНИТОРИНГ: ИСПРАВЛЕННЫЙ ИНТЕРФЕЙС
 # ==========================================
 with tab_monitoring:
     st.header("📉 Трекер позиций")
 
-    # 1. ПРОВЕРКА БАЗЫ
+    # 1. ВЫБОР РЕГИОНА (ТЕПЕРЬ НАХОДИТСЯ НАВЕРХУ И ВИДЕН ВСЕГДА)
+    # Пытаемся взять дефолтное значение из первой вкладки
+    default_reg_val = st.session_state.get('settings_region', 'Москва')
+    try:
+        def_index = list(REGION_MAP.keys()).index(default_reg_val)
+    except:
+        def_index = 0
+
+    selected_mon_region = st.selectbox(
+        "🌍 Сначала выберите регион для проверки:", 
+        list(REGION_MAP.keys()), 
+        index=def_index,
+        key="mon_region_selector_global"
+    )
+    st.markdown("---")
+
+    # 2. ПРОВЕРКА, ЕСТЬ ЛИ ДАННЫЕ ДЛЯ ОТОБРАЖЕНИЯ
     if not os.path.exists(TRACK_FILE):
-        st.info("Список пуст.")
-        with st.form("add_manual_mon"):
+        # Если база пуста, показываем только форму добавления
+        st.info("Список для отслеживания пуст. Добавьте первую страницу.")
+        with st.form("add_manual_empty_state"):
             c1, c2 = st.columns(2)
-            u = c1.text_input("URL (https://...)")
-            k = c2.text_input("Ключ")
-            if st.form_submit_button("Добавить"):
+            u = c1.text_input("URL (с https://)")
+            k = c2.text_input("Ключевое слово")
+            if st.form_submit_button("Добавить в список"):
                 add_to_tracking(u, k)
                 st.rerun()
     else:
+        # Если база есть, показываем таблицу и кнопку проверки
         df_mon = pd.read_csv(TRACK_FILE, sep=";")
         t_place = st.empty()
 
@@ -3935,38 +3953,15 @@ with tab_monitoring:
             t_place.dataframe(
                 df.style.map(style_pos, subset=['Position']),
                 use_container_width=True,
-                column_config={
-                    "URL": st.column_config.LinkColumn("Ссылка"),
-                    "Position": st.column_config.NumberColumn("Позиция", format="%d")
-                }
+                column_config={"URL": st.column_config.LinkColumn("Ссылка"), "Position": st.column_config.NumberColumn("Позиция", format="%d")}
             )
 
         render_table(df_mon)
         st.markdown("---")
-
-        # === ВЫБОР РЕГИОНА (КАК В ШАГЕ 1) ===
-        # Пытаемся взять дефолтное значение из первой вкладки, если есть
-        default_reg_val = st.session_state.get('settings_region', 'Москва')
-        try:
-            def_index = list(REGION_MAP.keys()).index(default_reg_val)
-        except:
-            def_index = 0
-
-        c_reg, c_btn, c_del = st.columns([2, 3, 1])
-
-        with c_reg:
-            # Тот самый селектбокс
-            selected_mon_region = st.selectbox(
-                "🌍 Регион проверки:", 
-                list(REGION_MAP.keys()), 
-                index=def_index,
-                key="mon_region_selector"
-            )
-
-        with c_btn:
-            st.write("") # Отступ для выравнивания
-            st.write("")
-            if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ", type="primary", use_container_width=True):
+        
+        col_btn, col_del = st.columns([3, 1])
+        with col_btn:
+            if st.button(f"🚀 ПРОВЕРИТЬ ПОЗИЦИИ (Регион: {selected_mon_region})", type="primary", use_container_width=True):
                 if not ARSENKIN_TOKEN:
                     st.error("Нет токена Арсенкина!")
                 else:
@@ -3977,7 +3972,6 @@ with tab_monitoring:
                         kw = row['Keyword']
                         url = row['URL']
                         
-                        # Передаем выбранный в селекте регион
                         pos, err = get_position_arsenkin_task(kw, url, selected_mon_region, ARSENKIN_TOKEN)
                         
                         if err:
@@ -3994,11 +3988,8 @@ with tab_monitoring:
                     df_mon.to_csv(TRACK_FILE, sep=";", index=False)
                     render_table(df_mon)
                     logs.success(f"Готово! Регион: {selected_mon_region}")
-
-        with c_del:
-            st.write("") 
-            st.write("")
+        
+        with col_del:
             if st.button("🗑️ Сброс"):
                 os.remove(TRACK_FILE)
                 st.rerun()
-
