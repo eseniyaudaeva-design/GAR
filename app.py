@@ -863,46 +863,41 @@ def process_text_detailed(text, settings, n_gram=1):
 
 def get_pos_arsenkin_V3(query, target_url, region_name, api_token):
     """
-    ВЕРСИЯ 3. Гарантированно без alt_urls.
+    Финальная функция проверки позиций.
+    БЕЗ параметра alt_urls (чтобы не было ошибки JSON).
     """
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
     headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
     
+    # Получаем ID региона
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # === JSON БЕЗ ALT_URLS ===
+    # ФОРМИРУЕМ ЗАПРОС (ОЧИЩЕННЫЙ)
     payload = {
         "tools_name": "positions",
         "data": {
             "queries": [str(query)],       
             "url": str(target_url).strip(),
-            # СТРОКИ alt_urls ТУТ НЕТ
             "subdomain": True,             
             "se": [{"type": 2, "region": region_id_int}],
-            "format": 0
+            "format": 0 # Простой формат
         }
     }
 
     try:
         # 1. ЗАПУСК
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
+        if r.status_code != 200: return 0, {"error": f"HTTP {r.status_code}", "text": r.text}
         
-        # Если 500 или 400 - возвращаем тело ответа
-        if r.status_code != 200:
-            return 0, {"error": f"HTTP {r.status_code}", "details": r.text}
-
         resp = r.json()
         if "error" in resp: return 0, resp
         
         task_id = resp.get("task_id")
         if not task_id: return 0, {"error": "No Task ID", "resp": resp}
         
-        # Уведомление
-        st.toast(f"Задача {task_id} запущена...", icon="🚀")
-
         # 2. ОЖИДАНИЕ
         for i in range(40):
             time.sleep(2)
@@ -924,7 +919,7 @@ def get_pos_arsenkin_V3(query, target_url, region_name, api_token):
         if pos is None: pos = item.get('pos')
         
         if str(pos) in ['0', '-', '', 'None']:
-            return 0, item # Возвращаем сырой ответ
+            return 0, item # Возвращаем сырой ответ для отладки
             
         return int(pos), None
 
@@ -3894,28 +3889,22 @@ def add_to_tracking(url, keyword):
         f.write(f"{url};{keyword};{today};0\n")
 
 # ==========================================
-# МОНИТОРИНГ (РЕЖИМ ОТЛАДКИ)
+# МОНИТОРИНГ (ВЫЗОВ V3)
 # ==========================================
 with tab_monitoring:
     st.header("📉 Трекер позиций")
 
-    # Регион
+    # Выбор региона
     default_reg_val = st.session_state.get('settings_region', 'Москва')
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
 
-    # СЕЛЕКТОР РЕГИОНА
     selected_mon_region = st.selectbox(
-        "🌍 Регион (Важно!):", 
+        "🌍 Регион проверки:", 
         list(REGION_MAP.keys()), 
         index=def_index,
-        key="mon_region_debug"
+        key="mon_region_selector_v3_fixed"
     )
-    
-    # Предупреждение, если выбран не тот регион
-    if "stalmetural" in str(pd.read_csv(TRACK_FILE, sep=";").to_dict()) and selected_mon_region == "Москва":
-        st.warning("⚠️ Вы проверяете Уральский сайт в регионе МОСКВА. Скорее всего, позиций не будет. Смените регион на Екатеринбург!")
-
     st.markdown("---")
 
     if os.path.exists(TRACK_FILE):
@@ -3941,7 +3930,7 @@ with tab_monitoring:
         render_table(df_mon)
         st.markdown("---")
         
-        if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ", type="primary", use_container_width=True):
+        if st.button(f"🚀 ОБНОВИТЬ (V3)", type="primary", use_container_width=True):
             if not ARSENKIN_TOKEN:
                 st.error("Нет токена!")
             else:
@@ -3952,18 +3941,17 @@ with tab_monitoring:
                     kw = row['Keyword']
                     url = row['URL']
                     
-                    # Запрос
-                    pos, debug_data = get_pos_arsenkin_DEBUG(kw, url, selected_mon_region, ARSENKIN_TOKEN)
+                    # === ЗДЕСЬ БЫЛА ОШИБКА, ТЕПЕРЬ ИСПРАВЛЕНО ===
+                    # Вызываем функцию V3, которая точно есть в коде
+                    pos, debug_data = get_pos_arsenkin_V3(kw, url, selected_mon_region, ARSENKIN_TOKEN)
                     
                     if pos > 0:
                         logs.success(f"✅ {kw}: **{pos}**")
                         df_mon.at[i, 'Position'] = pos
                     else:
-                        # ЕСЛИ 0 - ПОКАЗЫВАЕМ ПОЧЕМУ
-                        logs.error(f"❌ {kw}: Позиция 0")
-                        with logs.expander(f"🔍 Ответ сервера Арсенкина для '{kw}'"):
-                            st.json(debug_data) # <--- ВОТ ТУТ БУДЕТ ВИДНО ВСЁ
-                            
+                        logs.error(f"❌ {kw}: 0")
+                        with logs.expander("Ответ сервера"):
+                            st.json(debug_data)
                         df_mon.at[i, 'Position'] = 0
                     
                     df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -3972,15 +3960,13 @@ with tab_monitoring:
                 df_mon.to_csv(TRACK_FILE, sep=";", index=False)
                 render_table(df_mon)
                 
-        with st.expander("🗑️ Сброс"):
-            if st.button("Стереть базу"):
+        with st.expander("Сброс"):
+            if st.button("Удалить базу"):
                 os.remove(TRACK_FILE)
                 st.rerun()
     else:
         st.info("Добавьте URL")
-        with st.form("add_m"):
+        with st.form("add_m_v3_form"):
             u = st.text_input("URL"); k = st.text_input("Ключ")
             if st.form_submit_button("Ok"):
                 add_to_tracking(u,k); st.rerun()
-
-
