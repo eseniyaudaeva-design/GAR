@@ -3879,7 +3879,7 @@ with tab_projects:
                     st.error(f"❌ Ошибка чтения файла: {e}")
 
 # ==========================================
-# МОНИТОРИНГ: ФИНАЛ (ВАЛИДАЦИЯ URL + ALT_URLS)
+# МОНИТОРИНГ: ЧИСТАЯ ВЕРСИЯ (БЕЗ МУСОРА)
 # ==========================================
 import os
 import pandas as pd
@@ -3891,7 +3891,6 @@ from urllib.parse import urlparse
 
 TRACK_FILE = "monitoring.csv"
 
-# Функция добавления
 def add_to_tracking(url, keyword):
     if not os.path.exists(TRACK_FILE):
         with open(TRACK_FILE, "w", encoding="utf-8") as f:
@@ -3904,7 +3903,7 @@ def add_to_tracking(url, keyword):
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         f.write(f"{url};{keyword};{today};0\n")
 
-# Функция нормализации для сравнения (убирает мусор)
+# Функция нормализации (убирает www и http для сравнения)
 def normalize_url(u):
     if not u: return ""
     u = str(u).lower().strip()
@@ -3915,129 +3914,137 @@ def normalize_url(u):
 with tab_monitoring:
     st.header("📉 Трекер позиций")
 
-    # Регион
+    # Выбор региона
     default_reg_val = st.session_state.get('settings_region', 'Москва')
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
 
-    selected_mon_region = st.selectbox("🌍 Регион:", list(REGION_MAP.keys()), index=def_index, key="mon_reg_valid_fix")
-    st.markdown("---")
+    col_reg, col_btn, col_del = st.columns([2, 2, 1])
+    
+    with col_reg:
+        selected_mon_region = st.selectbox("Регион:", list(REGION_MAP.keys()), index=def_index, label_visibility="collapsed")
 
+    # Если базы нет
     if not os.path.exists(TRACK_FILE):
-        st.info("База пуста.")
-        with st.form("add_m_valid"):
+        st.info("Список пуст.")
+        with st.form("add_clean"):
             u = st.text_input("URL"); k = st.text_input("Ключ")
             if st.form_submit_button("Добавить"):
                 add_to_tracking(u,k); st.rerun()
     else:
+        # Загружаем таблицу
         try: df_mon = pd.read_csv(TRACK_FILE, sep=";")
         except: df_mon = pd.DataFrame()
 
         if not df_mon.empty:
-            st.dataframe(df_mon, use_container_width=True)
+            # === КНОПКА ЗАПУСКА ===
+            with col_btn:
+                if st.button("🚀 ОБНОВИТЬ ПОЗИЦИИ", type="primary", use_container_width=True):
+                    if not ARSENKIN_TOKEN:
+                        st.error("Нет токена!")
+                    else:
+                        # Только прогресс-бар, никакого текста
+                        bar = st.progress(0)
+                        
+                        reg_ids = REGION_MAP.get(selected_mon_region, {"ya": 213})
+                        rid_int = int(reg_ids['ya'])
+
+                        for i, row in df_mon.iterrows():
+                            kw = str(row['Keyword'])
+                            target_url = str(row['URL']).strip()
+                            
+                            # 1. Выделяем домен для поиска
+                            parsed = urlparse(target_url)
+                            domain_only = parsed.netloc.replace("www.", "")
+                            if not domain_only: domain_only = target_url.split('/')[0]
+
+                            # 2. ЗАПРОС
+                            payload = {
+                                "tools_name": "positions",
+                                "data": {
+                                    "queries": [kw],
+                                    "url": domain_only, # Ищем домен
+                                    "subdomain": True, 
+                                    "se": [{"type": 2, "region": rid_int}],
+                                    "format": 0 
+                                }
+                            }
+                            
+                            try:
+                                r = requests.post("https://arsenkin.ru/api/tools/set", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json=payload, timeout=20)
+                                tid = r.json().get("task_id")
+                                
+                                if tid:
+                                    # ЖДЕМ
+                                    for _ in range(40):
+                                        time.sleep(1.5)
+                                        r_check = requests.post("https://arsenkin.ru/api/tools/check", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
+                                        if r_check.json().get("status") == "finish": break
+                                    
+                                    # ПОЛУЧАЕМ
+                                    r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
+                                    final_data = r_get.json()
+                                    
+                                    # ПАРСИНГ
+                                    result_block = final_data.get("result", {})
+                                    table_block = result_block.get("table", {})
+                                    
+                                    if kw in table_block:
+                                        data_kw = table_block[kw]
+                                        pos_list = data_kw.get("position", [])
+                                        found_pos = int(pos_list[0]) if pos_list else 1001
+                                        
+                                        # Релевантная страница
+                                        found_url = data_kw.get("relevant") or data_kw.get("url") or ""
+                                        
+                                        if found_pos < 1000:
+                                            # Сверка URL
+                                            norm_target = normalize_url(target_url)
+                                            norm_found = normalize_url(found_url)
+                                            
+                                            is_match = (norm_target in norm_found) or (norm_found in norm_target)
+                                            
+                                            if is_match:
+                                                df_mon.at[i, 'Position'] = found_pos
+                                            else:
+                                                # Если страница не та - ставим 0 (или можно оставить found_pos, если хотите видеть просто домен)
+                                                df_mon.at[i, 'Position'] = 0 
+                                        else:
+                                            df_mon.at[i, 'Position'] = 0
+                                    else:
+                                        df_mon.at[i, 'Position'] = 0
+
+                            except:
+                                pass # Игнорируем ошибки, просто идем дальше
+                            
+                            # Обновляем дату и сохраняем
+                            df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+                            df_mon.to_csv(TRACK_FILE, sep=";", index=False)
+                            bar.progress((i + 1) / len(df_mon))
+                        
+                        # === ПЕРЕЗАГРУЗКА, ЧТОБЫ ОБНОВИТЬ ТАБЛИЦУ ===
+                        st.rerun()
+
+            # Рисуем таблицу
+            def style_pos(v):
+                try:
+                    i = int(v)
+                    if 0 < i <= 10: return 'color: #16a34a; font-weight: bold' # Зеленый
+                    if 10 < i <= 30: return 'color: #ca8a04' # Желтый
+                    if i == 0: return 'color: #dc2626' # Красный
+                except: pass
+                return ''
+
+            st.dataframe(
+                df_mon.style.map(style_pos, subset=['Position']),
+                use_container_width=True,
+                height=500,
+                column_config={
+                    "URL": st.column_config.LinkColumn("Ссылка"),
+                    "Position": st.column_config.NumberColumn("Позиция", format="%d")
+                }
+            )
             
-            if st.button("🚀 ОБНОВИТЬ ПОЗИЦИИ", type="primary"):
-                if not ARSENKIN_TOKEN:
-                    st.error("НЕТ ТОКЕНА!")
-                    st.stop()
-                
-                logs = st.container(border=True)
-                bar = logs.progress(0)
-                
-                reg_ids = REGION_MAP.get(selected_mon_region, {"ya": 213})
-                rid_int = int(reg_ids['ya'])
-                
-                logs.info(f"📍 Регион: **{selected_mon_region}** (ID {rid_int})")
-
-                for i, row in df_mon.iterrows():
-                    kw = str(row['Keyword'])
-                    raw_url = str(row['URL']).strip()
-                    
-                    # 1. ЧИНИМ URL ДЛЯ API (ОБЯЗАТЕЛЬНО HTTPS)
-                    api_url = raw_url
-                    if not api_url.startswith("http"):
-                        api_url = "https://" + api_url
-                    
-                    # 2. ГЕНЕРИРУЕМ ALT_URLS (Ссылка + Вариант со слэшем/без)
-                    alt_url_var = api_url[:-1] if api_url.endswith('/') else api_url + '/'
-                    
-                    # ЗАПРОС (Теперь тут валидные данные)
-                    payload = {
-                        "tools_name": "positions",
-                        "data": {
-                            "queries": [kw],
-                            "url": api_url,          # <--- СТРОГО URL
-                            "alt_urls": [api_url, alt_url_var], # <--- МАССИВ С ВАРИАНТАМИ
-                            "subdomain": True, 
-                            "se": [{"type": 2, "region": rid_int}],
-                            "format": 0 
-                        }
-                    }
-                    
-                    try:
-                        # ЗАПУСК
-                        r = requests.post("https://arsenkin.ru/api/tools/set", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json=payload, timeout=20)
-                        resp = r.json()
-                        tid = resp.get("task_id")
-                        
-                        if not tid:
-                            logs.error(f"❌ API ОШИБКА: {resp}")
-                            continue
-                        
-                        # ОЖИДАНИЕ
-                        for _ in range(40):
-                            time.sleep(1.5)
-                            r_check = requests.post("https://arsenkin.ru/api/tools/check", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
-                            if r_check.json().get("status") == "finish":
-                                break
-                        
-                        # ПОЛУЧЕНИЕ
-                        r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
-                        final_data = r_get.json()
-                        
-                        # ПАРСИНГ
-                        result_block = final_data.get("result", {})
-                        table_block = result_block.get("table", {})
-                        
-                        if kw in table_block:
-                            data_kw = table_block[kw]
-                            
-                            # Позиция
-                            pos_list = data_kw.get("position", [])
-                            found_pos = int(pos_list[0]) if pos_list else 1001
-                            
-                            # Релевантная страница из выдачи
-                            found_url = data_kw.get("relevant") or data_kw.get("url") or ""
-                            
-                            # ЛОГИКА:
-                            if found_pos < 1000:
-                                # Проверяем, наша ли это страница
-                                norm_target = normalize_url(raw_url)
-                                norm_found = normalize_url(found_url)
-                                
-                                # Считаем совпадением, если один урл входит в другой (без учета http/www)
-                                is_match = (norm_target in norm_found) or (norm_found in norm_target)
-                                
-                                if is_match:
-                                    logs.success(f"✅ {kw}: **{found_pos}**")
-                                    df_mon.at[i, 'Position'] = found_pos
-                                else:
-                                    logs.warning(f"⚠️ {kw}: {found_pos} место, но другая страница!\n(В топе: ...{found_url[-30:]})")
-                                    # Можно ставить found_pos, но помечать цветом. Пока ставим как есть.
-                                    df_mon.at[i, 'Position'] = found_pos 
-                            else:
-                                logs.warning(f"⚪ {kw}: Не найдено (100+)")
-                                df_mon.at[i, 'Position'] = 0
-                        else:
-                            logs.warning(f"Нет данных для {kw}")
-
-                    except Exception as e:
-                        logs.error(f"🔥 ERR: {e}")
-                
-                df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
-                df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                st.success("✅ Готово!")
-                
-        st.markdown("---")
-        if st.button("🔥 УДАЛИТЬ ФАЙЛ БАЗЫ", type="secondary"):
-            os.remove(TRACK_FILE); st.rerun()
+            with col_del:
+                if st.button("🗑️", help="Очистить список"):
+                    os.remove(TRACK_FILE); st.rerun()
