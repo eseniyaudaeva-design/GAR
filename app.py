@@ -3878,27 +3878,13 @@ with tab_projects:
                 except Exception as e:
                     st.error(f"❌ Ошибка чтения файла: {e}")
 
-
 # ==========================================
-# TAB 4: МОНИТОРИНГ (ВСТАВИТЬ В КОНЕЦ ФАЙЛА)
-# ==========================================
-TRACK_FILE = "monitoring.csv"
-
-def add_to_tracking(url, keyword):
-    if not os.path.exists(TRACK_FILE):
-        with open(TRACK_FILE, "w", encoding="utf-8") as f:
-            f.write("URL;Keyword;Date;Position\n")
-    with open(TRACK_FILE, "a", encoding="utf-8") as f:
-        today = datetime.datetime.now().strftime("%Y-%m-%d")
-        f.write(f"{url};{keyword};{today};0\n")
-
-# ==========================================
-# МОНИТОРИНГ (NO_ALT VERSION)
+# МОНИТОРИНГ (КОД ЗАПРОСА ВНУТРИ КНОПКИ)
 # ==========================================
 with tab_monitoring:
     st.header("📉 Трекер позиций")
 
-    # Регион
+    # 1. СЕЛЕКТОР РЕГИОНА
     default_reg_val = st.session_state.get('settings_region', 'Москва')
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
@@ -3907,8 +3893,15 @@ with tab_monitoring:
         "🌍 Регион проверки:", 
         list(REGION_MAP.keys()), 
         index=def_index,
-        key="mon_region_no_alt"
+        key="mon_region_inline"
     )
+    
+    # Кнопка полного сброса
+    if os.path.exists(TRACK_FILE):
+        if st.button("🔥 СБРОСИТЬ БАЗУ И ФАЙЛ", type="secondary"):
+            os.remove(TRACK_FILE)
+            st.rerun()
+
     st.markdown("---")
 
     if os.path.exists(TRACK_FILE):
@@ -3934,27 +3927,101 @@ with tab_monitoring:
         render_table(df_mon)
         st.markdown("---")
         
-        if st.button(f"🚀 ОБНОВИТЬ (NO ALT)", type="primary", use_container_width=True):
+        # === КНОПКА С ПРЯМОЙ ЛОГИКОЙ ===
+        if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ (DIRECT)", type="primary", use_container_width=True):
             if not ARSENKIN_TOKEN:
                 st.error("Нет токена!")
             else:
                 logs = st.container(border=True)
                 bar = logs.progress(0)
                 
+                # Получаем ID региона
+                reg_ids = REGION_MAP.get(selected_mon_region, {"ya": 213})
+                rid_int = int(reg_ids['ya'])
+                
                 for i, row in df_mon.iterrows():
-                    kw = row['Keyword']
-                    url = row['URL']
+                    kw = str(row['Keyword'])
+                    url = str(row['URL']).strip()
                     
-                    # === ВЫЗЫВАЕМ НОВУЮ ФУНКЦИЮ ===
-                    pos, debug_data = check_positions_NO_ALT(kw, url, selected_mon_region, ARSENKIN_TOKEN)
+                    # --- ПРЯМОЙ ЗАПРОС (БЕЗ ФУНКЦИЙ) ---
+                    # Мы формируем JSON прямо тут. Тут НЕТ alt_urls.
+                    direct_payload = {
+                        "tools_name": "positions",
+                        "data": {
+                            "queries": [kw],
+                            "url": url,
+                            "subdomain": True,
+                            "se": [{"type": 2, "region": rid_int}],
+                            "format": 0
+                        }
+                    }
                     
-                    if pos > 0:
-                        logs.success(f"✅ {kw}: **{pos}**")
-                        df_mon.at[i, 'Position'] = pos
+                    pos_res = 0
+                    debug_info = None
+                    
+                    try:
+                        # 1. START
+                        r_start = requests.post(
+                            "https://arsenkin.ru/api/tools/set", 
+                            headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}", "Content-type": "application/json"}, 
+                            json=direct_payload, 
+                            timeout=20
+                        )
+                        
+                        if r_start.status_code != 200:
+                            debug_info = f"HTTP Error: {r_start.text}"
+                        else:
+                            resp_start = r_start.json()
+                            if "error" in resp_start:
+                                debug_info = f"API Error: {resp_start}"
+                            else:
+                                tid = resp_start.get("task_id")
+                                if not tid:
+                                    debug_info = f"No ID: {resp_start}"
+                                else:
+                                    # 2. WAIT
+                                    for _ in range(40):
+                                        time.sleep(1.5)
+                                        r_check = requests.post(
+                                            "https://arsenkin.ru/api/tools/check", 
+                                            headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, 
+                                            json={"task_id": tid}
+                                        )
+                                        if r_check.json().get("status") == "finish":
+                                            break
+                                    
+                                    # 3. GET
+                                    r_get = requests.post(
+                                        "https://arsenkin.ru/api/tools/get", 
+                                        headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, 
+                                        json={"task_id": tid}
+                                    )
+                                    final_data = r_get.json()
+                                    res_list = final_data.get("result", [])
+                                    
+                                    if res_list:
+                                        item = res_list[0]
+                                        p = item.get('position') or item.get('pos')
+                                        if str(p) in ['0', '-', '', 'None']:
+                                            pos_res = 0
+                                            debug_info = item # Сохраняем ответ, если 0
+                                        else:
+                                            pos_res = int(p)
+                                    else:
+                                        debug_info = f"Empty: {final_data}"
+
+                    except Exception as e:
+                        debug_info = f"Crash: {e}"
+
+                    # --- ОБРАБОТКА РЕЗУЛЬТАТА ---
+                    if pos_res > 0:
+                        logs.success(f"✅ {kw}: **{pos_res}**")
+                        df_mon.at[i, 'Position'] = pos_res
                     else:
                         logs.error(f"❌ {kw}: 0")
-                        with logs.expander("Ответ сервера"):
-                            st.json(debug_data)
+                        if debug_info:
+                            with logs.expander("Отладка"):
+                                st.write(debug_info)
                         df_mon.at[i, 'Position'] = 0
                     
                     df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -3963,13 +4030,9 @@ with tab_monitoring:
                 df_mon.to_csv(TRACK_FILE, sep=";", index=False)
                 render_table(df_mon)
                 
-        with st.expander("Сброс"):
-            if st.button("Удалить базу"):
-                os.remove(TRACK_FILE)
-                st.rerun()
     else:
         st.info("Добавьте URL")
-        with st.form("add_m_no_alt"):
+        with st.form("add_m_direct"):
             u = st.text_input("URL"); k = st.text_input("Ключ")
             if st.form_submit_button("Ok"):
                 add_to_tracking(u,k); st.rerun()
