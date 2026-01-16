@@ -862,7 +862,6 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def get_position_arsenkin_task(query, target_url, region_name, api_token):
-    # Настройки
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
@@ -872,7 +871,7 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # JSON
+    # === JSON БЕЗ ALT_URLS ===
     payload = {
         "tools_name": "positions",
         "data": {
@@ -889,7 +888,9 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
         resp = r.json()
         
-        if "error" in resp: return None, f"Err Set: {resp}"
+        # Если ошибка запуска (как была с alt_urls)
+        if "error" in resp: return None, f"API Error: {resp}"
+        
         task_id = resp.get("task_id")
         if not task_id: return None, f"No ID: {resp}"
 
@@ -906,26 +907,19 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
-        # === ВОТ ТУТ МЕНЯЕМ ЛОГИКУ ===
-        # Мы не ищем по слову, мы просто берем результат (так как отправляли 1 запрос)
+        # ПАРСИНГ ОТВЕТА
         res_list = data.get("result", [])
-        
-        if not res_list:
-            return 0, f"EMPTY LIST from API. Raw: {str(data)}"
+        if not res_list: return 0, f"Empty Result: {str(data)}"
             
-        # Берем первый элемент списка (он там один)
-        item = res_list[0]
+        item = res_list[0] # Берем первый (и единственный) результат
         
-        # Пытаемся найти позицию в разных полях
+        # Ищем позицию в разных полях
         pos = item.get('position')
         if pos is None: pos = item.get('pos')
-        if pos is None: pos = item.get('p') # Иногда бывает так
         
-        # Если формат ответа "simple", позиция может быть просто значением
-        # Но для отладки вернем СЫРОЙ JSON, если позиция кажется 0 или None
+        # Если позиция 0 или прочерк - возвращаем СЫРОЙ ОТВЕТ, чтобы вы увидели, что прислал Арсенкин
         if str(pos) in ['0', '-', '', 'None']:
-            # ВЕРНЕМ ВЕСЬ КУСОК JSON, ЧТОБЫ ТЫ УВИДЕЛ ГЛАЗАМИ В ЛОГАХ
-            return 0, f"RAW RESP: {str(item)}"
+            return 0, f"RAW: {str(item)}"
             
         return int(pos), None
 
@@ -3987,5 +3981,6 @@ with tab_monitoring:
             if st.button("🗑️ Сброс"):
                 os.remove(TRACK_FILE)
                 st.rerun()
+
 
 
