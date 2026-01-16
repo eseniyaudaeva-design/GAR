@@ -861,37 +861,41 @@ def process_text_detailed(text, settings, n_gram=1):
         forms_map[lemma].add(w)
     return lemmas, forms_map
 
-def get_pos_arsenkin_V3(query, target_url, region_name, api_token):
+def check_positions_NO_ALT(query, target_url, region_name, api_token):
     """
-    Финальная функция проверки позиций.
-    БЕЗ параметра alt_urls (чтобы не было ошибки JSON).
+    Абсолютно новая функция.
+    Гарантированно не отправляет alt_urls.
     """
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
     headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
     
-    # Получаем ID региона
+    # Регион
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # ФОРМИРУЕМ ЗАПРОС (ОЧИЩЕННЫЙ)
+    # === JSON СТРОГО БЕЗ ALT_URLS ===
     payload = {
         "tools_name": "positions",
         "data": {
-            "queries": [str(query)],       
+            "queries": [str(query)],
             "url": str(target_url).strip(),
-            "subdomain": True,             
+            # СТРОКА alt_urls ПОЛНОСТЬЮ УДАЛЕНА ОТСЮДА
+            "subdomain": True,
             "se": [{"type": 2, "region": region_id_int}],
-            "format": 0 # Простой формат
+            "format": 0
         }
     }
 
     try:
         # 1. ЗАПУСК
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
-        if r.status_code != 200: return 0, {"error": f"HTTP {r.status_code}", "text": r.text}
         
+        # Если сервер вернул 500 или 400
+        if r.status_code != 200:
+            return 0, {"error": f"HTTP {r.status_code}", "text": r.text}
+            
         resp = r.json()
         if "error" in resp: return 0, resp
         
@@ -919,7 +923,7 @@ def get_pos_arsenkin_V3(query, target_url, region_name, api_token):
         if pos is None: pos = item.get('pos')
         
         if str(pos) in ['0', '-', '', 'None']:
-            return 0, item # Возвращаем сырой ответ для отладки
+            return 0, item 
             
         return int(pos), None
 
@@ -3889,12 +3893,12 @@ def add_to_tracking(url, keyword):
         f.write(f"{url};{keyword};{today};0\n")
 
 # ==========================================
-# МОНИТОРИНГ (ВЫЗОВ V3)
+# МОНИТОРИНГ (NO_ALT VERSION)
 # ==========================================
 with tab_monitoring:
     st.header("📉 Трекер позиций")
 
-    # Выбор региона
+    # Регион
     default_reg_val = st.session_state.get('settings_region', 'Москва')
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
@@ -3903,7 +3907,7 @@ with tab_monitoring:
         "🌍 Регион проверки:", 
         list(REGION_MAP.keys()), 
         index=def_index,
-        key="mon_region_selector_v3_fixed"
+        key="mon_region_no_alt"
     )
     st.markdown("---")
 
@@ -3930,7 +3934,7 @@ with tab_monitoring:
         render_table(df_mon)
         st.markdown("---")
         
-        if st.button(f"🚀 ОБНОВИТЬ (V3)", type="primary", use_container_width=True):
+        if st.button(f"🚀 ОБНОВИТЬ (NO ALT)", type="primary", use_container_width=True):
             if not ARSENKIN_TOKEN:
                 st.error("Нет токена!")
             else:
@@ -3941,9 +3945,8 @@ with tab_monitoring:
                     kw = row['Keyword']
                     url = row['URL']
                     
-                    # === ЗДЕСЬ БЫЛА ОШИБКА, ТЕПЕРЬ ИСПРАВЛЕНО ===
-                    # Вызываем функцию V3, которая точно есть в коде
-                    pos, debug_data = get_pos_arsenkin_V3(kw, url, selected_mon_region, ARSENKIN_TOKEN)
+                    # === ВЫЗЫВАЕМ НОВУЮ ФУНКЦИЮ ===
+                    pos, debug_data = check_positions_NO_ALT(kw, url, selected_mon_region, ARSENKIN_TOKEN)
                     
                     if pos > 0:
                         logs.success(f"✅ {kw}: **{pos}**")
@@ -3966,7 +3969,7 @@ with tab_monitoring:
                 st.rerun()
     else:
         st.info("Добавьте URL")
-        with st.form("add_m_v3_form"):
+        with st.form("add_m_no_alt"):
             u = st.text_input("URL"); k = st.text_input("Ключ")
             if st.form_submit_button("Ok"):
                 add_to_tracking(u,k); st.rerun()
