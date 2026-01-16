@@ -3624,6 +3624,31 @@ with tab_wholesale_main:
             key="btn_dl_fixed"
         )
 
+    # === ВСТАВИТЬ ЭТО ПОСЛЕ КНОПКИ СКАЧИВАНИЯ EXCEL ===
+    st.markdown("---")
+    col_mon_btn, col_mon_info = st.columns([1, 3])
+    
+    with col_mon_btn:
+        if st.button("➕ Добавить эти товары в Мониторинг", type="secondary"):
+            count_added = 0
+            # Пробегаем по таблице результатов генерации
+            if 'gen_result_df' in st.session_state and not st.session_state.gen_result_df.empty:
+                for idx, row in st.session_state.gen_result_df.iterrows():
+                    u_val = str(row.get('Page URL', '')).strip()
+                    kw_val = str(row.get('Product Name', '')).strip()
+                    
+                    # Если URL и Имя есть - добавляем
+                    if u_val and kw_val and u_val != 'nan':
+                        add_to_tracking(u_val, kw_val)
+                        count_added += 1
+                
+                if count_added > 0:
+                    st.toast(f"✅ Добавлено {count_added} товаров в базу мониторинга!", icon="📈")
+                else:
+                    st.warning("Нечего добавлять (проверьте колонку Page URL)")
+            else:
+                st.error("Нет сгенерированных данных")
+
     # ==========================================
     # 5. БЛОК ПРЕДПРОСМОТРА
     # ==========================================
@@ -3801,39 +3826,87 @@ def add_to_tracking(url, keyword):
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         f.write(f"{url};{keyword};{today};0\n")
 
+# ==========================================
+# ВСТАВИТЬ ВМЕСТО СТАРОГО БЛОКА tab_monitoring
+# ==========================================
 with tab_monitoring:
-    st.header("📉 Простой Мониторинг")
-    
-    # 1. БЛОК РУЧНОГО ДОБАВЛЕНИЯ (Для теста)
+    st.header("📉 Мониторинг позиций (Яндекс)")
+
+    # 1. РУЧНОЕ ДОБАВЛЕНИЕ
     with st.expander("➕ Добавить запись вручную", expanded=False):
-        c1, c2 = st.columns(2)
-        with c1: new_url = st.text_input("URL страницы", placeholder="https://site.ru/page")
-        with c2: new_kw = st.text_input("Ключевое слово", placeholder="купить трубу")
-        if st.button("Добавить в базу"):
-            if new_url and new_kw:
-                add_to_tracking(new_url, new_kw)
-                st.success("Добавлено!")
-                st.rerun()
-            else:
-                st.error("Заполните поля")
+        c1, c2, c3 = st.columns([3, 3, 1])
+        with c1: new_url = st.text_input("URL", placeholder="https://...", key="mon_manual_url")
+        with c2: new_kw = st.text_input("Ключ", placeholder="купить...", key="mon_manual_kw")
+        with c3: 
+            st.write("")
+            st.write("")
+            if st.button("Добавить"):
+                if new_url and new_kw:
+                    add_to_tracking(new_url, new_kw)
+                    st.success("Ок")
+                    st.rerun()
 
     # 2. ТАБЛИЦА
     if os.path.exists(TRACK_FILE):
-        try:
-            df_mon = pd.read_csv(TRACK_FILE, sep=";")
-            st.dataframe(df_mon, use_container_width=True)
-            
-            if st.button("🔄 Обновить позиции (Имитация)", type="primary"):
-                # Имитация проверки
-                import random
-                for i in range(len(df_mon)):
-                    df_mon.at[i, 'Position'] = random.randint(1, 50)
+        df_mon = pd.read_csv(TRACK_FILE, sep=";")
+        
+        # Стилизация таблицы (подсветка Топа)
+        def highlight_pos(val):
+            try:
+                v = int(val)
+                if v > 0 and v <= 10: return 'background-color: #dcfce7; color: #166534; font-weight: bold' # Зеленый (Топ-10)
+                if v > 10 and v <= 30: return 'background-color: #fef9c3; color: #854d0e' # Желтый
+                if v == 0: return 'color: #9ca3af' # Серый (нет данных)
+            except: pass
+            return ''
+
+        st.dataframe(df_mon.style.map(highlight_pos, subset=['Position']), use_container_width=True)
+
+        # 3. КНОПКА ПРОВЕРКИ (НАСТОЯЩАЯ)
+        if st.button("🚀 ПРОВЕРИТЬ ПОЗИЦИИ (REAL)", type="primary"):
+            if not ARSENKIN_TOKEN:
+                st.error("Нет токена Арсенкина! Введите его во вкладке 'SEO Анализ'")
+            else:
+                progress_bar = st.progress(0)
+                status_text = st.empty()
                 
+                # Проходим по всем строкам таблицы
+                for index, row in df_mon.iterrows():
+                    target_url = row['URL']
+                    keyword = row['Keyword']
+                    domain = urlparse(target_url).netloc.replace("www.", "")
+                    
+                    status_text.write(f"🔍 Проверяем: {keyword}...")
+                    
+                    # 1. Запрашиваем ТОП-100 через вашу функцию (она уже есть в коде)
+                    # Используем существующую функцию get_arsenkin_urls
+                    try:
+                        # depth_val=100 чтобы искать глубоко
+                        top_100 = get_arsenkin_urls(keyword, "Яндекс", "Москва", ARSENKIN_TOKEN, depth_val=100)
+                        
+                        found_pos = 0 # 0 значит "не найдено"
+                        
+                        if top_100:
+                            for item in top_100:
+                                # Ищем наш домен в выдаче
+                                if domain in item['url']:
+                                    found_pos = item['pos']
+                                    break
+                        
+                        # Записываем результат в таблицу
+                        df_mon.at[index, 'Position'] = found_pos
+                        df_mon.at[index, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+                        
+                    except Exception as e:
+                        st.error(f"Ошибка API на слове {keyword}: {e}")
+
+                    # Обновляем прогресс
+                    progress_bar.progress((index + 1) / len(df_mon))
+
+                # Сохраняем обновленную таблицу
                 df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                st.success("Позиции обновлены!")
+                status_text.success("✅ Проверка завершена!")
                 st.rerun()
-        except Exception as e:
-            st.error(f"Ошибка чтения файла: {e}. Попробуйте удалить monitoring.csv")
     else:
-        st.info("База пуста. Добавьте первую запись выше.")
+        st.info("База пуста.")
 
