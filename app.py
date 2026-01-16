@@ -3904,125 +3904,119 @@ def add_to_tracking(url, keyword):
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         f.write(f"{url};{keyword};{today};0\n")
 
-# 3. ВКЛАДКА
+# ==========================================
+# МОНИТОРИНГ: РЕЖИМ "РЕНТГЕН" (RAW OUTPUT)
+# ==========================================
 with tab_monitoring:
-    st.header("📉 Трекер позиций")
+    st.header("📉 Трекер позиций (X-RAY)")
 
-    # Выбор региона
+    # Регион
     default_reg_val = st.session_state.get('settings_region', 'Москва')
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
 
-    selected_mon_region = st.selectbox("🌍 Регион:", list(REGION_MAP.keys()), index=def_index, key="mon_reg_fix_final")
+    selected_mon_region = st.selectbox("🌍 Регион:", list(REGION_MAP.keys()), index=def_index, key="mon_reg_xray")
+    
     st.markdown("---")
 
-    if not os.path.exists(TRACK_FILE):
-        st.info("База пуста.")
-        with st.form("add_m_fix_final"):
-            u = st.text_input("URL"); k = st.text_input("Ключ")
-            if st.form_submit_button("Добавить"):
-                add_to_tracking(u,k); st.rerun()
-    else:
-        try: df_mon = pd.read_csv(TRACK_FILE, sep=";")
-        except: df_mon = pd.DataFrame()
-
-        if not df_mon.empty:
-            st.dataframe(df_mon, use_container_width=True)
-            
-            # === КНОПКА ЗАПУСКА ===
-            if st.button("🚀 ЗАПУСТИТЬ ПРОВЕРКУ (FIXED JSON)", type="primary"):
-                if not ARSENKIN_TOKEN:
-                    st.error("НЕТ ТОКЕНА!")
-                    st.stop()
-                
-                st.write("### 🟢 ЛОГ ПРОВЕРКИ")
-                
-                reg_ids = REGION_MAP.get(selected_mon_region, {"ya": 213})
-                rid_int = int(reg_ids['ya'])
-
-                for i, row in df_mon.iterrows():
-                    kw = str(row['Keyword'])
-                    url = str(row['URL']).strip()
-                    
-                    st.markdown(f"#### 🔎 `{kw}`")
-                    
-                    # === ХИТРЫЙ JSON ===
-                    # Мы дублируем URL в alt_urls, чтобы валидатор отстал
-                    payload = {
-                        "tools_name": "positions",
-                        "data": {
-                            "queries": [kw],
-                            "url": url,
-                            "alt_urls": [url], # <--- ВОТ ЭТОТ ФИКС!
-                            "subdomain": True, 
-                            "se": [{"type": 2, "region": rid_int}],
-                            "format": 0 
-                        }
-                    }
-                    
-                    try:
-                        # 1. ОТПРАВКА
-                        r = requests.post(
-                            "https://arsenkin.ru/api/tools/set", 
-                            headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}", "Content-type": "application/json"}, 
-                            json=payload, timeout=20
-                        )
-                        
-                        resp = r.json()
-                        tid = resp.get("task_id")
-                        
-                        if not tid:
-                            st.error(f"❌ API ОТКАЗАЛ: {resp}")
-                            continue
-                            
-                        st.write(f"✅ ID: {tid}. Ждем...")
-                        
-                        # 2. ОЖИДАНИЕ
-                        status = "process"
-                        attempts = 0
-                        while status != "finish" and attempts < 30:
-                            time.sleep(2)
-                            attempts += 1
-                            r_check = requests.post("https://arsenkin.ru/api/tools/check", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
-                            status = r_check.json().get("status")
-                        
-                        if status != "finish":
-                            st.error("❌ Тайм-аут.")
-                            continue
-
-                        # 3. ПОЛУЧЕНИЕ
-                        r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
-                        final_data = r_get.json()
-                        
-                        # ПАРСИНГ
-                        res_list = final_data.get("result", [])
-                        if res_list:
-                            item = res_list[0]
-                            pos = item.get('position') or item.get('pos')
-                            
-                            # Пробуем вытащить позицию даже если она спрятана
-                            if pos is None and 'se_results' in item:
-                                try: pos = item['se_results'][0]['position']
-                                except: pass
-
-                            st.info(f"🎯 РЕЗУЛЬТАТ: {pos}")
-                            
-                            if pos and str(pos) not in ['-', '0', 'None']:
-                                df_mon.at[i, 'Position'] = int(pos)
-                            else:
-                                df_mon.at[i, 'Position'] = 0
-                        else:
-                            st.warning(f"Пустой ответ: {final_data}")
-
-                    except Exception as e:
-                        st.error(f"🔥 ОШИБКА: {e}")
-                
-                # Сохранение
-                df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
-                df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                st.success("✅ ОБНОВЛЕНО! (Нажмите Rerun)")
+    if os.path.exists(TRACK_FILE):
+        df_mon = pd.read_csv(TRACK_FILE, sep=";")
+        st.dataframe(df_mon, use_container_width=True)
         
-        # Сброс
-        st.markdown("---")
-        if st.button("🔥 УДАЛИТЬ ФАЙЛ БАЗЫ", type="secondary"):
+        # === КНОПКА С МАКСИМАЛЬНЫМ ВЫВОДОМ ===
+        if st.button("🚀 ЗАПУСТИТЬ ПРОВЕРКУ (ПОКАЗАТЬ RAW)", type="primary"):
+            if not ARSENKIN_TOKEN:
+                st.error("НЕТ ТОКЕНА!")
+                st.stop()
+            
+            st.write("### 🟢 НАЧАЛО ОТЛАДКИ")
+            
+            reg_ids = REGION_MAP.get(selected_mon_region, {"ya": 213})
+            rid_int = int(reg_ids['ya'])
+
+            for i, row in df_mon.iterrows():
+                kw = str(row['Keyword'])
+                url = str(row['URL']).strip()
+                
+                st.markdown(f"#### 🔎 `{kw}`")
+                
+                # Payload
+                payload = {
+                    "tools_name": "positions",
+                    "data": {
+                        "queries": [kw],
+                        "url": url,
+                        "subdomain": True, 
+                        "se": [{"type": 2, "region": rid_int}],
+                        "format": 0 
+                    }
+                }
+                
+                try:
+                    # 1. ЗАПРОС SET
+                    r = requests.post(
+                        "https://arsenkin.ru/api/tools/set", 
+                        headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}", "Content-type": "application/json"}, 
+                        json=payload, timeout=20
+                    )
+                    
+                    resp = r.json()
+                    tid = resp.get("task_id")
+                    
+                    if not tid:
+                        st.error(f"❌ ОШИБКА НА СТАРТЕ: {resp}")
+                        continue
+                        
+                    st.write(f"✅ ID задачи: `{tid}`. Ждем...")
+                    
+                    # 2. ОЖИДАНИЕ
+                    status = "process"
+                    for _ in range(40):
+                        time.sleep(1.5)
+                        r_check = requests.post("https://arsenkin.ru/api/tools/check", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
+                        status = r_check.json().get("status")
+                        if status == "finish": break
+                    
+                    if status != "finish":
+                        st.error("❌ Тайм-аут ожидания.")
+                        continue
+
+                    # 3. ПОЛУЧЕНИЕ
+                    st.write("📥 Скачиваем результат...")
+                    r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
+                    final_data = r_get.json()
+                    
+                    # === МОМЕНТ ИСТИНЫ ===
+                    st.info("👇 ВОТ ЧТО ПРИСЛАЛ СЕРВЕР:")
+                    st.json(final_data)
+                    
+                    # Попытка найти цифру для обновления таблицы
+                    res_list = final_data.get("result", [])
+                    if res_list:
+                        item = res_list[0]
+                        pos = item.get('position') or item.get('pos')
+                        st.success(f"🎯 Найдена позиция: {pos}")
+                        if pos and str(pos) not in ['0', '-']:
+                            df_mon.at[i, 'Position'] = int(pos)
+                        else:
+                            df_mon.at[i, 'Position'] = 0
+                    else:
+                        st.warning("⚠️ Список result пуст!")
+
+                except Exception as e:
+                    st.error(f"🔥 PYTHON CRASH: {e}")
+            
+            # Сохранение
+            df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+            df_mon.to_csv(TRACK_FILE, sep=";", index=False)
+            st.success("✅ Готово. Нажмите Rerun чтобы обновить таблицу вверху.")
+            
+        # Кнопка сброса
+        if st.button("Стереть базу"):
             os.remove(TRACK_FILE); st.rerun()
+    else:
+        st.info("Добавьте URL")
+        with st.form("add_m_xray"):
+            u = st.text_input("URL"); k = st.text_input("Ключ")
+            if st.form_submit_button("Ok"):
+                add_to_tracking(u,k); st.rerun()
