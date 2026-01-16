@@ -3879,7 +3879,7 @@ with tab_projects:
                     st.error(f"❌ Ошибка чтения файла: {e}")
 
 # ==========================================
-# МОНИТОРИНГ: РЕЖИМ "ПОКАЖИ МНЕ JSON"
+# МОНИТОРИНГ: УМНАЯ ПРОВЕРКА (ДОМЕН -> ФИЛЬТР URL)
 # ==========================================
 import os
 import pandas as pd
@@ -3887,6 +3887,7 @@ import datetime
 import time
 import requests
 import json
+from urllib.parse import urlparse
 
 TRACK_FILE = "monitoring.csv"
 
@@ -3902,6 +3903,14 @@ def add_to_tracking(url, keyword):
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         f.write(f"{url};{keyword};{today};0\n")
 
+# Функция нормализации ссылок для сравнения (убирает www, https, слэш в конце)
+def normalize_url(u):
+    if not u: return ""
+    u = u.lower().strip()
+    u = u.replace("https://", "").replace("http://", "").replace("www.", "")
+    if u.endswith("/"): u = u[:-1]
+    return u
+
 with tab_monitoring:
     st.header("📉 Трекер позиций")
 
@@ -3910,12 +3919,12 @@ with tab_monitoring:
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
 
-    selected_mon_region = st.selectbox("🌍 Регион:", list(REGION_MAP.keys()), index=def_index, key="mon_reg_debug_json")
+    selected_mon_region = st.selectbox("🌍 Регион:", list(REGION_MAP.keys()), index=def_index, key="mon_reg_smart")
     st.markdown("---")
 
     if not os.path.exists(TRACK_FILE):
         st.info("База пуста.")
-        with st.form("add_m_dbg_j"):
+        with st.form("add_m_smart"):
             u = st.text_input("URL"); k = st.text_input("Ключ")
             if st.form_submit_button("Добавить"):
                 add_to_tracking(u,k); st.rerun()
@@ -3926,7 +3935,7 @@ with tab_monitoring:
         if not df_mon.empty:
             st.dataframe(df_mon, use_container_width=True)
             
-            if st.button("🚀 ЗАПУСТИТЬ (ПОКАЗАТЬ ОТВЕТ)", type="primary"):
+            if st.button("🚀 ОБНОВИТЬ ПОЗИЦИИ", type="primary"):
                 if not ARSENKIN_TOKEN:
                     st.error("НЕТ ТОКЕНА!")
                     st.stop()
@@ -3936,20 +3945,24 @@ with tab_monitoring:
                 
                 reg_ids = REGION_MAP.get(selected_mon_region, {"ya": 213})
                 rid_int = int(reg_ids['ya'])
+                
+                logs.info(f"📍 Регион: **{selected_mon_region}** (ID {rid_int})")
 
                 for i, row in df_mon.iterrows():
                     kw = str(row['Keyword'])
-                    url = str(row['URL']).strip()
+                    target_url = str(row['URL']).strip()
                     
-                    logs.markdown(f"#### 🔎 `{kw}`")
-                    
-                    # ЗАПРОС (ТОТ ЖЕ САМЫЙ, ЧТО СРАБОТАЛ)
+                    # 1. Выделяем домен для поиска
+                    parsed = urlparse(target_url)
+                    domain_only = parsed.netloc.replace("www.", "")
+                    if not domain_only: domain_only = target_url.split('/')[0] # Fallback
+
+                    # 2. ЗАПРОС (Ищем по домену, чтобы точно найти вхождение)
                     payload = {
                         "tools_name": "positions",
                         "data": {
                             "queries": [kw],
-                            "url": url,
-                            "alt_urls": [url], 
+                            "url": domain_only, # <--- ИЩЕМ САЙТ В ЦЕЛОМ
                             "subdomain": True, 
                             "se": [{"type": 2, "region": rid_int}],
                             "format": 0 
@@ -3957,54 +3970,68 @@ with tab_monitoring:
                     }
                     
                     try:
-                        # 1. ЗАПУСК
+                        # ЗАПУСК
                         r = requests.post("https://arsenkin.ru/api/tools/set", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json=payload, timeout=20)
                         resp = r.json()
                         tid = resp.get("task_id")
                         
                         if not tid:
-                            logs.error(f"❌ ОШИБКА SET: {resp}")
+                            logs.error(f"❌ ОШИБКА: {resp}")
                             continue
-                            
-                        logs.write(f"✅ ID: {tid}. Ждем завершения...")
                         
-                        # 2. ОЖИДАНИЕ
+                        # ОЖИДАНИЕ
                         for _ in range(40):
-                            time.sleep(2)
+                            time.sleep(1.5)
                             r_check = requests.post("https://arsenkin.ru/api/tools/check", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
                             if r_check.json().get("status") == "finish":
                                 break
                         
-                        # 3. ПОЛУЧЕНИЕ РЕЗУЛЬТАТА (ГЛАВНОЕ)
+                        # ПОЛУЧЕНИЕ
                         r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
                         final_data = r_get.json()
                         
-                        # === ВЫВОДИМ ВЕСЬ ОТВЕТ НА ЭКРАН ===
-                        logs.info("👇 RAW JSON RESULT (Скриншот сюда!):")
-                        logs.json(final_data) 
+                        # ПАРСИНГ И СРАВНЕНИЕ URL
+                        result_block = final_data.get("result", {})
+                        table_block = result_block.get("table", {})
                         
-                        # Попытка найти цифру (если формат 0, она может быть в ключе типа "2:213")
-                        # Мы просто выведем всё, что нашли
-                        res_list = final_data.get("result", [])
-                        if res_list:
-                            item = res_list[0]
-                            # Пытаемся найти хоть какую-то цифру
-                            found_nums = [v for k, v in item.items() if isinstance(v, int) and k not in ['region', 'type']]
-                            if found_nums:
-                                pos = found_nums[0]
-                                df_mon.at[i, 'Position'] = pos
-                                logs.success(f"🎯 Возможно, позиция: {pos}")
+                        if kw in table_block:
+                            data_kw = table_block[kw]
+                            
+                            # 1. Какая позиция у сайта?
+                            pos_list = data_kw.get("position", [])
+                            found_pos = int(pos_list[0]) if pos_list else 1001
+                            
+                            # 2. Какая страница ранжируется? (relevant url)
+                            # В format=0 Арсенкин кладет урл в поле relevant, url или r_url
+                            found_url = data_kw.get("relevant") or data_kw.get("url") or ""
+                            
+                            # ЛОГИКА СРАВНЕНИЯ
+                            if found_pos < 1000:
+                                # Сайт найден. Проверяем, ТА ЛИ ЭТО СТРАНИЦА?
+                                norm_target = normalize_url(target_url)
+                                norm_found = normalize_url(found_url)
+                                
+                                # Если Арсенкин не вернул URL (бывает), считаем что совпало по домену
+                                is_match = (norm_target in norm_found) or (norm_found in norm_target)
+                                
+                                if is_match:
+                                    logs.success(f"✅ {kw}: **{found_pos}**")
+                                    df_mon.at[i, 'Position'] = found_pos
+                                else:
+                                    logs.warning(f"⚠️ {kw}: В топе другая стр! ({found_pos} место)\nОжидали: ...{norm_target[-20:]}\nВ топе: ...{norm_found[-20:]}")
+                                    df_mon.at[i, 'Position'] = 0 # Ставим 0, так как не та страница
                             else:
-                                logs.warning("Цифра не найдена стандартным методом. См. JSON выше.")
+                                logs.warning(f"⚪ {kw}: Не найдено (100+)")
                                 df_mon.at[i, 'Position'] = 0
                         else:
-                            logs.error("Result list is empty")
+                            logs.warning(f"Нет данных для {kw}")
 
                     except Exception as e:
                         logs.error(f"🔥 ERR: {e}")
                 
+                df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
                 df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                # render_table(df_mon) # Временно отключил рендер, чтобы логи не прыгали
+                st.success("✅ Готово!")
                 
         st.markdown("---")
         if st.button("🔥 УДАЛИТЬ ФАЙЛ БАЗЫ", type="secondary"):
