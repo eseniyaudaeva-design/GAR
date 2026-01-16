@@ -861,23 +861,25 @@ def process_text_detailed(text, settings, n_gram=1):
         forms_map[lemma].add(w)
     return lemmas, forms_map
 
-def get_pos_arsenkin_DEBUG(query, target_url, region_name, api_token):
-    # Настройки
+def get_pos_arsenkin_V3(query, target_url, region_name, api_token):
+    """
+    ВЕРСИЯ 3. Гарантированно без alt_urls.
+    """
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
     headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
     
-    # Регион
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # JSON ЗАПРОС
+    # === JSON БЕЗ ALT_URLS ===
     payload = {
         "tools_name": "positions",
         "data": {
             "queries": [str(query)],       
             "url": str(target_url).strip(),
+            # СТРОКИ alt_urls ТУТ НЕТ
             "subdomain": True,             
             "se": [{"type": 2, "region": region_id_int}],
             "format": 0
@@ -885,22 +887,21 @@ def get_pos_arsenkin_DEBUG(query, target_url, region_name, api_token):
     }
 
     try:
-        # 1. ЗАПУСК ЗАДАЧИ
+        # 1. ЗАПУСК
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
         
-        # Проверка статуса ответа
+        # Если 500 или 400 - возвращаем тело ответа
         if r.status_code != 200:
-            return 0, {"error": f"HTTP Status {r.status_code}", "body": r.text}
-            
+            return 0, {"error": f"HTTP {r.status_code}", "details": r.text}
+
         resp = r.json()
+        if "error" in resp: return 0, resp
         
-        # ЕСЛИ ЗАДАЧА НЕ СОЗДАЛАСЬ — ВОЗВРАЩАЕМ ОТВЕТ СЕРВЕРА КАК ЕСТЬ
         task_id = resp.get("task_id")
-        if not task_id: 
-            # ВОТ ТУТ БЫЛА ОШИБКА. Теперь возвращаем словарь, а не строку.
-            return 0, resp 
+        if not task_id: return 0, {"error": "No Task ID", "resp": resp}
         
-        st.toast(f"✅ Задача {task_id} в работе...", icon="⏳")
+        # Уведомление
+        st.toast(f"Задача {task_id} запущена...", icon="🚀")
 
         # 2. ОЖИДАНИЕ
         for i in range(40):
@@ -909,29 +910,26 @@ def get_pos_arsenkin_DEBUG(query, target_url, region_name, api_token):
             if r_c.json().get("status") == "finish":
                 break
         else:
-            return 0, {"error": "Timeout (долго нет ответа)"}
+            return 0, {"error": "Timeout"}
 
         # 3. РЕЗУЛЬТАТ
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
         res_list = data.get("result", [])
-        if not res_list: 
-            return 0, data # Возвращаем сырой ответ, если список пуст
+        if not res_list: return 0, data
             
         item = res_list[0]
-        
-        # Ищем позицию
         pos = item.get('position')
         if pos is None: pos = item.get('pos')
         
         if str(pos) in ['0', '-', '', 'None']:
-            return 0, item # Возвращаем сырой результат для просмотра
+            return 0, item # Возвращаем сырой ответ
             
         return int(pos), None
 
     except Exception as e:
-        return 0, {"error": f"Crash Python: {str(e)}"}
+        return 0, {"error": f"Crash: {str(e)}"}
 
 def parse_page(url, settings, query_context=""):
     import streamlit as st
@@ -3984,4 +3982,5 @@ with tab_monitoring:
             u = st.text_input("URL"); k = st.text_input("Ключ")
             if st.form_submit_button("Ok"):
                 add_to_tracking(u,k); st.rerun()
+
 
