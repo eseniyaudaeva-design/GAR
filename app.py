@@ -862,9 +862,7 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def get_pos_arsenkin_DEBUG(query, target_url, region_name, api_token):
-    """
-    Функция с выводом отладки прямо в интерфейс.
-    """
+    # Настройки
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
@@ -874,7 +872,7 @@ def get_pos_arsenkin_DEBUG(query, target_url, region_name, api_token):
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # JSON (Format 0 - Простой)
+    # JSON ЗАПРОС
     payload = {
         "tools_name": "positions",
         "data": {
@@ -887,17 +885,22 @@ def get_pos_arsenkin_DEBUG(query, target_url, region_name, api_token):
     }
 
     try:
-        # 1. ЗАПУСК
+        # 1. ЗАПУСК ЗАДАЧИ
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
+        
+        # Проверка статуса ответа
+        if r.status_code != 200:
+            return 0, {"error": f"HTTP Status {r.status_code}", "body": r.text}
+            
         resp = r.json()
         
-        if "error" in resp: return 0, f"API Error: {resp}"
-        
+        # ЕСЛИ ЗАДАЧА НЕ СОЗДАЛАСЬ — ВОЗВРАЩАЕМ ОТВЕТ СЕРВЕРА КАК ЕСТЬ
         task_id = resp.get("task_id")
-        if not task_id: return 0, f"No Task ID. Raw: {resp}"
+        if not task_id: 
+            # ВОТ ТУТ БЫЛА ОШИБКА. Теперь возвращаем словарь, а не строку.
+            return 0, resp 
         
-        # ВИЗУАЛЬНОЕ УВЕДОМЛЕНИЕ (Как вы просили)
-        st.toast(f"✅ Задача {task_id} запущена...", icon="⏳")
+        st.toast(f"✅ Задача {task_id} в работе...", icon="⏳")
 
         # 2. ОЖИДАНИЕ
         for i in range(40):
@@ -906,30 +909,29 @@ def get_pos_arsenkin_DEBUG(query, target_url, region_name, api_token):
             if r_c.json().get("status") == "finish":
                 break
         else:
-            return 0, "Timeout (долго нет ответа)"
+            return 0, {"error": "Timeout (долго нет ответа)"}
 
         # 3. РЕЗУЛЬТАТ
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
-        # Парсинг
         res_list = data.get("result", [])
-        if not res_list: return 0, f"Пустой список result: {data}"
+        if not res_list: 
+            return 0, data # Возвращаем сырой ответ, если список пуст
             
-        item = res_list[0] # Берем первый результат
+        item = res_list[0]
         
         # Ищем позицию
         pos = item.get('position')
         if pos is None: pos = item.get('pos')
         
-        # ЕСЛИ 0 ИЛИ НЕТ ПОЗИЦИИ — ВОЗВРАЩАЕМ ВЕСЬ JSON
         if str(pos) in ['0', '-', '', 'None']:
-            return 0, item # Возвращаем словарь целиком для показа
+            return 0, item # Возвращаем сырой результат для просмотра
             
         return int(pos), None
 
     except Exception as e:
-        return 0, f"Crash: {str(e)}"
+        return 0, {"error": f"Crash Python: {str(e)}"}
 
 def parse_page(url, settings, query_context=""):
     import streamlit as st
@@ -3982,3 +3984,4 @@ with tab_monitoring:
             u = st.text_input("URL"); k = st.text_input("Ключ")
             if st.form_submit_button("Ok"):
                 add_to_tracking(u,k); st.rerun()
+
