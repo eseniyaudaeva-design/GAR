@@ -862,35 +862,30 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def get_position_arsenkin_task(query, target_url, region_name, api_token):
-    """
-    Инструмент 'positions'.
-    ИСПРАВЛЕНИЕ: Удалено поле alt_urls, из-за которого была ошибка JSON_VALIDATION_ERROR.
-    """
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
     
     headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
     
-    # Получаем ID региона
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # Формируем JSON
-    # ВНИМАНИЕ: Строка "alt_urls" удалена полностью!
+    # === ИЗМЕНЕНИЕ: FORMAT = 0 (ПРОСТОЙ) ===
+    # Это упрощает структуру ответа и снижает шанс ошибки парсинга
     payload = {
         "tools_name": "positions",
         "data": {
             "queries": [str(query)],       
-            "url": str(target_url).strip(), # Основной URL передается здесь
+            "url": str(target_url).strip(),
             "subdomain": True,             
             "se": [
                 {
-                    "type": 2, # Яндекс
+                    "type": 2, 
                     "region": region_id_int
                 }
             ],
-            "format": 1                    
+            "format": 0 # <--- БЫЛО 1, СТАЛО 0 (Как на скриншоте)
         }
     }
 
@@ -899,14 +894,9 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
         resp = r.json()
         
-        # ДИАГНОСТИКА
-        if "error" in resp:
-            # Вывод ошибки от сервера (msg или error)
-            return None, f"Ошибка API: {resp.get('msg') or resp.get('error')}"
-            
+        if "error" in resp: return None, f"Ошибка API: {resp.get('msg') or resp.get('error')}"
         task_id = resp.get("task_id")
-        if not task_id:
-            return None, f"Нет Task ID. Ответ: {str(resp)}"
+        if not task_id: return None, f"Нет Task ID. Ответ: {str(resp)}"
 
         # ОЖИДАНИЕ
         for _ in range(40):
@@ -921,21 +911,29 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
+        # === ОТЛАДКА: СМОТРИМ ЧТО ПРИШЛО ===
+        # Если формат 0, результат обычно лежит прямо в result -> [ {pos: 5, ...} ]
         res_list = data.get("result", [])
         
         if res_list and isinstance(res_list, list):
             for item in res_list:
-                if item.get('query') == query:
-                    pos = item.get('position')
-                    
-                    if pos is None and 'se_results' in item and len(item['se_results']) > 0:
-                        pos = item['se_results'][0].get('position')
-                    
-                    if str(pos) in ['0', '-', '', 'None']: 
-                        return 0, None
+                # Арсенкин может вернуть query чуть иначе (регистр и т.д.), поэтому проверяем вхождение или равенство
+                # Но обычно равенство работает.
+                
+                # Ищем поле позиции. В format=0 это часто 'pos' или 'position'
+                pos = item.get('position')
+                if pos is None: pos = item.get('pos')
+                
+                # Если позиция нашлась
+                if pos is not None:
+                    # Проверяем, не является ли она прочерком
+                    if str(pos) in ['-', '', '0', 'None']:
+                        # Возвращаем 0, но для отладки вернем и сырой ответ
+                        return 0, f"DEBUG: {str(item)}" 
                     return int(pos), None
-                    
-        return 0, None
+        
+        # Если список пуст или не нашли
+        return 0, f"DEBUG FULL: {str(data)}"
 
     except Exception as e:
         return None, f"Ошибка Python: {str(e)}"
@@ -3908,35 +3906,29 @@ def add_to_tracking(url, keyword):
 with tab_monitoring:
     st.header("📉 Трекер позиций")
 
-    # 1. ВЫБОР РЕГИОНА (ТЕПЕРЬ НАХОДИТСЯ НАВЕРХУ И ВИДЕН ВСЕГДА)
-    # Пытаемся взять дефолтное значение из первой вкладки
+    # 1. ВЫБОР РЕГИОНА
     default_reg_val = st.session_state.get('settings_region', 'Москва')
-    try:
-        def_index = list(REGION_MAP.keys()).index(default_reg_val)
-    except:
-        def_index = 0
+    try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
+    except: def_index = 0
 
     selected_mon_region = st.selectbox(
         "🌍 Сначала выберите регион для проверки:", 
         list(REGION_MAP.keys()), 
         index=def_index,
-        key="mon_region_selector_global"
+        key="mon_region_selector_global_v2"
     )
     st.markdown("---")
 
-    # 2. ПРОВЕРКА, ЕСТЬ ЛИ ДАННЫЕ ДЛЯ ОТОБРАЖЕНИЯ
     if not os.path.exists(TRACK_FILE):
-        # Если база пуста, показываем только форму добавления
-        st.info("Список для отслеживания пуст. Добавьте первую страницу.")
-        with st.form("add_manual_empty_state"):
+        st.info("Список пуст.")
+        with st.form("add_manual_final"):
             c1, c2 = st.columns(2)
-            u = c1.text_input("URL (с https://)")
+            u = c1.text_input("URL")
             k = c2.text_input("Ключевое слово")
-            if st.form_submit_button("Добавить в список"):
+            if st.form_submit_button("Добавить"):
                 add_to_tracking(u, k)
                 st.rerun()
     else:
-        # Если база есть, показываем таблицу и кнопку проверки
         df_mon = pd.read_csv(TRACK_FILE, sep=";")
         t_place = st.empty()
 
@@ -3959,37 +3951,45 @@ with tab_monitoring:
         render_table(df_mon)
         st.markdown("---")
         
-        col_btn, col_del = st.columns([3, 1])
-        with col_btn:
-            if st.button(f"🚀 ПРОВЕРИТЬ ПОЗИЦИИ (Регион: {selected_mon_region})", type="primary", use_container_width=True):
-                if not ARSENKIN_TOKEN:
-                    st.error("Нет токена Арсенкина!")
-                else:
-                    logs = st.container(border=True)
-                    bar = logs.progress(0)
+        if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ (Регион: {selected_mon_region})", type="primary", use_container_width=True):
+            if not ARSENKIN_TOKEN:
+                st.error("Нет токена!")
+            else:
+                logs = st.container(border=True)
+                bar = logs.progress(0)
+                
+                for i, row in df_mon.iterrows():
+                    kw = row['Keyword']
+                    url = row['URL']
                     
-                    for i, row in df_mon.iterrows():
-                        kw = row['Keyword']
-                        url = row['URL']
-                        
-                        pos, err = get_position_arsenkin_task(kw, url, selected_mon_region, ARSENKIN_TOKEN)
-                        
-                        if err:
-                            logs.error(f"❌ {kw}: {err}")
-                        else:
-                            if pos > 0: logs.success(f"✅ {kw}: **{pos}**")
-                            else: logs.warning(f"⚪ {kw}: >100")
-                            
-                            df_mon.at[i, 'Position'] = pos
-                            df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
-                        
-                        bar.progress((i + 1) / len(df_mon))
+                    # Запрос
+                    pos, debug_msg = get_position_arsenkin_task(kw, url, selected_mon_region, ARSENKIN_TOKEN)
                     
-                    df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                    render_table(df_mon)
-                    logs.success(f"Готово! Регион: {selected_mon_region}")
+                    # Если вернулась ошибка (строка в debug_msg и pos=None)
+                    if pos is None and debug_msg:
+                        logs.error(f"❌ {kw}: {debug_msg}")
+                        
+                    # Если позиция 0, но есть DEBUG сообщение (значит сервер ответил, но мы не поняли или там 0)
+                    elif pos == 0 and debug_msg and "DEBUG" in debug_msg:
+                         logs.warning(f"⚪ {kw}: Позиция 0. {debug_msg}")
+                         df_mon.at[i, 'Position'] = 0
+                         df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+
+                    # Успех
+                    else:
+                        if pos > 0: logs.success(f"✅ {kw}: **{pos}**")
+                        else: logs.warning(f"⚪ {kw}: Не в топе (>100)")
+                        
+                        df_mon.at[i, 'Position'] = pos
+                        df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+                    
+                    bar.progress((i + 1) / len(df_mon))
+                
+                df_mon.to_csv(TRACK_FILE, sep=";", index=False)
+                render_table(df_mon)
+                logs.success(f"Проверка завершена!")
         
-        with col_del:
+        with st.expander("Управление"):
             if st.button("🗑️ Сброс"):
                 os.remove(TRACK_FILE)
                 st.rerun()
