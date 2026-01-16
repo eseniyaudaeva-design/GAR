@@ -3909,31 +3909,26 @@ def add_to_tracking(url, keyword):
         f.write(f"{url};{keyword};{today};0\n")
 
 # ==========================================
-# ОБНОВЛЕННЫЙ ИНТЕРФЕЙС МОНИТОРИНГА
+# МОНИТОРИНГ С ВЫБОРОМ РЕГИОНА
 # ==========================================
 with tab_monitoring:
-    st.header("📉 Трекер позиций (Яндекс)")
+    st.header("📉 Трекер позиций")
 
-    # 1. ПРОВЕРКА НАЛИЧИЯ БАЗЫ
+    # 1. ПРОВЕРКА БАЗЫ
     if not os.path.exists(TRACK_FILE):
-        st.info("Добавьте страницы для отслеживания (из Генератора или вручную).")
-        with st.form("add_row_new"):
+        st.info("Список пуст.")
+        with st.form("add_manual_mon"):
             c1, c2 = st.columns(2)
-            u = c1.text_input("URL (обязательно с https://)", placeholder="https://site.ru")
-            k = c2.text_input("Ключевое слово", placeholder="купить трубу")
+            u = c1.text_input("URL (https://...)")
+            k = c2.text_input("Ключ")
             if st.form_submit_button("Добавить"):
-                if u and k:
-                    add_to_tracking(u, k)
-                    st.rerun()
-                else:
-                    st.error("Заполните поля")
+                add_to_tracking(u, k)
+                st.rerun()
     else:
         df_mon = pd.read_csv(TRACK_FILE, sep=";")
-        
-        # Плейсхолдер для таблицы
         t_place = st.empty()
-        
-        def render_mon_table(df):
+
+        def render_table(df):
             def style_pos(v):
                 try:
                     i = int(v)
@@ -3951,50 +3946,64 @@ with tab_monitoring:
                     "Position": st.column_config.NumberColumn("Позиция", format="%d")
                 }
             )
-        
-        render_mon_table(df_mon)
-        st.markdown("---")
-        
-        # Получаем регион из настроек (или Москва)
-        current_reg = st.session_state.get('settings_region', 'Москва')
 
-        col_run, col_del = st.columns([3, 1])
-        
-        with col_run:
-            if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ (Регион: {current_reg})", type="primary", use_container_width=True):
+        render_table(df_mon)
+        st.markdown("---")
+
+        # === ВЫБОР РЕГИОНА (КАК В ШАГЕ 1) ===
+        # Пытаемся взять дефолтное значение из первой вкладки, если есть
+        default_reg_val = st.session_state.get('settings_region', 'Москва')
+        try:
+            def_index = list(REGION_MAP.keys()).index(default_reg_val)
+        except:
+            def_index = 0
+
+        c_reg, c_btn, c_del = st.columns([2, 3, 1])
+
+        with c_reg:
+            # Тот самый селектбокс
+            selected_mon_region = st.selectbox(
+                "🌍 Регион проверки:", 
+                list(REGION_MAP.keys()), 
+                index=def_index,
+                key="mon_region_selector"
+            )
+
+        with c_btn:
+            st.write("") # Отступ для выравнивания
+            st.write("")
+            if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ", type="primary", use_container_width=True):
                 if not ARSENKIN_TOKEN:
-                    st.error("❌ Введите токен Арсенкина в настройках!")
+                    st.error("Нет токена Арсенкина!")
                 else:
-                    log_box = st.container(border=True)
-                    log_box.write("### 📜 Лог выполнения:")
-                    bar = log_box.progress(0)
+                    logs = st.container(border=True)
+                    bar = logs.progress(0)
                     
                     for i, row in df_mon.iterrows():
                         kw = row['Keyword']
                         url = row['URL']
                         
-                        # Вызов новой функции
-                        pos, err = get_position_arsenkin_task(kw, url, current_reg, ARSENKIN_TOKEN)
+                        # Передаем выбранный в селекте регион
+                        pos, err = get_position_arsenkin_task(kw, url, selected_mon_region, ARSENKIN_TOKEN)
                         
                         if err:
-                            log_box.error(f"❌ {kw}: {err}")
+                            logs.error(f"❌ {kw}: {err}")
                         else:
-                            if pos > 0:
-                                log_box.success(f"✅ {kw}: **{pos}** место")
-                            else:
-                                log_box.warning(f"⚪ {kw}: Не в топе")
+                            if pos > 0: logs.success(f"✅ {kw}: **{pos}**")
+                            else: logs.warning(f"⚪ {kw}: >100")
                             
                             df_mon.at[i, 'Position'] = pos
                             df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
                         
                         bar.progress((i + 1) / len(df_mon))
                     
-                    # Сохранение и перерисовка
                     df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                    render_mon_table(df_mon)
-                    log_box.success("Готово! Таблица обновлена.")
+                    render_table(df_mon)
+                    logs.success(f"Готово! Регион: {selected_mon_region}")
 
-        with col_del:
-            if st.button("🗑️ Сброс базы", type="secondary", use_container_width=True):
+        with c_del:
+            st.write("") 
+            st.write("")
+            if st.button("🗑️ Сброс"):
                 os.remove(TRACK_FILE)
                 st.rerun()
