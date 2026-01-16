@@ -862,6 +862,11 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def get_position_arsenkin_task(query, target_url, region_name, api_token):
+    """
+    Инструмент 'positions' (Проверка позиций).
+    ИСПРАВЛЕНИЕ: Параметр alt_urls ПОЛНОСТЬЮ УДАЛЕН.
+    Формат: 0 (Простой), как на скриншоте.
+    """
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
@@ -871,8 +876,7 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # === ИЗМЕНЕНИЕ: FORMAT = 0 (ПРОСТОЙ) ===
-    # Это упрощает структуру ответа и снижает шанс ошибки парсинга
+    # === ВАЖНО: ЗДЕСЬ НЕТ СТРОКИ "alt_urls" ===
     payload = {
         "tools_name": "positions",
         "data": {
@@ -885,7 +889,7 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
                     "region": region_id_int
                 }
             ],
-            "format": 0 # <--- БЫЛО 1, СТАЛО 0 (Как на скриншоте)
+            "format": 0  # Простой формат
         }
     }
 
@@ -894,7 +898,9 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
         resp = r.json()
         
+        # Если ошибка запуска
         if "error" in resp: return None, f"Ошибка API: {resp.get('msg') or resp.get('error')}"
+        
         task_id = resp.get("task_id")
         if not task_id: return None, f"Нет Task ID. Ответ: {str(resp)}"
 
@@ -911,28 +917,23 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
-        # === ОТЛАДКА: СМОТРИМ ЧТО ПРИШЛО ===
-        # Если формат 0, результат обычно лежит прямо в result -> [ {pos: 5, ...} ]
+        # СМОТРИМ РЕЗУЛЬТАТ (FORMAT 0)
         res_list = data.get("result", [])
         
         if res_list and isinstance(res_list, list):
             for item in res_list:
-                # Арсенкин может вернуть query чуть иначе (регистр и т.д.), поэтому проверяем вхождение или равенство
-                # Но обычно равенство работает.
-                
-                # Ищем поле позиции. В format=0 это часто 'pos' или 'position'
+                # В простом формате поле называется 'pos' или 'position'
                 pos = item.get('position')
                 if pos is None: pos = item.get('pos')
                 
                 # Если позиция нашлась
                 if pos is not None:
-                    # Проверяем, не является ли она прочерком
+                    # Арсенкин может вернуть прочерк или 0, если не в топе
                     if str(pos) in ['-', '', '0', 'None']:
-                        # Возвращаем 0, но для отладки вернем и сырой ответ
-                        return 0, f"DEBUG: {str(item)}" 
+                        return 0, f"DEBUG: {str(item)}" # Возвращаем 0 и сырые данные для проверки
                     return int(pos), None
         
-        # Если список пуст или не нашли
+        # Если список пуст
         return 0, f"DEBUG FULL: {str(data)}"
 
     except Exception as e:
@@ -3993,3 +3994,4 @@ with tab_monitoring:
             if st.button("🗑️ Сброс"):
                 os.remove(TRACK_FILE)
                 st.rerun()
+
