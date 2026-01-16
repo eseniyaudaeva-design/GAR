@@ -3879,7 +3879,7 @@ with tab_projects:
                     st.error(f"❌ Ошибка чтения файла: {e}")
 
 # ==========================================
-# МОНИТОРИНГ: УМНАЯ ПРОВЕРКА (ДОМЕН -> ФИЛЬТР URL)
+# МОНИТОРИНГ: ФИНАЛ (ВАЛИДАЦИЯ URL + ALT_URLS)
 # ==========================================
 import os
 import pandas as pd
@@ -3891,6 +3891,7 @@ from urllib.parse import urlparse
 
 TRACK_FILE = "monitoring.csv"
 
+# Функция добавления
 def add_to_tracking(url, keyword):
     if not os.path.exists(TRACK_FILE):
         with open(TRACK_FILE, "w", encoding="utf-8") as f:
@@ -3903,10 +3904,10 @@ def add_to_tracking(url, keyword):
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         f.write(f"{url};{keyword};{today};0\n")
 
-# Функция нормализации ссылок для сравнения (убирает www, https, слэш в конце)
+# Функция нормализации для сравнения (убирает мусор)
 def normalize_url(u):
     if not u: return ""
-    u = u.lower().strip()
+    u = str(u).lower().strip()
     u = u.replace("https://", "").replace("http://", "").replace("www.", "")
     if u.endswith("/"): u = u[:-1]
     return u
@@ -3919,12 +3920,12 @@ with tab_monitoring:
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
 
-    selected_mon_region = st.selectbox("🌍 Регион:", list(REGION_MAP.keys()), index=def_index, key="mon_reg_smart")
+    selected_mon_region = st.selectbox("🌍 Регион:", list(REGION_MAP.keys()), index=def_index, key="mon_reg_valid_fix")
     st.markdown("---")
 
     if not os.path.exists(TRACK_FILE):
         st.info("База пуста.")
-        with st.form("add_m_smart"):
+        with st.form("add_m_valid"):
             u = st.text_input("URL"); k = st.text_input("Ключ")
             if st.form_submit_button("Добавить"):
                 add_to_tracking(u,k); st.rerun()
@@ -3950,19 +3951,23 @@ with tab_monitoring:
 
                 for i, row in df_mon.iterrows():
                     kw = str(row['Keyword'])
-                    target_url = str(row['URL']).strip()
+                    raw_url = str(row['URL']).strip()
                     
-                    # 1. Выделяем домен для поиска
-                    parsed = urlparse(target_url)
-                    domain_only = parsed.netloc.replace("www.", "")
-                    if not domain_only: domain_only = target_url.split('/')[0] # Fallback
-
-                    # 2. ЗАПРОС (Ищем по домену, чтобы точно найти вхождение)
+                    # 1. ЧИНИМ URL ДЛЯ API (ОБЯЗАТЕЛЬНО HTTPS)
+                    api_url = raw_url
+                    if not api_url.startswith("http"):
+                        api_url = "https://" + api_url
+                    
+                    # 2. ГЕНЕРИРУЕМ ALT_URLS (Ссылка + Вариант со слэшем/без)
+                    alt_url_var = api_url[:-1] if api_url.endswith('/') else api_url + '/'
+                    
+                    # ЗАПРОС (Теперь тут валидные данные)
                     payload = {
                         "tools_name": "positions",
                         "data": {
                             "queries": [kw],
-                            "url": domain_only, # <--- ИЩЕМ САЙТ В ЦЕЛОМ
+                            "url": api_url,          # <--- СТРОГО URL
+                            "alt_urls": [api_url, alt_url_var], # <--- МАССИВ С ВАРИАНТАМИ
                             "subdomain": True, 
                             "se": [{"type": 2, "region": rid_int}],
                             "format": 0 
@@ -3976,7 +3981,7 @@ with tab_monitoring:
                         tid = resp.get("task_id")
                         
                         if not tid:
-                            logs.error(f"❌ ОШИБКА: {resp}")
+                            logs.error(f"❌ API ОШИБКА: {resp}")
                             continue
                         
                         # ОЖИДАНИЕ
@@ -3990,36 +3995,36 @@ with tab_monitoring:
                         r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
                         final_data = r_get.json()
                         
-                        # ПАРСИНГ И СРАВНЕНИЕ URL
+                        # ПАРСИНГ
                         result_block = final_data.get("result", {})
                         table_block = result_block.get("table", {})
                         
                         if kw in table_block:
                             data_kw = table_block[kw]
                             
-                            # 1. Какая позиция у сайта?
+                            # Позиция
                             pos_list = data_kw.get("position", [])
                             found_pos = int(pos_list[0]) if pos_list else 1001
                             
-                            # 2. Какая страница ранжируется? (relevant url)
-                            # В format=0 Арсенкин кладет урл в поле relevant, url или r_url
+                            # Релевантная страница из выдачи
                             found_url = data_kw.get("relevant") or data_kw.get("url") or ""
                             
-                            # ЛОГИКА СРАВНЕНИЯ
+                            # ЛОГИКА:
                             if found_pos < 1000:
-                                # Сайт найден. Проверяем, ТА ЛИ ЭТО СТРАНИЦА?
-                                norm_target = normalize_url(target_url)
+                                # Проверяем, наша ли это страница
+                                norm_target = normalize_url(raw_url)
                                 norm_found = normalize_url(found_url)
                                 
-                                # Если Арсенкин не вернул URL (бывает), считаем что совпало по домену
+                                # Считаем совпадением, если один урл входит в другой (без учета http/www)
                                 is_match = (norm_target in norm_found) or (norm_found in norm_target)
                                 
                                 if is_match:
                                     logs.success(f"✅ {kw}: **{found_pos}**")
                                     df_mon.at[i, 'Position'] = found_pos
                                 else:
-                                    logs.warning(f"⚠️ {kw}: В топе другая стр! ({found_pos} место)\nОжидали: ...{norm_target[-20:]}\nВ топе: ...{norm_found[-20:]}")
-                                    df_mon.at[i, 'Position'] = 0 # Ставим 0, так как не та страница
+                                    logs.warning(f"⚠️ {kw}: {found_pos} место, но другая страница!\n(В топе: ...{found_url[-30:]})")
+                                    # Можно ставить found_pos, но помечать цветом. Пока ставим как есть.
+                                    df_mon.at[i, 'Position'] = found_pos 
                             else:
                                 logs.warning(f"⚪ {kw}: Не найдено (100+)")
                                 df_mon.at[i, 'Position'] = 0
