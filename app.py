@@ -3879,7 +3879,7 @@ with tab_projects:
                     st.error(f"❌ Ошибка чтения файла: {e}")
 
 # ==========================================
-# МОНИТОРИНГ: ПОЛНЫЙ ПАКЕТ (ВСТАВИТЬ В КОНЕЦ ФАЙЛА)
+# МОНИТОРИНГ: ФИНАЛЬНЫЙ ФИКС ВАЛИДАЦИИ
 # ==========================================
 import os
 import pandas as pd
@@ -3888,78 +3888,72 @@ import time
 import requests
 import json
 
-# 1. ОБЪЯВЛЯЕМ ПЕРЕМЕННУЮ (ЧТОБЫ НЕ БЫЛО ОШИБКИ NAMEERROR)
+# 1. ПЕРЕМЕННЫЕ
 TRACK_FILE = "monitoring.csv"
 
-# 2. ФУНКЦИЯ ДОБАВЛЕНИЯ (Для кнопок из других вкладок)
+# 2. ФУНКЦИЯ ЗАПИСИ
 def add_to_tracking(url, keyword):
     if not os.path.exists(TRACK_FILE):
         with open(TRACK_FILE, "w", encoding="utf-8") as f:
             f.write("URL;Keyword;Date;Position\n")
-    # Проверка на дубли
     try:
         existing = pd.read_csv(TRACK_FILE, sep=";")
-        if ((existing['URL'] == url) & (existing['Keyword'] == keyword)).any():
-            return
+        if ((existing['URL'] == url) & (existing['Keyword'] == keyword)).any(): return
     except: pass
-    
     with open(TRACK_FILE, "a", encoding="utf-8") as f:
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         f.write(f"{url};{keyword};{today};0\n")
 
-# 3. САМА ВКЛАДКА (РЕЖИМ ЧЕРНОГО ЯЩИКА)
+# 3. ВКЛАДКА
 with tab_monitoring:
-    st.header("📉 Трекер позиций (DEBUG)")
+    st.header("📉 Трекер позиций")
 
     # Выбор региона
     default_reg_val = st.session_state.get('settings_region', 'Москва')
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
 
-    selected_mon_region = st.selectbox("🌍 Регион:", list(REGION_MAP.keys()), index=def_index, key="mon_reg_final_dbg")
+    selected_mon_region = st.selectbox("🌍 Регион:", list(REGION_MAP.keys()), index=def_index, key="mon_reg_fix_final")
     st.markdown("---")
 
     if not os.path.exists(TRACK_FILE):
         st.info("База пуста.")
-        with st.form("add_m_final"):
+        with st.form("add_m_fix_final"):
             u = st.text_input("URL"); k = st.text_input("Ключ")
             if st.form_submit_button("Добавить"):
                 add_to_tracking(u,k); st.rerun()
     else:
-        # Читаем таблицу
-        try:
-            df_mon = pd.read_csv(TRACK_FILE, sep=";")
-        except:
-            st.error("Файл поврежден. Нажмите сброс.")
-            df_mon = pd.DataFrame()
+        try: df_mon = pd.read_csv(TRACK_FILE, sep=";")
+        except: df_mon = pd.DataFrame()
 
         if not df_mon.empty:
             st.dataframe(df_mon, use_container_width=True)
             
-            # === КНОПКА С ПОЛНОЙ ОТЛАДКОЙ ===
-            if st.button("🚀 ЗАПУСТИТЬ ПРОВЕРКУ (ПОКАЗАТЬ ВСЁ)", type="primary"):
+            # === КНОПКА ЗАПУСКА ===
+            if st.button("🚀 ЗАПУСТИТЬ ПРОВЕРКУ (FIXED JSON)", type="primary"):
                 if not ARSENKIN_TOKEN:
                     st.error("НЕТ ТОКЕНА!")
                     st.stop()
                 
-                st.write("### 🟢 НАЧАЛО ОТЛАДКИ")
+                st.write("### 🟢 ЛОГ ПРОВЕРКИ")
                 
                 reg_ids = REGION_MAP.get(selected_mon_region, {"ya": 213})
                 rid_int = int(reg_ids['ya'])
-                st.write(f"📍 Регион ID: {rid_int}")
 
                 for i, row in df_mon.iterrows():
                     kw = str(row['Keyword'])
                     url = str(row['URL']).strip()
                     
-                    st.markdown(f"#### 🔎 Проверка: `{kw}`")
+                    st.markdown(f"#### 🔎 `{kw}`")
                     
-                    # ПРЯМОЙ JSON (БЕЗ ФУНКЦИЙ)
+                    # === ХИТРЫЙ JSON ===
+                    # Мы дублируем URL в alt_urls, чтобы валидатор отстал
                     payload = {
                         "tools_name": "positions",
                         "data": {
                             "queries": [kw],
                             "url": url,
+                            "alt_urls": [url], # <--- ВОТ ЭТОТ ФИКС!
                             "subdomain": True, 
                             "se": [{"type": 2, "region": rid_int}],
                             "format": 0 
@@ -3967,11 +3961,7 @@ with tab_monitoring:
                     }
                     
                     try:
-                        st.write("➡️ 1. Отправка (tools/set)...")
-                        # Показываем, что отправляем
-                        with st.expander("JSON Запроса"):
-                            st.json(payload)
-
+                        # 1. ОТПРАВКА
                         r = requests.post(
                             "https://arsenkin.ru/api/tools/set", 
                             headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}", "Content-type": "application/json"}, 
@@ -3982,10 +3972,10 @@ with tab_monitoring:
                         tid = resp.get("task_id")
                         
                         if not tid:
-                            st.error(f"❌ ОШИБКА АРСЕНКИНА: {resp}")
+                            st.error(f"❌ API ОТКАЗАЛ: {resp}")
                             continue
                             
-                        st.success(f"✅ ID получен: {tid}. Ждем...")
+                        st.write(f"✅ ID: {tid}. Ждем...")
                         
                         # 2. ОЖИДАНИЕ
                         status = "process"
@@ -4001,41 +3991,38 @@ with tab_monitoring:
                             continue
 
                         # 3. ПОЛУЧЕНИЕ
-                        st.write("➡️ 2. Получение результата (tools/get)...")
                         r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
                         final_data = r_get.json()
                         
-                        # ВЫВОДИМ ОТВЕТ
-                        st.json(final_data)
-                        
+                        # ПАРСИНГ
                         res_list = final_data.get("result", [])
                         if res_list:
                             item = res_list[0]
                             pos = item.get('position') or item.get('pos')
                             
-                            st.info(f"🎯 Скрипт видит цифру: {pos}")
+                            # Пробуем вытащить позицию даже если она спрятана
+                            if pos is None and 'se_results' in item:
+                                try: pos = item['se_results'][0]['position']
+                                except: pass
+
+                            st.info(f"🎯 РЕЗУЛЬТАТ: {pos}")
                             
-                            if pos:
-                                try:
-                                    # Пробуем превратить в число, если там не прочерк
-                                    if str(pos) not in ['-', '0', 'None']:
-                                        df_mon.at[i, 'Position'] = int(pos)
-                                    else:
-                                        df_mon.at[i, 'Position'] = 0
-                                except:
-                                    df_mon.at[i, 'Position'] = 0
+                            if pos and str(pos) not in ['-', '0', 'None']:
+                                df_mon.at[i, 'Position'] = int(pos)
+                            else:
+                                df_mon.at[i, 'Position'] = 0
                         else:
-                            st.warning("Пустой список result.")
+                            st.warning(f"Пустой ответ: {final_data}")
 
                     except Exception as e:
-                        st.error(f"🔥 PYTHON ERROR: {e}")
+                        st.error(f"🔥 ОШИБКА: {e}")
                 
                 # Сохранение
                 df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
                 df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                st.success("✅ ОБНОВЛЕНО! (Нажмите Rerun, чтобы обновить таблицу)")
+                st.success("✅ ОБНОВЛЕНО! (Нажмите Rerun)")
         
-        # Кнопка сброса
+        # Сброс
         st.markdown("---")
         if st.button("🔥 УДАЛИТЬ ФАЙЛ БАЗЫ", type="secondary"):
             os.remove(TRACK_FILE); st.rerun()
