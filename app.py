@@ -14,6 +14,7 @@ import inspect
 import time
 import json
 import io
+import csv
 from google import genai
 import os
 import requests
@@ -1955,7 +1956,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 # ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
-tab_seo_main, tab_wholesale_main, tab_projects = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор", "📁 Проекты"])
+tab_seo_main, tab_wholesale_main, tab_projects, tab_monitoring = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор", "📁 Проекты", "📉 Мониторинг позиций"])
 
 # ------------------------------------------
 # TAB 1: SEO ANALYSIS (KEPT AS IS)
@@ -3787,32 +3788,52 @@ with tab_projects:
                     st.error(f"❌ Ошибка чтения файла: {e}")
 
 
-import csv
-import datetime
-
-# Файл-журнал
+# ==========================================
+# TAB 4: МОНИТОРИНГ (ВСТАВИТЬ В КОНЕЦ ФАЙЛА)
+# ==========================================
 TRACK_FILE = "monitoring.csv"
 
-# 1. Функция записи (вызывай её по кнопке после генерации)
 def add_to_tracking(url, keyword):
-    # Если файла нет, создаем с заголовками
     if not os.path.exists(TRACK_FILE):
         with open(TRACK_FILE, "w", encoding="utf-8") as f:
             f.write("URL;Keyword;Date;Position\n")
-    
-    # Дописываем строку
     with open(TRACK_FILE, "a", encoding="utf-8") as f:
-        today = datetime.date.today()
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
         f.write(f"{url};{keyword};{today};0\n")
 
-# 2. Визуализация (в отдельной вкладке)
-def show_tracking_table():
+with tab_monitoring:
+    st.header("📉 Простой Мониторинг")
+    
+    # 1. БЛОК РУЧНОГО ДОБАВЛЕНИЯ (Для теста)
+    with st.expander("➕ Добавить запись вручную", expanded=False):
+        c1, c2 = st.columns(2)
+        with c1: new_url = st.text_input("URL страницы", placeholder="https://site.ru/page")
+        with c2: new_kw = st.text_input("Ключевое слово", placeholder="купить трубу")
+        if st.button("Добавить в базу"):
+            if new_url and new_kw:
+                add_to_tracking(new_url, new_kw)
+                st.success("Добавлено!")
+                st.rerun()
+            else:
+                st.error("Заполните поля")
+
+    # 2. ТАБЛИЦА
     if os.path.exists(TRACK_FILE):
-        df = pd.read_csv(TRACK_FILE, sep=";")
-        st.dataframe(df) # Показываем таблицу
-        
-        if st.button("Обновить позиции"):
-            # Тут будет код запроса к Арсенкину
-            st.success("Данные обновлены (имитация)")
+        try:
+            df_mon = pd.read_csv(TRACK_FILE, sep=";")
+            st.dataframe(df_mon, use_container_width=True)
+            
+            if st.button("🔄 Обновить позиции (Имитация)", type="primary"):
+                # Имитация проверки
+                import random
+                for i in range(len(df_mon)):
+                    df_mon.at[i, 'Position'] = random.randint(1, 50)
+                
+                df_mon.to_csv(TRACK_FILE, sep=";", index=False)
+                st.success("Позиции обновлены!")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Ошибка чтения файла: {e}. Попробуйте удалить monitoring.csv")
     else:
-        st.info("Пока вы ничего не отслеживаете.")
+        st.info("База пуста. Добавьте первую запись выше.")
+
