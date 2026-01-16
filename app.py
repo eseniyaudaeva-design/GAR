@@ -864,87 +864,87 @@ def process_text_detailed(text, settings, n_gram=1):
 def get_position_arsenkin_task(query, target_url, region_name, api_token):
     """
     Инструмент 'positions' (Проверка позиций).
+    Формирует JSON строго по документации.
     """
-    # URL для задач
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
     
     headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
     
-    # Регион (для Яндекса type=2)
+    # 1. Получаем ID региона
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
+    region_id_int = int(reg_ids['ya'])
     
-    # Формируем JSON строго по вашей инструкции
+    # 2. Формируем Payload СТРОГО по вашему примеру JSON
     payload = {
         "tools_name": "positions",
         "data": {
-            "queries": [query], # Список из 1 ключа
-            "url": target_url,  # Например https://site.ru
-            "subdomain": True,  # Учитывать поддомены
+            "queries": [str(query)],       # Список фраз
+            "url": str(target_url).strip(), # URL сайта
+            "alt_urls": [],                # Пустой список (как в примере, необязательно, но надежнее)
+            "subdomain": True,             # Учитывать поддомены (обычно True)
             "se": [
                 {
-                    "type": 2, # Яндекс
-                    "region": reg_ids['ya']
+                    "type": 2,             # 2 = Яндекс (согласно вашему примеру JSON)
+                    "region": region_id_int
                 }
+                # Google удалил, чтобы экономить лимиты, проверяем только Яндекс
             ],
-            "format": 0 # Простой формат (нам нужна только цифра)
+            "format": 1                    # 1 = Подробный режим
         }
     }
 
     try:
-        # 1. Создаем задачу
-        r = requests.post(url_set, headers=headers, json=payload, timeout=15)
+        # ЗАПУСК ЗАДАЧИ
+        r = requests.post(url_set, headers=headers, json=payload, timeout=20)
         resp = r.json()
         
-        if "error" in resp: return None, f"Ошибка запуска: {resp['error']}"
+        # ДИАГНОСТИКА
+        if "error" in resp:
+            # Выводим ошибку, если сервер ругается
+            return None, f"Ошибка API: {resp.get('error') or resp.get('msg')}"
+            
         task_id = resp.get("task_id")
-        if not task_id: return None, "Нет Task ID"
+        if not task_id:
+            return None, f"Нет Task ID. Ответ сервера: {str(resp)}"
 
-        # 2. Ждем результат
-        for _ in range(20): # Ждем до 60 сек
-            time.sleep(3)
+        # ОЖИДАНИЕ
+        for _ in range(40):
+            time.sleep(2)
             r_c = requests.post(url_check, headers=headers, json={"task_id": task_id})
             if r_c.json().get("status") == "finish":
                 break
         else:
-            return None, "Тайм-аут"
+            return None, "Тайм-аут ожидания"
 
-        # 3. Скачиваем результат
+        # РЕЗУЛЬТАТ
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
-        # Парсим ответ
-        # Обычно приходит список result -> внутри json с позициями
-        # Структура может отличаться, ищем массив данных
+        # Парсинг ответа для format=1
+        # Ответ обычно выглядит так: result -> [ { "query": "...", "se_results": [ {"position": 5} ] } ]
         res_list = data.get("result", [])
         
-        # Арсенкин в инструменте positions возвращает сложную структуру
-        # Обычно это result -> [ { "query": "...", "pos": 5, ... } ] (упрощенно)
-        # Нам нужно найти позицию для нашего региона
-        
-        # Простой поиск цифры в ответе (так надежнее, если структура меняется)
-        if isinstance(res_list, list) and res_list:
-            # Ищем блок для Яндекса
+        if res_list and isinstance(res_list, list):
             for item in res_list:
                 if item.get('query') == query:
-                    # Позиция может лежать в поле 'pos', 'position' или во вложенном объекте
-                    # В этом инструменте часто приходит массив 'data'
-                    # Для надежности вернем весь объект, если не найдем прямого поля
+                    # Позиция может быть на верхнем уровне или внутри se_results
+                    pos = item.get('position')
                     
-                    # Пытаемся найти позицию в поле 'position' или 'pos'
-                    pos = item.get('position') or item.get('pos')
+                    # Если позиция спрятана глубже (так бывает при format=1)
+                    if pos is None and 'se_results' in item and len(item['se_results']) > 0:
+                        pos = item['se_results'][0].get('position')
                     
-                    # Если позиция 0 или '-' — значит не в топе
-                    if str(pos) in ['0', '-', '']: return 0, None
+                    # Проверяем, что позиция - это число
+                    if str(pos) in ['0', '-', '', 'None']: 
+                        return 0, None
                     return int(pos), None
-
-        # Если не нашли простым путем, пробуем глубокий парсинг JSON ответа
-        # (иногда Арсенкин возвращает вложенный JSON)
-        return 0, None # Если не нашли - считаем 0
+                    
+        return 0, None
 
     except Exception as e:
-        return None, str(e)
+        return None, f"Ошибка Python: {str(e)}"
 
 def parse_page(url, settings, query_context=""):
     import streamlit as st
@@ -3909,71 +3909,92 @@ def add_to_tracking(url, keyword):
         f.write(f"{url};{keyword};{today};0\n")
 
 # ==========================================
-# МОНИТОРИНГ: НОВЫЙ МЕТОД (tools_name=positions)
+# ОБНОВЛЕННЫЙ ИНТЕРФЕЙС МОНИТОРИНГА
 # ==========================================
 with tab_monitoring:
-    st.header("📉 Проверка позиций (Яндекс)")
+    st.header("📉 Трекер позиций (Яндекс)")
 
+    # 1. ПРОВЕРКА НАЛИЧИЯ БАЗЫ
     if not os.path.exists(TRACK_FILE):
-        st.info("Добавьте страницы для отслеживания.")
-        with st.form("add_row"):
+        st.info("Добавьте страницы для отслеживания (из Генератора или вручную).")
+        with st.form("add_row_new"):
             c1, c2 = st.columns(2)
-            u = c1.text_input("URL (https://site.ru/page)")
-            k = c2.text_input("Ключевое слово")
+            u = c1.text_input("URL (обязательно с https://)", placeholder="https://site.ru")
+            k = c2.text_input("Ключевое слово", placeholder="купить трубу")
             if st.form_submit_button("Добавить"):
-                add_to_tracking(u, k)
-                st.rerun()
+                if u and k:
+                    add_to_tracking(u, k)
+                    st.rerun()
+                else:
+                    st.error("Заполните поля")
     else:
         df_mon = pd.read_csv(TRACK_FILE, sep=";")
         
-        # Таблица (без перезагрузки)
+        # Плейсхолдер для таблицы
         t_place = st.empty()
-        def draw_table(df):
+        
+        def render_mon_table(df):
             def style_pos(v):
                 try:
                     i = int(v)
-                    if 0 < i <= 10: return 'background-color: #dcfce7; color: green; font-weight: bold'
-                    if 10 < i <= 30: return 'background-color: #fef9c3'
-                    if i == 0: return 'color: red'
+                    if 0 < i <= 10: return 'background-color: #dcfce7; color: #15803d; font-weight: 700'
+                    if 10 < i <= 30: return 'background-color: #fef9c3; color: #a16207'
+                    if i == 0: return 'color: #ef4444'
                 except: pass
                 return ''
-            t_place.dataframe(df.style.map(style_pos, subset=['Position']), use_container_width=True)
+            
+            t_place.dataframe(
+                df.style.map(style_pos, subset=['Position']),
+                use_container_width=True,
+                column_config={
+                    "URL": st.column_config.LinkColumn("Ссылка"),
+                    "Position": st.column_config.NumberColumn("Позиция", format="%d")
+                }
+            )
         
-        draw_table(df_mon)
+        render_mon_table(df_mon)
         st.markdown("---")
         
-        reg_now = st.session_state.get('settings_region', "Москва")
+        # Получаем регион из настроек (или Москва)
+        current_reg = st.session_state.get('settings_region', 'Москва')
 
-        if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ (Регион: {reg_now})", type="primary", use_container_width=True):
-            if not ARSENKIN_TOKEN:
-                st.error("Нет токена!")
-            else:
-                logs = st.container(border=True)
-                logs.write("### ⏳ Ход проверки:")
-                bar = logs.progress(0)
-                
-                for i, row in df_mon.iterrows():
-                    kw = row['Keyword']
-                    url = row['URL']
-                    
-                    # Вызываем НОВУЮ функцию
-                    pos, err = get_position_arsenkin_task(kw, url, reg_now, ARSENKIN_TOKEN)
-                    
-                    if err:
-                        logs.error(f"❌ {kw}: {err}")
-                    else:
-                        if pos > 0: logs.success(f"✅ {kw}: **{pos}** место")
-                        else: logs.warning(f"⚪ {kw}: >100 (нет в топе)")
-                        
-                        df_mon.at[i, 'Position'] = pos
-                        df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
-                    
-                    bar.progress((i + 1) / len(df_mon))
-                
-                df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                draw_table(df_mon) # Обновляем таблицу на лету
-                logs.success("Готово!")
+        col_run, col_del = st.columns([3, 1])
         
-        if st.button("🗑️ Очистить список"):
-            os.remove(TRACK_FILE)
-            st.rerun()
+        with col_run:
+            if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ (Регион: {current_reg})", type="primary", use_container_width=True):
+                if not ARSENKIN_TOKEN:
+                    st.error("❌ Введите токен Арсенкина в настройках!")
+                else:
+                    log_box = st.container(border=True)
+                    log_box.write("### 📜 Лог выполнения:")
+                    bar = log_box.progress(0)
+                    
+                    for i, row in df_mon.iterrows():
+                        kw = row['Keyword']
+                        url = row['URL']
+                        
+                        # Вызов новой функции
+                        pos, err = get_position_arsenkin_task(kw, url, current_reg, ARSENKIN_TOKEN)
+                        
+                        if err:
+                            log_box.error(f"❌ {kw}: {err}")
+                        else:
+                            if pos > 0:
+                                log_box.success(f"✅ {kw}: **{pos}** место")
+                            else:
+                                log_box.warning(f"⚪ {kw}: Не в топе")
+                            
+                            df_mon.at[i, 'Position'] = pos
+                            df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+                        
+                        bar.progress((i + 1) / len(df_mon))
+                    
+                    # Сохранение и перерисовка
+                    df_mon.to_csv(TRACK_FILE, sep=";", index=False)
+                    render_mon_table(df_mon)
+                    log_box.success("Готово! Таблица обновлена.")
+
+        with col_del:
+            if st.button("🗑️ Сброс базы", type="secondary", use_container_width=True):
+                os.remove(TRACK_FILE)
+                st.rerun()
