@@ -3941,117 +3941,122 @@ with tab_monitoring:
             with col_btn:
                 if st.button("🚀 ОБНОВИТЬ ПОЗИЦИИ", type="primary", use_container_width=True):
                     if not ARSENKIN_TOKEN:
-                        st.error("Нет токена!")
+                        st.error("❌ ОШИБКА: Не введен Arsenkin Token! Введите его в сайдбаре.")
                     else:
-                        # Только прогресс-бар, никакого текста
-                        bar = st.progress(0)
+                        # Создаем контейнер для логов, чтобы видеть процесс
+                        status_container = st.status("🚀 Начинаем проверку...", expanded=True)
+                        progress_bar = status_container.progress(0)
                         
+                        # ID региона (Яндекс)
                         reg_ids = REGION_MAP.get(selected_mon_region, {"ya": 213})
                         rid_int = int(reg_ids['ya'])
+                        
+                        total_rows = len(df_mon)
 
                         for i, row in df_mon.iterrows():
-                            kw = str(row['Keyword'])
-                            target_url = str(row['URL']).strip()
+                            kw = str(row['Keyword']).strip()
+                            target_url_raw = str(row['URL']).strip()
                             
-                            # 1. Выделяем домен для поиска
-                            parsed = urlparse(target_url)
-                            domain_only = parsed.netloc.replace("www.", "")
-                            if not domain_only: domain_only = target_url.split('/')[0]
-
-                            # 2. ЗАПРОС
+                            # Обновляем статус
+                            status_container.write(f"📡 Проверяем: **{kw}** для {target_url_raw}...")
+                            
+                            # === 1. ФОРМИРУЕМ JSON СТРОГО ПО ДОКУМЕНТАЦИИ ===
                             payload = {
                                 "tools_name": "positions",
                                 "data": {
                                     "queries": [kw],
-                                    "url": domain_only, # Ищем домен
-                                    "subdomain": True, 
-                                    "se": [{"type": 2, "region": rid_int}],
-                                    "format": 0 
+                                    "url": target_url_raw,  # Передаем полный URL как в примере документации
+                                    "subdomain": True,      # Искать и на поддоменах
+                                    "se": [
+                                        {
+                                            "type": 2,      # 2 = Яндекс (обычный), согласно примеру JSON
+                                            "region": rid_int
+                                        }
+                                    ],
+                                    "format": 0             # Простой формат
                                 }
                             }
                             
                             try:
-                                r = requests.post("https://arsenkin.ru/api/tools/set", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json=payload, timeout=20)
-                                tid = r.json().get("task_id")
+                                # === 2. ОТПРАВКА ЗАДАЧИ (SET) ===
+                                r_set = requests.post(
+                                    "https://arsenkin.ru/api/tools/set", 
+                                    headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, 
+                                    json=payload, 
+                                    timeout=30
+                                )
                                 
-                                if tid:
-                                    # ЖДЕМ
-                                    for _ in range(40):
-                                        time.sleep(1.5)
-                                        r_check = requests.post("https://arsenkin.ru/api/tools/check", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
-                                        if r_check.json().get("status") == "finish": break
-                                    
-# ... (выше ваш код отправки запроса и ожидания) ...
-                                    
-# ПОЛУЧАЕМ РЕЗУЛЬТАТ
-                                    r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
-                                    final_data = r_get.json()
-                                    
-                                    # === 🔧 ИСПРАВЛЕНИЕ: ПРАВИЛЬНЫЙ ПАРСИНГ ===
-                                    # Инструмент positions возвращает СПИСОК (list) в поле result
-                                    # Excel файл подтверждает, что данные есть.
-                                    
-                                    res_data = final_data.get("result", [])
-                                    
-                                    found_pos_val = 0
+                                # ЕСЛИ ОШИБКА — ПОКАЗЫВАЕМ ЕЁ
+                                if r_set.status_code != 200:
+                                    st.error(f"❌ Ошибка API (SET) на фразе '{kw}': {r_set.status_code} {r_set.text}")
+                                    continue # Пропускаем эту фразу, идем к следующей
 
-                                    # Проверяем, что пришел список и он не пустой
-                                    if res_data and isinstance(res_data, list):
-                                        # Мы отправляли 1 запрос, значит берем [0] элемент
-                                        item = res_data[0]
+                                resp_json = r_set.json()
+                                if "error" in resp_json:
+                                    st.error(f"❌ Арсенкин ругается: {resp_json['error']}")
+                                    continue
+
+                                tid = resp_json.get("task_id")
+                                if not tid:
+                                    st.error(f"❌ Не пришел task_id! Ответ: {resp_json}")
+                                    continue
+
+                                # === 3. ОЖИДАНИЕ (CHECK) ===
+                                status_now = "process"
+                                wait_cycles = 0
+                                while status_now != "finish" and wait_cycles < 30:
+                                    time.sleep(2)
+                                    r_check = requests.post(
+                                        "https://arsenkin.ru/api/tools/check", 
+                                        headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, 
+                                        json={"task_id": tid}
+                                    )
+                                    if r_check.status_code == 200:
+                                        status_now = r_check.json().get("status", "process")
+                                    wait_cycles += 1
+                                
+                                if status_now != "finish":
+                                    st.warning(f"⏳ Тайм-аут на фразе '{kw}'")
+                                    continue
+
+                                # === 4. ПОЛУЧЕНИЕ (GET) И ПАРСИНГ ===
+                                r_get = requests.post(
+                                    "https://arsenkin.ru/api/tools/get", 
+                                    headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, 
+                                    json={"task_id": tid}
+                                )
+                                final_data = r_get.json()
+                                
+                                # Парсинг результата
+                                result_list = final_data.get("result", [])
+                                found_pos_val = 0
+                                
+                                if result_list and isinstance(result_list, list):
+                                    item = result_list[0]
+                                    # Пытаемся достать позицию
+                                    p_raw = item.get("position")
+                                    
+                                    # Иногда бывает, что ключ - это ID региона
+                                    if p_raw is None:
+                                        p_raw = item.get(str(rid_int))
                                         
-                                        # 1. Сначала ищем явное поле "position" (стандарт API)
-                                        p_raw = item.get("position")
-                                        
-                                        # 2. Если поле пустое, иногда API отдает позицию под ключом региона (например "213")
-                                        # На вашем скрине заголовок "Яндекс... [213]", попробуем найти по ID региона
-                                        if p_raw is None:
-                                            p_raw = item.get(str(rid_int))
-
-                                        # Обрабатываем то, что нашли
-                                        if p_raw and str(p_raw).isdigit():
-                                            found_pos_val = int(p_raw)
-                                        elif str(p_raw) == "-":
-                                            found_pos_val = 0 # Нет в топе
-                                            
-                                    # Записываем в таблицу (без лишних проверок URL, так как API уже отфильтровал)
-                                    df_mon.at[i, 'Position'] = found_pos_val
-
+                                    if p_raw and str(p_raw).isdigit():
+                                        found_pos_val = int(p_raw)
+                                    elif str(p_raw) == "-":
+                                        found_pos_val = 0
+                                
+                                # Записываем результат
+                                df_mon.at[i, 'Position'] = found_pos_val
+                                df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+                                
+                                # Сохраняем CSV после каждой строки (чтобы не потерять, если упадет)
+                                df_mon.to_csv(TRACK_FILE, sep=";", index=False)
+                                
                             except Exception as e:
-                                # Можно раскомментировать для отладки, если снова будет 0
-                                # st.error(f"Error parse: {e}")
-                                pass
+                                st.error(f"❌ Критическая ошибка скрипта на фразе '{kw}': {e}")
                             
-                            # Обновляем дату и сохраняем
-                            df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
-                            df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                            bar.progress((i + 1) / len(df_mon))
-                        
-                        # === ПЕРЕЗАГРУЗКА, ЧТОБЫ ОБНОВИТЬ ТАБЛИЦУ ===
+                            # Обновляем прогресс-бар
+                            progress_bar.progress((i + 1) / total_rows)
+
+                        status_container.update(label="✅ Проверка завершена!", state="complete", expanded=False)
                         st.rerun()
-
-            # Рисуем таблицу
-            def style_pos(v):
-                try:
-                    i = int(v)
-                    if 0 < i <= 10: return 'color: #16a34a; font-weight: bold' # Зеленый
-                    if 10 < i <= 30: return 'color: #ca8a04' # Желтый
-                    if i == 0: return 'color: #dc2626' # Красный
-                except: pass
-                return ''
-
-            st.dataframe(
-                df_mon.style.map(style_pos, subset=['Position']),
-                use_container_width=True,
-                height=500,
-                column_config={
-                    "URL": st.column_config.LinkColumn("Ссылка"),
-                    "Position": st.column_config.NumberColumn("Позиция", format="%d")
-                }
-            )
-            
-            with col_del:
-                if st.button("🗑️", help="Очистить список"):
-                    os.remove(TRACK_FILE); st.rerun()
-
-
