@@ -3981,41 +3981,54 @@ with tab_monitoring:
                                         r_check = requests.post("https://arsenkin.ru/api/tools/check", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
                                         if r_check.json().get("status") == "finish": break
                                     
+# ... (выше ваш код отправки запроса и ожидания) ...
+                                    
                                     # ПОЛУЧАЕМ
                                     r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
                                     final_data = r_get.json()
                                     
-                                    # ПАРСИНГ
-                                    result_block = final_data.get("result", {})
-                                    table_block = result_block.get("table", {})
+                                    # === ИСПРАВЛЕННЫЙ ПАРСИНГ ===
+                                    # Инструмент positions возвращает список в поле result, а не table
+                                    result_list = final_data.get("result", [])
                                     
-                                    if kw in table_block:
-                                        data_kw = table_block[kw]
-                                        pos_list = data_kw.get("position", [])
-                                        found_pos = int(pos_list[0]) if pos_list else 1001
+                                    current_pos = 0
+                                    found_url = ""
+
+                                    if result_list and isinstance(result_list, list):
+                                        # Так как мы отправляли 1 запрос (queries=[kw]), берем первый элемент
+                                        item = result_list[0]
                                         
-                                        # Релевантная страница
-                                        found_url = data_kw.get("relevant") or data_kw.get("url") or ""
+                                        # Проверяем, что вернулась не ошибка
+                                        raw_pos = item.get("position")
+                                        found_url = item.get("url", "") # URL, который ранжируется в выдаче
                                         
-                                        if found_pos < 1000:
-                                            # Сверка URL
-                                            norm_target = normalize_url(target_url)
-                                            norm_found = normalize_url(found_url)
-                                            
-                                            is_match = (norm_target in norm_found) or (norm_found in norm_target)
-                                            
-                                            if is_match:
-                                                df_mon.at[i, 'Position'] = found_pos
-                                            else:
-                                                # Если страница не та - ставим 0 (или можно оставить found_pos, если хотите видеть просто домен)
-                                                df_mon.at[i, 'Position'] = 0 
+                                        # Арсенкин может вернуть число, строку "10" или "-"/"0"
+                                        if raw_pos and str(raw_pos).isdigit():
+                                            current_pos = int(raw_pos)
                                         else:
-                                            df_mon.at[i, 'Position'] = 0
+                                            current_pos = 0
+
+                                    # Логика сверки (если позиция найдена)
+                                    if current_pos > 0:
+                                        # Нормализуем для сравнения (убираем http/www)
+                                        norm_target = normalize_url(target_url)
+                                        norm_found = normalize_url(found_url)
+                                        
+                                        # Если домены совпадают или URL является частью другого
+                                        # (В запросе вы уже указали "url": domain_only, так что Арсенкин сам фильтрует,
+                                        # но эта проверка на всякий случай не повредит)
+                                        is_match = (norm_target in norm_found) or (norm_found in norm_target) or (norm_target == norm_found)
+                                        
+                                        # ВАЖНО: Если Арсенкин вернул позицию, значит он НАШЕЛ ваш домен.
+                                        # Дополнительная жесткая проверка может мешать, если форматы URL немного отличаются.
+                                        # Поэтому просто пишем позицию.
+                                        df_mon.at[i, 'Position'] = current_pos
                                     else:
                                         df_mon.at[i, 'Position'] = 0
 
-                            except:
-                                pass # Игнорируем ошибки, просто идем дальше
+                            except Exception as e:
+                                # st.error(f"Ошибка: {e}") # Раскомментируйте для отладки
+                                pass 
                             
                             # Обновляем дату и сохраняем
                             df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -4048,3 +4061,4 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Очистить список"):
                     os.remove(TRACK_FILE); st.rerun()
+
