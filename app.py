@@ -861,25 +861,30 @@ def process_text_detailed(text, settings, n_gram=1):
         forms_map[lemma].add(w)
     return lemmas, forms_map
 
-def get_position_arsenkin_task(query, target_url, region_name, api_token):
+def get_pos_arsenkin_FINAL(query, target_url, region_name, api_token):
+    """
+    Финальная версия функции с новым именем, чтобы избежать кэширования.
+    Параметр alt_urls удален ГАРАНТИРОВАННО.
+    """
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
+    
     headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
     
-    # Регион
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # === JSON БЕЗ ALT_URLS ===
+    # === JSON БЕЗ ЛИШНИХ ПОЛЕЙ ===
     payload = {
         "tools_name": "positions",
         "data": {
             "queries": [str(query)],       
             "url": str(target_url).strip(),
+            # "alt_urls": [], <--- ЭТОЙ СТРОКИ ТУТ НЕТ ФИЗИЧЕСКИ
             "subdomain": True,             
             "se": [{"type": 2, "region": region_id_int}],
-            "format": 0 # Простой формат
+            "format": 0
         }
     }
 
@@ -888,11 +893,12 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
         resp = r.json()
         
-        # Если ошибка запуска (как была с alt_urls)
-        if "error" in resp: return None, f"API Error: {resp}"
+        if "error" in resp: 
+            return None, f"API Error: {resp.get('msg') or resp}"
         
         task_id = resp.get("task_id")
-        if not task_id: return None, f"No ID: {resp}"
+        if not task_id: 
+            return None, f"No ID. Server sent: {str(resp)}"
 
         # 2. ОЖИДАНИЕ
         for _ in range(40):
@@ -907,17 +913,14 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
-        # ПАРСИНГ ОТВЕТА
         res_list = data.get("result", [])
         if not res_list: return 0, f"Empty Result: {str(data)}"
             
-        item = res_list[0] # Берем первый (и единственный) результат
+        item = res_list[0]
         
-        # Ищем позицию в разных полях
         pos = item.get('position')
         if pos is None: pos = item.get('pos')
         
-        # Если позиция 0 или прочерк - возвращаем СЫРОЙ ОТВЕТ, чтобы вы увидели, что прислал Арсенкин
         if str(pos) in ['0', '-', '', 'None']:
             return 0, f"RAW: {str(item)}"
             
@@ -3889,12 +3892,12 @@ def add_to_tracking(url, keyword):
         f.write(f"{url};{keyword};{today};0\n")
 
 # ==========================================
-# МОНИТОРИНГ: ИСПРАВЛЕННЫЙ ИНТЕРФЕЙС
+# МОНИТОРИНГ (ВЫЗОВ НОВОЙ ФУНКЦИИ)
 # ==========================================
 with tab_monitoring:
     st.header("📉 Трекер позиций")
 
-    # 1. ВЫБОР РЕГИОНА
+    # Выбор региона
     default_reg_val = st.session_state.get('settings_region', 'Москва')
     try: def_index = list(REGION_MAP.keys()).index(default_reg_val)
     except: def_index = 0
@@ -3903,13 +3906,13 @@ with tab_monitoring:
         "🌍 Сначала выберите регион для проверки:", 
         list(REGION_MAP.keys()), 
         index=def_index,
-        key="mon_region_selector_global_v2"
+        key="mon_region_selector_final_v2"
     )
     st.markdown("---")
 
     if not os.path.exists(TRACK_FILE):
         st.info("Список пуст.")
-        with st.form("add_manual_final"):
+        with st.form("add_manual_final_v2"):
             c1, c2 = st.columns(2)
             u = c1.text_input("URL")
             k = c2.text_input("Ключевое слово")
@@ -3950,27 +3953,20 @@ with tab_monitoring:
                     kw = row['Keyword']
                     url = row['URL']
                     
-                    # Запрос
-                    pos, debug_msg = get_position_arsenkin_task(kw, url, selected_mon_region, ARSENKIN_TOKEN)
+                    # === ВЫЗЫВАЕМ НОВУЮ ФУНКЦИЮ ===
+                    pos, debug_msg = get_pos_arsenkin_FINAL(kw, url, selected_mon_region, ARSENKIN_TOKEN)
                     
-                    # Если вернулась ошибка (строка в debug_msg и pos=None)
-                    if pos is None and debug_msg:
+                    if debug_msg and pos is None:
                         logs.error(f"❌ {kw}: {debug_msg}")
-                        
-                    # Если позиция 0, но есть DEBUG сообщение (значит сервер ответил, но мы не поняли или там 0)
-                    elif pos == 0 and debug_msg and "DEBUG" in debug_msg:
-                         logs.warning(f"⚪ {kw}: Позиция 0. {debug_msg}")
+                    elif pos == 0 and debug_msg:
+                         logs.warning(f"⚪ {kw}: 0. Данные: {debug_msg}")
                          df_mon.at[i, 'Position'] = 0
-                         df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
-
-                    # Успех
                     else:
                         if pos > 0: logs.success(f"✅ {kw}: **{pos}**")
-                        else: logs.warning(f"⚪ {kw}: Не в топе (>100)")
-                        
+                        else: logs.warning(f"⚪ {kw}: Не в топе")
                         df_mon.at[i, 'Position'] = pos
-                        df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
                     
+                    df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
                     bar.progress((i + 1) / len(df_mon))
                 
                 df_mon.to_csv(TRACK_FILE, sep=";", index=False)
@@ -3981,6 +3977,3 @@ with tab_monitoring:
             if st.button("🗑️ Сброс"):
                 os.remove(TRACK_FILE)
                 st.rerun()
-
-
-
