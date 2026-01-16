@@ -3787,39 +3787,32 @@ with tab_projects:
                     st.error(f"❌ Ошибка чтения файла: {e}")
 
 
+import csv
+import datetime
 
+# Файл-журнал
+TRACK_FILE = "monitoring.csv"
 
+# 1. Функция записи (вызывай её по кнопке после генерации)
+def add_to_tracking(url, keyword):
+    # Если файла нет, создаем с заголовками
+    if not os.path.exists(TRACK_FILE):
+        with open(TRACK_FILE, "w", encoding="utf-8") as f:
+            f.write("URL;Keyword;Date;Position\n")
+    
+    # Дописываем строку
+    with open(TRACK_FILE, "a", encoding="utf-8") as f:
+        today = datetime.date.today()
+        f.write(f"{url};{keyword};{today};0\n")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# 2. Визуализация (в отдельной вкладке)
+def show_tracking_table():
+    if os.path.exists(TRACK_FILE):
+        df = pd.read_csv(TRACK_FILE, sep=";")
+        st.dataframe(df) # Показываем таблицу
+        
+        if st.button("Обновить позиции"):
+            # Тут будет код запроса к Арсенкину
+            st.success("Данные обновлены (имитация)")
+    else:
+        st.info("Пока вы ничего не отслеживаете.")
