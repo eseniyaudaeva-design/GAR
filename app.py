@@ -863,8 +863,8 @@ def process_text_detailed(text, settings, n_gram=1):
 
 def get_position_arsenkin_task(query, target_url, region_name, api_token):
     """
-    Инструмент 'positions' (Проверка позиций).
-    Формирует JSON строго по документации.
+    Инструмент 'positions'.
+    ИСПРАВЛЕНИЕ: Удалено поле alt_urls, из-за которого была ошибка JSON_VALIDATION_ERROR.
     """
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
@@ -872,42 +872,41 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
     
     headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
     
-    # 1. Получаем ID региона
+    # Получаем ID региона
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # 2. Формируем Payload СТРОГО по вашему примеру JSON
+    # Формируем JSON
+    # ВНИМАНИЕ: Строка "alt_urls" удалена полностью!
     payload = {
         "tools_name": "positions",
         "data": {
-            "queries": [str(query)],       # Список фраз
-            "url": str(target_url).strip(), # URL сайта
-            "alt_urls": [],                # Пустой список (как в примере, необязательно, но надежнее)
-            "subdomain": True,             # Учитывать поддомены (обычно True)
+            "queries": [str(query)],       
+            "url": str(target_url).strip(), # Основной URL передается здесь
+            "subdomain": True,             
             "se": [
                 {
-                    "type": 2,             # 2 = Яндекс (согласно вашему примеру JSON)
+                    "type": 2, # Яндекс
                     "region": region_id_int
                 }
-                # Google удалил, чтобы экономить лимиты, проверяем только Яндекс
             ],
-            "format": 1                    # 1 = Подробный режим
+            "format": 1                    
         }
     }
 
     try:
-        # ЗАПУСК ЗАДАЧИ
+        # ЗАПУСК
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
         resp = r.json()
         
         # ДИАГНОСТИКА
         if "error" in resp:
-            # Выводим ошибку, если сервер ругается
-            return None, f"Ошибка API: {resp.get('error') or resp.get('msg')}"
+            # Вывод ошибки от сервера (msg или error)
+            return None, f"Ошибка API: {resp.get('msg') or resp.get('error')}"
             
         task_id = resp.get("task_id")
         if not task_id:
-            return None, f"Нет Task ID. Ответ сервера: {str(resp)}"
+            return None, f"Нет Task ID. Ответ: {str(resp)}"
 
         # ОЖИДАНИЕ
         for _ in range(40):
@@ -922,21 +921,16 @@ def get_position_arsenkin_task(query, target_url, region_name, api_token):
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
-        # Парсинг ответа для format=1
-        # Ответ обычно выглядит так: result -> [ { "query": "...", "se_results": [ {"position": 5} ] } ]
         res_list = data.get("result", [])
         
         if res_list and isinstance(res_list, list):
             for item in res_list:
                 if item.get('query') == query:
-                    # Позиция может быть на верхнем уровне или внутри se_results
                     pos = item.get('position')
                     
-                    # Если позиция спрятана глубже (так бывает при format=1)
                     if pos is None and 'se_results' in item and len(item['se_results']) > 0:
                         pos = item['se_results'][0].get('position')
                     
-                    # Проверяем, что позиция - это число
                     if str(pos) in ['0', '-', '', 'None']: 
                         return 0, None
                     return int(pos), None
@@ -4007,3 +4001,4 @@ with tab_monitoring:
             if st.button("🗑️ Сброс"):
                 os.remove(TRACK_FILE)
                 st.rerun()
+
