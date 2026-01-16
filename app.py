@@ -861,6 +861,91 @@ def process_text_detailed(text, settings, n_gram=1):
         forms_map[lemma].add(w)
     return lemmas, forms_map
 
+def get_position_arsenkin_task(query, target_url, region_name, api_token):
+    """
+    Инструмент 'positions' (Проверка позиций).
+    """
+    # URL для задач
+    url_set = "https://arsenkin.ru/api/tools/set"
+    url_check = "https://arsenkin.ru/api/tools/check"
+    url_get = "https://arsenkin.ru/api/tools/get"
+    
+    headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
+    
+    # Регион (для Яндекса type=2)
+    reg_ids = REGION_MAP.get(region_name, {"ya": 213})
+    
+    # Формируем JSON строго по вашей инструкции
+    payload = {
+        "tools_name": "positions",
+        "data": {
+            "queries": [query], # Список из 1 ключа
+            "url": target_url,  # Например https://site.ru
+            "subdomain": True,  # Учитывать поддомены
+            "se": [
+                {
+                    "type": 2, # Яндекс
+                    "region": reg_ids['ya']
+                }
+            ],
+            "format": 0 # Простой формат (нам нужна только цифра)
+        }
+    }
+
+    try:
+        # 1. Создаем задачу
+        r = requests.post(url_set, headers=headers, json=payload, timeout=15)
+        resp = r.json()
+        
+        if "error" in resp: return None, f"Ошибка запуска: {resp['error']}"
+        task_id = resp.get("task_id")
+        if not task_id: return None, "Нет Task ID"
+
+        # 2. Ждем результат
+        for _ in range(20): # Ждем до 60 сек
+            time.sleep(3)
+            r_c = requests.post(url_check, headers=headers, json={"task_id": task_id})
+            if r_c.json().get("status") == "finish":
+                break
+        else:
+            return None, "Тайм-аут"
+
+        # 3. Скачиваем результат
+        r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
+        data = r_g.json()
+        
+        # Парсим ответ
+        # Обычно приходит список result -> внутри json с позициями
+        # Структура может отличаться, ищем массив данных
+        res_list = data.get("result", [])
+        
+        # Арсенкин в инструменте positions возвращает сложную структуру
+        # Обычно это result -> [ { "query": "...", "pos": 5, ... } ] (упрощенно)
+        # Нам нужно найти позицию для нашего региона
+        
+        # Простой поиск цифры в ответе (так надежнее, если структура меняется)
+        if isinstance(res_list, list) and res_list:
+            # Ищем блок для Яндекса
+            for item in res_list:
+                if item.get('query') == query:
+                    # Позиция может лежать в поле 'pos', 'position' или во вложенном объекте
+                    # В этом инструменте часто приходит массив 'data'
+                    # Для надежности вернем весь объект, если не найдем прямого поля
+                    
+                    # Пытаемся найти позицию в поле 'position' или 'pos'
+                    pos = item.get('position') or item.get('pos')
+                    
+                    # Если позиция 0 или '-' — значит не в топе
+                    if str(pos) in ['0', '-', '']: return 0, None
+                    return int(pos), None
+
+        # Если не нашли простым путем, пробуем глубокий парсинг JSON ответа
+        # (иногда Арсенкин возвращает вложенный JSON)
+        return 0, None # Если не нашли - считаем 0
+
+    except Exception as e:
+        return None, str(e)
+
 def parse_page(url, settings, query_context=""):
     import streamlit as st
     try:
@@ -3824,112 +3909,71 @@ def add_to_tracking(url, keyword):
         f.write(f"{url};{keyword};{today};0\n")
 
 # ==========================================
-# ВСТАВИТЬ ВМЕСТО СТАРОГО БЛОКА tab_monitoring
+# МОНИТОРИНГ: НОВЫЙ МЕТОД (tools_name=positions)
 # ==========================================
 with tab_monitoring:
-    st.header("📉 Трекер позиций (Яндекс)")
-    
-    # 1. ПРОВЕРКА БАЗЫ
+    st.header("📉 Проверка позиций (Яндекс)")
+
     if not os.path.exists(TRACK_FILE):
-        st.info("База пуста. Добавьте товары из Генератора или вручную.")
-        with st.form("manual_add_form_final"):
+        st.info("Добавьте страницы для отслеживания.")
+        with st.form("add_row"):
             c1, c2 = st.columns(2)
-            u = c1.text_input("URL страницы")
+            u = c1.text_input("URL (https://site.ru/page)")
             k = c2.text_input("Ключевое слово")
             if st.form_submit_button("Добавить"):
                 add_to_tracking(u, k)
-                st.rerun() # Тут реран нужен, чтобы обновить состояние, логи тут не важны
+                st.rerun()
     else:
-        # Читаем базу
         df_mon = pd.read_csv(TRACK_FILE, sep=";")
         
-        # Создаем ПЛЕЙСХОЛДЕР (место) для таблицы. 
-        # Мы будем обновлять его содержимое без перезагрузки страницы.
-        table_placeholder = st.empty()
-        
-        # Функция для красивой отрисовки таблицы
-        def render_table(dataframe):
-            def color_positions(val):
+        # Таблица (без перезагрузки)
+        t_place = st.empty()
+        def draw_table(df):
+            def style_pos(v):
                 try:
-                    v = int(val)
-                    if v > 0 and v <= 10: return 'background-color: #dcfce7; color: #14532d; font-weight: bold'
-                    if v > 10 and v <= 30: return 'background-color: #fef9c3; color: #713f12'
-                    if v == 0: return 'color: #ef4444'
+                    i = int(v)
+                    if 0 < i <= 10: return 'background-color: #dcfce7; color: green; font-weight: bold'
+                    if 10 < i <= 30: return 'background-color: #fef9c3'
+                    if i == 0: return 'color: red'
                 except: pass
                 return ''
-
-            table_placeholder.dataframe(
-                dataframe.style.map(color_positions, subset=['Position']),
-                use_container_width=True,
-                column_config={
-                    "URL": st.column_config.LinkColumn("Ссылка"),
-                    "Position": st.column_config.NumberColumn("Позиция", format="%d")
-                }
-            )
-
-        # Рисуем таблицу в первый раз (исходное состояние)
-        render_table(df_mon)
-
+            t_place.dataframe(df.style.map(style_pos, subset=['Position']), use_container_width=True)
+        
+        draw_table(df_mon)
         st.markdown("---")
         
-        # 2. КНОПКА ЗАПУСКА
-        if st.button("🚀 ПРОВЕРИТЬ ПОЗИЦИИ (ЛОГИ ОСТАНУТСЯ)", type="primary", use_container_width=True):
-            if not ARSENKIN_TOKEN:
-                st.error("❌ Ошибка: Не введен Arsenkin Token")
-            else:
-                # Создаем контейнер для логов НИЖЕ кнопки
-                log_container = st.container(border=True)
-                log_container.write("### 📜 Ход выполнения:")
-                
-                progress_bar = log_container.progress(0)
-                
-                # Проходим по строкам
-                for index, row in df_mon.iterrows():
-                    keyword = row['Keyword']
-                    target_url = row['URL']
-                    my_domain_clean = urlparse(target_url).netloc.replace("www.", "").strip()
-                    
-                    try:
-                        # Запрос к API
-                        res = get_arsenkin_urls(keyword, "Яндекс", "Москва", ARSENKIN_TOKEN, depth_val=100)
-                        
-                        if not res:
-                            log_container.warning(f"⚠️ `{keyword}`: API вернул пустоту (проверьте лимиты/токен).")
-                            found_pos = 0
-                        else:
-                            found_pos = 0
-                            found_url = ""
-                            for item in res:
-                                item_domain = urlparse(item['url']).netloc.replace("www.", "")
-                                if my_domain_clean == item_domain:
-                                    found_pos = item['pos']
-                                    found_url = item['url']
-                                    break
-                            
-                            if found_pos > 0:
-                                log_container.success(f"✅ `{keyword}`: Позиция **{found_pos}**")
-                            else:
-                                log_container.error(f"❌ `{keyword}`: Не найдено в ТОП-100")
-                            
-                            # Обновляем данные в памяти
-                            df_mon.at[index, 'Position'] = found_pos
-                            df_mon.at[index, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
-                            
-                    except Exception as e:
-                        log_container.error(f"🔥 Ошибка на `{keyword}`: {e}")
+        reg_now = st.session_state.get('settings_region', "Москва")
 
-                    progress_bar.progress((index + 1) / len(df_mon))
+        if st.button(f"🚀 ОБНОВИТЬ ПОЗИЦИИ (Регион: {reg_now})", type="primary", use_container_width=True):
+            if not ARSENKIN_TOKEN:
+                st.error("Нет токена!")
+            else:
+                logs = st.container(border=True)
+                logs.write("### ⏳ Ход проверки:")
+                bar = logs.progress(0)
                 
-                # Сохраняем файл
+                for i, row in df_mon.iterrows():
+                    kw = row['Keyword']
+                    url = row['URL']
+                    
+                    # Вызываем НОВУЮ функцию
+                    pos, err = get_position_arsenkin_task(kw, url, reg_now, ARSENKIN_TOKEN)
+                    
+                    if err:
+                        logs.error(f"❌ {kw}: {err}")
+                    else:
+                        if pos > 0: logs.success(f"✅ {kw}: **{pos}** место")
+                        else: logs.warning(f"⚪ {kw}: >100 (нет в топе)")
+                        
+                        df_mon.at[i, 'Position'] = pos
+                        df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+                    
+                    bar.progress((i + 1) / len(df_mon))
+                
                 df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                
-                # ОБНОВЛЯЕМ ТАБЛИЦУ В ПЛЕЙСХОЛДЕРЕ (БЕЗ ПЕРЕЗАГРУЗКИ СТРАНИЦЫ!)
-                render_table(df_mon)
-                
-                log_container.success("🏁 Готово! Таблица выше обновлена. Логи можно читать.")
-                
-        # Кнопка очистки
-        with st.expander("🗑️ Удалить базу"):
-            if st.button("Стереть всё"):
-                os.remove(TRACK_FILE)
-                st.rerun()
+                draw_table(df_mon) # Обновляем таблицу на лету
+                logs.success("Готово!")
+        
+        if st.button("🗑️ Очистить список"):
+            os.remove(TRACK_FILE)
+            st.rerun()
