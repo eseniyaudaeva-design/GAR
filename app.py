@@ -862,82 +862,75 @@ def process_text_detailed(text, settings, n_gram=1):
     return lemmas, forms_map
 
 def get_position_arsenkin_task(query, target_url, region_name, api_token):
-    """
-    Инструмент 'positions' (Проверка позиций).
-    ИСПРАВЛЕНИЕ: Параметр alt_urls ПОЛНОСТЬЮ УДАЛЕН.
-    Формат: 0 (Простой), как на скриншоте.
-    """
+    # Настройки
     url_set = "https://arsenkin.ru/api/tools/set"
     url_check = "https://arsenkin.ru/api/tools/check"
     url_get = "https://arsenkin.ru/api/tools/get"
-    
     headers = {"Authorization": f"Bearer {api_token}", "Content-type": "application/json"}
     
+    # Регион
     reg_ids = REGION_MAP.get(region_name, {"ya": 213})
     region_id_int = int(reg_ids['ya'])
     
-    # === ВАЖНО: ЗДЕСЬ НЕТ СТРОКИ "alt_urls" ===
+    # JSON
     payload = {
         "tools_name": "positions",
         "data": {
             "queries": [str(query)],       
             "url": str(target_url).strip(),
             "subdomain": True,             
-            "se": [
-                {
-                    "type": 2, 
-                    "region": region_id_int
-                }
-            ],
-            "format": 0  # Простой формат
+            "se": [{"type": 2, "region": region_id_int}],
+            "format": 0 # Простой формат
         }
     }
 
     try:
-        # ЗАПУСК
+        # 1. ОТПРАВКА
         r = requests.post(url_set, headers=headers, json=payload, timeout=20)
         resp = r.json()
         
-        # Если ошибка запуска
-        if "error" in resp: return None, f"Ошибка API: {resp.get('msg') or resp.get('error')}"
-        
+        if "error" in resp: return None, f"Err Set: {resp}"
         task_id = resp.get("task_id")
-        if not task_id: return None, f"Нет Task ID. Ответ: {str(resp)}"
+        if not task_id: return None, f"No ID: {resp}"
 
-        # ОЖИДАНИЕ
+        # 2. ОЖИДАНИЕ
         for _ in range(40):
             time.sleep(2)
             r_c = requests.post(url_check, headers=headers, json={"task_id": task_id})
             if r_c.json().get("status") == "finish":
                 break
         else:
-            return None, "Тайм-аут ожидания"
+            return None, "Timeout"
 
-        # РЕЗУЛЬТАТ
+        # 3. ПОЛУЧЕНИЕ
         r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
         data = r_g.json()
         
-        # СМОТРИМ РЕЗУЛЬТАТ (FORMAT 0)
+        # === ВОТ ТУТ МЕНЯЕМ ЛОГИКУ ===
+        # Мы не ищем по слову, мы просто берем результат (так как отправляли 1 запрос)
         res_list = data.get("result", [])
         
-        if res_list and isinstance(res_list, list):
-            for item in res_list:
-                # В простом формате поле называется 'pos' или 'position'
-                pos = item.get('position')
-                if pos is None: pos = item.get('pos')
-                
-                # Если позиция нашлась
-                if pos is not None:
-                    # Арсенкин может вернуть прочерк или 0, если не в топе
-                    if str(pos) in ['-', '', '0', 'None']:
-                        return 0, f"DEBUG: {str(item)}" # Возвращаем 0 и сырые данные для проверки
-                    return int(pos), None
+        if not res_list:
+            return 0, f"EMPTY LIST from API. Raw: {str(data)}"
+            
+        # Берем первый элемент списка (он там один)
+        item = res_list[0]
         
-        # Если список пуст
-        return 0, f"DEBUG FULL: {str(data)}"
+        # Пытаемся найти позицию в разных полях
+        pos = item.get('position')
+        if pos is None: pos = item.get('pos')
+        if pos is None: pos = item.get('p') # Иногда бывает так
+        
+        # Если формат ответа "simple", позиция может быть просто значением
+        # Но для отладки вернем СЫРОЙ JSON, если позиция кажется 0 или None
+        if str(pos) in ['0', '-', '', 'None']:
+            # ВЕРНЕМ ВЕСЬ КУСОК JSON, ЧТОБЫ ТЫ УВИДЕЛ ГЛАЗАМИ В ЛОГАХ
+            return 0, f"RAW RESP: {str(item)}"
+            
+        return int(pos), None
 
     except Exception as e:
-        return None, f"Ошибка Python: {str(e)}"
+        return None, f"PyErr: {str(e)}"
 
 def parse_page(url, settings, query_context=""):
     import streamlit as st
@@ -3994,4 +3987,5 @@ with tab_monitoring:
             if st.button("🗑️ Сброс"):
                 os.remove(TRACK_FILE)
                 st.rerun()
+
 
