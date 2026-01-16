@@ -3824,103 +3824,102 @@ def add_to_tracking(url, keyword):
         f.write(f"{url};{keyword};{today};0\n")
 
 # ==========================================
-# ПОЛНАЯ ЗАМЕНА БЛОКА tab_monitoring
+# УЛУЧШЕННЫЙ БЛОК МОНИТОРИНГА (С ДИАГНОСТИКОЙ)
 # ==========================================
 with tab_monitoring:
     st.header("📉 Трекер позиций (Яндекс)")
     
-    # Проверяем, есть ли файл и есть ли в нем данные
-    has_data = False
-    if os.path.exists(TRACK_FILE):
-        try:
-            df_check = pd.read_csv(TRACK_FILE, sep=";")
-            if not df_check.empty: has_data = True
-        except: pass
-
-    # --- СЦЕНАРИЙ 1: БАЗА ПУСТАЯ (ПОДСКАЗКА) ---
-    if not has_data:
-        st.info("👋 Привет! Здесь пока пусто, но это легко исправить.")
-        
-        st.markdown("""
-        ### Как это работает?
-        1. **Сгенерируйте контент** во вкладке `🏭 Оптовый генератор`.
-        2. В самом низу той вкладки нажмите кнопку **«➕ Добавить эти товары в Мониторинг»**.
-        3. Вернитесь сюда — здесь появится таблица ваших товаров.
-        4. Нажмите кнопку **«Проверить позиции»**, и скрипт покажет, на каком месте ваш сайт в Яндексе.
-        
-        *Либо добавьте одну страницу вручную для теста:*
-        """)
-        
-        with st.form("manual_add_form"):
+    # ПРОВЕРКА НАЛИЧИЯ БАЗЫ
+    if not os.path.exists(TRACK_FILE):
+        st.info("База пуста. Добавьте товары из Генератора или вручную.")
+        with st.form("manual_add_form_debug"):
             c1, c2 = st.columns(2)
             u = c1.text_input("URL страницы")
             k = c2.text_input("Ключевое слово")
-            if st.form_submit_button("Добавить вручную"):
+            if st.form_submit_button("Добавить"):
                 add_to_tracking(u, k)
-                st.success("Готово! Обновите страницу (или нажмите кнопку ниже).")
                 st.rerun()
-
-    # --- СЦЕНАРИЙ 2: ДАННЫЕ ЕСТЬ (РАБОЧАЯ ПАНЕЛЬ) ---
     else:
+        # ЧИТАЕМ БАЗУ
         df_mon = pd.read_csv(TRACK_FILE, sep=";")
         
-        # 1. ПАНЕЛЬ УПРАВЛЕНИЯ
         col_actions, col_legend = st.columns([2, 1])
-        
         with col_actions:
-            st.write(f"📊 Отслеживается страниц: **{len(df_mon)}**")
-            if st.button("🚀 ПРОВЕРИТЬ ПОЗИЦИИ СЕЙЧАС (ARSENKIN)", type="primary", use_container_width=True):
+            st.write(f"В базе: **{len(df_mon)}** страниц")
+            
+            # === КНОПКА ПРОВЕРКИ ===
+            if st.button("🚀 ПРОВЕРИТЬ ПОЗИЦИИ (С ЛОГАМИ)", type="primary", use_container_width=True):
                 if not ARSENKIN_TOKEN:
-                    st.error("❌ Ошибка: Не введен Arsenkin Token (во вкладке SEO Анализ)")
+                    st.error("❌ Ошибка: Не введен Arsenkin Token (во вкладке Шаг 1)")
                 else:
                     progress_bar = st.progress(0)
-                    status_box = st.empty()
+                    log_area = st.container(border=True) # Окно для логов
+                    log_area.write("### 📜 Лог проверки:")
                     
                     for index, row in df_mon.iterrows():
-                        status_box.caption(f"Сканирую: {row['Keyword']}...")
+                        keyword = row['Keyword']
+                        target_url = row['URL']
+                        
+                        # Чистим домен от https и www для точного сравнения
+                        my_domain_clean = urlparse(target_url).netloc.replace("www.", "").strip()
+                        
+                        log_area.info(f"🔎 **{index+1}. Запрос:** `{keyword}` для сайта `{my_domain_clean}`")
+                        
                         try:
-                            # Запрос к API (Глубина 100)
-                            res = get_arsenkin_urls(row['Keyword'], "Яндекс", "Москва", ARSENKIN_TOKEN, depth_val=100)
+                            # 1. ЗАПРОС К API
+                            # Запрашиваем ТОП-100 по Москве (регион можно поменять в настройках)
+                            res = get_arsenkin_urls(keyword, "Яндекс", "Москва", ARSENKIN_TOKEN, depth_val=100)
                             
-                            # Поиск домена
-                            my_domain_part = urlparse(row['URL']).netloc.replace("www.", "")
-                            found_pos = 0
-                            if res:
+                            if not res:
+                                log_area.warning(f"⚠️ API вернул пустой список! Проверьте лимиты Арсенкина или токен.")
+                                df_mon.at[index, 'Position'] = 0
+                            else:
+                                # 2. ПОИСК СОВПАДЕНИЙ
+                                found_pos = 0
+                                found_url_match = ""
+                                
                                 for item in res:
-                                    if my_domain_part in item['url']:
-                                        found_pos = item['pos']; break
-                            
-                            df_mon.at[index, 'Position'] = found_pos
-                            df_mon.at[index, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+                                    # Сравниваем домены
+                                    item_domain = urlparse(item['url']).netloc.replace("www.", "")
+                                    
+                                    # Если домен совпал
+                                    if my_domain_clean == item_domain:
+                                        # Дополнительная проверка: совпадает ли путь?
+                                        # Если мы ищем конкретную страницу, а в топе Главная - это не то (или то? зависит от логики)
+                                        # Пока считаем просто вхождение домена, но выводим URL
+                                        found_pos = item['pos']
+                                        found_url_match = item['url']
+                                        break # Нашли - выходим
+                                
+                                # Запись результата
+                                if found_pos > 0:
+                                    log_area.success(f"✅ Найдено! Позиция: **{found_pos}** (URL: {found_url_match})")
+                                else:
+                                    log_area.error(f"❌ Не найдено в ТОП-100. (Арсенкин вернул {len(res)} сайтов, но вашего там нет)")
+                                
+                                df_mon.at[index, 'Position'] = found_pos
+                                df_mon.at[index, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+
                         except Exception as e:
-                            print(e)
+                            log_area.error(f"🔥 КРИТИЧЕСКАЯ ОШИБКА: {str(e)}")
                         
                         progress_bar.progress((index + 1) / len(df_mon))
                     
+                    # Сохраняем
                     df_mon.to_csv(TRACK_FILE, sep=";", index=False)
-                    status_box.success("✅ Проверка завершена!")
+                    st.success("Готово! Таблица обновлена.")
                     st.rerun()
 
         with col_legend:
-            st.caption("Легенда:")
-            st.markdown("""
-            <div style="font-size:13px;">
-            🟢 <b>1-10</b>: Топ-10 (Успех)<br>
-            🟡 <b>11-30</b>: Близко к топу<br>
-            ⚪ <b>0</b>: Не найдено (или >100)
-            </div>
-            """, unsafe_allow_html=True)
+            st.info("Если позиция 0:\n1. Либо сайта нет в ТОП-100.\n2. Либо ошибка API (см. логи при проверке).")
 
-        st.markdown("---")
-
-        # 2. ТАБЛИЦА
-        # Функция раскраски
+        # ВЫВОД ТАБЛИЦЫ
         def color_positions(val):
             try:
                 v = int(val)
                 if v > 0 and v <= 10: return 'background-color: #dcfce7; color: #14532d; font-weight: bold'
                 if v > 10 and v <= 30: return 'background-color: #fef9c3; color: #713f12'
-                if v == 0: return 'color: #9ca3af'
+                if v == 0: return 'color: #ef4444' # Красный если 0
             except: pass
             return ''
 
@@ -3928,15 +3927,12 @@ with tab_monitoring:
             df_mon.style.map(color_positions, subset=['Position']),
             use_container_width=True,
             column_config={
-                "URL": st.column_config.LinkColumn("Ссылка на товар"),
-                "Keyword": "Запрос",
-                "Date": "Дата проверки",
-                "Position": st.column_config.NumberColumn("Позиция в Яндексе", format="%d")
+                "URL": st.column_config.LinkColumn("Ссылка"),
+                "Position": st.column_config.NumberColumn("Позиция", format="%d")
             }
         )
         
-        # Кнопка очистки (если захочется сбросить)
-        with st.expander("🗑️ Управление базой"):
-            if st.button("Очистить всю историю отслеживания"):
-                os.remove(TRACK_FILE)
-                st.rerun()
+        if st.button("🗑️ Удалить базу (Сброс)"):
+            os.remove(TRACK_FILE)
+            st.rerun()
+
