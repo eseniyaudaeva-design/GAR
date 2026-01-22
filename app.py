@@ -1950,8 +1950,8 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 СТРОГИЕ ПРАВИЛА:
 1. ВЫДЕЛЕНИЕ: Каждое использованное слово из списка (или его форму) ОБЯЗАТЕЛЬНО оборачивай в тег <b>. Пример: <b>стальная труба</b>.
 2. ОБЪЕМ: Текст должен быть максимально подробным. ЗАПРЕЩЕНО сокращать. Пиши развернуто.
-3. МОРФОЛОГИЯ: Смело меняй окончания, числа и падежи слов.
-4. КОНТЕКСТ: Если слово не подходит по смыслу — создай отдельное предложение под него.
+3. МОРФОЛОГИЯ: Смело меняй окончания, числа и падежи слов. ЗАПРЕЩЕНО вставлять ключевые слова "как есть", если это нарушает правила русского языка.
+4. КОНТЕКСТ: Если слово не подходит по смыслу — создай отдельное предложение под него. Если ключевое слово — это словосочетание (например, "труба бесшовная"), ты можешь разделять его словами, если смысл сохраняется.
 -------------------------------------------
 """
 
@@ -3546,39 +3546,50 @@ with tab_wholesale_main:
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
 
-                # --- 2. ТАБЛИЦЫ (ПОЛНЫЙ КОД) ---
+# --- 2. ТАБЛИЦЫ (ИСПРАВЛЕНО: НОВЫЙ СТИЛЬ + ОЧИСТКА) ---
                 if use_tables and client:
                     for t_topic in table_prompts:
                         ctx = f"Данные из контекста: {str_tables_final}" 
+                        
+                        # Обновленный промпт под новую верстку
                         prompt_tbl = (
-                            f"Создай подробную HTML таблицу (<table>) для товара '{header_for_ai}'. Тема таблицы: {t_topic}. \n"
+                            f"Создай HTML таблицу (<table>) для товара '{header_for_ai}'. Тема таблицы: {t_topic}. \n"
                             f"Контекст: {ctx}. \n\n"
-                            f"SEO ЗАДАЧА (КРИТИЧНО): \n"
-                            f"Ты ОБЯЗАН включить следующие ключевые слова в ячейки таблицы (в названия параметров или значения): {seo_keywords_string}. \n"
-                            f"ПРАВИЛО: Оберни каждое внедренное ключевое слово в тег <b>. Пример: <td><b>Диаметр 50мм</b></td>. \n"
-                            f"Если слово не подходит по смыслу, добавь строку 'Примечание' или 'Доп. инфо' и впиши его туда. \n"
-                            f"СТРУКТУРА: Используй <tr>, <th>, <td>. Без markdown. Таблица должна быть большой (минимум 5-8 строк)."
+                            f"SEO ЗАДАЧА: \n"
+                            f"Ты ОБЯЗАН включить следующие ключевые слова в ячейки таблицы: {seo_keywords_string}. \n"
+                            f"ПРАВИЛО 1: Оберни каждое внедренное ключевое слово в тег <b>. Пример: <td><b>Диаметр 50мм</b></td>. \n"
+                            f"ПРАВИЛО 2: Используй классы CSS. Тэг table должен быть таким: <table class='brand-accent-table'>. \n"
+                            f"ПРАВИЛО 3: Не добавляй никаких div-оберток, выдай только код таблицы.\n"
+                            f"СТРУКТУРА: <thead><tr><th>...</th></tr></thead> <tbody><tr><td>...</td></tr></tbody>."
                         )
+
                         try:
-                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.4)
+                            # Температуру ставим ниже (0.3), чтобы он меньше фантазировал с тегами
+                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.3)
+                            
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                             
-                            # Чистка мусора
-                            raw_table = re.sub(r'(</th>)\s*(<td)', r'\1</tr><tr>\2', raw_table, flags=re.IGNORECASE)
-                            raw_table = re.sub(r'<caption[\s\S]*?<\/caption>', '', raw_table, flags=re.IGNORECASE)
-                            raw_table = re.sub(r'<tr[^>]*>\s*(?:<(?:td|th)[^>]*>\s*<\/(?:td|th)>\s*)+<\/tr>', '', raw_table, flags=re.IGNORECASE)
-                            raw_table = re.sub(r'<\/?(thead|tbody|tfoot)[^>]*>', '', raw_table)
-                            raw_table = re.sub(r'(<table[^>]*>)\s*<(?:th|td)[^>]*>(\s*<tr)', r'\1\2', raw_table) 
+                            # === ЖЕСТКАЯ ОЧИСТКА ОТ МУСОРА ===
+                            # Находим начало и конец таблицы
+                            start_idx = raw_table.find("<table")
+                            end_idx = raw_table.find("</table>")
                             
-                            styled_table = raw_table
-                            styled_table = styled_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
-                            styled_table = styled_table.replace('<th', '<th style="border: 2px solid black; padding: 5px;"')
-                            styled_table = styled_table.replace('<td', '<td style="border: 2px solid black; padding: 5px;"')
-                            
-                            if '<tbody>' not in styled_table:
-                                styled_table = re.sub(r'(<table[^>]*>)([\s\S]*?)(<\/table>)', r'\1<tbody>\2</tbody>\3', styled_table)
-                            injections.append(styled_table)
-                        except: pass
+                            if start_idx != -1 and end_idx != -1:
+                                clean_table_inner = raw_table[start_idx:end_idx+8] # +8 чтобы захватить </table>
+                                
+                                # Принудительно ставим правильный класс, если AI ошибся
+                                if "brand-accent-table" not in clean_table_inner:
+                                    clean_table_inner = clean_table_inner.replace("<table", "<table class='brand-accent-table'", 1)
+                                
+                                # Программно добавляем обертку DIV
+                                final_table_html = f'<div class="table-full-width-wrapper">{clean_table_inner}</div>'
+                                injections.append(final_table_html)
+                            else:
+                                # Если AI не выдал таблицу, пропускаем или пробуем добавить как есть (но лучше пропустить мусор)
+                                pass
+
+                        except Exception as e: 
+                            log_container.write(f"Ошибка генерации таблицы: {e}")
                 
                 # --- 3. ПРОМО (ПОЛНЫЙ КОД) ---
                 if use_promo and p_img_map:
@@ -3744,8 +3755,63 @@ with tab_wholesale_main:
                 if count_added > 0:
                     st.toast(f"✅ Добавлено {count_added} товаров!", icon="📉")
 
-        # === ПРЕДПРОСМОТРА (ТОЖЕ СОХРАНЯЕТСЯ) ===
+# === ПРЕДПРОСМОТРА (ТОЖЕ СОХРАНЯЕТСЯ) ===
         with st.expander("👀 Предпросмотр того, что уже готово", expanded=False):
+            # --- ВСТАВЛЯЕМ СТИЛИ CSS ДЛЯ КРАСИВЫХ ТАБЛИЦ ---
+            st.markdown("""
+            <style>
+                /* Контейнер предпросмотра */
+                .preview-box {
+                    border: 1px solid #e2e8f0;
+                    background-color: #ffffff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    max-height: 600px;
+                    overflow-y: auto;
+                    box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+                }
+                
+                /* ВАШИ СТИЛИ ДЛЯ ТАБЛИЦ */
+                .table-full-width-wrapper {
+                    display: block !important;
+                    width: 100% !important;
+                    margin: 20px 0 !important;
+                }
+                .brand-accent-table {
+                    width: 100% !important;
+                    border-collapse: separate !important;
+                    border-spacing: 0 !important;
+                    background: white;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+                    font-family: 'Inter', sans-serif;
+                    border: 0 !important;
+                }
+                .brand-accent-table th {
+                    background-color: #277EFF;
+                    color: white;
+                    text-align: left;
+                    padding: 16px;
+                    font-weight: 500;
+                    font-size: 15px;
+                    border: none;
+                }
+                .brand-accent-table th:first-child { border-top-left-radius: 8px; }
+                .brand-accent-table th:last-child { border-top-right-radius: 8px; }
+                .brand-accent-table td {
+                    padding: 16px;
+                    border-bottom: 1px solid #e5e7eb;
+                    color: #4b5563;
+                    font-size: 15px;
+                    line-height: 1.4;
+                }
+                .brand-accent-table tr:last-child td { border-bottom: none; }
+                .brand-accent-table tr:last-child td:first-child { border-bottom-left-radius: 8px; }
+                .brand-accent-table tr:last-child td:last-child { border-bottom-right-radius: 8px; }
+                .brand-accent-table tr:hover td { background-color: #f8faff; }
+            </style>
+            """, unsafe_allow_html=True)
+
             st.dataframe(st.session_state.gen_result_df, use_container_width=True)
             
             # Детальный просмотр по одному товару
@@ -3767,6 +3833,7 @@ with tab_wholesale_main:
                         tabs = st.tabs([c.replace("IP_PROP", "") for c in active_cols])
                         for i, col in enumerate(active_cols):
                             with tabs[i]:
+                                # Отображаем HTML внутри стилизованного контейнера
                                 st.markdown(f"<div class='preview-box'>{str(row_p[col])}</div>", unsafe_allow_html=True)
 # ==========================================
 # TAB 3: PROJECT MANAGER (SAVE/LOAD)
@@ -4080,5 +4147,6 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
