@@ -3268,22 +3268,42 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
 
 # ==========================================
-    # 4. УМНЫЙ ЗАПУСК (С SEO-СЧЕТЧИКОМ)
+    # 4. УМНЫЙ ЗАПУСК (СИСТЕМА STOP/RESUME + FULL GENERATION)
     # ==========================================
     st.markdown("### 🚀 Управление запуском (Авто-цепочка)")
+    st.markdown("---")
 
+    # 1. Инициализация состояний
     if 'auto_run_active' not in st.session_state: st.session_state.auto_run_active = False
     if 'auto_current_index' not in st.session_state: st.session_state.auto_current_index = 0
+    if 'last_stopped_index' not in st.session_state: st.session_state.last_stopped_index = 0
 
+    # 2. БЛОК ВОЗОБНОВЛЕНИЯ (Появляется, если мы останавливались)
+    if not st.session_state.auto_run_active and st.session_state.last_stopped_index > 0:
+        with st.container(border=True):
+            st.warning(f"⚠️ **Процесс был остановлен.** Последний обработанный индекс: {st.session_state.last_stopped_index}")
+            
+            col_res_btn, col_res_info = st.columns([1, 2])
+            with col_res_btn:
+                if st.button(f"⏯️ ПРОДОЛЖИТЬ с № {st.session_state.last_stopped_index}", type="primary", use_container_width=True):
+                    st.session_state.auto_current_index = st.session_state.last_stopped_index
+                    st.session_state.auto_run_active = True
+                    st.rerun()
+            with col_res_info:
+                st.caption("Нажмите, чтобы автоматически продолжить с места остановки.")
+
+    # 3. НАСТРОЙКИ ЗАПУСКА
     col_batch1, col_batch2, col_batch3 = st.columns([1, 1, 2])
     
     with col_batch1:
+        # Если запущено - показываем прогресс (рид онли), если нет - поле ввода
         if st.session_state.auto_run_active:
-            start_val = st.session_state.auto_current_index
-            st.text_input("Текущий старт:", value=str(start_val), disabled=True)
-            start_index = start_val
+            st.text_input("🟢 В процессе (Старт):", value=str(st.session_state.auto_current_index), disabled=True)
+            start_index = st.session_state.auto_current_index
         else:
-            start_index = st.number_input("Начать с товара № (с 0)", min_value=0, value=0, step=1)
+            # Если хотим начать заново или с конкретного места вручную
+            # Значение по умолчанию берем из last_stopped_index, чтобы было удобно
+            start_index = st.number_input("Начать с товара № (с 0)", min_value=0, value=st.session_state.last_stopped_index, step=1)
 
     with col_batch2:
         safe_batch_size = st.number_input("Размер пачки (шт)", min_value=1, value=5, help="Лучше 3-5 шт.")
@@ -3291,25 +3311,40 @@ with tab_wholesale_main:
     with col_batch3:
         st.write("")
         st.write("")
-        enable_auto_chain = st.checkbox("🔄 Включить АВТО-ЦЕПОЧКУ", value=True, help="Скрипт будет сам перезагружаться.")
+        # Галочка теперь просто настройка, она не запускает процесс сама по себе
+        enable_auto_chain = st.checkbox("🔄 Авто-переход к следующей пачке", value=True, help="Если активно, скрипт будет сам перезагружаться пока не пройдет все товары.")
 
+    # 4. КНОПКИ УПРАВЛЕНИЯ (Раздельные)
     c_start, c_stop = st.columns([2, 1])
+    
     with c_start:
-        btn_label = "🚀 ЗАПУСТИТЬ ПРОЦЕСС"
-        start_clicked = st.button(btn_label, type="primary", disabled=(not ready_to_go or st.session_state.auto_run_active), use_container_width=True)
+        # Кнопка СТАРТ доступна только если мы НЕ работаем
+        if not st.session_state.auto_run_active:
+            if st.button("🚀 ЗАПУСТИТЬ НОВЫЙ ПРОЦЕСС", type="primary", disabled=(not ready_to_go), use_container_width=True):
+                st.session_state.auto_current_index = start_index
+                st.session_state.auto_run_active = True
+                st.session_state.last_stopped_index = start_index # Сброс памяти остановки при новом старте
+                st.rerun()
+        else:
+            st.info("⏳ Процесс выполняется...")
     
     with c_stop:
-        if st.button("🛑 СТОП", type="secondary", use_container_width=True):
-            st.session_state.auto_run_active = False
-            st.warning("⛔ Остановка после текущей пачки.")
+        # Кнопка СТОП доступна только если мы РАБОТАЕМ
+        if st.session_state.auto_run_active:
+            if st.button("🛑 СТОП (Пауза)", type="secondary", use_container_width=True):
+                st.session_state.auto_run_active = False
+                # Сохраняем текущий индекс как точку остановки
+                st.session_state.last_stopped_index = st.session_state.auto_current_index
+                st.rerun()
 
-    should_run = start_clicked or st.session_state.auto_run_active
+    # =========================================================
+    # ГЛАВНЫЙ ИСПОЛНЯЮЩИЙ БЛОК
+    # Заходим сюда ТОЛЬКО если активен флаг auto_run_active
+    # =========================================================
 
-    if should_run:
-        if not st.session_state.auto_run_active:
-             st.session_state.auto_run_active = True
-             st.session_state.auto_current_index = start_index
-
+    if st.session_state.auto_run_active:
+        
+        # 0. Инициализация DataFrame если нет
         if 'gen_result_df' not in st.session_state or st.session_state.gen_result_df is None:
              st.session_state.gen_result_df = pd.DataFrame(columns=[
                 'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
@@ -3321,7 +3356,7 @@ with tab_wholesale_main:
         EXCEL_COLUMN_ORDER = st.session_state.gen_result_df.columns.tolist()
         TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
-        # === 1. ЗАГРУЗКА БАЗ ===
+        # === 1. ЗАГРУЗКА БАЗ (Повтор логики) ===
         all_tags_links = []
         if use_tags:
             if tags_file_content: 
@@ -3336,7 +3371,7 @@ with tab_wholesale_main:
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
-        # === 2. СБОР СПИСКОВ И ПОДСЧЕТ ПЛАНА (ЗНАМЕНАТЕЛЬ) ===
+        # === 2. ПОДГОТОВКА СПИСКОВ СЕМАНТИКИ ===
         raw_txt = st.session_state.get("ai_text_context_editable", "")
         list_text_initial = [x.strip() for x in re.split(r'[,\n]+', raw_txt) if x.strip()]
         
@@ -3353,22 +3388,18 @@ with tab_wholesale_main:
         raw_geo = st.session_state.get("kws_geo_auto", "")
         list_geo_final = [x.strip() for x in re.split(r'[,\n]+', raw_geo) if x.strip()]
 
-        # Считаем ОБЩЕЕ количество уникальных слов, которые мы хотим внедрить
-        # (Просто объединяем все множества)
+        # Подсчет целей SEO
         unique_seo_goals = set()
         if use_text: unique_seo_goals.update(list_text_initial)
         if use_tags: unique_seo_goals.update(list_tags_initial)
         if use_tables: unique_seo_goals.update(list_tables_final)
         if use_promo: unique_seo_goals.update(list_promo_initial)
-        # Гео обычно не считаем в общее ядро товара, но можно добавить:
-        # if use_geo: unique_seo_goals.update(list_geo_final) 
-        
         total_seo_goal = len(unique_seo_goals)
 
-        # === 3. ЛОГИКА ПЕРЕНОСА ===
+        # Перенос слов
         final_tags_prepared = []
         final_text_seo_list = list(list_text_initial)
-
+        
         if use_tags:
             for kw in list_tags_initial:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
@@ -3391,16 +3422,15 @@ with tab_wholesale_main:
              for kw in list_promo_initial:
                  if kw not in final_text_seo_list: final_text_seo_list.append(kw)
 
-        # Строка для промпта таблиц и гео
         seo_keywords_string = ", ".join(final_text_seo_list)
-
         user_num_blocks = st.session_state.get("sb_num_blocks", 5)
-        
-        # ПЛЕЙСХОЛДЕРЫ
+
+        # ПЛЕЙСХОЛДЕРЫ ДЛЯ ЛОГОВ
         live_download_placeholder = st.empty()
         live_table_placeholder = st.empty()
-        log_container = st.status(f"🚀 Работаем... (Начали с {start_index})", expanded=True)
+        log_container = st.status(f"🚀 В РАБОТЕ... Пачка с {start_index}", expanded=True)
 
+        # API CLIENT
         client = None
         if (use_text or use_tables or use_geo) and gemini_api_key:
             try:
@@ -3411,6 +3441,7 @@ with tab_wholesale_main:
                 st.session_state.auto_run_active = False
                 st.stop()
 
+        # Helper functions
         def resolve_real_names(urls_list, status_msg=""):
             if not urls_list: return {}
             results_map = {}
@@ -3425,7 +3456,8 @@ with tab_wholesale_main:
                     except: pass
             return results_map
 
-        log_container.write("📥 Проверка списка страниц...")
+        # === СБОР СТРАНИЦ ===
+        log_container.write("📥 Сбор списка страниц...")
         target_pages = []
         try:
             if use_manual_html:
@@ -3452,6 +3484,7 @@ with tab_wholesale_main:
         total_found = len(target_pages)
         if start_index >= total_found:
              st.session_state.auto_run_active = False
+             st.session_state.last_stopped_index = total_found
              st.success("🎉 Все товары обработаны!")
              st.stop()
 
@@ -3460,7 +3493,9 @@ with tab_wholesale_main:
         
         log_container.write(f"📊 ПАЧКА: {start_index+1} — {end_index} из {total_found}")
 
+        # === ЦИКЛ ПО ПАЧКЕ ===
         for i, page in enumerate(target_pages_batch):
+            # Проверка дублей
             current_urls_in_df = st.session_state.gen_result_df['Page URL'].values
             if page['url'] in current_urls_in_df:
                 log_container.warning(f"⚠️ Пропуск дубля: {page['name']}")
@@ -3469,6 +3504,7 @@ with tab_wholesale_main:
             current_num = start_index + i + 1
             log_container.write(f"▶️ **[{current_num}/{total_found}] {page['name']}**")
             
+            # --- ОСНОВНАЯ ГЕНЕРАЦИЯ ---
             try:
                 base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
                 header_for_ai = real_header_h2 if real_header_h2 else page['name']
@@ -3479,49 +3515,41 @@ with tab_wholesale_main:
                 
                 injections = []
 
-# --- 1. ТЕГИ (ГИБРИД: ПОИСК ПО СЛОВАМ + ИМЕНА ИЗ КРОШЕК) ---
+                # --- 1. ТЕГИ (ПОЛНЫЙ КОД) ---
                 if use_tags and all_tags_links:
-                    # 1. Все доступные ссылки
                     tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != page['url'].rstrip('/')]
 
                     if tags_cands_all:
                         target_tag_urls = []
-
-                        # 2. ЭТАП 1: Ищем ссылки по вашим словам
+                        # ЭТАП 1: Ищем ссылки по вашим словам
                         for kw in list_tags_initial:
                             tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                             for url in tags_cands_all:
                                 if tr_kw in url.lower() and url not in target_tag_urls:
                                     target_tag_urls.append(url)
                                     break 
-
-                        # 3. ЭТАП 2: Добиваем рандомом до 15 штук
+                        # ЭТАП 2: Добиваем рандомом
                         needed_tags = 15
                         if len(target_tag_urls) < needed_tags:
                             missing = needed_tags - len(target_tag_urls)
                             pool_random = [u for u in tags_cands_all if u not in target_tag_urls]
                             if pool_random:
                                 target_tag_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
-
-                        # 4. ЭТАП 3: Парсим реальные названия (Крошки) для ВСЕХ ссылок
+                        # ЭТАП 3: Рендер
                         if target_tag_urls:
-                            # Отправляем список на скачивание имен (как в промо)
                             tags_names_map = resolve_real_names(target_tag_urls)
-
                             html_t = []
                             for u in target_tag_urls:
-                                # Берем имя с сайта. Если не удалось скачать — генерируем из URL
                                 name = tags_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
                                 html_t.append(f'<a href="{u}" class="tag-item">{name}</a>')
 
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
 
+                # --- 2. ТАБЛИЦЫ (ПОЛНЫЙ КОД) ---
                 if use_tables and client:
                     for t_topic in table_prompts:
                         ctx = f"Данные из контекста: {str_tables_final}" 
-                        
-                        # --- ОБНОВЛЕННЫЙ ПРОМПТ (РУССКИЙ) ---
                         prompt_tbl = (
                             f"Создай подробную HTML таблицу (<table>) для товара '{header_for_ai}'. Тема таблицы: {t_topic}. \n"
                             f"Контекст: {ctx}. \n\n"
@@ -3531,12 +3559,10 @@ with tab_wholesale_main:
                             f"Если слово не подходит по смыслу, добавь строку 'Примечание' или 'Доп. инфо' и впиши его туда. \n"
                             f"СТРУКТУРА: Используй <tr>, <th>, <td>. Без markdown. Таблица должна быть большой (минимум 5-8 строк)."
                         )
-                        
                         try:
-                            # Температуру ставим чуть выше 0, чтобы он находил способы вписать слова
                             resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.4)
-                            
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                            
                             # Чистка мусора
                             raw_table = re.sub(r'(</th>)\s*(<td)', r'\1</tr><tr>\2', raw_table, flags=re.IGNORECASE)
                             raw_table = re.sub(r'<caption[\s\S]*?<\/caption>', '', raw_table, flags=re.IGNORECASE)
@@ -3554,31 +3580,27 @@ with tab_wholesale_main:
                             injections.append(styled_table)
                         except: pass
                 
-# ПРОМО (СНАЧАЛА ИЩЕМ ПО СЛОВАМ, ОСТАТОК ЗАБИВАЕМ РАНДОМОМ)
+                # --- 3. ПРОМО (ПОЛНЫЙ КОД) ---
                 if use_promo and p_img_map:
-                    # 1. Все доступные (кроме текущей)
                     p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                     
                     if p_cands_all:
                         target_urls = []
-                        
-                        # 2. Ищем по вашим словам
+                        # Ищем по словам
                         for kw in list_promo_initial:
                             tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                             for url in p_cands_all:
                                 if tr_kw in url.lower() and url not in target_urls:
                                     target_urls.append(url)
                                     break 
-                        
-                        # 3. Добиваем рандомом до 8 штук (чтобы было красиво)
+                        # Добиваем рандомом
                         needed_total = 8
                         if len(target_urls) < needed_total:
                             missing = needed_total - len(target_urls)
                             pool_random = [u for u in p_cands_all if u not in target_urls]
                             if pool_random:
                                 target_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
-
-                        # 4. Рисуем блок
+                        # Рендер
                         if target_urls:
                             promo_names_map = resolve_real_names(target_urls)
                             gallery_items = []
@@ -3591,6 +3613,7 @@ with tab_wholesale_main:
                             p_html = f'''<style>.outer-full-width-section {{ padding: 25px 0; width: 100%; }}.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}.gallery-item h3 a:hover {{ color: #007bff; }}.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}.gallery-item figure a:hover img {{ transform: scale(1.05); }}</style><div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>'''
                             injections.append(p_html)
 
+                # --- 4. ТЕКСТ (ПОЛНЫЙ КОД) ---
                 blocks = [""] * 5
                 if use_text and client:
                     log_container.write(f"   ↳ 🤖 Пишем текст...")
@@ -3606,17 +3629,17 @@ with tab_wholesale_main:
                     for i_b in range(len(cleaned_blocks)):
                         if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
 
+                # Внедрение инъекций в текст
                 effective_blocks_count = max(1, user_num_blocks)
                 for i_inj, inj in enumerate(injections):
                     target_idx = i_inj % effective_blocks_count
                     blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
 
+                # --- 5. ГЕО (ПОЛНЫЙ КОД) ---
                 if use_geo and client:
                     log_container.write(f"   ↳ 🌍 Пишем доставку...")
                     try:
                          cities = ", ".join(random.sample(list_geo_final, min(15, len(list_geo_final))))
-                         
-                         # --- ОБНОВЛЕННЫЙ ПРОМПТ (РУССКИЙ) ---
                          prompt_geo = (
                              f"Напиши один HTML параграф (<p>) о доставке товара '{header_for_ai}' в следующие города: {cities}. "
                              f"SEO ЗАДАЧА: Органично впиши в текст эти ключевые слова: {seo_keywords_string}. "
@@ -3628,6 +3651,7 @@ with tab_wholesale_main:
                          row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                     except: pass
 
+                # Распределение по колонкам
                 for i_c, c_name in enumerate(TEXT_CONTAINERS):
                     row_data[c_name] = blocks[i_c]
 
@@ -3639,89 +3663,78 @@ with tab_wholesale_main:
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     st.session_state.gen_result_df.to_excel(writer, index=False)
                 st.session_state.unified_excel_data = buffer.getvalue()
-                try: st.session_state.gen_result_df.to_excel("backup_auto.xlsx", index=False)
-                except: pass
-
+                
+                # Обновление таблицы в UI
                 live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
                 
-                # === ПОДСЧЕТ ФАКТА (СЧЕТЧИК) ===
-                # Считаем количество <b> во всей строке (все ячейки текста)
+                # Вывод SEO счетчика
                 full_row_html = "".join([str(val) for val in row_data.values()])
                 bolds_fact = full_row_html.count("<b>")
-                
                 with live_download_placeholder.container():
-                    # ЦВЕТНОЙ БЛОК СЧЕТЧИКА
-                    score_color = "#16A34A" if bolds_fact >= (total_seo_goal * 0.7) else "#CA8A04"
-                    st.markdown(f"""
-                    <div style="background-color: #F3F4F6; border: 1px solid #E5E7EB; padding: 10px; border-radius: 8px; margin-bottom: 10px; text-align: center;">
-                        <span style="font-size: 14px; color: #4B5563;">SEO-насыщенность последней стр:</span><br>
-                        <span style="font-size: 24px; font-weight: bold; color: {score_color};">{bolds_fact} / {total_seo_goal}</span>
-                        <div style="font-size: 11px; color: #9CA3AF;">(жирные теги / всего уникальных слов в задании)</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    st.markdown("""
-                    <div style="border: 2px solid #DC2626; background-color: #FEF2F2; padding: 10px; border-radius: 8px; margin-bottom: 10px; color: #991B1B;">
-                        <h4 style="margin:0; color: #DC2626;">🛑 НЕ НАЖИМАТЬ ВО ВРЕМЯ РАБОТЫ!</h4>
-                        <ul style="margin-bottom:0; padding-left: 20px; font-size: 13px;">
-                            <li>Нажатие <b>ОСТАНОВИТ</b> генерацию и сбросит процесс.</li>
-                            <li>Нажимайте эту кнопку <b>ТОЛЬКО</b> если скрипт завис или выдал ошибку.</li>
-                            <li>Это "аварийное сохранение" того, что успело сделаться.</li>
-                        </ul>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    st.download_button(
-                        label=f"💾 СПАСТИ ДАННЫЕ (Скачать {len(st.session_state.gen_result_df)} готовых стр.)",
-                        data=st.session_state.unified_excel_data,
-                        file_name=f"EMERGENCY_SAVE_{int(time.time())}.xlsx",
-                        mime="application/vnd.ms-excel",
-                        key=f"dl_live_{int(time.time())}_{i}",
-                        help="Нажимать ТОЛЬКО при ошибке! Это остановит скрипт."
-                    )
+                     st.info(f"✅ Обработано: {page['name']} (SEO-тегов: {bolds_fact}/{total_seo_goal})")
 
             except Exception as e:
-                log_container.error(f"Сбой: {e}")
+                log_container.error(f"Сбой на товаре {page['name']}: {e}")
 
         log_container.update(label=f"✅ Пачка {start_index}-{end_index} готова!", state="complete", expanded=False)
         
-        # === ЛОГИКА АВТО-ПЕРЕЗАПУСКА ===
+        # === ЛОГИКА АВТО-ПЕРЕЗАПУСКА (RELOAD) ===
         if enable_auto_chain:
-            if not st.session_state.auto_run_active:
-                st.warning("⛔ Цепочка была остановлена вручную.")
-            else:
+            # Снова проверяем, не нажал ли пользователь СТОП во время выполнения пачки
+            if st.session_state.auto_run_active:
                 next_start = end_index
                 if next_start < total_found:
                     st.session_state.auto_current_index = next_start
+                    st.session_state.last_stopped_index = next_start # Сохраняем прогресс для Resume
                     st.info(f"⏳ Перезагрузка через 1 сек... Следующая пачка с {next_start}.")
                     time.sleep(1)
                     st.rerun() 
                 else:
                     st.session_state.auto_run_active = False
+                    st.session_state.last_stopped_index = total_found
                     st.balloons()
                     st.success("🏁 ГЕНЕРАЦИЯ ПОЛНОСТЬЮ ЗАВЕРШЕНА!")
+            else:
+                st.warning("⛔ Цепочка была остановлена вручную.")
 
-    # КНОПКА СКАЧИВАНИЯ (ПОЯВЛЯЕТСЯ СРАЗУ ПОСЛЕ ПЕРВОЙ СТРОКИ)
-    if st.session_state.get('unified_excel_data') is not None:
-        count = len(st.session_state.gen_result_df)
-        st.success(f"Готово! Обработано строк: {count}")
-        st.download_button(
-            label=f"📥 СКАЧАТЬ РЕЗУЛЬТАТ ({count} стр.)",
-            data=st.session_state.unified_excel_data,
-            file_name=f"wholesale_result_{int(time.time())}.xlsx",
-            mime="application/vnd.ms-excel",
-            key="btn_dl_fixed"
-        )
+    # =========================================================
+    # 5. БЛОК РЕЗУЛЬТАТОВ (ОТОБРАЖАЕТСЯ ВСЕГДА, ЕСЛИ ЕСТЬ ДАННЫЕ)
+    # Этот код сработает, даже если вы нажали СТОП и скрипт перезагрузился
+    # =========================================================
 
-    # === ВСТАВИТЬ ЭТО ПОСЛЕ КНОПКИ СКАЧИВАНИЯ EXCEL ===
-    st.markdown("---")
-    st.write("### 🏁 Финал")
-    col_to_mon, _ = st.columns([2, 3])
-    with col_to_mon:
-        st.info("👇 Чтобы следить за этими товарами в будущем:")
-        if st.button("➕ Добавить эти товары в Мониторинг", type="secondary", use_container_width=True):
-            count_added = 0
-            if 'gen_result_df' in st.session_state and not st.session_state.gen_result_df.empty:
+    has_data = (
+        'gen_result_df' in st.session_state 
+        and st.session_state.gen_result_df is not None 
+        and not st.session_state.gen_result_df.empty
+    )
+
+    if has_data:
+        st.markdown("---")
+        st.success(f"💾 **Сохраненный прогресс:** Готово строк: {len(st.session_state.gen_result_df)}")
+
+        # Если вдруг бинарные данные excel потерялись, пересоздадим их из датафрейма
+        if st.session_state.get('unified_excel_data') is None:
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                st.session_state.gen_result_df.to_excel(writer, index=False)
+            st.session_state.unified_excel_data = buffer.getvalue()
+
+        col_dl_final, col_mon_final = st.columns([1, 1])
+
+        with col_dl_final:
+            st.download_button(
+                label=f"📥 СКАЧАТЬ ВСЁ ({len(st.session_state.gen_result_df)} шт.)",
+                data=st.session_state.unified_excel_data,
+                file_name=f"wholesale_result_FULL_{int(time.time())}.xlsx",
+                mime="application/vnd.ms-excel",
+                key="btn_dl_persistent_v2",
+                type="primary",
+                use_container_width=True
+            )
+
+        with col_mon_final:
+            if st.button("➕ Добавить в Мониторинг", key="btn_add_mon_persistent", use_container_width=True):
+                count_added = 0
                 for idx, row in st.session_state.gen_result_df.iterrows():
                     u_val = str(row.get('Page URL', '')).strip()
                     kw_val = str(row.get('Product Name', '')).strip()
@@ -3729,56 +3742,32 @@ with tab_wholesale_main:
                         add_to_tracking(u_val, kw_val)
                         count_added += 1
                 if count_added > 0:
-                    st.toast(f"✅ Добавлено {count_added} товаров! Теперь идите во вкладку 'Мониторинг'.", icon="📉")
-                else:
-                    st.warning("Нет URL для добавления.")
-            else:
-                st.error("Сначала сгенерируйте таблицу.")
+                    st.toast(f"✅ Добавлено {count_added} товаров!", icon="📉")
 
-    # ==========================================
-    # 5. БЛОК ПРЕДПРОСМОТРА
-    # ==========================================
-    if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not None and not st.session_state.gen_result_df.empty:
-        st.markdown("---")
-        st.header("👀 Предпросмотр по колонкам")
-        
-        st.markdown("""
-        <style>
-            .preview-box {
-                border: 1px solid #e2e8f0;
-                background-color: #ffffff;
-                padding: 20px;
-                border-radius: 8px;
-                max-height: 600px;
-                overflow-y: auto;
-                box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
-        df_p = st.session_state.gen_result_df
-        
-        if 'Product Name' in df_p.columns:
-            sel_p = st.selectbox("Страница:", df_p['Product Name'].tolist(), key="ws_prev_sel")
-            row_p = df_p[df_p['Product Name'] == sel_p].iloc[0]
+        # === ПРЕДПРОСМОТРА (ТОЖЕ СОХРАНЯЕТСЯ) ===
+        with st.expander("👀 Предпросмотр того, что уже готово", expanded=False):
+            st.dataframe(st.session_state.gen_result_df, use_container_width=True)
             
-            # Фильтр табов
-            relevant_cols = []
-            if use_text or use_sidebar or use_tags or use_tables or use_promo:
-                relevant_cols.extend(['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'])
-            if use_geo:
-                relevant_cols.append('IP_PROP4819')
-
-            active_tabs = [c for c in relevant_cols if str(row_p.get(c, "")).strip() != ""]
-            
-            if active_tabs:
-                tabs = st.tabs(active_tabs)
-                for i, col in enumerate(active_tabs):
-                    with tabs[i]:
-                        content_to_show = str(row_p[col])
-                        st.markdown(f"<div class='preview-box'>{content_to_show}</div>", unsafe_allow_html=True)
-            else:
-                st.info("Нет данных для отображения.")
+            # Детальный просмотр по одному товару
+            df_p = st.session_state.gen_result_df
+            if 'Product Name' in df_p.columns:
+                all_products = df_p['Product Name'].tolist()
+                # Выбираем последний добавленный по умолчанию
+                safe_index = len(all_products)-1 if len(all_products) > 0 else 0
+                sel_p = st.selectbox("Выберите товар для проверки текста:", all_products, index=safe_index, key="safe_preview_sel")
+                
+                if sel_p:
+                    row_p = df_p[df_p['Product Name'] == sel_p].iloc[0]
+                    
+                    # Показываем только заполненные колонки
+                    cols_to_show = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819']
+                    active_cols = [c for c in cols_to_show if str(row_p.get(c, "")).strip() != ""]
+                    
+                    if active_cols:
+                        tabs = st.tabs([c.replace("IP_PROP", "") for c in active_cols])
+                        for i, col in enumerate(active_cols):
+                            with tabs[i]:
+                                st.markdown(f"<div class='preview-box'>{str(row_p[col])}</div>", unsafe_allow_html=True)
 # ==========================================
 # TAB 3: PROJECT MANAGER (SAVE/LOAD)
 # ==========================================
@@ -4091,4 +4080,5 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
