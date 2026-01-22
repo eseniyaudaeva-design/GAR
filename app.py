@@ -3570,7 +3570,7 @@ with tab_wholesale_main:
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
 
-if use_tables and client:
+            if use_tables and client:
                     for t_topic in table_prompts:
                         ctx = f"Контекст: {str_tables_final}" 
                         
@@ -4181,6 +4181,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
