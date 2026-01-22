@@ -3281,6 +3281,36 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
 
 # ==========================================
+    # 🆕 БЛОК СБРОСА (ОЧИСТКА РЕЗУЛЬТАТОВ)
+    # ==========================================
+    with st.expander("🗑️ Сброс результатов (Очистить кэш)", expanded=False):
+        st.warning("⚠️ Внимание! Это действие полностью удалит таблицу с уже сгенерированными товарами. Скрипт 'забудет', что он их уже делал, и начнет запись с чистого листа.")
+        
+        col_reset_btn, col_reset_fake = st.columns([1, 2])
+        with col_reset_btn:
+            if st.button("🔴 УДАЛИТЬ ВСЕ И СБРОСИТЬ", type="secondary", use_container_width=True):
+                # 1. Очищаем DataFrame
+                st.session_state.gen_result_df = pd.DataFrame(columns=[
+                    'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
+                    'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
+                    'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 
+                    'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
+                ])
+                # 2. Сбрасываем файл Excel в памяти
+                st.session_state.unified_excel_data = None
+                
+                # 3. Сбрасываем счетчики
+                st.session_state.auto_current_index = 0
+                st.session_state.last_stopped_index = 0
+                st.session_state.auto_run_active = False
+                
+                st.toast("🗑️ История очищена! Можно генерировать заново.", icon="✅")
+                time.sleep(1)
+                st.rerun()
+
+    st.markdown("---")
+
+# ==========================================
     # 4. УМНЫЙ ЗАПУСК (СИСТЕМА STOP/RESUME + FULL GENERATION)
     # ==========================================
     st.markdown("### 🚀 Управление запуском (Авто-цепочка)")
@@ -4170,6 +4200,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
