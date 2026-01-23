@@ -2441,7 +2441,7 @@ with tab_seo_main:
             else:
                 st.warning("Данные по мета-тегам недоступны (возможно, ошибка при анализе).")
 
-        # 5. УПУЩЕННАЯ СЕМАНТИКА
+# 5. УПУЩЕННАЯ СЕМАНТИКА
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         
@@ -2453,22 +2453,28 @@ with tab_seo_main:
                 # 1. ВАЖНЫЕ (Медиана >= 1) - Синяя плашка
                 if high: 
                     words_high = ", ".join([x['word'] for x in high])
-                    st.markdown(f"""
-                    <div style='background:#EBF5FF; padding:12px; border-radius:8px; border:1px solid #BFDBFE; color:#1E40AF; margin-bottom:10px;'>
-                        <div style='font-weight:bold; margin-bottom:4px;'>🔥 Важные (Есть у большинства конкурентов):</div>
-                        <div style='font-size:14px; line-height:1.5;'>{words_high}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    
+                    # Безопасная сборка HTML без тройных кавычек
+                    html_high = (
+                        "<div style='background:#EBF5FF; padding:12px; border-radius:8px; border:1px solid #BFDBFE; color:#1E40AF; margin-bottom:10px;'>"
+                        "<div style='font-weight:bold; margin-bottom:4px;'>🔥 Важные (Есть у большинства конкурентов):</div>"
+                        f"<div style='font-size:14px; line-height:1.5;'>{words_high}</div>"
+                        "</div>"
+                    )
+                    st.markdown(html_high, unsafe_allow_html=True)
                 
                 # 2. ДОПОЛНИТЕЛЬНЫЕ (Медиана < 1) - Серая плашка
                 if low: 
                     words_low = ", ".join([x['word'] for x in low])
-                    st.markdown(f"""
-                    <div style='background:#F8FAFC; padding:12px; border-radius:8px; border:1px solid #E2E8F0; color:#475569;'>
-                        <div style='font-weight:bold; margin-bottom:4px;'>🔸 Дополнительные (Встречаются реже):</div>
-                        <div style='font-size:13px; line-height:1.5;'>{words_low}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    
+                    # Безопасная сборка HTML без тройных кавычек
+                    html_low = (
+                        "<div style='background:#F8FAFC; padding:12px; border-radius:8px; border:1px solid #E2E8F0; color:#475569;'>"
+                        "<div style='font-weight:bold; margin-bottom:4px;'>🔸 Дополнительные (Встречаются реже):</div>"
+                        f"<div style='font-size:13px; line-height:1.5;'>{words_low}</div>"
+                        "</div>"
+                    )
+                    st.markdown(html_low, unsafe_allow_html=True)
 
 # 6. ГЛУБИНА (ЗАКРЫТО)
         with st.expander("📉 1. Глубина (Детальная таблица)", expanded=False):
@@ -4235,6 +4241,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
