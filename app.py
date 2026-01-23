@@ -3605,48 +3605,96 @@ with tab_wholesale_main:
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
 
-# --- 2. ТАБЛИЦЫ (ИСПРАВЛЕНО: ЛОГИЧНОЕ ДОПОЛНЕНИЕ НА ОСНОВЕ КЛЮЧЕЙ) ---
+# --- 2. ТАБЛИЦЫ (ИСПРАВЛЕНО: ТОЛЬКО ШАПКА ЦВЕТНАЯ + ПОЛЕЗНЫЙ КОНТЕНТ) ---
                 if use_tables and client:
-                    # CSS СТИЛИ (Сжаты в одну строку)
-                    table_css = "<style>.table-full-width-wrapper{display:block !important;width:100% !important;box-sizing:border-box !important;margin:20px 0 !important}.brand-accent-table{width:100% !important;border-collapse:separate !important;border-spacing:0 !important;background:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-family:'Inter',sans-serif;border:0 !important;margin-bottom:0 !important}.brand-accent-table th{background-color:#277EFF;color:white;text-align:left;padding:16px;font-weight:500;font-size:15px;border:none;vertical-align:middle}.brand-accent-table th:first-child{border-top-left-radius:8px}.brand-accent-table th:last-child{border-top-right-radius:8px}.brand-accent-table td{padding:16px;border-bottom:1px solid #e5e7eb;color:#4b5563;font-size:15px;line-height:1.4;vertical-align:middle}.brand-accent-table tr:last-child td{border-bottom:none}.brand-accent-table tr:last-child td:first-child{border-bottom-left-radius:8px}.brand-accent-table tr:last-child td:last-child{border-bottom-right-radius:8px}.brand-accent-table tr:hover td{background-color:#f8faff}</style>"
+                    # CSS: СИНИЙ ТОЛЬКО THEAD, ОСТАЛЬНОЕ БЕЛОЕ
+                    table_css = """
+                    <style>
+                    .table-full-width-wrapper {
+                        display: block !important;
+                        width: 100% !important;
+                        margin: 25px 0 !important;
+                        overflow-x: auto !important;
+                    }
+                    .brand-accent-table {
+                        width: 100% !important;
+                        border-collapse: separate !important;
+                        border-spacing: 0 !important;
+                        background: #ffffff;
+                        border: 1px solid #e5e7eb;
+                        border-radius: 8px;
+                        font-family: 'Inter', sans-serif;
+                        font-size: 14px;
+                        line-height: 1.5;
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                    }
+                    /* 1. ШАПКА (THEAD) - СИНЯЯ */
+                    .brand-accent-table thead th {
+                        background-color: #277EFF !important;
+                        color: #ffffff !important;
+                        font-weight: 600;
+                        padding: 12px 16px;
+                        text-align: left;
+                        border-bottom: 2px solid #1E63C4;
+                    }
+                    .brand-accent-table thead th:first-child { border-top-left-radius: 7px; }
+                    .brand-accent-table thead th:last-child { border-top-right-radius: 7px; }
+                    
+                    /* 2. ТЕЛО (TBODY) - ВСЕГДА БЕЛОЕ */
+                    .brand-accent-table tbody td {
+                        background-color: #ffffff !important;
+                        color: #374151;
+                        padding: 12px 16px;
+                        border-bottom: 1px solid #f3f4f6;
+                        vertical-align: top; /* Выравнивание по верху */
+                    }
+                    
+                    /* 3. ПЕРВЫЙ СТОЛБЕЦ ТЕЛА - ПРОСТО ЖИРНЫЙ (ФОН БЕЛЫЙ) */
+                    .brand-accent-table tbody td:first-child {
+                        font-weight: 600;
+                        color: #111827;
+                        background-color: #ffffff !important; 
+                        border-right: 1px solid #f3f4f6;
+                        width: 30%;
+                    }
+                    
+                    .brand-accent-table tbody tr:last-child td { border-bottom: none; }
+                    .brand-accent-table tbody tr:last-child td:first-child { border-bottom-left-radius: 7px; }
+                    .brand-accent-table tbody tr:last-child td:last-child { border-bottom-right-radius: 7px; }
+                    
+                    /* ЛЕГКИЙ ХОВЕР */
+                    .brand-accent-table tbody tr:hover td {
+                        background-color: #f9fafb !important;
+                    }
+                    </style>
+                    """
 
                     for t_topic in table_prompts:
-                        # Источник данных: слова из поля + слова SEO
                         source_keywords = f"{str_tables_final}, {seo_keywords_string}"
                         
-                        # Авто-выбор темы
                         if t_topic == "!!!_AUTO_AI_DECIDE_!!!":
-                            topic_instruction = "ТВОЯ ЗАДАЧА: Создай таблицу, которая раскрывает технические детали, основанные ИСКЛЮЧИТЕЛЬНО на списке слов ниже."
+                            topic_instruction = "ТВОЯ ЗАДАЧА: Создай таблицу, раскрывающую детали товара."
                         else:
                             topic_instruction = f"Тема таблицы строго: {t_topic}."
-                        # --- ПРОМПТ: УМНОЕ ДОПОЛНЕНИЕ ---
+                        
+                        # --- ОБНОВЛЕННЫЙ ПРОМПТ ---
                         prompt_tbl = (
                             f"Ты — Редактор технического портала. Твоя задача — создать HTML таблицу для товара: '{header_for_ai}'.\n\n"
                             
-                            f"1. ЦЕЛЬ ТАБЛИЦЫ:\n"
-                            f"- Таблица должна ДОПОЛНЯТЬ основной текст страницы, а не пересказывать его.\n"
-                            f"- Найди аспекты товара, связанные с ключевыми словами ниже, которые требуют структурированного пояснения.\n\n"
+                            f"{topic_instruction}\n\n"
                             
-                            f"2. ФУНДАМЕНТ (О ЧЕМ ПИСАТЬ):\n"
-                            f"Ты обязан построить содержание таблицы, опираясь ИСКЛЮЧИТЕЛЬНО на этот список слов:\n"
+                            f"!!! ГЛАВНЫЕ ТРЕБОВАНИЯ !!!\n"
+                            f"1. ПОЛЬЗА: Таблица должна структурировать информацию, чтобы покупателю было удобно сравнивать или выбирать.\n"
+                            f"2. УНИКАЛЬНОСТЬ КОНТЕНТА: Запрещено дублировать абзацы из основного текста. Таблица должна ДОПОЛНЯТЬ описание, а не повторять его.\n"
+                            f"3. ИСТОЧНИК: Используй этот список слов как основу для строк таблицы:\n"
                             f"[{source_keywords}]\n"
-                            f"ИНСТРУКЦИЯ: Используй эти слова как каркас. Если в списке есть 'ГОСТ 123' — таблица должна раскрывать требования этого ГОСТа. Если 'монтаж' — дай этапы монтажа.\n\n"
+                            f"Раскрывай эти понятия. Если это 'ГОСТ', укажи требования. Если 'размеры', дай диапазоны.\n\n"
                             
-                            f"3. ТРЕБОВАНИЯ К СОДЕРЖАНИЮ:\n"
-                            f"- Текст в ячейках должен быть естественным и связным. Это МОГУТ быть предложения, если нужно пояснить суть.\n"
-                            f"- Соблюдай логику: не скачи с темы на тему. Все строки должны относиться к выбранной теме таблицы.\n"
-                            f"- НЕ ПЕРЕСКАЗЫВАЙ основной текст.\n"
-                            f"- Давай полезную конкретику, связанную с переданными словами.\n\n"
-                            
-                            f"4. ОФОРМЛЕНИЕ КЛЮЧЕЙ (SEO):\n"
-                            f"- Слова из списка выше должны быть внедрены в таблицу (в заголовки или ячейки).\n"
-                            f"- Выдели эти внедренные слова тегом <b>.\n"
-                            f"- Склоняй их, меняй окончания, чтобы текст звучал по-русски правильно.\n\n"
-                            
-                            f"5. ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ:\n"
-                            f"- Выдай ПОЛНЫЙ код таблицы (<table>...</table>).\n"
-                            f"- Используй <thead> для шапки.\n"
-                            f"- Формат вывода: Только чистый HTML."
+                            f"ФОРМАТ ВЫВОДА (HTML):\n"
+                            f"- Используй <table>, <thead> (для шапки), <tbody> (для данных).\n"
+                            f"- В <tbody> используй только теги <td>. Не используй <th> внутри <tbody>.\n"
+                            f"- Выдели внедренные ключевые слова тегом <b>.\n"
+                            f"- Верни только чистый HTML код."
                         )
                         
                         try:
@@ -3658,23 +3706,26 @@ with tab_wholesale_main:
                             
                             raw_table = resp.choices[0].message.content.strip()
                             
-                            # 1. Убираем Markdown
+                            # Чистка
                             raw_table = raw_table.replace("```html", "").replace("```", "").strip()
-                            
-                            # 2. УДАЛЯЕМ ПЕРЕНОСЫ СТРОК И ЛИШНИЕ ПРОБЕЛЫ (Это чинит ошибку с отображением кода)
                             raw_table = re.sub(r'\n\s*', '', raw_table)
-                            
-                            # 3. Удаляем caption, если он есть (он ломает верстку)
                             raw_table = re.sub(r'<caption.*?>.*?</caption>', '', raw_table)
 
-                            # 4. Проверяем и оборачиваем
+                            # ЗАЩИТА СТИЛЕЙ: Если AI засунул <th> в <tbody>, меняем на <td>
+                            # (чтобы первый столбец не стал синим случайно)
+                            if "<tbody>" in raw_table:
+                                parts = raw_table.split("<tbody>")
+                                head_part = parts[0]
+                                body_part = parts[1]
+                                body_part = body_part.replace("<th", "<td").replace("</th>", "</td>")
+                                raw_table = head_part + "<tbody>" + body_part
+
+                            # Обертка
                             if "<table" not in raw_table:
                                 final_table_code = f'<table class="brand-accent-table">{raw_table}</table>'
                             else:
-                                # Внедряем класс внутрь существующего тега table
                                 final_table_code = raw_table.replace('<table', '<table class="brand-accent-table"')
 
-                            # 5. Сборка
                             final_html_block = f'{table_css}<div class="table-full-width-wrapper">{final_table_code}</div>'
                                 
                             injections.append(final_html_block)
@@ -4248,6 +4299,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
