@@ -3605,50 +3605,45 @@ with tab_wholesale_main:
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
 
-# --- 2. ТАБЛИЦЫ (ИСПРАВЛЕНИЕ: СТИЛИ БЕЗ ОТСТУПОВ) ---
+# --- 2. ТАБЛИЦЫ (ИСПРАВЛЕНО: ВИЗУАЛ + СТРОГОЕ SEO + КОНТЕКСТ) ---
                 if use_tables and client:
-                    # ВАЖНО: CSS записан в одну строку или без отступов слева, 
-                    # чтобы Streamlit не превратил его в блок кода (pre/code).
-                    brand_style_css = """<style>.table-full-width-wrapper{display:block !important;width:100% !important;box-sizing:border-box !important;margin:20px 0 !important}.brand-accent-table{display:table !important;width:100% !important;table-layout:fixed !important;border-collapse:separate !important;border-spacing:0 !important;background:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-family:'Inter',sans-serif;border:0 !important}.brand-accent-table th{background-color:#277EFF;color:white;text-align:left;padding:16px;font-weight:500;font-size:15px;border:none;vertical-align:middle;white-space:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;hyphens:auto}.brand-accent-table th:first-child{border-top-left-radius:8px}.brand-accent-table th:last-child{border-top-right-radius:8px}.brand-accent-table td{padding:16px;border-bottom:1px solid #e5e7eb;color:#4b5563;font-size:15px;line-height:1.4;vertical-align:middle;white-space:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;word-break:break-word !important}.brand-accent-table tr:last-child td{border-bottom:none}.brand-accent-table tr:last-child td:first-child{border-bottom-left-radius:8px}.brand-accent-table tr:last-child td:last-child{border-bottom-right-radius:8px}.brand-accent-table tr:hover td{background-color:#f8faff}@media(max-width:770px){.brand-accent-table th,.brand-accent-table td{padding:10px 8px !important;font-size:13px !important}}.brand-accent-table th:first-child:nth-last-child(2),.brand-accent-table th:first-child:nth-last-child(2)~th{width:50% !important}</style>"""
+                    # 1. CSS СТИЛИ (В одну строку, чтобы не ломался Markdown)
+                    table_css = "<style>.table-full-width-wrapper{display:block !important;width:100% !important;box-sizing:border-box !important;margin:20px 0 !important}.brand-accent-table{display:table !important;width:100% !important;table-layout:fixed !important;border-collapse:separate !important;border-spacing:0 !important;background:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-family:'Inter',sans-serif;border:0 !important}.brand-accent-table th{background-color:#277EFF;color:white;text-align:left;padding:16px;font-weight:500;font-size:15px;border:none;vertical-align:middle;white-space:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;hyphens:auto}.brand-accent-table th:first-child{border-top-left-radius:8px}.brand-accent-table th:last-child{border-top-right-radius:8px}.brand-accent-table td{padding:16px;border-bottom:1px solid #e5e7eb;color:#4b5563;font-size:15px;line-height:1.4;vertical-align:middle;white-space:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;word-break:break-word !important}.brand-accent-table tr:last-child td{border-bottom:none}.brand-accent-table tr:last-child td:first-child{border-bottom-left-radius:8px}.brand-accent-table tr:last-child td:last-child{border-bottom-right-radius:8px}.brand-accent-table tr:hover td{background-color:#f8faff}@media(max-width:770px){.brand-accent-table th,.brand-accent-table td{padding:10px 8px !important;font-size:13px !important}}.brand-accent-table th:first-child:nth-last-child(2),.brand-accent-table th:first-child:nth-last-child(2)~th{width:50% !important}</style>"
 
                     for t_topic in table_prompts:
+                        # Контекст из поля ввода (ВГП, Размеры и т.д.)
                         ctx_data = str_tables_final 
                         
-                        # Определение темы
+                        # Если авто-выбор темы
                         if t_topic == "!!!_AUTO_AI_DECIDE_!!!":
-                            topic_instruction = (
-                                "ТВОЯ ЗАДАЧА: Проанализируй товар. Придумай тему таблицы, которая даст АБСОЛЮТНО НОВУЮ информацию, "
-                                "не упомянутую в стандартном описании. Например: 'Химический состав в %', 'Предельные отклонения', "
-                                "'Специфические условия монтажа', 'Точные физические свойства'."
-                            )
+                            topic_instruction = "ТВОЯ ЗАДАЧА: Придумай тему таблицы на основе ДАННЫХ ИЗ КОНТЕКСТА."
                         else:
                             topic_instruction = f"Тема таблицы строго: {t_topic}."
 
-                        # ПРОМПТ (Строгий: только новая инфа)
+                        # --- ПРОМПТ ---
                         prompt_tbl = (
-                            f"Ты — главный инженер производства. Твоя задача — создать HTML таблицу (<table>) для товара: '{header_for_ai}'.\n\n"
+                            f"Ты — технический специалист. Твоя задача — создать HTML таблицу (<table>) для товара: '{header_for_ai}'.\n\n"
                             
                             f"1. ТЕМА:\n{topic_instruction}\n\n"
                             
-                            f"2. ИСТОЧНИК ДАННЫХ:\n"
-                            f"Context: {ctx_data}\n\n"
+                            f"2. ИСТОЧНИК ДАННЫХ (СТРОГО):\n"
+                            f"Ты обязан использовать информацию ТОЛЬКО из этого контекста: '{ctx_data}'.\n"
+                            f"НЕ ПРИДУМЫВАЙ данные, которых нет в контексте, если только это не общеизвестные физические константы для этого материала.\n\n"
                             
-                            f"3. SEO КЛЮЧИ (Внедрить аккуратно):\n"
-                            f"{seo_keywords_string}\n"
-                            f"Ключи выделяй тегом <b>.\n\n"
+                            f"3. ЛИНГВИСТИЧЕСКАЯ ЗАДАЧА (SEO - ВАЖНО):\n"
+                            f"Тебе нужно внедрить в ячейки таблицы следующие слова:\n[{seo_keywords_string}]\n"
+                            f"ПРАВИЛА ВНЕДРЕНИЯ:\n"
+                            f"- Вставляй слова в заголовки колонок или в ячейки с описанием.\n"
+                            f"- Выделяй эти слова тегом <b> (например: <b>стальная</b> труба).\n"
+                            f"- Меняй окончания слов (склоняй), чтобы текст выглядел естественно.\n\n"
                             
-                            f"4. СТРОЖАЙШИЕ ЗАПРЕТЫ И ПРАВИЛА (CRITICAL):\n"
-                            f"- ЗАПРЕЩЕНО делать 'выжимку' или резюме текста. Текст описания уже написан, повторять его НЕЛЬЗЯ.\n"
-                            f"- ЗАПРЕЩЕНО писать общие фразы ('высокая прочность', 'хорошее качество').\n"
-                            f"- ТАБЛИЦА ДОЛЖНА СОДЕРЖАТЬ ТОЛЬКО НОВУЮ, ДОПОЛНИТЕЛЬНУЮ ИНФОРМАЦИЮ.\n"
-                            f"- Это должен быть контент 'второго уровня' для профессионалов, которые ищут спецификации.\n\n"
-                            
-                            f"ФОРМАТ ВЫВОДА:\n"
-                            f"Только чистый HTML код таблицы. Никакого маркдауна."
+                            f"4. ТРЕБОВАНИЯ К ОФОРМЛЕНИЮ:\n"
+                            f"- НЕ пиши вступлений и выводов. Только код <table>.\n"
+                            f"- Таблица должна быть полезной и содержательной, а не пустой.\n"
+                            f"- Формат вывода: Только чистый HTML."
                         )
                         
                         try:
-                            # Температура 0.3 для технической точности
                             resp = client.chat.completions.create(
                                 model="google/gemini-2.5-pro", 
                                 messages=[{"role": "user", "content": prompt_tbl}], 
@@ -3664,16 +3659,15 @@ with tab_wholesale_main:
                             raw_table = re.sub(r'<\/?(thead|tbody|tfoot)[^>]*>', '', raw_table)
                             raw_table = re.sub(r'(<table[^>]*>)\s*<(?:th|td)[^>]*>(\s*<tr)', r'\1\2', raw_table) 
                             
-                            # === ПРИМЕНЕНИЕ ВАШЕГО ДИЗАЙНА ===
-                            # 1. Добавляем класс таблицы
+                            # Стилизация (Добавляем класс)
                             styled_table = raw_table.replace('<table', '<table class="brand-accent-table"')
                             
-                            # 2. Если tbody потерялся при чистке нейросети - восстанавливаем для корректности верстки
+                            # Восстановление tbody если пропал
                             if '<tbody>' not in styled_table:
                                 styled_table = re.sub(r'(<table[^>]*>)([\s\S]*?)(<\/table>)', r'\1<tbody>\2</tbody>\3', styled_table)
-
-                            # 3. Оборачиваем в DIV и добавляем STYLE блок (БЕЗ ЛИШНИХ ПРОБЕЛОВ)
-                            final_html_block = f'{brand_style_css}<div class="table-full-width-wrapper">{styled_table}</div>'
+                                
+                            # Финальная сборка: CSS + Обертка + Таблица
+                            final_html_block = f'{table_css}<div class="table-full-width-wrapper">{styled_table}</div>'
                                 
                             injections.append(final_html_block)
                         except Exception as e: 
@@ -4245,6 +4239,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
