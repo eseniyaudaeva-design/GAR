@@ -3767,7 +3767,7 @@ with tab_wholesale_main:
                             
                             if pool_random:
                                 # Берем случайную выборку
-                                random_fillers = random.sample(pool_random, min(missing, len(pool_random))))
+                                random_fillers = random.sample(pool_random, min(missing, len(pool_random)))
                                 target_urls.extend(random_fillers)
                         
                         # ЭТАП 4: ФИНАЛЬНОЕ ПЕРЕМЕШИВАНИЕ
@@ -4320,6 +4320,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
