@@ -3607,20 +3607,18 @@ with tab_wholesale_main:
 
 # --- 2. ТАБЛИЦЫ (ИСПРАВЛЕНО: ЛОГИЧНОЕ ДОПОЛНЕНИЕ НА ОСНОВЕ КЛЮЧЕЙ) ---
                 if use_tables and client:
-                    # 1. CSS СТИЛИ (Чтобы было красиво визуально)
+                    # CSS СТИЛИ (Сжаты в одну строку)
                     table_css = "<style>.table-full-width-wrapper{display:block !important;width:100% !important;box-sizing:border-box !important;margin:20px 0 !important}.brand-accent-table{width:100% !important;border-collapse:separate !important;border-spacing:0 !important;background:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-family:'Inter',sans-serif;border:0 !important;margin-bottom:0 !important}.brand-accent-table th{background-color:#277EFF;color:white;text-align:left;padding:16px;font-weight:500;font-size:15px;border:none;vertical-align:middle}.brand-accent-table th:first-child{border-top-left-radius:8px}.brand-accent-table th:last-child{border-top-right-radius:8px}.brand-accent-table td{padding:16px;border-bottom:1px solid #e5e7eb;color:#4b5563;font-size:15px;line-height:1.4;vertical-align:middle}.brand-accent-table tr:last-child td{border-bottom:none}.brand-accent-table tr:last-child td:first-child{border-bottom-left-radius:8px}.brand-accent-table tr:last-child td:last-child{border-bottom-right-radius:8px}.brand-accent-table tr:hover td{background-color:#f8faff}</style>"
 
                     for t_topic in table_prompts:
-                        # Собираем "Фундамент" таблицы: слова из поля ввода + слова по распределению
-                        # Нейросеть должна строить контент ТОЛЬКО вокруг них.
+                        # Источник данных: слова из поля + слова SEO
                         source_keywords = f"{str_tables_final}, {seo_keywords_string}"
                         
-                        # Если авто-выбор темы
+                        # Авто-выбор темы
                         if t_topic == "!!!_AUTO_AI_DECIDE_!!!":
-                            topic_instruction = "ТВОЯ ЗАДАЧА: Проанализируй список слов-ключей ниже. Придумай тему таблицы, которая логично объединит эти слова."
+                            topic_instruction = "ТВОЯ ЗАДАЧА: Создай таблицу, которая раскрывает технические детали, основанные ИСКЛЮЧИТЕЛЬНО на списке слов ниже."
                         else:
                             topic_instruction = f"Тема таблицы строго: {t_topic}."
-
                         # --- ПРОМПТ: УМНОЕ ДОПОЛНЕНИЕ ---
                         prompt_tbl = (
                             f"Ты — Редактор технического портала. Твоя задача — создать HTML таблицу для товара: '{header_for_ai}'.\n\n"
@@ -3652,23 +3650,31 @@ with tab_wholesale_main:
                         )
                         
                         try:
-                            # Температура 0.4: даем немного свободы для формулирования нормальных предложений, но держим в рамках слов
                             resp = client.chat.completions.create(
                                 model="google/gemini-2.5-pro", 
                                 messages=[{"role": "user", "content": prompt_tbl}], 
-                                temperature=0.4 
+                                temperature=0.3
                             )
                             
                             raw_table = resp.choices[0].message.content.strip()
+                            
+                            # 1. Убираем Markdown
                             raw_table = raw_table.replace("```html", "").replace("```", "").strip()
                             
-                            # Проверка на наличие table
+                            # 2. УДАЛЯЕМ ПЕРЕНОСЫ СТРОК И ЛИШНИЕ ПРОБЕЛЫ (Это чинит ошибку с отображением кода)
+                            raw_table = re.sub(r'\n\s*', '', raw_table)
+                            
+                            # 3. Удаляем caption, если он есть (он ломает верстку)
+                            raw_table = re.sub(r'<caption.*?>.*?</caption>', '', raw_table)
+
+                            # 4. Проверяем и оборачиваем
                             if "<table" not in raw_table:
                                 final_table_code = f'<table class="brand-accent-table">{raw_table}</table>'
                             else:
+                                # Внедряем класс внутрь существующего тега table
                                 final_table_code = raw_table.replace('<table', '<table class="brand-accent-table"')
 
-                            # Сборка
+                            # 5. Сборка
                             final_html_block = f'{table_css}<div class="table-full-width-wrapper">{final_table_code}</div>'
                                 
                             injections.append(final_html_block)
@@ -4242,6 +4248,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
