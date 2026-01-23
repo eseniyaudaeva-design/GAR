@@ -3605,9 +3605,9 @@ with tab_wholesale_main:
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
 
-# --- 2. ТАБЛИЦЫ (ИСПРАВЛЕНО: ФОКУС НА ТОВАРЕ + ВАШИ КЛЮЧИ) ---
+# --- 2. ТАБЛИЦЫ (ФИНАЛЬНЫЙ ВАРИАНТ: КРАСИВЫЙ ПРЕВЬЮ + ЧИСТЫЙ ЭКСЕЛЬ) ---
                 if use_tables and client:
-                    # CSS: СИНИЙ ТОЛЬКО THEAD, ОСТАЛЬНОЕ БЕЛОЕ
+                    # 1. ОПРЕДЕЛЯЕМ СТИЛИ (Они нужны только для браузера/предпросмотра)
                     table_css = """
                     <style>
                     .table-full-width-wrapper {
@@ -3628,7 +3628,6 @@ with tab_wholesale_main:
                         line-height: 1.5;
                         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
                     }
-                    /* 1. ШАПКА (THEAD) - СИНЯЯ */
                     .brand-accent-table thead th {
                         background-color: #277EFF !important;
                         color: #ffffff !important;
@@ -3639,8 +3638,6 @@ with tab_wholesale_main:
                     }
                     .brand-accent-table thead th:first-child { border-top-left-radius: 7px; }
                     .brand-accent-table thead th:last-child { border-top-right-radius: 7px; }
-                    
-                    /* 2. ТЕЛО (TBODY) - ВСЕГДА БЕЛОЕ */
                     .brand-accent-table tbody td {
                         background-color: #ffffff !important;
                         color: #374151;
@@ -3648,8 +3645,6 @@ with tab_wholesale_main:
                         border-bottom: 1px solid #f3f4f6;
                         vertical-align: top;
                     }
-                    
-                    /* 3. ПЕРВЫЙ СТОЛБЕЦ ТЕЛА - ЖИРНЫЙ, НО БЕЛЫЙ */
                     .brand-accent-table tbody td:first-child {
                         font-weight: 600;
                         color: #111827;
@@ -3657,22 +3652,19 @@ with tab_wholesale_main:
                         border-right: 1px solid #f3f4f6;
                         width: 30%;
                     }
-                    
                     .brand-accent-table tbody tr:last-child td { border-bottom: none; }
                     .brand-accent-table tbody tr:last-child td:first-child { border-bottom-left-radius: 7px; }
                     .brand-accent-table tbody tr:last-child td:last-child { border-bottom-right-radius: 7px; }
-                    
-                    .brand-accent-table tbody tr:hover td {
-                        background-color: #f9fafb !important;
-                    }
+                    .brand-accent-table tbody tr:hover td { background-color: #f9fafb !important; }
                     </style>
                     """
 
+                    # 2. ВНЕДРЯЕМ СТИЛИ В БРАУЗЕР (ГЛОБАЛЬНО)
+                    # Это заставит предпросмотр видеть стили, но НЕ добавит их в Excel
+                    st.markdown(table_css, unsafe_allow_html=True)
+
                     for t_topic in table_prompts:
-                        # ИСПОЛЬЗУЕМ ТОЛЬКО СЛОВА ИЗ ПОЛЯ ТАБЛИЦ (без общего SEO мусора)
                         source_keywords = str_tables_final
-                        
-                        # Если ключей нет, АИ будет опираться только на название товара
                         context_instruction = f"Обязательно включи параметры: [{source_keywords}]" if source_keywords.strip() else "Используй стандартные технические параметры."
 
                         if t_topic == "!!!_AUTO_AI_DECIDE_!!!":
@@ -3709,11 +3701,15 @@ with tab_wholesale_main:
                             )
                             
                             raw_table = resp.choices[0].message.content.strip()
+                            
+                            # ЧИСТКА ОТ МУСОРА
                             raw_table = raw_table.replace("```html", "").replace("```", "").strip()
+                            # Удаляем стили, если AI их все-таки написал
+                            raw_table = re.sub(r'<style.*?>.*?</style>', '', raw_table, flags=re.DOTALL)
                             raw_table = re.sub(r'\n\s*', '', raw_table)
                             raw_table = re.sub(r'<caption.*?>.*?</caption>', '', raw_table)
 
-                            # Защита от th в tbody
+                            # Защита разметки
                             if "<tbody>" in raw_table:
                                 parts = raw_table.split("<tbody>")
                                 head_part = parts[0]
@@ -3721,11 +3717,14 @@ with tab_wholesale_main:
                                 body_part = body_part.replace("<th", "<td").replace("</th>", "</td>")
                                 raw_table = head_part + "<tbody>" + body_part
 
+                            # Добавляем класс для стилизации (сам класс в HTML нужен, чтобы CSS его нашел)
                             if "<table" not in raw_table:
                                 final_table_code = f'<table class="brand-accent-table">{raw_table}</table>'
                             else:
                                 final_table_code = raw_table.replace('<table', '<table class="brand-accent-table"')
 
+                            # ВАЖНО: В переменную мы кладем ТОЛЬКО HTML
+                            # Стили уже загружены в браузер строкой st.markdown(table_css) выше
                             final_html_block = f'<div class="table-full-width-wrapper">{final_table_code}</div>'
                                 
                             injections.append(final_html_block)
@@ -4299,6 +4298,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
