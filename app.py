@@ -1977,7 +1977,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     user_prompt = f"""
     ИСХОДНЫЕ ДАННЫЕ:
     Название товара: "{tag_name}"
-    Фактура (базовый текст): '''{base_text[:4000]}'''
+    Фактура (базовый текст): '''{base_text[:4000]}''' 
     
     {seo_instruction_block}
     
@@ -4251,6 +4251,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
