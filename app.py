@@ -2221,8 +2221,9 @@ with tab_seo_main:
 
         st.success("Анализ готов!")
         
-        # Стили
-        st.markdown("""
+# --- ИСПРАВЛЕННЫЙ БЛОК СТИЛЕЙ ---
+        # 1. Записываем стили в обычную переменную (так Python точно не будет искать в них ошибки)
+        custom_css = """
         <style>
             details > summary { list-style: none; }
             details > summary::-webkit-details-marker { display: none; }
@@ -2236,7 +2237,7 @@ with tab_seo_main:
             .flat-len-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; }
             .flat-miss-tag { border: 1px solid #fecaca; color: #991b1b; padding: 2px 6px; font-size: 11px; border-radius: 4px; margin: 2px; display: inline-block; }
         </style>
-        """, unsafe_allow_html=True)
+        """
 
 # Вывод ОТЛАДКИ для Ширины (чтобы понять, почему 95)
         if 'debug_width' in results:
@@ -4230,6 +4231,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
