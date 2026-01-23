@@ -3726,7 +3726,7 @@ with tab_wholesale_main:
                             else:
                                 final_table_code = raw_table.replace('<table', '<table class="brand-accent-table"')
 
-                            final_html_block = f'{table_css}<div class="table-full-width-wrapper">{final_table_code}</div>'
+                            final_html_block = f'<div class="table-full-width-wrapper">{final_table_code}</div>'
                                 
                             injections.append(final_html_block)
                             
@@ -4299,6 +4299,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
