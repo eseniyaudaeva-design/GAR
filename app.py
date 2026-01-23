@@ -3605,13 +3605,13 @@ with tab_wholesale_main:
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
 
-# --- 2. ТАБЛИЦЫ (ИСПРАВЛЕНО: ВИЗУАЛ + СТРОГОЕ SEO + КОНТЕКСТ) ---
+# --- 2. ТАБЛИЦЫ (ИСПРАВЛЕННАЯ ЛОГИКА: ГАРАНТИЯ ТЕГА TABLE) ---
                 if use_tables and client:
-                    # 1. CSS СТИЛИ (В одну строку, чтобы не ломался Markdown)
-                    table_css = "<style>.table-full-width-wrapper{display:block !important;width:100% !important;box-sizing:border-box !important;margin:20px 0 !important}.brand-accent-table{display:table !important;width:100% !important;table-layout:fixed !important;border-collapse:separate !important;border-spacing:0 !important;background:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-family:'Inter',sans-serif;border:0 !important}.brand-accent-table th{background-color:#277EFF;color:white;text-align:left;padding:16px;font-weight:500;font-size:15px;border:none;vertical-align:middle;white-space:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;hyphens:auto}.brand-accent-table th:first-child{border-top-left-radius:8px}.brand-accent-table th:last-child{border-top-right-radius:8px}.brand-accent-table td{padding:16px;border-bottom:1px solid #e5e7eb;color:#4b5563;font-size:15px;line-height:1.4;vertical-align:middle;white-space:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;word-break:break-word !important}.brand-accent-table tr:last-child td{border-bottom:none}.brand-accent-table tr:last-child td:first-child{border-bottom-left-radius:8px}.brand-accent-table tr:last-child td:last-child{border-bottom-right-radius:8px}.brand-accent-table tr:hover td{background-color:#f8faff}@media(max-width:770px){.brand-accent-table th,.brand-accent-table td{padding:10px 8px !important;font-size:13px !important}}.brand-accent-table th:first-child:nth-last-child(2),.brand-accent-table th:first-child:nth-last-child(2)~th{width:50% !important}</style>"
+                    # 1. CSS СТИЛИ (Сжатые в одну строку, чтобы не ломать Markdown)
+                    table_css = "<style>.table-full-width-wrapper{display:block !important;width:100% !important;box-sizing:border-box !important;margin:20px 0 !important}.brand-accent-table{width:100% !important;border-collapse:separate !important;border-spacing:0 !important;background:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-family:'Inter',sans-serif;border:0 !important;margin-bottom:0 !important}.brand-accent-table th{background-color:#277EFF;color:white;text-align:left;padding:16px;font-weight:500;font-size:15px;border:none;vertical-align:middle}.brand-accent-table th:first-child{border-top-left-radius:8px}.brand-accent-table th:last-child{border-top-right-radius:8px}.brand-accent-table td{padding:16px;border-bottom:1px solid #e5e7eb;color:#4b5563;font-size:15px;line-height:1.4;vertical-align:middle}.brand-accent-table tr:last-child td{border-bottom:none}.brand-accent-table tr:last-child td:first-child{border-bottom-left-radius:8px}.brand-accent-table tr:last-child td:last-child{border-bottom-right-radius:8px}.brand-accent-table tr:hover td{background-color:#f8faff}</style>"
 
                     for t_topic in table_prompts:
-                        # Контекст из поля ввода (ВГП, Размеры и т.д.)
+                        # Контекст из поля ввода
                         ctx_data = str_tables_final 
                         
                         # Если авто-выбор темы
@@ -3638,38 +3638,38 @@ with tab_wholesale_main:
                             f"- Меняй окончания слов (склоняй), чтобы текст выглядел естественно.\n\n"
                             
                             f"4. ТРЕБОВАНИЯ К ОФОРМЛЕНИЮ:\n"
-                            f"- НЕ пиши вступлений и выводов. Только код <table>.\n"
-                            f"- Таблица должна быть полезной и содержательной, а не пустой.\n"
+                            f"- Выдай ПОЛНЫЙ код таблицы, начиная с <table> и заканчивая </table>.\n"
+                            f"- Обязательно используй <thead> для шапки и <tbody> для тела.\n"
                             f"- Формат вывода: Только чистый HTML."
                         )
                         
                         try:
+                            # Температура поменьше для стабильности кода
                             resp = client.chat.completions.create(
                                 model="google/gemini-2.5-pro", 
                                 messages=[{"role": "user", "content": prompt_tbl}], 
-                                temperature=0.3
+                                temperature=0.2
                             )
                             
-                            raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                            # 1. Получаем сырой ответ
+                            raw_table = resp.choices[0].message.content.strip()
                             
-                            # Чистка HTML
-                            raw_table = re.sub(r'(</th>)\s*(<td)', r'\1</tr><tr>\2', raw_table, flags=re.IGNORECASE)
-                            raw_table = re.sub(r'<caption[\s\S]*?<\/caption>', '', raw_table, flags=re.IGNORECASE)
-                            raw_table = re.sub(r'<tr[^>]*>\s*(?:<(?:td|th)[^>]*>\s*<\/(?:td|th)>\s*)+<\/tr>', '', raw_table, flags=re.IGNORECASE)
-                            raw_table = re.sub(r'<\/?(thead|tbody|tfoot)[^>]*>', '', raw_table)
-                            raw_table = re.sub(r'(<table[^>]*>)\s*<(?:th|td)[^>]*>(\s*<tr)', r'\1\2', raw_table) 
+                            # 2. Убираем Markdown обертку (```html ... ```)
+                            raw_table = raw_table.replace("```html", "").replace("```", "").strip()
                             
-                            # Стилизация (Добавляем класс)
-                            styled_table = raw_table.replace('<table', '<table class="brand-accent-table"')
-                            
-                            # Восстановление tbody если пропал
-                            if '<tbody>' not in styled_table:
-                                styled_table = re.sub(r'(<table[^>]*>)([\s\S]*?)(<\/table>)', r'\1<tbody>\2</tbody>\3', styled_table)
-                                
-                            # Финальная сборка: CSS + Обертка + Таблица
-                            final_html_block = f'{table_css}<div class="table-full-width-wrapper">{styled_table}</div>'
+                            # 3. ПРОВЕРКА И ЛЕЧЕНИЕ HTML
+                            # Если нейросеть забыла написать <table>, мы добавим его сами
+                            if "<table" not in raw_table:
+                                final_table_code = f'<table class="brand-accent-table">{raw_table}</table>'
+                            else:
+                                # Если <table> есть, внедряем в него наш класс для красоты
+                                final_table_code = raw_table.replace('<table', '<table class="brand-accent-table"')
+
+                            # 4. Финальная сборка для вывода: CSS + Обертка + Код таблицы
+                            final_html_block = f'{table_css}<div class="table-full-width-wrapper">{final_table_code}</div>'
                                 
                             injections.append(final_html_block)
+                            
                         except Exception as e: 
                             log_container.write(f"Ошибка генерации таблицы: {e}")
                 
@@ -4239,6 +4239,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
