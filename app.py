@@ -1951,6 +1951,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 1. Слова в списке даны в "сыром" виде (Именительный падеж, Единственное число).
 2. В тексте ты ОБЯЗАН изменять их форму (падеж, число, род), чтобы они идеально согласовывались с соседними словами.
 3. Текст должен звучать так, как будто его написал живой человек, не знающий про существование списка ключей.
+4. ЗАПРЕЩЕНО: любые выводы, итоги, их подведение.
 
 ПРИМЕР ЛОГИКИ:
 - Если в списке слово "стальной", а ты пишешь про трубы (женский род, мн. число), ты пишешь: "широкий выбор <b>стальных</b> труб".
@@ -3570,50 +3571,96 @@ with tab_wholesale_main:
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
 
+# --- 2. ТАБЛИЦЫ (СТРОГИЙ КОНТЕНТ + ВАШ ДИЗАЙН) ---
                 if use_tables and client:
+                    # Ваш CSS (вставляем как есть)
+                    brand_style_css = """
+                    <style>
+                        .table-full-width-wrapper { display: block !important; width: 100% !important; box-sizing: border-box !important; margin: 20px 0 !important; }
+                        .brand-accent-table { display: table !important; width: 100% !important; table-layout: fixed !important; border-collapse: separate !important; border-spacing: 0 !important; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); font-family: 'Inter', sans-serif; border: 0 !important; }
+                        .brand-accent-table th { background-color: #277EFF; color: white; text-align: left; padding: 16px; font-weight: 500; font-size: 15px; border: none; vertical-align: middle; white-space: normal !important; overflow-wrap: break-word !important; word-wrap: break-word !important; hyphens: auto; }
+                        .brand-accent-table th:first-child { border-top-left-radius: 8px; }
+                        .brand-accent-table th:last-child { border-top-right-radius: 8px; }
+                        .brand-accent-table td { padding: 16px; border-bottom: 1px solid #e5e7eb; color: #4b5563; font-size: 15px; line-height: 1.4; vertical-align: middle; white-space: normal !important; overflow-wrap: break-word !important; word-wrap: break-word !important; word-break: break-word !important; }
+                        .brand-accent-table tr:last-child td { border-bottom: none; }
+                        .brand-accent-table tr:last-child td:first-child { border-bottom-left-radius: 8px; }
+                        .brand-accent-table tr:last-child td:last-child { border-bottom-right-radius: 8px; }
+                        .brand-accent-table tr:hover td { background-color: #f8faff; }
+                        @media (max-width: 770px) { .brand-accent-table th, .brand-accent-table td { padding: 10px 8px !important; font-size: 13px !important; } }
+                        .brand-accent-table th:first-child:nth-last-child(2), .brand-accent-table th:first-child:nth-last-child(2) ~ th { width: 50% !important; }
+                    </style>
+                    """
+
                     for t_topic in table_prompts:
-                        ctx = f"Контекст: {str_tables_final}" 
+                        ctx_data = str_tables_final 
                         
-                        # --- ПРОМПТ: БАЛАНС (ТЕКСТ ЕСТЬ, НО БЕЗ ПОВТОРОВ СТАТЬИ) ---
+                        # Определение темы
+                        if t_topic == "!!!_AUTO_AI_DECIDE_!!!":
+                            topic_instruction = (
+                                "ТВОЯ ЗАДАЧА: Проанализируй товар. Придумай тему таблицы, которая даст АБСОЛЮТНО НОВУЮ информацию, "
+                                "не упомянутую в стандартном описании. Например: 'Химический состав в %', 'Предельные отклонения', "
+                                "'Специфические условия монтажа', 'Точные физические свойства'."
+                            )
+                        else:
+                            topic_instruction = f"Тема таблицы строго: {t_topic}."
+
+                        # ПРОМПТ (Строгий: только новая инфа)
                         prompt_tbl = (
-                            f"Задача: Создай ИНФОРМАТИВНУЮ HTML таблицу (<table>) для товара '{header_for_ai}'. \n"
-                            f"Тема: {t_topic}. \n"
-                            f"Данные: {ctx}. \n\n"
+                            f"Ты — главный инженер производства. Твоя задача — создать HTML таблицу (<table>) для товара: '{header_for_ai}'.\n\n"
                             
-                            f"ПРАВИЛА КОНТЕНТА:\n"
-                            f"1. Структуру колонок определи САМ. Таблица НЕ должна состоять только из цифр, текстовые пояснения приветствуются.\n"
-                            f"2. ВАЖНОЕ УСЛОВИЕ (АНТИ-ДУБЛЬ): В основном тексте статьи уже есть общее описание. НЕ ПОВТОРЯЙ его слово в слово.\n"
-                            f"3. В таблице давай ту информацию, которую удобнее структурировать: конкретные примеры использования, расшифровку марок, особенности параметров. То есть — полезную конкретику.\n\n"
+                            f"1. ТЕМА:\n{topic_instruction}\n\n"
                             
-                            f"SEO ЗАДАЧА:\n"
-                            f"Впиши в ячейки ключевые слова: {seo_keywords_string}. \n"
-                            f"ОБЯЗАТЕЛЬНО: Выдели внедренные ключи тегом <b>.\n\n"
+                            f"2. ИСТОЧНИК ДАННЫХ:\n"
+                            f"Context: {ctx_data}\n\n"
                             
-                            f"ФОРМАТ: Только HTML (<tr>, <th>, <td>). Минимум 5 строк."
+                            f"3. SEO КЛЮЧИ (Внедрить аккуратно):\n"
+                            f"{seo_keywords_string}\n"
+                            f"Ключи выделяй тегом <b>.\n\n"
+                            
+                            f"4. СТРОЖАЙШИЕ ЗАПРЕТЫ И ПРАВИЛА (CRITICAL):\n"
+                            f"- ЗАПРЕЩЕНО делать 'выжимку' или резюме текста. Текст описания уже написан, повторять его НЕЛЬЗЯ.\n"
+                            f"- ЗАПРЕЩЕНО писать общие фразы ('высокая прочность', 'хорошее качество').\n"
+                            f"- ТАБЛИЦА ДОЛЖНА СОДЕРЖАТЬ ТОЛЬКО НОВУЮ, ДОПОЛНИТЕЛЬНУЮ ИНФОРМАЦИЮ.\n"
+                            f"- Если в тексте пишут 'труба прочная', в таблице ты пишешь 'Предел текучести: 245 МПа'.\n"
+                            f"- Если в тексте пишут 'из стали', в таблице ты пишешь 'C: 0.14-0.22%, Mn: 0.4-0.65%'.\n"
+                            f"- Давай сухие цифры, допуски, конкретные стандарты (DIN, ISO, ГОСТ пункты), физические константы.\n"
+                            f"- Это должен быть контент 'второго уровня' для профессионалов, которые ищут спецификации.\n\n"
+                            
+                            f"ФОРМАТ ВЫВОДА:\n"
+                            f"Только чистый HTML код таблицы. Никакого маркдауна."
                         )
                         
                         try:
-                            # Температура 0.5 для адекватного креатива в описаниях
-                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.5)
+                            # Температура 0.3 для технической точности
+                            resp = client.chat.completions.create(
+                                model="google/gemini-2.5-pro", 
+                                messages=[{"role": "user", "content": prompt_tbl}], 
+                                temperature=0.3
+                            )
                             
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                             
-                            # Чистка
+                            # Чистка HTML
                             raw_table = re.sub(r'(</th>)\s*(<td)', r'\1</tr><tr>\2', raw_table, flags=re.IGNORECASE)
                             raw_table = re.sub(r'<caption[\s\S]*?<\/caption>', '', raw_table, flags=re.IGNORECASE)
                             raw_table = re.sub(r'<tr[^>]*>\s*(?:<(?:td|th)[^>]*>\s*<\/(?:td|th)>\s*)+<\/tr>', '', raw_table, flags=re.IGNORECASE)
                             raw_table = re.sub(r'<\/?(thead|tbody|tfoot)[^>]*>', '', raw_table)
                             raw_table = re.sub(r'(<table[^>]*>)\s*<(?:th|td)[^>]*>(\s*<tr)', r'\1\2', raw_table) 
                             
-                            styled_table = raw_table
-                            styled_table = styled_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
-                            styled_table = styled_table.replace('<th', '<th style="border: 2px solid black; padding: 5px;"')
-                            styled_table = styled_table.replace('<td', '<td style="border: 2px solid black; padding: 5px;"')
+                            # === ПРИМЕНЕНИЕ ВАШЕГО ДИЗАЙНА ===
+                            # 1. Добавляем класс таблицы
+                            styled_table = raw_table.replace('<table', '<table class="brand-accent-table"')
                             
+                            # 2. Если tbody потерялся при чистке нейросети - восстанавливаем для корректности верстки
                             if '<tbody>' not in styled_table:
                                 styled_table = re.sub(r'(<table[^>]*>)([\s\S]*?)(<\/table>)', r'\1<tbody>\2</tbody>\3', styled_table)
-                            injections.append(styled_table)
-                        except: pass
+
+                            # 3. Оборачиваем в DIV и добавляем STYLE блок
+                            final_html_block = f'{brand_style_css}<div class="table-full-width-wrapper">{styled_table}</div>'
+                                
+                            injections.append(final_html_block)
+                        except Exception as e: 
+                            log_container.write(f"Ошибка генерации таблицы: {e}")
                 
                 # --- 3. ПРОМО (ПОЛНЫЙ КОД) ---
                 if use_promo and p_img_map:
@@ -4181,6 +4228,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
