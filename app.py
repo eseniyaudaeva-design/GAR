@@ -3731,27 +3731,50 @@ with tab_wholesale_main:
                         except Exception as e: 
                             log_container.write(f"Ошибка генерации таблицы: {e}")
                 
-                # --- 3. ПРОМО (ПОЛНЫЙ КОД) ---
+# --- 3. ПРОМО (FIX: ПОЛНАЯ РАНДОМИЗАЦИЯ И УНИКАЛЬНОСТЬ) ---
                 if use_promo and p_img_map:
+                    # 1. Исключаем текущую страницу из кандидатов
                     p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                     
                     if p_cands_all:
                         target_urls = []
-                        # Ищем по словам
-                        for kw in list_promo_initial:
+                        
+                        # ЭТАП 1: Перемешиваем список ключевых слов (чтобы приоритет менялся)
+                        shuffled_keywords = list(list_promo_initial)
+                        random.shuffle(shuffled_keywords)
+                        
+                        # ЭТАП 2: Ищем совпадения с ЭЛЕМЕНТОМ СЛУЧАЙНОСТИ
+                        for kw in shuffled_keywords:
+                            if len(target_urls) >= 8: break # Если набрали 8 шт, выходим
+                            
                             tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            for url in p_cands_all:
-                                if tr_kw in url.lower() and url not in target_urls:
-                                    target_urls.append(url)
-                                    break 
-                        # Добиваем рандомом
+                            
+                            # Находим ВСЕ возможные совпадения для этого слова
+                            possible_matches = [u for u in p_cands_all if tr_kw in u.lower() and u not in target_urls]
+                            
+                            if possible_matches:
+                                # !!! БЕРЕМ СЛУЧАЙНОЕ СОВПАДЕНИЕ, А НЕ ПЕРВОЕ !!!
+                                # Это гарантирует, что даже по одному слову каждый раз будут разные товары
+                                selected_match = random.choice(possible_matches)
+                                target_urls.append(selected_match)
+                        
+                        # ЭТАП 3: Если мало совпадений, добиваем СЛУЧАЙНЫМИ товарами из базы
                         needed_total = 8
                         if len(target_urls) < needed_total:
                             missing = needed_total - len(target_urls)
+                            # Пул оставшихся (исключая уже выбранные)
                             pool_random = [u for u in p_cands_all if u not in target_urls]
+                            
                             if pool_random:
-                                target_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
-                        # Рендер
+                                # Берем случайную выборку
+                                random_fillers = random.sample(pool_random, min(missing, len(pool_random))))
+                                target_urls.extend(random_fillers)
+                        
+                        # ЭТАП 4: ФИНАЛЬНОЕ ПЕРЕМЕШИВАНИЕ
+                        # Чтобы товары по ключевикам не стояли всегда первыми
+                        random.shuffle(target_urls)
+
+                        # Рендер HTML
                         if target_urls:
                             promo_names_map = resolve_real_names(target_urls)
                             gallery_items = []
@@ -4297,6 +4320,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
