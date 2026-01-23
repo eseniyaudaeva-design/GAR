@@ -1933,12 +1933,15 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     from openai import OpenAI
     client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     
+    # ИСПОЛЬЗУЕМ РЕАЛЬНЫЙ H2 СО СТРАНИЦЫ
+    # Если его не нашли при парсинге, используем название тега как запасной вариант
+    final_h2 = forced_header if forced_header and len(forced_header) > 2 else tag_name
+
     seo_instruction_block = ""
     
     # === УСИЛЕННЫЙ БЛОК SEO ===
     if seo_words:
         seo_list_str = ", ".join(seo_words)
-        # Безопасная сборка строки SEO
         seo_instruction_block = (
             f"\n### 🧠 ЛИНГВИСТИЧЕСКАЯ ЗАДАЧА (SEO)\n"
             f"Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме:\n"
@@ -1995,7 +1998,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 
         "    ТЕМЫ БЛОКОВ:\n"
         "--- БЛОК 1 (Вводный) ---\n"
-        f"- Заголовок: <h2>{tag_name}</h2>\n"
+        f"- Заголовок: <h2>{final_h2}</h2>\n"
         "- Описание товара, назначение, ключевые особенности.\n\n"
         
         "--- БЛОКИ 2, 3, 4, 5 (Технические детали) ---\n"
@@ -3576,27 +3579,42 @@ with tab_wholesale_main:
                 
                 injections = []
 
-                # --- 1. ТЕГИ (ПОЛНЫЙ КОД) ---
+# --- 1. ТЕГИ (FIX: ПОЛНАЯ РАНДОМИЗАЦИЯ) ---
                 if use_tags and all_tags_links:
                     tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != page['url'].rstrip('/')]
 
                     if tags_cands_all:
                         target_tag_urls = []
-                        # ЭТАП 1: Ищем ссылки по вашим словам
-                        for kw in list_tags_initial:
+                        
+                        # 1. Перемешиваем ключевые слова (чтобы каждый раз искать в разном порядке)
+                        shuffled_tags_kw = list(list_tags_initial)
+                        random.shuffle(shuffled_tags_kw)
+                        
+                        # 2. Ищем с элементом случайности
+                        for kw in shuffled_tags_kw:
+                            if len(target_tag_urls) >= 15: break
+                            
                             tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            for url in tags_cands_all:
-                                if tr_kw in url.lower() and url not in target_tag_urls:
-                                    target_tag_urls.append(url)
-                                    break 
-                        # ЭТАП 2: Добиваем рандомом
+                            
+                            # Находим ВСЕ совпадения
+                            matches = [u for u in tags_cands_all if tr_kw in u.lower() and u not in target_tag_urls]
+                            
+                            if matches:
+                                # Берем СЛУЧАЙНОЕ, а не первое
+                                target_tag_urls.append(random.choice(matches))
+                                
+                        # 3. Добиваем случайными
                         needed_tags = 15
                         if len(target_tag_urls) < needed_tags:
                             missing = needed_tags - len(target_tag_urls)
                             pool_random = [u for u in tags_cands_all if u not in target_tag_urls]
                             if pool_random:
                                 target_tag_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
-                        # ЭТАП 3: Рендер
+                        
+                        # 4. Финальное перемешивание списка
+                        random.shuffle(target_tag_urls)
+
+                        # Рендер
                         if target_tag_urls:
                             tags_names_map = resolve_real_names(target_tag_urls)
                             html_t = []
@@ -3606,7 +3624,6 @@ with tab_wholesale_main:
 
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
-
 # --- 2. ТАБЛИЦЫ (ФИНАЛЬНЫЙ ВАРИАНТ: КРАСИВЫЙ ПРЕВЬЮ + ЧИСТЫЙ ЭКСЕЛЬ) ---
                 if use_tables and client:
                     # 1. ОПРЕДЕЛЯЕМ СТИЛИ (Они нужны только для браузера/предпросмотра)
@@ -3702,16 +3719,17 @@ with tab_wholesale_main:
                             raw_table = resp.choices[0].message.content.strip()
                             raw_table = raw_table.replace("```html", "").replace("```", "").strip()
                             
-                            # 1. УДАЛЕНИЕ СТИЛЕЙ
+                            # 1. УДАЛЕНИЕ МУСОРА (CSS, Жирное, Ссылки, Captions)
                             raw_table = re.sub(r'<style.*?>.*?</style>', '', raw_table, flags=re.DOTALL)
+                            raw_table = re.sub(r'</?[bB][^>]*>', '', raw_table) # Удаляем <b>
+                            raw_table = re.sub(r'</?strong[^>]*>', '', raw_table) # Удаляем <strong>
+                            raw_table = re.sub(r'<caption.*?>.*?</caption>', '', raw_table, flags=re.DOTALL) # Удаляем заголовок-кэпшн
                             
-                            # 2. ФИЗИЧЕСКОЕ УДАЛЕНИЕ ЖИРНОГО (Гарантия 100%)
-                            raw_table = re.sub(r'</?[bB][^>]*>', '', raw_table)
-                            raw_table = re.sub(r'</?strong[^>]*>', '', raw_table)
+                            # Удаляем ссылки <a>...</a>, оставляя текст внутри (или удаляя полностью, если это мусор)
+                            # Здесь удаляем сам тег, оставляя анкор, чтобы не ломать верстку
+                            raw_table = re.sub(r'<a\s+[^>]*>(.*?)</a>', r'\1', raw_table, flags=re.DOTALL)
 
-                            # Чистка
                             raw_table = re.sub(r'\n\s*', '', raw_table)
-                            raw_table = re.sub(r'<caption.*?>.*?</caption>', '', raw_table)
 
                             if "<tbody>" in raw_table:
                                 parts = raw_table.split("<tbody>")
@@ -4320,6 +4338,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
