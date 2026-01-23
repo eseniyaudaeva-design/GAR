@@ -3574,22 +3574,7 @@ with tab_wholesale_main:
 # --- 2. ТАБЛИЦЫ (СТРОГИЙ КОНТЕНТ + ВАШ ДИЗАЙН) ---
                 if use_tables and client:
                     # Ваш CSS (вставляем как есть)
-                    brand_style_css = """
-                    <style>
-                        .table-full-width-wrapper { display: block !important; width: 100% !important; box-sizing: border-box !important; margin: 20px 0 !important; }
-                        .brand-accent-table { display: table !important; width: 100% !important; table-layout: fixed !important; border-collapse: separate !important; border-spacing: 0 !important; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); font-family: 'Inter', sans-serif; border: 0 !important; }
-                        .brand-accent-table th { background-color: #277EFF; color: white; text-align: left; padding: 16px; font-weight: 500; font-size: 15px; border: none; vertical-align: middle; white-space: normal !important; overflow-wrap: break-word !important; word-wrap: break-word !important; hyphens: auto; }
-                        .brand-accent-table th:first-child { border-top-left-radius: 8px; }
-                        .brand-accent-table th:last-child { border-top-right-radius: 8px; }
-                        .brand-accent-table td { padding: 16px; border-bottom: 1px solid #e5e7eb; color: #4b5563; font-size: 15px; line-height: 1.4; vertical-align: middle; white-space: normal !important; overflow-wrap: break-word !important; word-wrap: break-word !important; word-break: break-word !important; }
-                        .brand-accent-table tr:last-child td { border-bottom: none; }
-                        .brand-accent-table tr:last-child td:first-child { border-bottom-left-radius: 8px; }
-                        .brand-accent-table tr:last-child td:last-child { border-bottom-right-radius: 8px; }
-                        .brand-accent-table tr:hover td { background-color: #f8faff; }
-                        @media (max-width: 770px) { .brand-accent-table th, .brand-accent-table td { padding: 10px 8px !important; font-size: 13px !important; } }
-                        .brand-accent-table th:first-child:nth-last-child(2), .brand-accent-table th:first-child:nth-last-child(2) ~ th { width: 50% !important; }
-                    </style>
-                    """
+                    brand_style_css = """<style>.table-full-width-wrapper{display:block !important;width:100% !important;box-sizing:border-box !important;margin:20px 0 !important}.brand-accent-table{display:table !important;width:100% !important;table-layout:fixed !important;border-collapse:separate !important;border-spacing:0 !important;background:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-family:'Inter',sans-serif;border:0 !important}.brand-accent-table th{background-color:#277EFF;color:white;text-align:left;padding:16px;font-weight:500;font-size:15px;border:none;vertical-align:middle;white-space:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;hyphens:auto}.brand-accent-table th:first-child{border-top-left-radius:8px}.brand-accent-table th:last-child{border-top-right-radius:8px}.brand-accent-table td{padding:16px;border-bottom:1px solid #e5e7eb;color:#4b5563;font-size:15px;line-height:1.4;vertical-align:middle;white-space:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;word-break:break-word !important}.brand-accent-table tr:last-child td{border-bottom:none}.brand-accent-table tr:last-child td:first-child{border-bottom-left-radius:8px}.brand-accent-table tr:last-child td:last-child{border-bottom-right-radius:8px}.brand-accent-table tr:hover td{background-color:#f8faff}@media(max-width:770px){.brand-accent-table th,.brand-accent-table td{padding:10px 8px !important;font-size:13px !important}}.brand-accent-table th:first-child:nth-last-child(2),.brand-accent-table th:first-child:nth-last-child(2)~th{width:50% !important}</style>"""
 
                     for t_topic in table_prompts:
                         ctx_data = str_tables_final 
@@ -4228,6 +4213,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
