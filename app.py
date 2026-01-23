@@ -2221,11 +2221,9 @@ with tab_seo_main:
 
         st.success("Анализ готов!")
         
-# --- БРОНЕБОЙНЫЙ ВАРИАНТ ---
-        # Мы используем объединение строк в скобках. 
-        # Здесь нет тройных кавычек, поэтому Python не сможет перепутать это с f-строкой.
-        
-        css_body = (
+        # --- БЕЗОПАСНЫЙ БЛОК СТИЛЕЙ ---
+        # Используем конкатенацию строк в скобках, чтобы Python не искал f-строки
+        custom_css = (
             "<style>"
             "details > summary { list-style: none; }"
             "details > summary::-webkit-details-marker { display: none; }"
@@ -2240,8 +2238,7 @@ with tab_seo_main:
             ".flat-miss-tag { border: 1px solid #fecaca; color: #991b1b; padding: 2px 6px; font-size: 11px; border-radius: 4px; margin: 2px; display: inline-block; }"
             "</style>"
         )
-        
-        st.markdown(css_body, unsafe_allow_html=True)
+        st.markdown(custom_css, unsafe_allow_html=True)
 
 # Вывод ОТЛАДКИ для Ширины (чтобы понять, почему 95)
         if 'debug_width' in results:
@@ -2454,7 +2451,7 @@ with tab_seo_main:
                 if high: 
                     words_high = ", ".join([x['word'] for x in high])
                     
-                    # Безопасная сборка HTML без тройных кавычек
+                    # Безопасная сборка HTML (без тройных кавычек)
                     html_high = (
                         "<div style='background:#EBF5FF; padding:12px; border-radius:8px; border:1px solid #BFDBFE; color:#1E40AF; margin-bottom:10px;'>"
                         "<div style='font-weight:bold; margin-bottom:4px;'>🔥 Важные (Есть у большинства конкурентов):</div>"
@@ -2462,6 +2459,19 @@ with tab_seo_main:
                         "</div>"
                     )
                     st.markdown(html_high, unsafe_allow_html=True)
+                
+                # 2. ДОПОЛНИТЕЛЬНЫЕ (Медиана < 1) - Серая плашка
+                if low: 
+                    words_low = ", ".join([x['word'] for x in low])
+                    
+                    # Безопасная сборка HTML (без тройных кавычек)
+                    html_low = (
+                        "<div style='background:#F8FAFC; padding:12px; border-radius:8px; border:1px solid #E2E8F0; color:#475569;'>"
+                        "<div style='font-weight:bold; margin-bottom:4px;'>🔸 Дополнительные (Встречаются реже):</div>"
+                        f"<div style='font-size:13px; line-height:1.5;'>{words_low}</div>"
+                        "</div>"
+                    )
+                    st.markdown(html_low, unsafe_allow_html=True)
                 
                 # 2. ДОПОЛНИТЕЛЬНЫЕ (Медиана < 1) - Серая плашка
                 if low: 
@@ -4241,6 +4251,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
