@@ -1880,11 +1880,11 @@ STATIC_DATA_GEN = {
     'IP_PROP4822': """<p>Наша компания готова принять любые комфортные виды оплаты для юридических и физических лиц: по счету, наличная и безналичная, наложенный платеж, также возможны предоплата и отсрочка платежа.</p>""",
     'IP_PROP4823': """<div class="h4"><h3>Примеры возможной оплаты</h3></div><div class="an-col-12"><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">С помощью менеджера в центрах продаж</span></p></li></ul><p>Важно! Цена не является публичной офертой. Приходите в наш офис, чтобы уточнить поступление, получить ответы на почти любой вопрос, согласовать возврат, счет, рассчитать логистику.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">На расчетный счет</span></p></li></ul><p>По внутреннему счету в отделении банка или путем перечисления средств через личный кабинет (транзакции защищены, скорость зависит от отделения). Для права подтверждения нужно показать согласие на платежное поручение с отметкой банка.</p><ul><li style="font-weight: 400;"><p><span style="font-weight: 400;">Наличными или банковской картой при получении</span></p></li></ul><p><span style="font-weight: 400;">Поможем с оплатой: объем имеет значение. Крупным покупателям – деньги можно перевести после приемки товара.</span></p><p>Менеджеры предоставят необходимую информацию.</p><p>Заказывайте через прайс-лист:</p><p><a class="btn btn-blue" href="/catalog/">Каталог (магазин-меню):</a></p></div></div><br>""",
     'IP_PROP4824': "Описание, статьи, поиск, отзывы, новости, акции, журнал, info:",
-    'IP_PROP4825': "Ваш надежный партнер в металлопрокате",
+    'IP_PROP4825': "Можем металлизировать, оцинковать, никелировать, проволочь",
     'IP_PROP4826': "Современный практический подход",
-    'IP_PROP4834': "Персональный менеджер",
-    'IP_PROP4835': "Точно в срок",
-    'IP_PROP4836': "Гибкие условия расчета",
+    'IP_PROP4834': "Надежность без примесей",
+    'IP_PROP4835': "Популярный поставщик",
+    'IP_PROP4836': "Качество и характер",
     'IP_PROP4837': "Порядок в ГОСТах"
 }
 
@@ -1933,83 +1933,65 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     from openai import OpenAI
     client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     
-    # ИСПОЛЬЗУЕМ РЕАЛЬНЫЙ H2 СО СТРАНИЦЫ
-    # Если его не нашли при парсинге, используем название тега как запасной вариант
-    final_h2 = forced_header if forced_header and len(forced_header) > 2 else tag_name
-
+    seo_words = seo_words or []
     seo_instruction_block = ""
     
     # === УСИЛЕННЫЙ БЛОК SEO ===
     if seo_words:
         seo_list_str = ", ".join(seo_words)
-        seo_instruction_block = (
-            f"\n### 🧠 ЛИНГВИСТИЧЕСКАЯ ЗАДАЧА (SEO)\n"
-            f"Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме:\n"
-            f"[{seo_list_str}]\n\n"
-            "Твоя задача — написать текст, гармонично вплетая эти слова в повествование.\n\n"
-            "    ПРАВИЛА ВНЕДРЕНИЯ И ВЫДЕЛЕНИЯ:\n"
-            "    1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем 5 блокам.\n"
-            "    2. ВЫДЕЛЕНИЕ: НЕ используй теги <b> или <strong>. Пиши обычным текстом.\n"
-            "    3. ЗАПРЕТ НА БРЕНДИНГ: Никогда не пиши выдуманные названия (ООО Сталь-Прогресс и т.д.). Используй только 'Мы', 'Компания' или 'Поставщик'.\n"
-            "    4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь.\n"
-        )
+        # ВНИМАНИЕ: Ниже идет f-строка с тройными кавычками. Не удаляйте их!
+        seo_instruction_block = f"""
+### 🎯 SEO-ЗАДАНИЕ (ПРИОРИТЕТ ВЫСШИЙ)
+Ниже список ключевых слов, которые ОБЯЗАТЕЛЬНО должны быть в тексте.
+Игнорирование этих слов недопустимо.
 
-    # 2. Системная роль (Исправлены кавычки внутри текста)
+<seo_keywords>
+{seo_list_str}
+</seo_keywords>
+
+ПРАВИЛА РАБОТЫ С КЛЮЧАМИ:
+1. 🦎 МОРФОЛОГИЯ: Смело меняй окончания, числа и падежи (Например: если ключ "алюминий", можно писать "алюминиевого").
+2. 🔦 ВЫДЕЛЕНИЕ: Каждое внедренное слово (или его форму) оборачивай в тег <b>. Пример: <b>круглый прокат</b>.
+3. 📊 РАСПРЕДЕЛЕНИЕ: Не пихай все слова в первый абзац. Раскидай их равномерно по всем {num_blocks} блокам.
+4. 🧠 КОНТЕКСТ: Если слово совсем не подходит по смыслу, пропусти его, но постарайся внедрить максимум.
+-------------------------------------------
+"""
+
+    # 2. СИСТЕМНЫЙ ПРОМТ
     system_instruction = (
-        "Ты — профессиональный технический копирайтер и верстальщик. "
-        "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
+        "Ты — профессиональный технический копирайтер и SEO-специалист. "
+        "Твоя задача: написать экспертный продающий текст для карточки товара, органично вписав в него выданные ключевые слова. "
         "Ты выдаешь ТОЛЬКО HTML-код. "
-        'Стиль: Деловой, экспертный, но "человечный" и понятный. Избегай канцеляризмов и пространных рассуждений. '
-        "Факты и конкретика: Все суждения подкрепляй измеримыми фактами, цифрами, ссылками на ГОСТы, марки стали и другие нормативы. Используй поисковые инструменты для проверки и обогащения текста актуальной информацией. "
-        'Коммерческая направленность: Текст должен продавать. Говори от лица компании-производителя/поставщика. Вместо "проверенный поставщик" используй формулировки, подчеркивающие собственное производство и экспертизу. '
-        "Формула Главреда для B2B: В тексте должны быть ответы на вопросы: что это? какую проблему решает? кому подойдет? какие есть разновидности? Дополнительно раскрой информацию о стандартах производства, складских запасах и возможности изготовления под заказ. "
-        "СТРОГИЕ ЗАПРЕТЫ: "
-        "1. Не используй упоминания Украины, украинских городов (Киев, Львов и др.), "
-        "политические темы, валюту гривну. Контент строго для РФ. "
-        "2. НИКОГДА не используй ссылки на источники ни в тексте, ни в списках. Чисти текст от них полностью. "
-        "3. Именна собственные, названия городов пиши с заглавной буквы. Марки пиши в соответствии с марочниками. ГОСТ всегда заглавными."
+        "Стиль: Деловой, без воды, факты, цифры, ГОСТы. "
+        "В тексте должны быть ответы на вопросы: что это? характеристики? где применяется? "
+        "ЗАПРЕТЫ: Никакой Украины, политики, гривен. Никаких ссылок на источники."
     )
-    
-    # 3. ФОРМИРОВАНИЕ ЗАДАЧИ (ПРОМПТ)
-    # Используем безопасную сборку строк, чтобы избежать SyntaxError
-    user_prompt = (
-        f"ИСХОДНЫЕ ДАННЫЕ:\n"
-        f"Название товара: '{tag_name}'\n"
-        f"Фактура (базовый текст): '{base_text[:4000]}'\n"
-        f"{seo_instruction_block}\n\n"
-    
-        "ЗАДАЧА:\n"
-        f"Напиши {num_blocks} HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||\n\n"
-        
-        "ОБЩИЕ ТРЕБОВАНИЯ:\n"
-        "1. ОБЪЕМ: Каждый блок должен содержать максимум 800 символов. Раскрывай тему подробно.\n"
-        "2. ЧИСТОТА: Исключи любые ссылки на источники.\n"
-        "3. ЧАСТОТА: Используй каждое слово из списка СТРОГО 1 РАЗ.\n"
-        "4. ВЫДЕЛЕНИЕ: НЕ используй теги <b> или <strong>. Пиши обычным текстом.\n"
-        '5. ПОЛЬЗА: Текст должен быть технически грамотным и полезным для специалиста по закупкам. Избегай "воды".\n\n'
-        
-        "ТРЕБОВАНИЯ К СТРУКТУРЕ КАЖДОГО БЛОКА:\n"
-        "Каждый из 5 блоков должен строго соблюдать следующий порядок элементов:\n"
-        "1. Заголовок (<h2> только для 1-го блока, <h3> для блоков 2-5).\n"
-        "2. Первый абзац текста (<p>) - развернутый, информативный.\n"
-        '3. Вводное предложение, подводящее к списку (например: "Основные характеристики:", "Сферы применения:").\n'
-        "4. Маркированный список (<ul> c <li>).\n"
-        "5. Второй (завершающий) абзац текста (<p>) - развернутый.\n\n"
 
-        "    ТЕМЫ БЛОКОВ:\n"
-        "--- БЛОК 1 (Вводный) ---\n"
-        f"- Заголовок: <h2>{final_h2}</h2>\n"
-        "- Описание товара, назначение, ключевые особенности.\n\n"
-        
-        "--- БЛОКИ 2, 3, 4, 5 (Технические детали) ---\n"
-        "- Заголовки: <h3> (Характеристики, Применение, Производство, Особенности, Сортамент и т.д.).\n"
-        '- Используй фактуру из "Базового текста".\n\n'
-        
-        "ФИНАЛЬНЫЕ УСЛОВИЯ:\n"
-        '- Никаких вводных слов типа "Вот ваш код".\n'
-        "- Никакого Markdown (```).\n"
-        "- Только чистый HTML, разбитый через |||BLOCK_SEP|||."
-    )
+    user_prompt = f"""
+    ИСХОДНЫЕ ДАННЫЕ:
+    Название товара: "{tag_name}"
+    Фактура (базовый текст): \"\"\"{base_text[:3500]}\"\"\"
+    
+    {seo_instruction_block}
+    
+    ЗАДАЧА:
+    Напиши {num_blocks} HTML-блоков, разделенных строго разделителем: |||BLOCK_SEP|||
+    
+    ТРЕБОВАНИЯ К СТРУКТУРЕ КАЖДОГО БЛОКА:
+    1. Заголовок (<h2> только в 1-м блоке, далее <h3>).
+    2. Текст с фактами.
+    3. Маркированный список (<ul>).
+    4. Вывод.
+    
+    ТЕМЫ БЛОКОВ:
+    Блок 1: <h2>{forced_header}</h2> - Общее описание.
+    Блоки 2-{num_blocks}: Характеристики, Сплавы, Применение, Производство (используй фактуру).
+    
+    ВАЖНО:
+    - Выдавай только чистый HTML.
+    - Разделяй блоки: |||BLOCK_SEP|||
+    - НЕ ЗАБУДЬ выделить ключевые слова тегом <b>!
+    """
     
     try:
         response = client.chat.completions.create(
@@ -2025,6 +2007,8 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         # === ЧИСТКА ===
         content = re.sub(r'^```[a-zA-Z]*\s*', '', content.strip())
         content = re.sub(r'\s*```$', '', content.strip())
+        
+        # ВАЖНО: Мы убрали удаление тега <b>, чтобы сохранить SEO-выделение
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
         
@@ -2220,24 +2204,22 @@ with tab_seo_main:
 
         st.success("Анализ готов!")
         
-        # --- БЕЗОПАСНЫЙ БЛОК СТИЛЕЙ ---
-        # Используем конкатенацию строк в скобках, чтобы Python не искал f-строки
-        custom_css = (
-            "<style>"
-            "details > summary { list-style: none; }"
-            "details > summary::-webkit-details-marker { display: none; }"
-            ".details-card { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 10px; }"
-            ".card-summary { padding: 12px 15px; cursor: pointer; font-weight: 700; display: flex; justify-content: space-between; }"
-            ".count-tag { background: #e5e7eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; }"
-            ".flat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; height: 340px; display: flex; flex-direction: column; }"
-            ".flat-header { height: 50px; padding: 0 20px; font-weight: 700; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }"
-            ".flat-content { flex-grow: 1; padding: 15px 20px; overflow-y: auto; font-size: 13px; line-height: 1.4; }"
-            ".flat-footer { height: 150px; padding: 12px 20px; border-top: 1px solid #f3f4f6; background: #fafafa; }"
-            ".flat-len-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; }"
-            ".flat-miss-tag { border: 1px solid #fecaca; color: #991b1b; padding: 2px 6px; font-size: 11px; border-radius: 4px; margin: 2px; display: inline-block; }"
-            "</style>"
-        )
-        st.markdown(custom_css, unsafe_allow_html=True)
+        # Стили
+        st.markdown("""
+        <style>
+            details > summary { list-style: none; }
+            details > summary::-webkit-details-marker { display: none; }
+            .details-card { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 10px; }
+            .card-summary { padding: 12px 15px; cursor: pointer; font-weight: 700; display: flex; justify-content: space-between; }
+            .count-tag { background: #e5e7eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+            .flat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; height: 340px; display: flex; flex-direction: column; }
+            .flat-header { height: 50px; padding: 0 20px; font-weight: 700; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }
+            .flat-content { flex-grow: 1; padding: 15px 20px; overflow-y: auto; font-size: 13px; line-height: 1.4; }
+            .flat-footer { height: 150px; padding: 12px 20px; border-top: 1px solid #f3f4f6; background: #fafafa; }
+            .flat-len-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; }
+            .flat-miss-tag { border: 1px solid #fecaca; color: #991b1b; padding: 2px 6px; font-size: 11px; border-radius: 4px; margin: 2px; display: inline-block; }
+        </style>
+        """, unsafe_allow_html=True)
 
 # Вывод ОТЛАДКИ для Ширины (чтобы понять, почему 95)
         if 'debug_width' in results:
@@ -2437,7 +2419,7 @@ with tab_seo_main:
             else:
                 st.warning("Данные по мета-тегам недоступны (возможно, ошибка при анализе).")
 
-# 5. УПУЩЕННАЯ СЕМАНТИКА
+        # 5. УПУЩЕННАЯ СЕМАНТИКА
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
         
@@ -2449,41 +2431,22 @@ with tab_seo_main:
                 # 1. ВАЖНЫЕ (Медиана >= 1) - Синяя плашка
                 if high: 
                     words_high = ", ".join([x['word'] for x in high])
-                    
-                    # Безопасная сборка HTML (без тройных кавычек)
-                    html_high = (
-                        "<div style='background:#EBF5FF; padding:12px; border-radius:8px; border:1px solid #BFDBFE; color:#1E40AF; margin-bottom:10px;'>"
-                        "<div style='font-weight:bold; margin-bottom:4px;'>🔥 Важные (Есть у большинства конкурентов):</div>"
-                        f"<div style='font-size:14px; line-height:1.5;'>{words_high}</div>"
-                        "</div>"
-                    )
-                    st.markdown(html_high, unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div style='background:#EBF5FF; padding:12px; border-radius:8px; border:1px solid #BFDBFE; color:#1E40AF; margin-bottom:10px;'>
+                        <div style='font-weight:bold; margin-bottom:4px;'>🔥 Важные (Есть у большинства конкурентов):</div>
+                        <div style='font-size:14px; line-height:1.5;'>{words_high}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 
                 # 2. ДОПОЛНИТЕЛЬНЫЕ (Медиана < 1) - Серая плашка
                 if low: 
                     words_low = ", ".join([x['word'] for x in low])
-                    
-                    # Безопасная сборка HTML (без тройных кавычек)
-                    html_low = (
-                        "<div style='background:#F8FAFC; padding:12px; border-radius:8px; border:1px solid #E2E8F0; color:#475569;'>"
-                        "<div style='font-weight:bold; margin-bottom:4px;'>🔸 Дополнительные (Встречаются реже):</div>"
-                        f"<div style='font-size:13px; line-height:1.5;'>{words_low}</div>"
-                        "</div>"
-                    )
-                    st.markdown(html_low, unsafe_allow_html=True)
-                
-                # 2. ДОПОЛНИТЕЛЬНЫЕ (Медиана < 1) - Серая плашка
-                if low: 
-                    words_low = ", ".join([x['word'] for x in low])
-                    
-                    # Безопасная сборка HTML без тройных кавычек
-                    html_low = (
-                        "<div style='background:#F8FAFC; padding:12px; border-radius:8px; border:1px solid #E2E8F0; color:#475569;'>"
-                        "<div style='font-weight:bold; margin-bottom:4px;'>🔸 Дополнительные (Встречаются реже):</div>"
-                        f"<div style='font-size:13px; line-height:1.5;'>{words_low}</div>"
-                        "</div>"
-                    )
-                    st.markdown(html_low, unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div style='background:#F8FAFC; padding:12px; border-radius:8px; border:1px solid #E2E8F0; color:#475569;'>
+                        <div style='font-weight:bold; margin-bottom:4px;'>🔸 Дополнительные (Встречаются реже):</div>
+                        <div style='font-size:13px; line-height:1.5;'>{words_low}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # 6. ГЛУБИНА (ЗАКРЫТО)
         with st.expander("📉 1. Глубина (Детальная таблица)", expanded=False):
@@ -3302,72 +3265,22 @@ with tab_wholesale_main:
     if use_promo and df_db_promo is None: ready_to_go = False
 
 # ==========================================
-    # 🆕 БЛОК СБРОСА (ОЧИСТКА РЕЗУЛЬТАТОВ)
-    # ==========================================
-    with st.expander("🗑️ Сброс результатов (Очистить кэш)", expanded=False):
-        st.warning("⚠️ Внимание! Это действие полностью удалит таблицу с уже сгенерированными товарами. Скрипт 'забудет', что он их уже делал, и начнет запись с чистого листа.")
-        
-        col_reset_btn, col_reset_fake = st.columns([1, 2])
-        with col_reset_btn:
-            if st.button("🔴 УДАЛИТЬ ВСЕ И СБРОСИТЬ", type="secondary", use_container_width=True):
-                # 1. Очищаем DataFrame
-                st.session_state.gen_result_df = pd.DataFrame(columns=[
-                    'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
-                    'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
-                    'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 
-                    'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
-                ])
-                # 2. Сбрасываем файл Excel в памяти
-                st.session_state.unified_excel_data = None
-                
-                # 3. Сбрасываем счетчики
-                st.session_state.auto_current_index = 0
-                st.session_state.last_stopped_index = 0
-                st.session_state.auto_run_active = False
-                
-                st.toast("🗑️ История очищена! Можно генерировать заново.", icon="✅")
-                time.sleep(1)
-                st.rerun()
-
-    st.markdown("---")
-
-# ==========================================
-    # 4. УМНЫЙ ЗАПУСК (СИСТЕМА STOP/RESUME + FULL GENERATION)
+    # 4. УМНЫЙ ЗАПУСК (С SEO-СЧЕТЧИКОМ)
     # ==========================================
     st.markdown("### 🚀 Управление запуском (Авто-цепочка)")
-    st.markdown("---")
 
-    # 1. Инициализация состояний
     if 'auto_run_active' not in st.session_state: st.session_state.auto_run_active = False
     if 'auto_current_index' not in st.session_state: st.session_state.auto_current_index = 0
-    if 'last_stopped_index' not in st.session_state: st.session_state.last_stopped_index = 0
 
-    # 2. БЛОК ВОЗОБНОВЛЕНИЯ (Появляется, если мы останавливались)
-    if not st.session_state.auto_run_active and st.session_state.last_stopped_index > 0:
-        with st.container(border=True):
-            st.warning(f"⚠️ **Процесс был остановлен.** Последний обработанный индекс: {st.session_state.last_stopped_index}")
-            
-            col_res_btn, col_res_info = st.columns([1, 2])
-            with col_res_btn:
-                if st.button(f"⏯️ ПРОДОЛЖИТЬ с № {st.session_state.last_stopped_index}", type="primary", use_container_width=True):
-                    st.session_state.auto_current_index = st.session_state.last_stopped_index
-                    st.session_state.auto_run_active = True
-                    st.rerun()
-            with col_res_info:
-                st.caption("Нажмите, чтобы автоматически продолжить с места остановки.")
-
-    # 3. НАСТРОЙКИ ЗАПУСКА
     col_batch1, col_batch2, col_batch3 = st.columns([1, 1, 2])
     
     with col_batch1:
-        # Если запущено - показываем прогресс (рид онли), если нет - поле ввода
         if st.session_state.auto_run_active:
-            st.text_input("🟢 В процессе (Старт):", value=str(st.session_state.auto_current_index), disabled=True)
-            start_index = st.session_state.auto_current_index
+            start_val = st.session_state.auto_current_index
+            st.text_input("Текущий старт:", value=str(start_val), disabled=True)
+            start_index = start_val
         else:
-            # Если хотим начать заново или с конкретного места вручную
-            # Значение по умолчанию берем из last_stopped_index, чтобы было удобно
-            start_index = st.number_input("Начать с товара № (с 0)", min_value=0, value=st.session_state.last_stopped_index, step=1)
+            start_index = st.number_input("Начать с товара № (с 0)", min_value=0, value=0, step=1)
 
     with col_batch2:
         safe_batch_size = st.number_input("Размер пачки (шт)", min_value=1, value=5, help="Лучше 3-5 шт.")
@@ -3375,40 +3288,25 @@ with tab_wholesale_main:
     with col_batch3:
         st.write("")
         st.write("")
-        # Галочка теперь просто настройка, она не запускает процесс сама по себе
-        enable_auto_chain = st.checkbox("🔄 Авто-переход к следующей пачке", value=True, help="Если активно, скрипт будет сам перезагружаться пока не пройдет все товары.")
+        enable_auto_chain = st.checkbox("🔄 Включить АВТО-ЦЕПОЧКУ", value=True, help="Скрипт будет сам перезагружаться.")
 
-    # 4. КНОПКИ УПРАВЛЕНИЯ (Раздельные)
     c_start, c_stop = st.columns([2, 1])
-    
     with c_start:
-        # Кнопка СТАРТ доступна только если мы НЕ работаем
-        if not st.session_state.auto_run_active:
-            if st.button("🚀 ЗАПУСТИТЬ НОВЫЙ ПРОЦЕСС", type="primary", disabled=(not ready_to_go), use_container_width=True):
-                st.session_state.auto_current_index = start_index
-                st.session_state.auto_run_active = True
-                st.session_state.last_stopped_index = start_index # Сброс памяти остановки при новом старте
-                st.rerun()
-        else:
-            st.info("⏳ Процесс выполняется...")
+        btn_label = "🚀 ЗАПУСТИТЬ ПРОЦЕСС"
+        start_clicked = st.button(btn_label, type="primary", disabled=(not ready_to_go or st.session_state.auto_run_active), use_container_width=True)
     
     with c_stop:
-        # Кнопка СТОП доступна только если мы РАБОТАЕМ
-        if st.session_state.auto_run_active:
-            if st.button("🛑 СТОП (Пауза)", type="secondary", use_container_width=True):
-                st.session_state.auto_run_active = False
-                # Сохраняем текущий индекс как точку остановки
-                st.session_state.last_stopped_index = st.session_state.auto_current_index
-                st.rerun()
+        if st.button("🛑 СТОП", type="secondary", use_container_width=True):
+            st.session_state.auto_run_active = False
+            st.warning("⛔ Остановка после текущей пачки.")
 
-    # =========================================================
-    # ГЛАВНЫЙ ИСПОЛНЯЮЩИЙ БЛОК
-    # Заходим сюда ТОЛЬКО если активен флаг auto_run_active
-    # =========================================================
+    should_run = start_clicked or st.session_state.auto_run_active
 
-    if st.session_state.auto_run_active:
-        
-        # 0. Инициализация DataFrame если нет
+    if should_run:
+        if not st.session_state.auto_run_active:
+             st.session_state.auto_run_active = True
+             st.session_state.auto_current_index = start_index
+
         if 'gen_result_df' not in st.session_state or st.session_state.gen_result_df is None:
              st.session_state.gen_result_df = pd.DataFrame(columns=[
                 'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
@@ -3420,7 +3318,7 @@ with tab_wholesale_main:
         EXCEL_COLUMN_ORDER = st.session_state.gen_result_df.columns.tolist()
         TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
 
-        # === 1. ЗАГРУЗКА БАЗ (Повтор логики) ===
+        # === 1. ЗАГРУЗКА БАЗ ===
         all_tags_links = []
         if use_tags:
             if tags_file_content: 
@@ -3435,7 +3333,7 @@ with tab_wholesale_main:
                 u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
 
-        # === 2. ПОДГОТОВКА СПИСКОВ СЕМАНТИКИ ===
+        # === 2. СБОР СПИСКОВ И ПОДСЧЕТ ПЛАНА (ЗНАМЕНАТЕЛЬ) ===
         raw_txt = st.session_state.get("ai_text_context_editable", "")
         list_text_initial = [x.strip() for x in re.split(r'[,\n]+', raw_txt) if x.strip()]
         
@@ -3452,18 +3350,22 @@ with tab_wholesale_main:
         raw_geo = st.session_state.get("kws_geo_auto", "")
         list_geo_final = [x.strip() for x in re.split(r'[,\n]+', raw_geo) if x.strip()]
 
-        # Подсчет целей SEO
+        # Считаем ОБЩЕЕ количество уникальных слов, которые мы хотим внедрить
+        # (Просто объединяем все множества)
         unique_seo_goals = set()
         if use_text: unique_seo_goals.update(list_text_initial)
         if use_tags: unique_seo_goals.update(list_tags_initial)
         if use_tables: unique_seo_goals.update(list_tables_final)
         if use_promo: unique_seo_goals.update(list_promo_initial)
+        # Гео обычно не считаем в общее ядро товара, но можно добавить:
+        # if use_geo: unique_seo_goals.update(list_geo_final) 
+        
         total_seo_goal = len(unique_seo_goals)
 
-        # Перенос слов
+        # === 3. ЛОГИКА ПЕРЕНОСА ===
         final_tags_prepared = []
         final_text_seo_list = list(list_text_initial)
-        
+
         if use_tags:
             for kw in list_tags_initial:
                 tr = transliterate_text(kw).replace(' ', '-').replace('_', '-')
@@ -3486,15 +3388,16 @@ with tab_wholesale_main:
              for kw in list_promo_initial:
                  if kw not in final_text_seo_list: final_text_seo_list.append(kw)
 
+        # Строка для промпта таблиц и гео
         seo_keywords_string = ", ".join(final_text_seo_list)
-        user_num_blocks = st.session_state.get("sb_num_blocks", 5)
 
-        # ПЛЕЙСХОЛДЕРЫ ДЛЯ ЛОГОВ
+        user_num_blocks = st.session_state.get("sb_num_blocks", 5)
+        
+        # ПЛЕЙСХОЛДЕРЫ
         live_download_placeholder = st.empty()
         live_table_placeholder = st.empty()
-        log_container = st.status(f"🚀 В РАБОТЕ... Пачка с {start_index}", expanded=True)
+        log_container = st.status(f"🚀 Работаем... (Начали с {start_index})", expanded=True)
 
-        # API CLIENT
         client = None
         if (use_text or use_tables or use_geo) and gemini_api_key:
             try:
@@ -3505,7 +3408,6 @@ with tab_wholesale_main:
                 st.session_state.auto_run_active = False
                 st.stop()
 
-        # Helper functions
         def resolve_real_names(urls_list, status_msg=""):
             if not urls_list: return {}
             results_map = {}
@@ -3520,8 +3422,7 @@ with tab_wholesale_main:
                     except: pass
             return results_map
 
-        # === СБОР СТРАНИЦ ===
-        log_container.write("📥 Сбор списка страниц...")
+        log_container.write("📥 Проверка списка страниц...")
         target_pages = []
         try:
             if use_manual_html:
@@ -3548,7 +3449,6 @@ with tab_wholesale_main:
         total_found = len(target_pages)
         if start_index >= total_found:
              st.session_state.auto_run_active = False
-             st.session_state.last_stopped_index = total_found
              st.success("🎉 Все товары обработаны!")
              st.stop()
 
@@ -3557,9 +3457,7 @@ with tab_wholesale_main:
         
         log_container.write(f"📊 ПАЧКА: {start_index+1} — {end_index} из {total_found}")
 
-        # === ЦИКЛ ПО ПАЧКЕ ===
         for i, page in enumerate(target_pages_batch):
-            # Проверка дублей
             current_urls_in_df = st.session_state.gen_result_df['Page URL'].values
             if page['url'] in current_urls_in_df:
                 log_container.warning(f"⚠️ Пропуск дубля: {page['name']}")
@@ -3568,7 +3466,6 @@ with tab_wholesale_main:
             current_num = start_index + i + 1
             log_container.write(f"▶️ **[{current_num}/{total_found}] {page['name']}**")
             
-            # --- ОСНОВНАЯ ГЕНЕРАЦИЯ ---
             try:
                 base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
                 header_for_ai = real_header_h2 if real_header_h2 else page['name']
@@ -3579,221 +3476,97 @@ with tab_wholesale_main:
                 
                 injections = []
 
-# --- 1. ТЕГИ (FIX: ПОЛНАЯ РАНДОМИЗАЦИЯ) ---
+# --- 1. ТЕГИ (ГИБРИД: ПОИСК ПО СЛОВАМ + ИМЕНА ИЗ КРОШЕК) ---
                 if use_tags and all_tags_links:
+                    # 1. Все доступные ссылки
                     tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != page['url'].rstrip('/')]
 
                     if tags_cands_all:
                         target_tag_urls = []
-                        
-                        # 1. Перемешиваем ключевые слова (чтобы каждый раз искать в разном порядке)
-                        shuffled_tags_kw = list(list_tags_initial)
-                        random.shuffle(shuffled_tags_kw)
-                        
-                        # 2. Ищем с элементом случайности
-                        for kw in shuffled_tags_kw:
-                            if len(target_tag_urls) >= 15: break
-                            
+
+                        # 2. ЭТАП 1: Ищем ссылки по вашим словам
+                        for kw in list_tags_initial:
                             tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            
-                            # Находим ВСЕ совпадения
-                            matches = [u for u in tags_cands_all if tr_kw in u.lower() and u not in target_tag_urls]
-                            
-                            if matches:
-                                # Берем СЛУЧАЙНОЕ, а не первое
-                                target_tag_urls.append(random.choice(matches))
-                                
-                        # 3. Добиваем случайными
+                            for url in tags_cands_all:
+                                if tr_kw in url.lower() and url not in target_tag_urls:
+                                    target_tag_urls.append(url)
+                                    break 
+
+                        # 3. ЭТАП 2: Добиваем рандомом до 15 штук
                         needed_tags = 15
                         if len(target_tag_urls) < needed_tags:
                             missing = needed_tags - len(target_tag_urls)
                             pool_random = [u for u in tags_cands_all if u not in target_tag_urls]
                             if pool_random:
                                 target_tag_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
-                        
-                        # 4. Финальное перемешивание списка
-                        random.shuffle(target_tag_urls)
 
-                        # Рендер
+                        # 4. ЭТАП 3: Парсим реальные названия (Крошки) для ВСЕХ ссылок
                         if target_tag_urls:
+                            # Отправляем список на скачивание имен (как в промо)
                             tags_names_map = resolve_real_names(target_tag_urls)
+
                             html_t = []
                             for u in target_tag_urls:
+                                # Берем имя с сайта. Если не удалось скачать — генерируем из URL
                                 name = tags_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
                                 html_t.append(f'<a href="{u}" class="tag-item">{name}</a>')
 
                             tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
                             injections.append(tags_block)
-# --- 2. ТАБЛИЦЫ (ФИНАЛЬНЫЙ ВАРИАНТ: КРАСИВЫЙ ПРЕВЬЮ + ЧИСТЫЙ ЭКСЕЛЬ) ---
+
                 if use_tables and client:
-                    # 1. ОПРЕДЕЛЯЕМ СТИЛИ (Они нужны только для браузера/предпросмотра)
-                    table_css = """
-                    <style>
-                    .table-full-width-wrapper {
-                        display: block !important;
-                        width: 100% !important;
-                        margin: 25px 0 !important;
-                        overflow-x: auto !important;
-                    }
-                    .brand-accent-table {
-                        width: 100% !important;
-                        border-collapse: separate !important;
-                        border-spacing: 0 !important;
-                        background: #ffffff;
-                        border: 1px solid #e5e7eb;
-                        border-radius: 8px;
-                        font-family: 'Inter', sans-serif;
-                        font-size: 14px;
-                        line-height: 1.5;
-                        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-                    }
-                    .brand-accent-table thead th {
-                        background-color: #277EFF !important;
-                        color: #ffffff !important;
-                        font-weight: 600;
-                        padding: 12px 16px;
-                        text-align: left;
-                        border-bottom: 2px solid #1E63C4;
-                    }
-                    .brand-accent-table thead th:first-child { border-top-left-radius: 7px; }
-                    .brand-accent-table thead th:last-child { border-top-right-radius: 7px; }
-                    .brand-accent-table tbody td {
-                        background-color: #ffffff !important;
-                        color: #374151;
-                        padding: 12px 16px;
-                        border-bottom: 1px solid #f3f4f6;
-                        vertical-align: top;
-                    }
-                    .brand-accent-table tbody td:first-child {
-                        font-weight: 600;
-                        color: #111827;
-                        background-color: #ffffff !important; 
-                        border-right: 1px solid #f3f4f6;
-                        width: 30%;
-                    }
-                    .brand-accent-table tbody tr:last-child td { border-bottom: none; }
-                    .brand-accent-table tbody tr:last-child td:first-child { border-bottom-left-radius: 7px; }
-                    .brand-accent-table tbody tr:last-child td:last-child { border-bottom-right-radius: 7px; }
-                    .brand-accent-table tbody tr:hover td { background-color: #f9fafb !important; }
-                    </style>
-                    """
-
-                    # 2. ВНЕДРЯЕМ СТИЛИ В БРАУЗЕР (ГЛОБАЛЬНО)
-                    # Это заставит предпросмотр видеть стили, но НЕ добавит их в Excel
-                    st.markdown(table_css, unsafe_allow_html=True)
-
                     for t_topic in table_prompts:
-                        source_keywords = str_tables_final
-                        context_instruction = f"Обязательно включи параметры: [{source_keywords}]" if source_keywords.strip() else "Используй стандартные технические параметры."
-
-                        if t_topic == "!!!_AUTO_AI_DECIDE_!!!":
-                            topic_instruction = "ТВОЯ ЗАДАЧА: Создай таблицу технических характеристик."
-                        else:
-                            topic_instruction = f"Тема таблицы строго: {t_topic}."
-                        
-                        # --- ПРОМПТ ---
+                        ctx = f"Данные: {str_tables_final}" 
                         prompt_tbl = (
-                            f"Ты — Инженер-технолог. Твоя задача — составить HTML таблицу для товара: '{header_for_ai}'.\n\n"
-                            
-                            f"{topic_instruction}\n\n"
-                            
-                            f"!!! ЛОГИКА ГЕНЕРАЦИИ !!!\n"
-                            f"1. АНАЛИЗ ТОВАРА: Пойми, что такое '{header_for_ai}'. Таблица должна относиться ИМЕННО К ЭТОМУ типу продукции.\n"
-                            f"2. УНИКАЛЬНОСТЬ: Не дублируй воду из описания. Давай только сухие ТТХ, цифры, марки, свойства.\n"
-                            f"3. УКНИКАЛЬНОСТЬ: АБСОЛЮТНАЯ УНИКАЛЬНОСТЬ: Содержание таблицы должно быть полностью уникальным. Запрещено просто переписывать одни и те же данные другими словами.\n"
-                            f"4. ЗАПРЕТ НА ДУБЛИРОВАНИЕ ТЕКСТА: Информация в таблице НЕ должна повторять то, что обычно пишется в текстовом описании.\n"
-                            f"5. ИНТЕГРАЦИЯ КЛЮЧЕЙ: {context_instruction}. Органично впиши эти слова в таблицу, если они подходят к товару.\n"
-                            
-                            f"ФОРМАТ ВЫВОДА (HTML):\n"
-                            f"ЗАПРЕТ: Не делай первую строку общей для всей таблицы (без colspan). Начинай сразу с названий столбцов (Параметр | Значение).\n"
-                            f"- Используй структуру <table>, <thead> (шапка), <tbody> (данные).\n"
-                            f"- В <tbody> используй только <td>.\n"
-                            f"- Верни чистый HTML."
+                            f"Create HTML <table> for '{header_for_ai}'. Topic: {t_topic}. Context: {ctx}. "
+                            f"IMPORTANT: Try to include these SEO keywords in content: {seo_keywords_string}. "
+                            f"STRICT RULES: Use <tr>...</tr> for rows. Use <th> for headers. NO <caption>. NO markdown. NO empty rows."
                         )
-                        
                         try:
-                            resp = client.chat.completions.create(
-                                model="google/gemini-2.5-pro", 
-                                messages=[{"role": "user", "content": prompt_tbl}], 
-                                temperature=0.4 
-                            )
+                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0)
+                            raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                            # Чистка
+                            raw_table = re.sub(r'(</th>)\s*(<td)', r'\1</tr><tr>\2', raw_table, flags=re.IGNORECASE)
+                            raw_table = re.sub(r'<caption[\s\S]*?<\/caption>', '', raw_table, flags=re.IGNORECASE)
+                            raw_table = re.sub(r'<tr[^>]*>\s*(?:<(?:td|th)[^>]*>\s*<\/(?:td|th)>\s*)+<\/tr>', '', raw_table, flags=re.IGNORECASE)
+                            raw_table = re.sub(r'<\/?(thead|tbody|tfoot)[^>]*>', '', raw_table)
+                            raw_table = re.sub(r'(<table[^>]*>)\s*<(?:th|td)[^>]*>(\s*<tr)', r'\1\2', raw_table) 
                             
-                            raw_table = resp.choices[0].message.content.strip()
-                            raw_table = raw_table.replace("```html", "").replace("```", "").strip()
+                            styled_table = raw_table
+                            styled_table = styled_table.replace('<table', '<table style="border-collapse: collapse; width: 100%; border: 2px solid black;"')
+                            styled_table = styled_table.replace('<th', '<th style="border: 2px solid black; padding: 5px;"')
+                            styled_table = styled_table.replace('<td', '<td style="border: 2px solid black; padding: 5px;"')
                             
-                            # 1. УДАЛЕНИЕ МУСОРА (CSS, Жирное, Ссылки, Captions)
-                            raw_table = re.sub(r'<style.*?>.*?</style>', '', raw_table, flags=re.DOTALL)
-                            raw_table = re.sub(r'</?[bB][^>]*>', '', raw_table) # Удаляем <b>
-                            raw_table = re.sub(r'</?strong[^>]*>', '', raw_table) # Удаляем <strong>
-                            raw_table = re.sub(r'<caption.*?>.*?</caption>', '', raw_table, flags=re.DOTALL) # Удаляем заголовок-кэпшн
-                            
-                            raw_table = re.sub(r'<tr[^>]*>\s*<th[^>]*colspan=["\']?\d*["\']?[^>]*>.*?</th>\s*</tr>', '', raw_table, flags=re.DOTALL | re.IGNORECASE)
-
-                            raw_table = re.sub(r'<a\s+[^>]*>(.*?)</a>', r'\1', raw_table, flags=re.DOTALL)
-                            raw_table = re.sub(r'\n\s*', '', raw_table)
-
-                            if "<tbody>" in raw_table:
-                                parts = raw_table.split("<tbody>")
-                                head_part = parts[0]
-                                body_part = parts[1]
-                                body_part = body_part.replace("<th", "<td").replace("</th>", "</td>")
-                                raw_table = head_part + "<tbody>" + body_part
-
-                            if "<table" not in raw_table:
-                                final_table_code = f'<table class="brand-accent-table">{raw_table}</table>'
-                            else:
-                                final_table_code = raw_table.replace('<table', '<table class="brand-accent-table"')
-
-                            final_html_block = f'<div class="table-full-width-wrapper">{final_table_code}</div>'
-                            injections.append(final_html_block)
-                            
-                        except Exception as e: 
-                            log_container.write(f"Ошибка генерации таблицы: {e}")
+                            if '<tbody>' not in styled_table:
+                                styled_table = re.sub(r'(<table[^>]*>)([\s\S]*?)(<\/table>)', r'\1<tbody>\2</tbody>\3', styled_table)
+                            injections.append(styled_table)
+                        except: pass
                 
-# --- 3. ПРОМО (FIX: ПОЛНАЯ РАНДОМИЗАЦИЯ И УНИКАЛЬНОСТЬ) ---
+# ПРОМО (СНАЧАЛА ИЩЕМ ПО СЛОВАМ, ОСТАТОК ЗАБИВАЕМ РАНДОМОМ)
                 if use_promo and p_img_map:
-                    # 1. Исключаем текущую страницу из кандидатов
+                    # 1. Все доступные (кроме текущей)
                     p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                     
                     if p_cands_all:
                         target_urls = []
                         
-                        # ЭТАП 1: Перемешиваем список ключевых слов (чтобы приоритет менялся)
-                        shuffled_keywords = list(list_promo_initial)
-                        random.shuffle(shuffled_keywords)
-                        
-                        # ЭТАП 2: Ищем совпадения с ЭЛЕМЕНТОМ СЛУЧАЙНОСТИ
-                        for kw in shuffled_keywords:
-                            if len(target_urls) >= 8: break # Если набрали 8 шт, выходим
-                            
+                        # 2. Ищем по вашим словам
+                        for kw in list_promo_initial:
                             tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            
-                            # Находим ВСЕ возможные совпадения для этого слова
-                            possible_matches = [u for u in p_cands_all if tr_kw in u.lower() and u not in target_urls]
-                            
-                            if possible_matches:
-                                # !!! БЕРЕМ СЛУЧАЙНОЕ СОВПАДЕНИЕ, А НЕ ПЕРВОЕ !!!
-                                # Это гарантирует, что даже по одному слову каждый раз будут разные товары
-                                selected_match = random.choice(possible_matches)
-                                target_urls.append(selected_match)
+                            for url in p_cands_all:
+                                if tr_kw in url.lower() and url not in target_urls:
+                                    target_urls.append(url)
+                                    break 
                         
-                        # ЭТАП 3: Если мало совпадений, добиваем СЛУЧАЙНЫМИ товарами из базы
+                        # 3. Добиваем рандомом до 8 штук (чтобы было красиво)
                         needed_total = 8
                         if len(target_urls) < needed_total:
                             missing = needed_total - len(target_urls)
-                            # Пул оставшихся (исключая уже выбранные)
                             pool_random = [u for u in p_cands_all if u not in target_urls]
-                            
                             if pool_random:
-                                # Берем случайную выборку
-                                random_fillers = random.sample(pool_random, min(missing, len(pool_random)))
-                                target_urls.extend(random_fillers)
-                        
-                        # ЭТАП 4: ФИНАЛЬНОЕ ПЕРЕМЕШИВАНИЕ
-                        # Чтобы товары по ключевикам не стояли всегда первыми
-                        random.shuffle(target_urls)
+                                target_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
 
-                        # Рендер HTML
+                        # 4. Рисуем блок
                         if target_urls:
                             promo_names_map = resolve_real_names(target_urls)
                             gallery_items = []
@@ -3806,7 +3579,6 @@ with tab_wholesale_main:
                             p_html = f'''<style>.outer-full-width-section {{ padding: 25px 0; width: 100%; }}.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}.gallery-item h3 a:hover {{ color: #007bff; }}.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}.gallery-item figure a:hover img {{ transform: scale(1.05); }}</style><div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>'''
                             injections.append(p_html)
 
-                # --- 4. ТЕКСТ (ПОЛНЫЙ КОД) ---
                 blocks = [""] * 5
                 if use_text and client:
                     log_container.write(f"   ↳ 🤖 Пишем текст...")
@@ -3822,39 +3594,20 @@ with tab_wholesale_main:
                     for i_b in range(len(cleaned_blocks)):
                         if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
 
-                # Внедрение инъекций в текст
                 effective_blocks_count = max(1, user_num_blocks)
                 for i_inj, inj in enumerate(injections):
                     target_idx = i_inj % effective_blocks_count
                     blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
 
-# --- 5. ГЕО (СТРОГО ВСЕ ГОРОДА ИЗ СПИСКА) ---
                 if use_geo and client:
                     log_container.write(f"   ↳ 🌍 Пишем доставку...")
                     try:
-                         # Берем до 30 городов (чтобы не порвать контекст), но требуем перечислить их ВСЕ
-                         # Если нужно вообще ВСЕ из поля ввода — убери random.sample и оставь просто list_geo_final
-                         selected_cities_list = random.sample(list_geo_final, min(30, len(list_geo_final)))
-                         cities_str = ", ".join(selected_cities_list)
-                         
-                         prompt_geo = (
-                             f"Напиши HTML параграф (<p>) о географии поставок товара '{header_for_ai}'.\n"
-                             f"ВХОДНЫЕ ДАННЫЕ (СПИСОК ГОРОДОВ): [{cities_str}]\n\n"
-                             
-                             f"ЖЕСТКОЕ ТРЕБОВАНИЕ:\n"
-                             f"1. Ты ОБЯЗАН перечислить ВСЕ города из списка выше. Ни одного не пропусти.\n"
-                             f"2. ЗАПРЕЩЕНО писать фразы типа 'и другие регионы', 'и так далее', 'по всей России'. Только конкретный список.\n"
-                             f"3. Сделай текст связным, но плотным. Например: 'Осуществляем отгрузку продукции в Москву, Тверь, Тулу, Рязань...'\n"
-                             f"4. Выдели КАЖДЫЙ город тегом <b>.\n"
-                             f"5. Не используй никаких других слов (купить, цена). Только логистика.\n"
-                             f"Выдай только HTML код."
-                         )
-                         
-                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.3) # Низкая температура для строгости
+                         cities = ", ".join(random.sample(list_geo_final, min(15, len(list_geo_final))))
+                         prompt_geo = f"Write ONE HTML paragraph about delivery to {cities}. Include SEO words: {seo_keywords_string}. No markdown."
+                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.1)
                          row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                     except: pass
 
-                # Распределение по колонкам
                 for i_c, c_name in enumerate(TEXT_CONTAINERS):
                     row_data[c_name] = blocks[i_c]
 
@@ -3866,78 +3619,89 @@ with tab_wholesale_main:
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     st.session_state.gen_result_df.to_excel(writer, index=False)
                 st.session_state.unified_excel_data = buffer.getvalue()
-                
-                # Обновление таблицы в UI
+                try: st.session_state.gen_result_df.to_excel("backup_auto.xlsx", index=False)
+                except: pass
+
                 live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
                 
-                # Вывод SEO счетчика
+                # === ПОДСЧЕТ ФАКТА (СЧЕТЧИК) ===
+                # Считаем количество <b> во всей строке (все ячейки текста)
                 full_row_html = "".join([str(val) for val in row_data.values()])
                 bolds_fact = full_row_html.count("<b>")
+                
                 with live_download_placeholder.container():
-                     st.info(f"✅ Обработано: {page['name']} (SEO-тегов: {bolds_fact}/{total_seo_goal})")
+                    # ЦВЕТНОЙ БЛОК СЧЕТЧИКА
+                    score_color = "#16A34A" if bolds_fact >= (total_seo_goal * 0.7) else "#CA8A04"
+                    st.markdown(f"""
+                    <div style="background-color: #F3F4F6; border: 1px solid #E5E7EB; padding: 10px; border-radius: 8px; margin-bottom: 10px; text-align: center;">
+                        <span style="font-size: 14px; color: #4B5563;">SEO-насыщенность последней стр:</span><br>
+                        <span style="font-size: 24px; font-weight: bold; color: {score_color};">{bolds_fact} / {total_seo_goal}</span>
+                        <div style="font-size: 11px; color: #9CA3AF;">(жирные теги / всего уникальных слов в задании)</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    st.markdown("""
+                    <div style="border: 2px solid #DC2626; background-color: #FEF2F2; padding: 10px; border-radius: 8px; margin-bottom: 10px; color: #991B1B;">
+                        <h4 style="margin:0; color: #DC2626;">🛑 НЕ НАЖИМАТЬ ВО ВРЕМЯ РАБОТЫ!</h4>
+                        <ul style="margin-bottom:0; padding-left: 20px; font-size: 13px;">
+                            <li>Нажатие <b>ОСТАНОВИТ</b> генерацию и сбросит процесс.</li>
+                            <li>Нажимайте эту кнопку <b>ТОЛЬКО</b> если скрипт завис или выдал ошибку.</li>
+                            <li>Это "аварийное сохранение" того, что успело сделаться.</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.download_button(
+                        label=f"💾 СПАСТИ ДАННЫЕ (Скачать {len(st.session_state.gen_result_df)} готовых стр.)",
+                        data=st.session_state.unified_excel_data,
+                        file_name=f"EMERGENCY_SAVE_{int(time.time())}.xlsx",
+                        mime="application/vnd.ms-excel",
+                        key=f"dl_live_{int(time.time())}_{i}",
+                        help="Нажимать ТОЛЬКО при ошибке! Это остановит скрипт."
+                    )
 
             except Exception as e:
-                log_container.error(f"Сбой на товаре {page['name']}: {e}")
+                log_container.error(f"Сбой: {e}")
 
         log_container.update(label=f"✅ Пачка {start_index}-{end_index} готова!", state="complete", expanded=False)
         
-        # === ЛОГИКА АВТО-ПЕРЕЗАПУСКА (RELOAD) ===
+        # === ЛОГИКА АВТО-ПЕРЕЗАПУСКА ===
         if enable_auto_chain:
-            # Снова проверяем, не нажал ли пользователь СТОП во время выполнения пачки
-            if st.session_state.auto_run_active:
+            if not st.session_state.auto_run_active:
+                st.warning("⛔ Цепочка была остановлена вручную.")
+            else:
                 next_start = end_index
                 if next_start < total_found:
                     st.session_state.auto_current_index = next_start
-                    st.session_state.last_stopped_index = next_start # Сохраняем прогресс для Resume
                     st.info(f"⏳ Перезагрузка через 1 сек... Следующая пачка с {next_start}.")
                     time.sleep(1)
                     st.rerun() 
                 else:
                     st.session_state.auto_run_active = False
-                    st.session_state.last_stopped_index = total_found
                     st.balloons()
                     st.success("🏁 ГЕНЕРАЦИЯ ПОЛНОСТЬЮ ЗАВЕРШЕНА!")
-            else:
-                st.warning("⛔ Цепочка была остановлена вручную.")
 
-    # =========================================================
-    # 5. БЛОК РЕЗУЛЬТАТОВ (ОТОБРАЖАЕТСЯ ВСЕГДА, ЕСЛИ ЕСТЬ ДАННЫЕ)
-    # Этот код сработает, даже если вы нажали СТОП и скрипт перезагрузился
-    # =========================================================
+    # КНОПКА СКАЧИВАНИЯ (ПОЯВЛЯЕТСЯ СРАЗУ ПОСЛЕ ПЕРВОЙ СТРОКИ)
+    if st.session_state.get('unified_excel_data') is not None:
+        count = len(st.session_state.gen_result_df)
+        st.success(f"Готово! Обработано строк: {count}")
+        st.download_button(
+            label=f"📥 СКАЧАТЬ РЕЗУЛЬТАТ ({count} стр.)",
+            data=st.session_state.unified_excel_data,
+            file_name=f"wholesale_result_{int(time.time())}.xlsx",
+            mime="application/vnd.ms-excel",
+            key="btn_dl_fixed"
+        )
 
-    has_data = (
-        'gen_result_df' in st.session_state 
-        and st.session_state.gen_result_df is not None 
-        and not st.session_state.gen_result_df.empty
-    )
-
-    if has_data:
-        st.markdown("---")
-        st.success(f"💾 **Сохраненный прогресс:** Готово строк: {len(st.session_state.gen_result_df)}")
-
-        # Если вдруг бинарные данные excel потерялись, пересоздадим их из датафрейма
-        if st.session_state.get('unified_excel_data') is None:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                st.session_state.gen_result_df.to_excel(writer, index=False)
-            st.session_state.unified_excel_data = buffer.getvalue()
-
-        col_dl_final, col_mon_final = st.columns([1, 1])
-
-        with col_dl_final:
-            st.download_button(
-                label=f"📥 СКАЧАТЬ ВСЁ ({len(st.session_state.gen_result_df)} шт.)",
-                data=st.session_state.unified_excel_data,
-                file_name=f"wholesale_result_FULL_{int(time.time())}.xlsx",
-                mime="application/vnd.ms-excel",
-                key="btn_dl_persistent_v2",
-                type="primary",
-                use_container_width=True
-            )
-
-        with col_mon_final:
-            if st.button("➕ Добавить в Мониторинг", key="btn_add_mon_persistent", use_container_width=True):
-                count_added = 0
+    # === ВСТАВИТЬ ЭТО ПОСЛЕ КНОПКИ СКАЧИВАНИЯ EXCEL ===
+    st.markdown("---")
+    st.write("### 🏁 Финал")
+    col_to_mon, _ = st.columns([2, 3])
+    with col_to_mon:
+        st.info("👇 Чтобы следить за этими товарами в будущем:")
+        if st.button("➕ Добавить эти товары в Мониторинг", type="secondary", use_container_width=True):
+            count_added = 0
+            if 'gen_result_df' in st.session_state and not st.session_state.gen_result_df.empty:
                 for idx, row in st.session_state.gen_result_df.iterrows():
                     u_val = str(row.get('Page URL', '')).strip()
                     kw_val = str(row.get('Product Name', '')).strip()
@@ -3945,88 +3709,56 @@ with tab_wholesale_main:
                         add_to_tracking(u_val, kw_val)
                         count_added += 1
                 if count_added > 0:
-                    st.toast(f"✅ Добавлено {count_added} товаров!", icon="📉")
+                    st.toast(f"✅ Добавлено {count_added} товаров! Теперь идите во вкладку 'Мониторинг'.", icon="📉")
+                else:
+                    st.warning("Нет URL для добавления.")
+            else:
+                st.error("Сначала сгенерируйте таблицу.")
 
-# === ПРЕДПРОСМОТРА (ТОЖЕ СОХРАНЯЕТСЯ) ===
-        with st.expander("👀 Предпросмотр того, что уже готово", expanded=False):
-            # --- ВСТАВЛЯЕМ СТИЛИ CSS ДЛЯ КРАСИВЫХ ТАБЛИЦ ---
-            st.markdown("""
-            <style>
-                /* Контейнер предпросмотра */
-                .preview-box {
-                    border: 1px solid #e2e8f0;
-                    background-color: #ffffff;
-                    padding: 20px;
-                    border-radius: 8px;
-                    max-height: 600px;
-                    overflow-y: auto;
-                    box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
-                }
-                
-                /* ВАШИ СТИЛИ ДЛЯ ТАБЛИЦ */
-                .table-full-width-wrapper {
-                    display: block !important;
-                    width: 100% !important;
-                    margin: 20px 0 !important;
-                }
-                .brand-accent-table {
-                    width: 100% !important;
-                    border-collapse: separate !important;
-                    border-spacing: 0 !important;
-                    background: white;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-                    font-family: 'Inter', sans-serif;
-                    border: 0 !important;
-                }
-                .brand-accent-table th {
-                    background-color: #277EFF;
-                    color: white;
-                    text-align: left;
-                    padding: 16px;
-                    font-weight: 500;
-                    font-size: 15px;
-                    border: none;
-                }
-                .brand-accent-table th:first-child { border-top-left-radius: 8px; }
-                .brand-accent-table th:last-child { border-top-right-radius: 8px; }
-                .brand-accent-table td {
-                    padding: 16px;
-                    border-bottom: 1px solid #e5e7eb;
-                    color: #4b5563;
-                    font-size: 15px;
-                    line-height: 1.4;
-                }
-                .brand-accent-table tr:last-child td { border-bottom: none; }
-                .brand-accent-table tr:last-child td:first-child { border-bottom-left-radius: 8px; }
-                .brand-accent-table tr:last-child td:last-child { border-bottom-right-radius: 8px; }
-                .brand-accent-table tr:hover td { background-color: #f8faff; }
-            </style>
-            """, unsafe_allow_html=True)
+    # ==========================================
+    # 5. БЛОК ПРЕДПРОСМОТРА
+    # ==========================================
+    if 'gen_result_df' in st.session_state and st.session_state.gen_result_df is not None and not st.session_state.gen_result_df.empty:
+        st.markdown("---")
+        st.header("👀 Предпросмотр по колонкам")
+        
+        st.markdown("""
+        <style>
+            .preview-box {
+                border: 1px solid #e2e8f0;
+                background-color: #ffffff;
+                padding: 20px;
+                border-radius: 8px;
+                max-height: 600px;
+                overflow-y: auto;
+                box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+            }
+        </style>
+        """, unsafe_allow_html=True)
 
-            st.dataframe(st.session_state.gen_result_df, use_container_width=True)
+        df_p = st.session_state.gen_result_df
+        
+        if 'Product Name' in df_p.columns:
+            sel_p = st.selectbox("Страница:", df_p['Product Name'].tolist(), key="ws_prev_sel")
+            row_p = df_p[df_p['Product Name'] == sel_p].iloc[0]
             
-            # Детальный просмотр по одному товару
-            df_p = st.session_state.gen_result_df
-            if 'Product Name' in df_p.columns:
-                all_products = df_p['Product Name'].tolist()
-                # Выбираем последний добавленный по умолчанию
-                safe_index = len(all_products)-1 if len(all_products) > 0 else 0
-                sel_p = st.selectbox("Выберите товар для проверки текста:", all_products, index=safe_index, key="safe_preview_sel")
-                
-                if sel_p:
-                    row_p = df_p[df_p['Product Name'] == sel_p].iloc[0]
-                    
-                    # Показываем только заполненные колонки
-                    cols_to_show = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819']
-                    active_cols = [c for c in cols_to_show if str(row_p.get(c, "")).strip() != ""]
-                    
-                    if active_cols:
-                        tabs = st.tabs([c.replace("IP_PROP", "") for c in active_cols])
-                        for i, col in enumerate(active_cols):
-                            with tabs[i]:
-                                # Отображаем HTML внутри стилизованного контейнера
-                                st.markdown(f"<div class='preview-box'>{str(row_p[col])}</div>", unsafe_allow_html=True)
+            # Фильтр табов
+            relevant_cols = []
+            if use_text or use_sidebar or use_tags or use_tables or use_promo:
+                relevant_cols.extend(['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'])
+            if use_geo:
+                relevant_cols.append('IP_PROP4819')
+
+            active_tabs = [c for c in relevant_cols if str(row_p.get(c, "")).strip() != ""]
+            
+            if active_tabs:
+                tabs = st.tabs(active_tabs)
+                for i, col in enumerate(active_tabs):
+                    with tabs[i]:
+                        content_to_show = str(row_p[col])
+                        st.markdown(f"<div class='preview-box'>{content_to_show}</div>", unsafe_allow_html=True)
+            else:
+                st.info("Нет данных для отображения.")
 # ==========================================
 # TAB 3: PROJECT MANAGER (SAVE/LOAD)
 # ==========================================
@@ -4339,50 +4071,4 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
