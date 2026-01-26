@@ -3339,7 +3339,9 @@ with tab_wholesale_main:
             st.toast("✅ Кэш очищен! Процесс остановлен.", icon="🗑️")
             time.sleep(1)
             st.rerun()
-    
+
+    st.markdown("---")
+    col_clear, _ = st.columns([2, 3])
     with c_start:
         # Кнопка СТАРТ доступна только если мы НЕ работаем
         if not st.session_state.auto_run_active:
@@ -4166,6 +4168,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
