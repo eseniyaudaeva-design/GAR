@@ -2040,7 +2040,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.7 
+            temperature=1 
         )
         content = response.choices[0].message.content
         
@@ -3626,7 +3626,7 @@ with tab_wholesale_main:
                         )
 
                         try:
-                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.2)
+                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.7)
                             
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                             
@@ -4200,6 +4200,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
