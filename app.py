@@ -3553,7 +3553,7 @@ with tab_wholesale_main:
         
         log_container.write(f"📊 ПАЧКА: {start_index+1} — {end_index} из {total_found}")
 
-        # === ЦИКЛ ПО ПАЧКЕ ===
+# === ЦИКЛ ПО ПАЧКЕ (ОБНОВЛЕННЫЙ ПОРЯДОК: ТЕКСТ -> ТАБЛИЦЫ) ===
         for i, page in enumerate(target_pages_batch):
             # Проверка дублей
             current_urls_in_df = st.session_state.gen_result_df['Page URL'].values
@@ -3564,7 +3564,7 @@ with tab_wholesale_main:
             current_num = start_index + i + 1
             log_container.write(f"▶️ **[{current_num}/{total_found}] {page['name']}**")
             
-            # --- ОСНОВНАЯ ГЕНЕРАЦИЯ ---
+            # --- ПОДГОТОВКА ДАННЫХ ---
             try:
                 base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
                 header_for_ai = real_header_h2 if real_header_h2 else page['name']
@@ -3574,125 +3574,17 @@ with tab_wholesale_main:
                     if k in row_data: row_data[k] = v
                 
                 injections = []
-
-                # --- 1. ТЕГИ (ПОЛНЫЙ КОД) ---
-                if use_tags and all_tags_links:
-                    tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != page['url'].rstrip('/')]
-
-                    if tags_cands_all:
-                        target_tag_urls = []
-                        # ЭТАП 1: Ищем ссылки по вашим словам
-                        for kw in list_tags_initial:
-                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            for url in tags_cands_all:
-                                if tr_kw in url.lower() and url not in target_tag_urls:
-                                    target_tag_urls.append(url)
-                                    break 
-                        # ЭТАП 2: Добиваем рандомом
-                        needed_tags = 15
-                        if len(target_tag_urls) < needed_tags:
-                            missing = needed_tags - len(target_tag_urls)
-                            pool_random = [u for u in tags_cands_all if u not in target_tag_urls]
-                            if pool_random:
-                                target_tag_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
-                        # ЭТАП 3: Рендер
-                        if target_tag_urls:
-                            tags_names_map = resolve_real_names(target_tag_urls)
-                            html_t = []
-                            for u in target_tag_urls:
-                                name = tags_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
-                                html_t.append(f'<a href="{u}" class="tag-item">{name}</a>')
-
-                            tags_block = f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'''
-                            injections.append(tags_block)
-
-# --- 2. ТАБЛИЦЫ (ИЗОЛИРОВАННЫЙ КОНТЕКСТ) ---
-                if use_tables and client:
-                    for t_topic in table_prompts:
-                        # Используем ТОЛЬКО технический контекст (Размеры, ГОСТы), без "купить/цена"
-                        tech_data = f"{str_tables_final}" 
-                        
-                        # Логика авто-темы: если тема похожа на дефолтную, просим AI самому решить
-                        topic_instruction = f"Тема таблицы: {t_topic}"
-                        if not t_topic or t_topic == "Характеристики":
-                            topic_instruction = "Тема таблицы: Подбери наиболее важные технические параметры для этого товара."
-
-                        prompt_tbl = (
-                            f"Ты инженер-технолог. Создай HTML таблицу (<table>) с техническими данными.\n"
-                            f"ТОВАР: '{header_for_ai}'\n"
-                            f"РОДИТЕЛЬСКАЯ КАТЕГОРИЯ: '{page['name']}'\n"
-                            f"{topic_instruction}.\n\n"
-                            
-                            f"ИСТОЧНИК ДАННЫХ (ИСПОЛЬЗУЙ ОБЯЗАТЕЛЬНО):\n"
-                            f"{tech_data}\n\n"
-                            
-                            f"ПРАВИЛА:\n"
-                            f"1. Не выдумывай данные, если их нет в источнике, но можешь добавлять стандартные параметры для этого типа товара, если это уместно.\n"
-                            f"2. ❌ НЕ ВСТАВЛЯЙ слова 'купить', 'цена', 'доставка', если это таблица характеристик.\n"
-                            f"3. Если в источнике данных ({tech_data}) есть конкретные слова (марки, размеры), выдели их тегом <b> внутри таблицы.\n"
-                            
-                            f"ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ:\n"
-                            f"- Тэг table должен быть: <table class='brand-accent-table'>\n"
-                            f"- Структура: <thead><tr><th>...</th></tr></thead> <tbody><tr><td>...</td></tr></tbody>\n"
-                            f"- Выдай ТОЛЬКО код таблицы, без текста до и после."
-                        )
-
-                        try:
-                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.7)
-                            
-                            raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                            
-                            # Очистка
-                            start_idx = raw_table.find("<table")
-                            end_idx = raw_table.find("</table>")
-                            
-                            if start_idx != -1 and end_idx != -1:
-                                clean_table_inner = raw_table[start_idx:end_idx+8]
-                                if "brand-accent-table" not in clean_table_inner:
-                                    clean_table_inner = clean_table_inner.replace("<table", "<table class='brand-accent-table'", 1)
-                                
-                                final_table_html = f'<div class="table-full-width-wrapper">{clean_table_inner}</div>'
-                                injections.append(final_table_html)
-                        except Exception as e: 
-                            log_container.write(f"Ошибка таблицы: {e}")
                 
-                # --- 3. ПРОМО (ПОЛНЫЙ КОД) ---
-                if use_promo and p_img_map:
-                    p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
-                    
-                    if p_cands_all:
-                        target_urls = []
-                        # Ищем по словам
-                        for kw in list_promo_initial:
-                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            for url in p_cands_all:
-                                if tr_kw in url.lower() and url not in target_urls:
-                                    target_urls.append(url)
-                                    break 
-                        # Добиваем рандомом
-                        needed_total = 8
-                        if len(target_urls) < needed_total:
-                            missing = needed_total - len(target_urls)
-                            pool_random = [u for u in p_cands_all if u not in target_urls]
-                            if pool_random:
-                                target_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
-                        # Рендер
-                        if target_urls:
-                            promo_names_map = resolve_real_names(target_urls)
-                            gallery_items = []
-                            for u in target_urls:
-                                nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
-                                img_src = p_img_map[u]
-                                item_html = f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>'''
-                                gallery_items.append(item_html)
-
-                            p_html = f'''<style>.outer-full-width-section {{ padding: 25px 0; width: 100%; }}.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}.gallery-item h3 a:hover {{ color: #007bff; }}.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}.gallery-item figure a:hover img {{ transform: scale(1.05); }}</style><div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>'''
-                            injections.append(p_html)
-
-                # --- 4. ТЕКСТ (ПОЛНЫЙ КОД) ---
+                # Переменные для контента
+                generated_full_text = "" 
                 blocks = [""] * 5
+
+                # =========================================================
+                # ШАГ 1. ГЕНЕРАЦИЯ ТЕКСТА (ПЕРЕНЕСЕНО В НАЧАЛО)
+                # =========================================================
                 if use_text and client:
                     log_container.write(f"   ↳ 🤖 Пишем текст...")
+                    # Вызов вашей функции без изменений
                     blocks_raw = generate_ai_content_blocks(
                         gemini_api_key, 
                         base_text_raw or "", 
@@ -3704,14 +3596,135 @@ with tab_wholesale_main:
                     cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
                     for i_b in range(len(cleaned_blocks)):
                         if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
+                    
+                    # Собираем текст для контекста таблиц
+                    generated_full_text = " ".join(blocks)
 
-                # Внедрение инъекций в текст
-                effective_blocks_count = max(1, user_num_blocks)
-                for i_inj, inj in enumerate(injections):
-                    target_idx = i_inj % effective_blocks_count
-                    blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
+                # =========================================================
+                # ШАГ 2. ГЕНЕРАЦИЯ ТАБЛИЦ (ТЕПЕРЬ ВИДИТ ТЕКСТ)
+                # =========================================================
+                if use_tables and client:
+                    for t_topic in table_prompts:
+                        # Технические данные
+                        tech_data = f"{str_tables_final}" 
+                        
+                        # Контекст статьи (если текст не генерировали, будет пусто)
+                        context_snippet = generated_full_text[:3500] if generated_full_text else "Текст статьи отсутствует."
 
-                # --- 5. ГЕО (ПОЛНЫЙ КОД) ---
+                        # Определяем фокус (v4.0 Logic)
+                        topic_guide = ""
+                        if "Размер" in t_topic or "Сортамент" in t_topic:
+                            topic_guide = "Приоритет: Размеры и вес. Но обязательно добавь колонку с кратким текстовым пояснением (напр. 'Применение' или 'Тип'), чтобы таблица не была просто набором цифр."
+                        elif "Хим" in t_topic or "Марк" in t_topic:
+                            topic_guide = "Приоритет: Марки стали и состав. Добавь колонку 'Свойства' или 'Аналоги', чтобы раскрыть смысл марок."
+                        elif "ГОСТ" in t_topic:
+                            topic_guide = "Приоритет: Стандарты. Дай расшифровку номера ГОСТа в соседней колонке."
+                        else:
+                            topic_guide = "Проанализируй КОНТЕКСТ СТАТЬИ. Создай таблицу, которая дополняет текст, а не дублирует его."
+
+                        # Промт v4.0 (Контекстный)
+                        prompt_tbl = f"""
+    ТЫ — РЕДАКТОР И ТЕХНОЛОГ. Твоя задача — создать HTML-таблицу для статьи о товаре "{header_for_ai}".
+    
+    ВВОДНЫЕ ДАННЫЕ:
+    1. ТЕМА ТАБЛИЦЫ: {t_topic} ({topic_guide})
+    2. ТЕХНИЧЕСКИЕ КЛЮЧИ (Цифры/Марки): [{tech_data}]
+    3. КОНТЕКСТ УЖЕ НАПИСАННОЙ СТАТЬИ (ЧИТАТЬ ОБЯЗАТЕЛЬНО):
+    ---НАЧАЛО КОНТЕКСТА---
+    {context_snippet}
+    ---КОНЕЦ КОНТЕКСТА---
+    
+    ПРАВИЛА ГЕНЕРАЦИИ:
+    1. ⛔ АНТИ-ДУБЛЬ (СМЫСЛОВОЙ):
+       - Прочитай "КОНТЕКСТ СТАТЬИ". Не вставляй в таблицу общие фразы, которые уже есть в тексте.
+       - Таблица должна давать СУХОЙ ОСТАТОК или СПРАВОЧНЫЕ ДАННЫЕ.
+    
+    2. ⛔ АНТИ-ДУБЛЬ (ВИЗУАЛЬНЫЙ):
+       - Категорически запрещено писать название товара "{header_for_ai}" в каждой строке.
+       
+    3. ⚖️ БАЛАНС "ЦИФРЫ — СМЫСЛ":
+       - Таблица из одних цифр — это скучно.
+       - ОБЯЗАТЕЛЬНО: Добавь 1-2 колонки с текстовыми данными (Назначение, Особенность, Примечание).
+       - Запрещена "вода". Пиши по делу: "Для агрессивных сред", "Под сварку".
+       
+    4. 🧠 УМНАЯ СТРУКТУРА:
+       - Если конкретных цифр мало — сгруппируй данные логически.
+       - Используй тег <b> для выделения главных параметров.
+    
+    ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ:
+    - Только код <table>...</table>.
+    - Класс: <table class='brand-accent-table'>
+    - Шапка <thead> обязательна.
+    """
+                        try:
+                            # Temperature 0.35
+                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.35)
+                            raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                            
+                            start_idx = raw_table.find("<table")
+                            end_idx = raw_table.find("</table>")
+                            
+                            if start_idx != -1 and end_idx != -1:
+                                clean_table_inner = raw_table[start_idx:end_idx+8]
+                                if "brand-accent-table" not in clean_table_inner:
+                                    clean_table_inner = clean_table_inner.replace("<table", "<table class='brand-accent-table'", 1)
+                                final_table_html = f'<div class="table-full-width-wrapper">{clean_table_inner}</div>'
+                                injections.append(final_table_html)
+                        except Exception as e: 
+                            log_container.write(f"Ошибка таблицы: {e}")
+
+                # =========================================================
+                # ШАГ 3. ОСТАЛЬНЫЕ БЛОКИ (БЕЗ ИЗМЕНЕНИЙ ВАШЕГО КОДА)
+                # =========================================================
+                
+                # --- ТЕГИ ---
+                if use_tags and all_tags_links:
+                    tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != page['url'].rstrip('/')]
+                    if tags_cands_all:
+                        target_tag_urls = []
+                        for kw in list_tags_initial:
+                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                            for url in tags_cands_all:
+                                if tr_kw in url.lower() and url not in target_tag_urls:
+                                    target_tag_urls.append(url); break 
+                        needed_tags = 15
+                        if len(target_tag_urls) < needed_tags:
+                            missing = needed_tags - len(target_tag_urls)
+                            pool_random = [u for u in tags_cands_all if u not in target_tag_urls]
+                            if pool_random: target_tag_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
+                        if target_tag_urls:
+                            tags_names_map = resolve_real_names(target_tag_urls)
+                            html_t = []
+                            for u in target_tag_urls:
+                                name = tags_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
+                                html_t.append(f'<a href="{u}" class="tag-item">{name}</a>')
+                            injections.append(f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>''')
+
+                # --- ПРОМО ---
+                if use_promo and p_img_map:
+                    p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
+                    if p_cands_all:
+                        target_urls = []
+                        for kw in list_promo_initial:
+                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                            for url in p_cands_all:
+                                if tr_kw in url.lower() and url not in target_urls:
+                                    target_urls.append(url); break 
+                        needed_total = 8
+                        if len(target_urls) < needed_total:
+                            missing = needed_total - len(target_urls)
+                            pool_random = [u for u in p_cands_all if u not in target_urls]
+                            if pool_random: target_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
+                        if target_urls:
+                            promo_names_map = resolve_real_names(target_urls)
+                            gallery_items = []
+                            for u in target_urls:
+                                nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
+                                img_src = p_img_map[u]
+                                gallery_items.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>''')
+                            injections.append(f'''<style>.outer-full-width-section {{ padding: 25px 0; width: 100%; }}.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}.gallery-item h3 a:hover {{ color: #007bff; }}.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}.gallery-item figure a:hover img {{ transform: scale(1.05); }}</style><div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>''')
+
+                # --- ГЕО ---
                 if use_geo and client:
                     log_container.write(f"   ↳ 🌍 Пишем доставку...")
                     try:
@@ -3727,23 +3740,32 @@ with tab_wholesale_main:
                          row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                     except: pass
 
-                # Распределение по колонкам
+                # =========================================================
+                # СБОРКА И СОХРАНЕНИЕ
+                # =========================================================
+                
+                # Внедрение инъекций (таблицы, теги, промо) в текст
+                effective_blocks_count = max(1, user_num_blocks)
+                for i_inj, inj in enumerate(injections):
+                    target_idx = i_inj % effective_blocks_count
+                    blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
+
+                # Распределение по колонкам Excel
                 for i_c, c_name in enumerate(TEXT_CONTAINERS):
                     row_data[c_name] = blocks[i_c]
 
-                # === СОХРАНЕНИЕ ===
+                # Сохранение в DataFrame
                 new_row_df = pd.DataFrame([row_data])
                 st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, new_row_df], ignore_index=True)
                 
+                # Сохранение в Excel (бинарник)
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     st.session_state.gen_result_df.to_excel(writer, index=False)
                 st.session_state.unified_excel_data = buffer.getvalue()
                 
-                # Обновление таблицы в UI
+                # Обновление UI
                 live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
-                
-                # Вывод SEO счетчика
                 full_row_html = "".join([str(val) for val in row_data.values()])
                 bolds_fact = full_row_html.count("<b>")
                 with live_download_placeholder.container():
@@ -4212,6 +4234,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
