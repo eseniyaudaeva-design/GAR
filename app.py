@@ -3731,26 +3731,57 @@ with tab_wholesale_main:
                                 html_t.append(f'<a href="{u}" class="tag-item">{name}</a>')
                             injections.append(f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>''')
 
+# =========================================================
+                # ИСПРАВЛЕННЫЙ БЛОК ПРОМО (С ЧЕСТНЫМ РАНДОМОМ)
+                # =========================================================
                 if use_promo and p_img_map:
+                    # 1. Берем всех кандидатов, кроме текущей страницы
                     p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
+                    
                     if p_cands_all:
                         target_urls = []
-                        for kw in list_promo_initial:
+                        
+                        # ШАГ А: Перемешиваем список ключевых слов, чтобы приоритет тем менялся
+                        # (Например, чтобы не всегда сначала искалась "Труба", а потом "Лист")
+                        shuffled_keywords = list(list_promo_initial)
+                        random.shuffle(shuffled_keywords)
+
+                        # ШАГ Б: Ищем релевантные товары с рандомом внутри группы
+                        for kw in shuffled_keywords:
+                            # Ограничитель, чтобы не набирать слишком много, если ключей сотни
+                            if len(target_urls) >= 10: break 
+
                             tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            for url in p_cands_all:
-                                if tr_kw in url.lower() and url not in target_urls:
-                                    target_urls.append(url); break 
-                        needed_total = 8
+                            
+                            # Находим ВСЕ возможные ссылки, содержащие этот ключ (и которых еще нет в списке)
+                            all_matches_for_kw = [u for u in p_cands_all if tr_kw in u.lower() and u not in target_urls]
+                            
+                            if all_matches_for_kw:
+                                # ВАЖНО: Берем СЛУЧАЙНУЮ ссылку из найденных, а не первую
+                                target_urls.append(random.choice(all_matches_for_kw))
+                        
+                        # ШАГ В: Добивка до минимума (обычно 5 для красивой галереи)
+                        needed_total = 5
                         if len(target_urls) < needed_total:
                             pool_random = [u for u in p_cands_all if u not in target_urls]
-                            if pool_random: target_urls.extend(random.sample(pool_random, min(needed_total - len(target_urls), len(pool_random))))
+                            if pool_random: 
+                                count_to_add = min(needed_total - len(target_urls), len(pool_random))
+                                target_urls.extend(random.sample(pool_random, count_to_add))
+                        
+                        # ШАГ Г: Финальное перемешивание перед выводом, чтобы порядок картинок был разным
+                        random.shuffle(target_urls)
+
+                        # Генерация HTML (без изменений стилей)
                         if target_urls:
                             promo_names_map = resolve_real_names(target_urls)
                             gallery_items = []
                             for u in target_urls:
+                                # Получаем имя либо из парсинга, либо генерируем из URL
                                 nm = promo_names_map.get(u, force_cyrillic_name_global(u.split("/")[-1]))
                                 img_src = p_img_map[u]
                                 gallery_items.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>''')
+                            
+                            # Вставляем HTML
                             injections.append(f'''<style>.outer-full-width-section {{ padding: 25px 0; width: 100%; }}.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}.gallery-item h3 a:hover {{ color: #007bff; }}.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}.gallery-item figure a:hover img {{ transform: scale(1.05); }}</style><div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>''')
 
                 if use_geo and client:
@@ -4250,6 +4281,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
