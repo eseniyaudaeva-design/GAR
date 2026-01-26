@@ -3297,35 +3297,24 @@ with tab_wholesale_main:
 # 3. НАСТРОЙКИ ЗАПУСКА
     col_batch1, col_batch2, col_batch3 = st.columns([1, 1, 2])
     
-log_container.update(label=f"✅ Пачка {start_index}-{end_index} готова!", state="complete", expanded=False)
-        
-        # === ЛОГИКА АВТО-ПЕРЕЗАПУСКА (ИСПРАВЛЕНАЯ) ===
-        if enable_auto_chain:
-            # Снова проверяем, не нажал ли пользователь СТОП во время выполнения пачки
-            if st.session_state.auto_run_active:
-                next_start = end_index
-                if next_start < total_found:
-                    st.session_state.auto_current_index = next_start
-                    st.session_state.last_stopped_index = next_start # Сохраняем прогресс для Resume
-                    st.info(f"⏳ Перезагрузка через 1 сек... Следующая пачка с {next_start}.")
-                    time.sleep(1)
-                    st.rerun() 
-                else:
-                    st.session_state.auto_run_active = False
-                    st.session_state.last_stopped_index = total_found
-                    st.balloons()
-                    st.success("🏁 ГЕНЕРАЦИЯ ПОЛНОСТЬЮ ЗАВЕРШЕНА!")
-            else:
-                st.warning("⛔ Цепочка была остановлена вручную.")
+    with col_batch1:
+        # Если запущено - показываем прогресс (рид онли), если нет - поле ввода
+        if st.session_state.auto_run_active:
+            st.text_input("🟢 В процессе (Старт):", value=str(st.session_state.auto_current_index), disabled=True)
+            start_index = st.session_state.auto_current_index
         else:
-            # --- ВАЖНО: Если галочка НЕ стоит, принудительно останавливаем и обновляем UI ---
-            st.session_state.auto_run_active = False
-            st.session_state.last_stopped_index = end_index
-            st.toast("⏸️ Пачка завершена. Авто-переход отключен.", icon="🛑")
-            time.sleep(1)
-            st.rerun() # Делаем реран, чтобы кнопки перерисовались в состояние "Стоп"
+            # Если хотим начать заново или с конкретного места вручную
+            start_index = st.number_input("Начать с товара № (с 0)", min_value=0, value=st.session_state.last_stopped_index, step=1)
 
-    # --- НОВАЯ КНОПКА СБРОСА КЭША ---
+    with col_batch2:
+        safe_batch_size = st.number_input("Размер пачки (шт)", min_value=1, value=5, help="Лучше 3-5 шт.")
+        
+    with col_batch3:
+        st.write("")
+        st.write("")
+        enable_auto_chain = st.checkbox("🔄 Авто-переход к следующей пачке", value=True, help="Если активно, скрипт будет сам перезагружаться пока не пройдет все товары.")
+
+    # --- КНОПКА СБРОСА КЭША ---
     st.markdown("---")
     col_clear, _ = st.columns([2, 3])
     with col_clear:
@@ -3345,7 +3334,6 @@ log_container.update(label=f"✅ Пачка {start_index}-{end_index} готов
             st.rerun()
 
     st.markdown("---")
-
     # 4. КНОПКИ УПРАВЛЕНИЯ (Раздельные)
     c_start, c_stop = st.columns([2, 1])
     
@@ -3359,15 +3347,6 @@ log_container.update(label=f"✅ Пачка {start_index}-{end_index} готов
                 st.rerun()
         else:
             st.info("⏳ Процесс выполняется...")
-    
-    with c_stop:
-        # Кнопка СТОП доступна только если мы РАБОТАЕМ
-        if st.session_state.auto_run_active:
-            if st.button("🛑 СТОП (Пауза)", type="secondary", use_container_width=True):
-                st.session_state.auto_run_active = False
-                # Сохраняем текущий индекс как точку остановки
-                st.session_state.last_stopped_index = st.session_state.auto_current_index
-                st.rerun()
 
     # =========================================================
     # ГЛАВНЫЙ ИСПОЛНЯЮЩИЙ БЛОК
@@ -4184,6 +4163,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
