@@ -1889,34 +1889,24 @@ STATIC_DATA_GEN = {
 }
 
 def get_page_data_for_gen(url):
-    # Попытка 1: Имитация браузера через curl_cffi (Обходит защиту SSL)
+    # Возвращаем стандартный requests, который работал нормально
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
     try:
-        from curl_cffi import requests as cffi_requests
-        response = cffi_requests.get(
-            url, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}, 
-            timeout=25, 
-            impersonate="chrome110"
-        )
-        if response.status_code == 403: raise Exception("403 Forbidden via CFFI")
-        content = response.content
-        encoding = response.encoding if response.encoding else 'utf-8'
-    except Exception as e:
-        # Попытка 2: Обычный requests (Fallback)
-        try:
-            import requests
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-            response = requests.get(url, headers=headers, timeout=20, verify=False)
-            content = response.content
-            encoding = response.encoding
-        except Exception as e2:
-            return None, None, None, f"Ошибка соединения: {e2}"
+        # verify=False помогает от простых SSL ошибок, но не ломает кодировку
+        response = requests.get(url, headers=headers, timeout=20, verify=False)
+        # Принудительная кодировка часто помогает на ру-сайтах
+        if response.encoding != 'utf-8':
+            response.encoding = response.apparent_encoding
+    except Exception as e: 
+        return None, None, None, f"Ошибка соединения: {e}"
     
-    if not content: return None, None, None, "Пустой ответ"
+    if response.status_code != 200: 
+        return None, None, None, f"Ошибка статуса: {response.status_code}"
     
-    soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
+    try:
+        soup = BeautifulSoup(response.text, 'html.parser')
+    except:
+        return None, None, None, "Ошибка парсинга"
     
     # 1. ЗАГОЛОВОК
     description_div = soup.find('div', class_='description-container')
@@ -1930,7 +1920,12 @@ def get_page_data_for_gen(url):
     page_header = target_h2.get_text(strip=True) if target_h2 else "Описание товара"
 
     # 2. Фактура (текст)
-    base_text = description_div.get_text(separator="\n", strip=True) if description_div else soup.body.get_text(separator="\n", strip=True)[:5000]
+    if description_div:
+        base_text = description_div.get_text(separator="\n", strip=True)
+    else:
+        # Чистим скрипты, чтобы в текст не попал мусор
+        for s in soup(['script', 'style']): s.decompose()
+        base_text = soup.body.get_text(separator="\n", strip=True)[:6000]
     
     # 3. Теги
     tags_container = soup.find(class_='popular-tags-inner')
@@ -3594,7 +3589,7 @@ with tab_wholesale_main:
         
         log_container.write(f"📊 ПАЧКА: {start_index+1} — {end_index} из {total_found}")
 
-# === ЦИКЛ ПО ПАЧКЕ (v5.5: ОДНОКРАТНЫЕ КЛЮЧИ + УДАЛЕНИЕ ЗАГОЛОВКОВ) ===
+# === ЦИКЛ ПО ПАЧКЕ (FIX: СТАБИЛЬНЫЕ ТЕКСТЫ + ТАБЛИЦА С ШАПКОЙ) ===
         for i, page in enumerate(target_pages_batch):
             # Проверка дублей
             current_urls_in_df = st.session_state.gen_result_df['Page URL'].values
@@ -3607,6 +3602,7 @@ with tab_wholesale_main:
             
             # --- ПОДГОТОВКА ДАННЫХ ---
             try:
+                # Теперь здесь используется СТАРАЯ надежная функция
                 base_text_raw, _, real_header_h2, _ = get_page_data_for_gen(page['url'])
                 header_for_ai = real_header_h2 if real_header_h2 else page['name']
                 row_data = {col: "" for col in EXCEL_COLUMN_ORDER}
@@ -3615,13 +3611,11 @@ with tab_wholesale_main:
                     if k in row_data: row_data[k] = v
                 
                 injections = []
-                
-                # Переменные контента
                 generated_full_text = "" 
                 blocks = [""] * 5
 
                 # =========================================================
-                # ШАГ 1. ГЕНЕРАЦИЯ ТЕКСТА
+                # ШАГ 1. ГЕНЕРАЦИЯ ТЕКСТА (КАЧЕСТВО ВЕРНЕТСЯ)
                 # =========================================================
                 if use_text and client:
                     log_container.write(f"   ↳ 🤖 Пишем текст...")
@@ -3640,113 +3634,96 @@ with tab_wholesale_main:
                     generated_full_text = " ".join(blocks)
 
                 # =========================================================
-                # ШАГ 2. ГЕНЕРАЦИЯ ТАБЛИЦ (БЕЗ ДУБЛЕЙ КЛЮЧЕЙ И ЗАГОЛОВКОВ)
+                # ШАГ 2. ГЕНЕРАЦИЯ ТАБЛИЦ (БЕЗ ЗАГОЛОВКОВ НАД, НО С ШАПКОЙ ВНУТРИ)
                 # =========================================================
                 if use_tables and client:
                     previous_tables_context = ""
-                    # ФЛАГ: Вставили ли мы уже обязательные ключи?
-                    # Если False, мы их передадим в промт. После первой таблицы станет True.
                     keys_already_inserted = False 
                     
-                    # --- ПОДТЯЖКА ИЗ tech_specs.json (ЭТАЛОНЫ) ---
+                    # Загрузка справочника марок (если есть)
                     found_correct_specs = []
                     try:
                         specs_map = {}
                         if os.path.exists("data/tech_specs.json"):
                             with open("data/tech_specs.json", "r", encoding="utf-8") as f:
                                 raw_specs = json.load(f)
-                                flat_specs = []
-                                if isinstance(raw_specs, dict): flat_specs = [x for v in raw_specs.values() for x in v]
-                                else: flat_specs = raw_specs
+                                flat_specs = [x for v in raw_specs.values() for x in v] if isinstance(raw_specs, dict) else raw_specs
                                 for s in flat_specs:
                                     if isinstance(s, str): specs_map[s.lower().strip()] = s.strip()
                         
                         search_scope = (str_tables_final + " " + header_for_ai).lower()
-                        search_tokens = re.split(r'[,\s\(\)\.]+', search_scope)
-                        for token in search_tokens:
-                            if len(token) < 2: continue
-                            if token in specs_map and specs_map[token] not in found_correct_specs:
+                        for token in re.split(r'[,\s\(\)\.]+', search_scope):
+                            if len(token) > 1 and token in specs_map and specs_map[token] not in found_correct_specs:
                                 found_correct_specs.append(specs_map[token])
                     except: pass
-                    specs_reference_str = ", ".join(found_correct_specs) if found_correct_specs else "Нет данных"
+                    specs_ref = ", ".join(found_correct_specs) if found_correct_specs else "Нет"
 
-                    # --- ЦИКЛ ПО ТАБЛИЦАМ ---
                     for t_topic in table_prompts:
-                        context_snippet = generated_full_text[:3500] if generated_full_text else "Текст статьи отсутствует."
+                        context_snippet = generated_full_text[:3500] if generated_full_text else ""
 
-                        # ОПРЕДЕЛЯЕМ КЛЮЧИ ДЛЯ ЭТОЙ ИТЕРАЦИИ
-                        # Если мы их еще не использовали — берем. Если уже использовали — отправляем пустоту.
+                        # КЛЮЧИ: Только если еще не вставляли
                         if not keys_already_inserted and str_tables_final.strip():
-                            current_keys_data = f"{str_tables_final}"
-                            keys_instruction = "Найди каждому ключу место. Если ключ (например, ВГП) не подходит к текущему товару (например, Круг) -> впиши его в строку 'Смежные товары' или 'Также в наличии'. НЕ ПИШИ 'Не путать'."
+                            curr_keys = f"{str_tables_final}"
+                            # Умная инструкция для ключей
+                            keys_instr = "Впиши эти ключи. Если они не подходят как характеристика -> создай строку 'Смежные товары' или 'См. также'."
                         else:
-                            current_keys_data = "" # Пусто, чтобы не дублировать
-                            keys_instruction = "Ключевые слова уже использованы в другой таблице. Здесь пиши только технические данные по теме."
+                            curr_keys = ""
+                            keys_instr = ""
 
-                        # Фокус темы
-                        topic_guide = ""
-                        if "Размер" in t_topic or "Сортамент" in t_topic:
-                            topic_guide = "Акцент на размеры, диаметры, толщины."
-                        elif "Хим" in t_topic:
-                            topic_guide = "Акцент на хим. элементы."
-                        else:
-                            topic_guide = "Технические характеристики."
+                        topic_guide = "Акцент на размеры." if "Размер" in t_topic else ("Акцент на хим. состав." if "Хим" in t_topic else "Технические параметры.")
 
-                        # === ПРОМТ v5.5 (ЧИСТЫЙ ВЫВОД) ===
+                        # === ПРОМТ v5.6 (FIX TABLE HEADER) ===
                         prompt_tbl = f"""
     ТЫ — ВЕРСТАЛЬЩИК. Задача: HTML-таблица для "{header_for_ai}".
     ТЕМА: {t_topic} ({topic_guide})
     
-    1. 🧠 КОНТЕКСТ СТАТЬИ: {context_snippet}
+    1. КОНТЕКСТ: {context_snippet}
+    2. ОБЯЗАТЕЛЬНЫЕ КЛЮЧИ: [{curr_keys}]. {keys_instr}
+    3. СПРАВОЧНИК МАРОК: [{specs_ref}] (Пиши марки точно как здесь).
+    4. НЕ ДУБЛИРОВАТЬ ЭТО: {previous_tables_context}
     
-    2. 🔑 КЛЮЧИ (ВСТАВИТЬ 1 РАЗ): [{current_keys_data}]
-       -> ИНСТРУКЦИЯ: {keys_instruction}
+    --- ТРЕБОВАНИЯ К СТРУКТУРЕ (СТРОГО) ---
+    1. ❌ ЗАПРЕЩЕНО писать заголовок (h2, h3) ИЛИ текст ПЕРЕД таблицей. Сразу начинай с <table>.
+    2. ✅ ОБЯЗАТЕЛЬНО должна быть шапка таблицы <thead>.
+       Пример:
+       <thead>
+           <tr><th>Характеристика</th><th>Значение</th></tr>
+       </thead>
+    3. Класс: <table class='brand-accent-table'>
     
-    3. 📚 СПРАВОЧНИК МАРОК: [{specs_reference_str}]
-       -> Пиши марки и ГОСТы СТРОГО как здесь (регистр букв).
-    
-    4. 🚫 ИГНОР-ЛИСТ (ЭТО УЖЕ ЕСТЬ): {previous_tables_context}
-    
-    --- ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ ---
-    1. ВЫДАЙ ТОЛЬКО КОД <table>...</table>.
-    2. ❌ ЗАПРЕЩЕНО писать любой текст, заголовки, вступления ПЕРЕД таблицей.
-    3. Класс таблицы: 'brand-accent-table'.
+    Внутри таблицы используй <b> для выделения марок и размеров.
     """
                         try:
                             resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.3)
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                             
-                            # === ЖЕСТКАЯ ЧИСТКА ЗАГОЛОВКОВ ===
-                            # Мы просто отрезаем всё, что находится до открывающего тега <table
+                            # === ОЧИСТКА ОТ ЗАГОЛОВКОВ "НАД" ===
+                            # Мы режем строку начиная с <table. Всё что было ДО (например <h3>Характеристики</h3>) удаляется.
                             start_idx = raw_table.find("<table")
                             end_idx = raw_table.find("</table>")
                             
                             if start_idx != -1 and end_idx != -1:
-                                # Берем код СТРОГО от <table...
                                 clean_table_inner = raw_table[start_idx:end_idx+8]
                                 
+                                # Проверка на наличие класса
                                 if "brand-accent-table" not in clean_table_inner:
                                     clean_table_inner = clean_table_inner.replace("<table", "<table class='brand-accent-table'", 1)
                                 
                                 final_table_html = f'<div class="table-full-width-wrapper">{clean_table_inner}</div>'
                                 injections.append(final_table_html)
                                 
-                                # Обновляем память и помечаем, что ключи использованы
-                                text_content_only = re.sub(r'<[^>]+>', ' ', clean_table_inner)
-                                previous_tables_context += f"\n[Таблица '{t_topic}']: {text_content_only[:500]}..."
-                                
-                                # Если в этой таблице реально были ключи, ставим флаг
-                                if current_keys_data:
-                                    keys_already_inserted = True
+                                # Обновляем память и флаг ключей
+                                content_stripped = re.sub(r'<[^>]+>', ' ', clean_table_inner)
+                                previous_tables_context += f"\n[Таблица {t_topic}]: {content_stripped[:500]}..."
+                                if curr_keys: keys_already_inserted = True
 
                         except Exception as e: 
                             log_container.write(f"Ошибка таблицы: {e}")
 
                 # =========================================================
-                # ШАГ 3. ОСТАЛЬНЫЕ БЛОКИ (БЕЗ ИЗМЕНЕНИЙ)
+                # ШАГ 3. ОСТАЛЬНЫЕ БЛОКИ (ТЕГИ, ПРОМО, ГЕО)
                 # =========================================================
                 
-                # --- ТЕГИ ---
                 if use_tags and all_tags_links:
                     tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != page['url'].rstrip('/')]
                     if tags_cands_all:
@@ -3758,9 +3735,8 @@ with tab_wholesale_main:
                                     target_tag_urls.append(url); break 
                         needed_tags = 15
                         if len(target_tag_urls) < needed_tags:
-                            missing = needed_tags - len(target_tag_urls)
                             pool_random = [u for u in tags_cands_all if u not in target_tag_urls]
-                            if pool_random: target_tag_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
+                            if pool_random: target_tag_urls.extend(random.sample(pool_random, min(needed_tags - len(target_tag_urls), len(pool_random))))
                         if target_tag_urls:
                             tags_names_map = resolve_real_names(target_tag_urls)
                             html_t = []
@@ -3769,7 +3745,6 @@ with tab_wholesale_main:
                                 html_t.append(f'<a href="{u}" class="tag-item">{name}</a>')
                             injections.append(f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>''')
 
-                # --- ПРОМО ---
                 if use_promo and p_img_map:
                     p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != page['url'].rstrip('/')]
                     if p_cands_all:
@@ -3781,9 +3756,8 @@ with tab_wholesale_main:
                                     target_urls.append(url); break 
                         needed_total = 8
                         if len(target_urls) < needed_total:
-                            missing = needed_total - len(target_urls)
                             pool_random = [u for u in p_cands_all if u not in target_urls]
-                            if pool_random: target_urls.extend(random.sample(pool_random, min(missing, len(pool_random))))
+                            if pool_random: target_urls.extend(random.sample(pool_random, min(needed_total - len(target_urls), len(pool_random))))
                         if target_urls:
                             promo_names_map = resolve_real_names(target_urls)
                             gallery_items = []
@@ -3793,7 +3767,6 @@ with tab_wholesale_main:
                                 gallery_items.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>''')
                             injections.append(f'''<style>.outer-full-width-section {{ padding: 25px 0; width: 100%; }}.gallery-content-wrapper {{ max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }}h3.gallery-title {{ color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }}.five-col-gallery {{ display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }}.gallery-item {{ flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }}.gallery-item h3 {{ font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }}.gallery-item h3 a {{ text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }}.gallery-item h3 a:hover {{ color: #007bff; }}.gallery-item figure {{ width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }}.gallery-item figure a {{ display: block; height: 100%; text-decoration: none; }}.gallery-item img {{ width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }}.gallery-item figure a:hover img {{ transform: scale(1.05); }}</style><div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">{promo_title}</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>''')
 
-                # --- ГЕО ---
                 if use_geo and client:
                     log_container.write(f"   ↳ 🌍 Пишем доставку...")
                     try:
@@ -3806,28 +3779,22 @@ with tab_wholesale_main:
                 # =========================================================
                 # СБОРКА И СОХРАНЕНИЕ
                 # =========================================================
-                
-                # Внедрение инъекций (таблицы, теги, промо) в текст
                 effective_blocks_count = max(1, user_num_blocks)
                 for i_inj, inj in enumerate(injections):
                     target_idx = i_inj % effective_blocks_count
                     blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
 
-                # Распределение по колонкам Excel
                 for i_c, c_name in enumerate(TEXT_CONTAINERS):
                     row_data[c_name] = blocks[i_c]
 
-                # Сохранение в DataFrame
                 new_row_df = pd.DataFrame([row_data])
                 st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, new_row_df], ignore_index=True)
                 
-                # Сохранение в Excel (бинарник)
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     st.session_state.gen_result_df.to_excel(writer, index=False)
                 st.session_state.unified_excel_data = buffer.getvalue()
                 
-                # Обновление UI
                 live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
                 full_row_html = "".join([str(val) for val in row_data.values()])
                 bolds_fact = full_row_html.count("<b>")
@@ -4297,6 +4264,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
