@@ -3294,7 +3294,7 @@ with tab_wholesale_main:
             with col_res_info:
                 st.caption("Нажмите, чтобы автоматически продолжить с места остановки.")
 
-    # 3. НАСТРОЙКИ ЗАПУСКА
+# 3. НАСТРОЙКИ ЗАПУСКА
     col_batch1, col_batch2, col_batch3 = st.columns([1, 1, 2])
     
     with col_batch1:
@@ -3304,7 +3304,6 @@ with tab_wholesale_main:
             start_index = st.session_state.auto_current_index
         else:
             # Если хотим начать заново или с конкретного места вручную
-            # Значение по умолчанию берем из last_stopped_index, чтобы было удобно
             start_index = st.number_input("Начать с товара № (с 0)", min_value=0, value=st.session_state.last_stopped_index, step=1)
 
     with col_batch2:
@@ -3313,8 +3312,28 @@ with tab_wholesale_main:
     with col_batch3:
         st.write("")
         st.write("")
-        # Галочка теперь просто настройка, она не запускает процесс сама по себе
         enable_auto_chain = st.checkbox("🔄 Авто-переход к следующей пачке", value=True, help="Если активно, скрипт будет сам перезагружаться пока не пройдет все товары.")
+
+    # --- НОВАЯ КНОПКА СБРОСА КЭША ---
+    st.markdown("---")
+    col_clear, _ = st.columns([2, 3])
+    with col_clear:
+        if st.button("🗑️ ОЧИСТИТЬ КЭШ ГЕНЕРАЦИИ (Сброс таблицы)", type="secondary", use_container_width=True, help="Удаляет все сгенерированные результаты. Позволяет начать заново на те же товары без пропуска дублей."):
+            # Сбрасываем датафрейм, но сохраняем структуру колонок
+            st.session_state.gen_result_df = pd.DataFrame(columns=[
+                'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
+                'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
+                'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 
+                'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831'
+            ])
+            st.session_state.unified_excel_data = None
+            st.session_state.auto_current_index = 0
+            st.session_state.last_stopped_index = 0
+            st.toast("✅ Кэш полностью очищен! Можно запускать заново.", icon="🗑️")
+            time.sleep(1)
+            st.rerun()
+
+    st.markdown("---")
 
     # 4. КНОПКИ УПРАВЛЕНИЯ (Раздельные)
     c_start, c_stop = st.columns([2, 1])
@@ -4154,6 +4173,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
