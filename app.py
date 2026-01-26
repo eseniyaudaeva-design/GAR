@@ -1948,7 +1948,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     seo_words = seo_words or []
     seo_instruction_block = ""
     
-    # === 1. ИНСТРУКЦИЯ ПО SEO (Ваш вариант) ===
+    # === 1. ИНСТРУКЦИЯ ПО SEO (ИСПРАВЛЕНО: УБРАНО ТРЕБОВАНИЕ ВЫДЕЛЕНИЯ) ===
     if seo_words:
         seo_list_str = ", ".join(seo_words)
         seo_instruction_block = f"""
@@ -1957,6 +1957,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 
 ПРАВИЛА ВНЕДРЕНИЯ И ВЫДЕЛЕНИЯ:
 1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем {num_blocks} блокам.
+2. СТРОГО ЗАПРЕЩЕНО: Не выделяй ключевые слова жирным шрифтом (**текст** или <b>текст</b>). Вписывай их как обычный текст.
 4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь.
 ПРИМЕРЫ ТОГО, КАК НАДО И НЕ НАДО ДЕЛАТЬ:
 1. Ключ: "тонна"
@@ -2025,6 +2026,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     ФИНАЛЬНЫЕ УСЛОВИЯ:
     - Никаких вводных слов типа "Вот ваш код".
     - Никакого Markdown (```).
+    - НИКАКОГО ЖИРНОГО ТЕКСТА.
     - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
     """
     
@@ -2039,7 +2041,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         )
         content = response.choices[0].message.content
         
-        # === ЧИСТКА ===
+        # === ЧИСТКА ОТ MARKDOWN И МУСОРА ===
         content = re.sub(r'^```[a-zA-Z]*\s*', '', content.strip())
         content = re.sub(r'\s*```$', '', content.strip())
         
@@ -2048,37 +2050,27 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         cleaned_blocks = []
         for b in blocks:
             cb = re.sub(r'^```[a-zA-Z]*', '', b).strip().lstrip('`.').strip()
+            
+            # Убираем дубль H2, если ИИ его все-таки написал
+            cb = re.sub(r'^<h2.*?>.*?</h2>', '', cb, flags=re.DOTALL | re.IGNORECASE).strip()
+            
+            # === ФИЗИЧЕСКОЕ УДАЛЕНИЕ ЖИРНОГО ТЕКСТА ===
+            # 1. Удаляем Markdown жирный (**текст**)
+            cb = cb.replace("**", "")
+            # 2. Удаляем HTML теги жирного (<b>, </b>, <strong>, </strong>)
+            cb = re.sub(r'</?(b|strong)>', '', cb, flags=re.IGNORECASE)
+            
             if cb: cleaned_blocks.append(cb)
             
         while len(cleaned_blocks) < num_blocks: cleaned_blocks.append("")
+        
+        # === ПРИНУДИТЕЛЬНАЯ ВСТАВКА ЗАГОЛОВКА ===
+        if cleaned_blocks:
+            final_h2_text = forced_header if forced_header else tag_name
+            cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{cleaned_blocks[0]}"
+
         return cleaned_blocks[:num_blocks]
-    except Exception as e:
-        return [f"API Error: {str(e)}"] * num_blocks
-    
-    try:
-        response = client.chat.completions.create(
-            model="google/gemini-2.5-pro",
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=1 
-        )
-        content = response.choices[0].message.content
         
-        # === ЧИСТКА ===
-        content = re.sub(r'^```[a-zA-Z]*\s*', '', content.strip())
-        content = re.sub(r'\s*```$', '', content.strip())
-        
-        blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
-        
-        cleaned_blocks = []
-        for b in blocks:
-            cb = re.sub(r'^```[a-zA-Z]*', '', b).strip().lstrip('`.').strip()
-            if cb: cleaned_blocks.append(cb)
-            
-        while len(cleaned_blocks) < num_blocks: cleaned_blocks.append("")
-        return cleaned_blocks[:num_blocks]
     except Exception as e:
         return [f"API Error: {str(e)}"] * num_blocks
 
@@ -4281,6 +4273,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
