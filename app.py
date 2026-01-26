@@ -1916,8 +1916,9 @@ def get_page_data_for_gen(url):
     
     if not target_h2:
         target_h2 = soup.find('h2')
-        
-    page_header = target_h2.get_text(strip=True) if target_h2 else "Описание товара"
+    
+    # ИЗМЕНЕНИЕ: Если H2 нет, возвращаем None, чтобы скрипт взял имя товара из ссылки
+    page_header = target_h2.get_text(strip=True) if target_h2 else None
 
     # 2. Фактура (текст)
     if description_div:
@@ -4249,6 +4250,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
