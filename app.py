@@ -1889,21 +1889,37 @@ STATIC_DATA_GEN = {
 }
 
 def get_page_data_for_gen(url):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    # Попытка 1: Имитация браузера через curl_cffi (Обходит защиту SSL)
     try:
-        response = requests.get(url, headers=headers, timeout=15, verify=False)
-        response.encoding = 'utf-8'
-    except Exception as e: return None, None, None, f"Ошибка соединения: {e}"
+        from curl_cffi import requests as cffi_requests
+        response = cffi_requests.get(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}, 
+            timeout=25, 
+            impersonate="chrome110"
+        )
+        if response.status_code == 403: raise Exception("403 Forbidden via CFFI")
+        content = response.content
+        encoding = response.encoding if response.encoding else 'utf-8'
+    except Exception as e:
+        # Попытка 2: Обычный requests (Fallback)
+        try:
+            import requests
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            response = requests.get(url, headers=headers, timeout=20, verify=False)
+            content = response.content
+            encoding = response.encoding
+        except Exception as e2:
+            return None, None, None, f"Ошибка соединения: {e2}"
     
-    if response.status_code != 200: return None, None, None, f"Ошибка статуса: {response.status_code}"
+    if not content: return None, None, None, "Пустой ответ"
     
-    soup = BeautifulSoup(response.text, 'html.parser')
+    soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
     
-    # 1. ЗАГОЛОВОК: Ищем строго H2 (как вы просили)
-    # Сначала ищем в контентной части (часто бывает h2 в меню, который нам не нужен)
-    # Если есть класс description-container, ищем внутри него, если нет - первый H2 на странице
+    # 1. ЗАГОЛОВОК
     description_div = soup.find('div', class_='description-container')
-    
     target_h2 = None
     if description_div:
         target_h2 = description_div.find('h2')
@@ -1911,7 +1927,7 @@ def get_page_data_for_gen(url):
     if not target_h2:
         target_h2 = soup.find('h2')
         
-    page_header = target_h2.get_text(strip=True) if target_h2 else "Описание товара" # Дефолт, если H2 нет совсем
+    page_header = target_h2.get_text(strip=True) if target_h2 else "Описание товара"
 
     # 2. Фактура (текст)
     base_text = description_div.get_text(separator="\n", strip=True) if description_div else soup.body.get_text(separator="\n", strip=True)[:5000]
@@ -3516,28 +3532,53 @@ with tab_wholesale_main:
                     except: pass
             return results_map
 
-        # === СБОР СТРАНИЦ ===
+# === СБОР СТРАНИЦ (ИСПРАВЛЕНО: ЗАЩИТА ОТ SSL ОШИБОК) ===
         log_container.write("📥 Сбор списка страниц...")
         target_pages = []
         try:
             if use_manual_html:
                 soup_main = BeautifulSoup(manual_html_source, 'html.parser')
             else:
-                session = requests.Session()
-                r = session.get(main_category_url, timeout=30, verify=False)
-                if r.status_code == 200: soup_main = BeautifulSoup(r.text, 'html.parser')
-                else: st.stop()
+                # Используем curl_cffi для обхода SSL ошибок
+                try:
+                    from curl_cffi import requests as cffi_requests
+                    r = cffi_requests.get(
+                        main_category_url, 
+                        impersonate="chrome110", 
+                        timeout=30,
+                        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
+                    )
+                    html_content = r.content
+                except:
+                    # Fallback
+                    session = requests.Session()
+                    r = session.get(main_category_url, timeout=30, verify=False)
+                    html_content = r.text
+
+                if r.status_code == 200: 
+                    soup_main = BeautifulSoup(html_content, 'html.parser')
+                else: 
+                    log_container.error(f"Ошибка доступа к категории: {r.status_code}")
+                    st.session_state.auto_run_active = False
+                    st.stop()
             
             if soup_main:
+                # Сбор ссылок
                 tags_container = soup_main.find(class_='popular-tags-inner')
                 if tags_container:
                     for link in tags_container.find_all('a'):
-                        target_pages.append({'url': urljoin(main_category_url or "http://localhost", link.get('href')), 'name': link.get_text(strip=True)})
+                        href = link.get('href')
+                        if href:
+                            full_url = urljoin(main_category_url or "http://localhost", href)
+                            target_pages.append({'url': full_url, 'name': link.get_text(strip=True)})
+                
+                # Если тегов нет, ищем хотя бы H1
                 if not target_pages:
                     h1_found = soup_main.find('h1')
                     target_pages.append({'url': main_category_url or "local", 'name': h1_found.get_text(strip=True) if h1_found else "Товар"})
+                    
         except Exception as e:
-            log_container.error(f"Ошибка сбора страниц: {e}")
+            log_container.error(f"Критическая ошибка сбора: {e}")
             st.session_state.auto_run_active = False
             st.stop()
 
@@ -4229,6 +4270,7 @@ with tab_monitoring:
             with col_del:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
+
 
 
 
