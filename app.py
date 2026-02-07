@@ -4274,7 +4274,7 @@ with tab_monitoring:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
 # ==========================================
-# TAB 5: LSI LIST GENERATOR (PRO B2B - FINAL FIX)
+# TAB 5: LSI LIST GENERATOR (PRO B2B - FINAL CLEAN)
 # ==========================================
 with tab_lsi_gen:
     st.header("📝 Генерация B2B текста (Hardcore Mode)")
@@ -4295,22 +4295,17 @@ with tab_lsi_gen:
         col_inp_1, col_inp_2 = st.columns(2)
         
         with col_inp_1:
-            target_context = st.text_input(
-                "1. Тема/Контекст (о чем статья?)", 
-                placeholder="Труба бесшовная 50х3 ст20", 
-                help="Это нужно нейросети, чтобы понять контекст."
-            )
-            
+            # ОСТАЛОСЬ ТОЛЬКО ОДНО ПОЛЕ
             target_h2_exact = st.text_input(
-                "2. Точный заголовок H2 (со страницы)", 
+                "1. Точный заголовок H2 (со страницы)", 
                 placeholder="Труба стальная бесшовная 50х3 мм ст.20 ГОСТ 8732-78", 
-                help="Скрипт вставит этот текст в <h2> без изменений."
+                help="Скрипт поймет тему из этого заголовка и вставит его в тег <h2> без изменений."
             )
             
         with col_inp_2:
             raw_lsi_common = st.text_area(
-                "3. Список LSI", 
-                height=150, 
+                "2. Список LSI", 
+                height=100, # Чуть уменьшил высоту, так как поле слева теперь одно
                 placeholder="купить\nцена\nдоставка\nв наличии\nоптом", 
                 help="Слова будут выделены жирным."
             )
@@ -4322,8 +4317,8 @@ with tab_lsi_gen:
             except: pass
         lsi_api_key = st.text_input("Google Gemini API Key", value=cached_key, type="password", key="lsi_gen_api_key")
 
-    # 2. ФУНКЦИЯ ГЕНЕРАЦИИ (ПОЛНЫЙ ПРОМТ)
-    def generate_lsi_article(api_key, context, exact_h2, lsi_keywords):
+    # 2. ФУНКЦИЯ ГЕНЕРАЦИИ (БЕЗ ОТДЕЛЬНОГО КОНТЕКСТА)
+    def generate_lsi_article(api_key, exact_h2, lsi_keywords):
         if not api_key: return "Error: No API Key"
         
         from openai import OpenAI
@@ -4340,7 +4335,7 @@ with tab_lsi_gen:
             "производитель, эффективный, кроме, рынок, рынке, решения"
         )
 
-        # 2. Блок HTML с JS (Экранируем фигурные скобки для Python f-string: {{ }})
+        # 2. Блок HTML с JS
         contact_html_block = (
             'Предлагаем консультацию с менеджером по номеру '
             '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
@@ -4354,9 +4349,10 @@ with tab_lsi_gen:
             "Ты выдаешь ТОЛЬКО HTML-код."
         )
         
-        # === ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ (ПОЛНЫЙ ВАРИАНТ) ===
+        # === ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ ===
+        # Используем exact_h2 и как тему задачи, и как заголовок
         user_prompt = f"""
-        ЗАДАЧА: Напиши текст для товара/категории: "{context}".
+        ЗАДАЧА: Напиши текст для товара/категории: "{exact_h2}".
         
         [I] ЭТАП 1: ТРЕБОВАНИЯ К НАПИСАНИЮ ТЕКСТА
         1. Структура текста:
@@ -4426,8 +4422,8 @@ with tab_lsi_gen:
 
     # 3. КНОПКА ЗАПУСКА
     if st.button("🚀 Сгенерировать по ТЗ", type="primary", key="btn_run_lsi_gen"):
-        if not target_context.strip() or not target_h2_exact.strip():
-            st.error("❌ Заполните Тему и Точный H2!")
+        if not target_h2_exact.strip():
+            st.error("❌ Заполните заголовок H2!")
         elif not lsi_api_key:
             st.error("❌ Введите API ключ!")
         else:
@@ -4435,7 +4431,8 @@ with tab_lsi_gen:
             lsi_list = [x.strip() for x in re.split(r'[,\n]+', raw_lsi_common) if x.strip()]
             
             with st.spinner(f"⏳ Генерация (Может занять 20-30 сек)..."):
-                article_html = generate_lsi_article(lsi_api_key, target_context, target_h2_exact, lsi_list)
+                # Теперь передаем только exact_h2
+                article_html = generate_lsi_article(lsi_api_key, target_h2_exact, lsi_list)
             
             if article_html.startswith("Error"):
                 st.error(f"Сбой API: {article_html}")
@@ -4449,14 +4446,13 @@ with tab_lsi_gen:
     if st.session_state.lsi_gen_result_html:
         
         st.markdown("---")
-        st.subheader(f"Результат для: {st.session_state.lsi_gen_result_topic}")
+        st.subheader(f"Результат: {st.session_state.lsi_gen_result_topic}")
         
         res_html = st.session_state.lsi_gen_result_html
         
         st.text_area("HTML Код", value=res_html, height=400)
         
         with st.expander("👀 Визуальный предпросмотр", expanded=True):
-            # Подстановка заглушек для предпросмотра, чтобы JS не ломал верстку (хотя в markdown он не исполнится)
             preview_html = res_html.replace("#PHONE#", "+7 (XXX) ...").replace("#EMAIL#", "mail@...")
             st.markdown(preview_html, unsafe_allow_html=True)
         
