@@ -4274,13 +4274,13 @@ with tab_monitoring:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
 # ==========================================
-# TAB 5: LSI LIST GENERATOR (NEW TOOL)
+# TAB 5: LSI LIST GENERATOR (SINGLE MODE)
 # ==========================================
 with tab_lsi_gen:
-    st.header("📝 Пакетная генерация LSI-текстов")
+    st.header("📝 Генерация LSI-текста (Одиночный режим)")
     st.markdown("""
-    Этот инструмент берет список заголовков и список LSI-слов, и генерирует для каждого заголовка 
-    **единый слитный текст** (объемом как 3 блока в Оптовом генераторе, ~2500 знаков).
+    Инструмент генерирует **один слитный текст** (объемом ~2500 знаков, эквивалент 3-х блоков) 
+    для указанного заголовка с внедрением списка LSI.
     """)
 
     # 1. НАСТРОЙКИ И ВВОД
@@ -4288,22 +4288,22 @@ with tab_lsi_gen:
         col_inp_1, col_inp_2 = st.columns(2)
         
         with col_inp_1:
-            raw_categories = st.text_area(
-                "1. Список заголовков (Товаров/Категорий)", 
-                height=300, 
-                placeholder="Труба бесшовная 50х3\nУголок стальной 100х100\nЛист рифленый", 
-                help="Каждая строка — это отдельная статья, которая будет сгенерирована."
+            # === ИЗМЕНЕНИЕ: ТЕПЕРЬ ЭТО ОБЫЧНАЯ СТРОКА (text_input) ===
+            target_category = st.text_input(
+                "1. Название категории (Заголовок)", 
+                placeholder="Труба бесшовная 50х3", 
+                help="Введите одно название товара или категории."
             )
             
         with col_inp_2:
             raw_lsi_common = st.text_area(
-                "2. Список LSI (Общий для всех)", 
-                height=300, 
+                "2. Список LSI (через Enter или запятую)", 
+                height=150, 
                 placeholder="купить\nцена\nдоставка\nгост\nв наличии\nоптом\nпроизводитель", 
                 help="Эти слова нейросеть постарается равномерно распределить по тексту."
             )
 
-        # API KEY (Пытаемся подтянуть из кэша, если вводили в других вкладках)
+        # API KEY (Пытаемся подтянуть из кэша)
         cached_key = st.session_state.get('gemini_key_cache', "")
         if not cached_key:
             try: cached_key = st.secrets["GEMINI_KEY"]
@@ -4311,7 +4311,7 @@ with tab_lsi_gen:
             
         lsi_api_key = st.text_input("Google Gemini API Key", value=cached_key, type="password", key="lsi_gen_api_key")
 
-    # 2. ФУНКЦИЯ ГЕНЕРАЦИИ (На основе промта из Tab 2)
+    # 2. ФУНКЦИЯ ГЕНЕРАЦИИ (Та же самая)
     def generate_lsi_article(api_key, topic, lsi_keywords):
         if not api_key: return "Error: No API Key"
         
@@ -4320,7 +4320,7 @@ with tab_lsi_gen:
         
         lsi_string = ", ".join(lsi_keywords)
         
-        # === ПРОМТ (Основан на generate_ai_content_blocks, но для слитного текста) ===
+        # === ПРОМТ ===
         system_instruction = (
             "Ты — профессиональный технический копирайтер. "
             "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами. "
@@ -4367,7 +4367,7 @@ with tab_lsi_gen:
                 temperature=0.3
             )
             content = response.choices[0].message.content
-            # Чистка от маркдауна, если вдруг проскочил
+            # Чистка
             content = re.sub(r'^```html', '', content.strip())
             content = re.sub(r'^```', '', content.strip())
             content = re.sub(r'```$', '', content.strip())
@@ -4376,69 +4376,50 @@ with tab_lsi_gen:
             return f"Error: {str(e)}"
 
     # 3. КНОПКА ЗАПУСКА
-    if st.button("🚀 Сгенерировать пакет (Excel)", type="primary", key="btn_run_lsi_gen"):
-        if not raw_categories.strip():
-            st.error("❌ Список заголовков пуст!")
+    if st.button("🚀 Сгенерировать текст", type="primary", key="btn_run_lsi_gen"):
+        if not target_category.strip():
+            st.error("❌ Введите название категории!")
         elif not lsi_api_key:
             st.error("❌ Введите API ключ!")
         else:
-            # Подготовка списков
-            categories = [x.strip() for x in raw_categories.split('\n') if x.strip()]
+            # Подготовка
             lsi_list = [x.strip() for x in re.split(r'[,\n]+', raw_lsi_common) if x.strip()]
             
-            # Контейнеры для отображения прогресса
-            progress_bar = st.progress(0)
-            status_area = st.empty()
-            result_data = []
-            
-            total_items = len(categories)
-            
-            for i, cat in enumerate(categories):
-                status_area.write(f"⏳ **[{i+1}/{total_items}]** Генерация: {cat}...")
-                
+            with st.spinner(f"⏳ Генерируем текст для: {target_category}..."):
                 # Генерация
-                article_html = generate_lsi_article(lsi_api_key, cat, lsi_list)
+                article_html = generate_lsi_article(lsi_api_key, target_category, lsi_list)
+            
+            # Проверка ошибок
+            if article_html.startswith("Error"):
+                st.error(f"Сбой API: {article_html}")
+            else:
+                st.success("✅ Готово!")
                 
-                # Проверка на ошибку API
-                if article_html.startswith("Error"):
-                    st.error(f"Сбой на '{cat}': {article_html}")
-                    article_html = "" # Пустой текст, чтобы не ломать таблицу
+                # Показываем результат сразу
+                st.subheader("Результат:")
                 
-                result_data.append({
-                    "Запрос (Заголовок)": cat,
-                    "LSI Контекст": ", ".join(lsi_list),
+                # HTML код для копирования
+                st.text_area("HTML Код (Скопируйте отсюда)", value=article_html, height=300)
+                
+                # Визуальный предпросмотр
+                with st.expander("👀 Визуальный предпросмотр", expanded=True):
+                    st.markdown(article_html, unsafe_allow_html=True)
+                
+                # Кнопка скачивания (если нужен Excel)
+                result_data = [{
+                    "Заголовок": target_category,
                     "HTML Текст": article_html,
-                    "Длина (симв)": len(article_html)
-                })
-                
-                # Обновление прогресса
-                progress_bar.progress((i + 1) / total_items)
-            
-            status_area.success(f"✅ Готово! Обработано {total_items} товаров.")
-            
-            # 4. СОЗДАНИЕ EXCEL И СКАЧИВАНИЕ
-            if result_data:
-                df_lsi = pd.DataFrame(result_data)
-                
-                buffer_lsi = io.BytesIO()
-                with pd.ExcelWriter(buffer_lsi, engine='xlsxwriter') as writer:
-                    df_lsi.to_excel(writer, index=False)
-                
-                col_d1, col_d2 = st.columns([1, 1])
-                with col_d1:
-                    st.download_button(
-                        label="📥 Скачать Excel (.xlsx)",
-                        data=buffer_lsi.getvalue(),
-                        file_name=f"LSI_Articles_{int(time.time())}.xlsx",
-                        mime="application/vnd.ms-excel",
-                        type="primary",
-                        use_container_width=True
-                    )
-                
-                # Предпросмотр последнего
-                with st.expander("👀 Предпросмотр последнего текста", expanded=True):
-                    st.markdown(result_data[-1]["HTML Текст"], unsafe_allow_html=True)
-                    st.text_area("HTML Код", value=result_data[-1]["HTML Текст"], height=200)
-
-                                    
-
+                    "LSI": ", ".join(lsi_list),
+                    "Длина": len(article_html)
+                }]
+                df_one = pd.DataFrame(result_data)
+                buffer_one = io.BytesIO()
+                with pd.ExcelWriter(buffer_one, engine='xlsxwriter') as writer:
+                    df_one.to_excel(writer, index=False)
+                    
+                st.download_button(
+                    label="📥 Скачать в Excel",
+                    data=buffer_one.getvalue(),
+                    file_name=f"Text_{transliterate_text(target_category)[:10]}.xlsx",
+                    mime="application/vnd.ms-excel"
+                )
