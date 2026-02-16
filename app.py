@@ -4325,7 +4325,7 @@ with tab_lsi_gen:
             return f"ERROR: H2 not found"
         except Exception as e: return f"ERROR: Parse ({str(e)})"
 
-    def generate_full_article(api_key, exact_h2, lsi_list):
+def generate_full_article(api_key, exact_h2, lsi_list):
         if not api_key: return "Error: No API Key"
         try:
             from openai import OpenAI
@@ -4475,9 +4475,11 @@ with tab_lsi_gen:
             content = content.replace('–', '&ndash;')
             content = content.replace('&mdash;', '&ndash;')
             
-            # --- СКРИПТ: УДАЛЕНИЕ ЖИРНОГО ШРИФТА ---
-            # Удаляем теги <b>, </b>, <strong>, </strong> и markdown **
-            content = re.sub(r'</?(b|strong)>', '', content)
+            # --- СКРИПТ: АГРЕССИВНОЕ УДАЛЕНИЕ ЖИРНОГО ШРИФТА ---
+            # Удаляет < b >, < strong >, <b class=...>, </ b> и т.д. в любом регистре
+            content = re.sub(r'<(/?b|/?strong)([^>]*)?>', '', content, flags=re.IGNORECASE)
+            
+            # Удаляет Markdown жирный (**текст**)
             content = content.replace('**', '')
             
             return content
@@ -4635,4 +4637,5 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
