@@ -4274,7 +4274,7 @@ with tab_monitoring:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
 # ==========================================
-# TAB 5: BULK LSI GENERATOR (PRO - NO COLONS IN NUMBERS)
+# TAB 5: BULK LSI GENERATOR (PRO - DEFAULT LSI & FORMATS)
 # ==========================================
 import requests
 from bs4 import BeautifulSoup
@@ -4284,8 +4284,8 @@ import io
 import re
 
 with tab_lsi_gen:
-    st.header("🏭 Массовая генерация B2B (Correct Formatting)")
-    st.markdown("Форматирование: **Цифры без знаков**, **Слова через тире**. Строчные H3.")
+    st.header("🏭 Массовая генерация B2B (Ready to Go)")
+    st.markdown("Предзаполненные LSI. Форматирование: **Цифры без знаков**, **Слова через тире**.")
 
     # --- 1. ИНИЦИАЛИЗАЦИЯ SESSION STATE ---
     if 'bg_tasks_queue' not in st.session_state:
@@ -4445,6 +4445,8 @@ with tab_lsi_gen:
             content = re.sub(r'^```html', '', content.strip())
             content = re.sub(r'^```', '', content.strip())
             content = re.sub(r'```$', '', content.strip())
+            # Глобальная замена на среднее тире
+            content = content.replace('—', '–').replace(' - ', ' – ')
             return content
         except Exception as e:
             return f"API Error: {str(e)}"
@@ -4456,11 +4458,14 @@ with tab_lsi_gen:
             try: cached_key = st.secrets["GEMINI_KEY"]
             except: pass
         
+        # Список LSI по умолчанию
+        default_lsi_text = "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, предлагаем, рассчитать, цены"
+        
         c1, c2 = st.columns([1, 2])
         with c1:
-            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v12")
+            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v13")
         with c2:
-            raw_lsi_common = st.text_area("LSI (общий)", height=68, placeholder="купить, цена, гост, вес...")
+            raw_lsi_common = st.text_area("LSI (общий)", height=150, value=default_lsi_text)
 
     # --- 4. UI: ЗАГРУЗКА ---
     st.subheader("1. Загрузка задач")
