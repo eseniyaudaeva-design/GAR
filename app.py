@@ -4475,6 +4475,11 @@ with tab_lsi_gen:
             content = content.replace('–', '&ndash;')
             content = content.replace('&mdash;', '&ndash;')
             
+            # --- СКРИПТ: УДАЛЕНИЕ ЖИРНОГО ШРИФТА ---
+            # Удаляем теги <b>, </b>, <strong>, </strong> и markdown **
+            content = re.sub(r'</?(b|strong)>', '', content)
+            content = content.replace('**', '')
+            
             return content
         except Exception as e:
             return f"API Error: {str(e)}"
@@ -4630,3 +4635,4 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
