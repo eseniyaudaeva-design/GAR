@@ -4379,9 +4379,11 @@ def generate_full_article(api_key, exact_h2, lsi_list):
              Между параметром и значением ставь СРЕДНЕЕ ТИРЕ (–).
              ХОРОШО: `Точность прокатки – повышенная`
 
-        3. ДИАПАЗОНЫ:
-           - Запрещено писать "от" и "до". Используй дефис без пробелов.
-             ХОРОШО: 4-60 мм
+        3. ДИАПАЗОНЫ (ВАЖНОЕ ИСКЛЮЧЕНИЕ):
+           - ОБЩЕЕ ПРАВИЛО: Используй дефис без пробелов (Пример: 4-60 мм).
+           - ИСКЛЮЧЕНИЕ: Для ТЕМПЕРАТУР и ОТРИЦАТЕЛЬНЫХ чисел ОБЯЗАТЕЛЬНО пиши "от ... до ...".
+             ПЛОХО: -40...+450 °C, -40--50 °C.
+             ХОРОШО: от -40 до +450 °C.
              
         4. ПУНКТУАЦИЯ В СПИСКАХ:
            - Технический список: в конце пункта точка с запятой (;), последний пункт — точка (.).
@@ -4450,7 +4452,7 @@ def generate_full_article(api_key, exact_h2, lsi_list):
         1.16. Финальный призыв (короткий).
 
         [III] ДОПОЛНИТЕЛЬНО:
-        1. LSI: {{{lsi_string}}}. Выдели <b>жирным</b>. (70% в начале текста).
+        1. LSI: {{{lsi_string}}}. (70% в начале текста).
         2. СТОП-СЛОВА (Запрещено использовать): ({stop_words_list}).
         3. Выведи ТОЛЬКО HTML.
         """
@@ -4475,12 +4477,13 @@ def generate_full_article(api_key, exact_h2, lsi_list):
             content = content.replace('–', '&ndash;')
             content = content.replace('&mdash;', '&ndash;')
             
-            # --- СКРИПТ: АГРЕССИВНОЕ УДАЛЕНИЕ ЖИРНОГО ШРИФТА ---
-            # Удаляет < b >, < strong >, <b class=...>, </ b> и т.д. в любом регистре
-            content = re.sub(r'<(/?b|/?strong)([^>]*)?>', '', content, flags=re.IGNORECASE)
-            
-            # Удаляет Markdown жирный (**текст**)
+            # --- СКРИПТ: ТОТАЛЬНОЕ УДАЛЕНИЕ ЖИРНОГО ШРИФТА ---
             content = content.replace('**', '')
+            content = content.replace('__', '')
+            content = content.replace('<b>', '').replace('</b>', '')
+            content = content.replace('<strong>', '').replace('</strong>', '')
+            content = re.sub(r'<b\b[^>]*>', '', content, flags=re.IGNORECASE)
+            content = re.sub(r'<strong\b[^>]*>', '', content, flags=re.IGNORECASE)
             
             return content
         except Exception as e:
@@ -4637,5 +4640,6 @@ def generate_full_article(api_key, exact_h2, lsi_list):
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
