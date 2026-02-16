@@ -4325,7 +4325,7 @@ with tab_lsi_gen:
             return f"ERROR: H2 not found"
         except Exception as e: return f"ERROR: Parse ({str(e)})"
 
-    def generate_full_article(api_key, exact_h2, lsi_list):
+def generate_full_article(api_key, exact_h2, lsi_list):
         if not api_key: return "Error: No API Key"
         try:
             from openai import OpenAI
@@ -4354,7 +4354,7 @@ with tab_lsi_gen:
             "Ты пишешь дерзко, по факту и с цифрами."
         )
         
-user_prompt = f"""
+        user_prompt = f"""
         ЗАДАЧА: Напиши мощный B2B текст для товара: "{exact_h2}".
         
         [I] ГЛАВНЫЕ ТРЕБОВАНИЯ К ОФОРМЛЕНИЮ (СТРОГО):
@@ -4470,16 +4470,9 @@ user_prompt = f"""
             content = re.sub(r'```$', '', content.strip())
             
             # --- СКРИПТ: ПРИНУДИТЕЛЬНАЯ ЗАМЕНА НА КОД &ndash; ---
-            # 1. Заменяем " пробел-дефис-пробел " на " пробел-&ndash;-пробел " (Для вашего скриншота)
             content = content.replace(' - ', ' &ndash; ')
-            
-            # 2. Заменяем символ длинного тире (—) на код &ndash;
             content = content.replace('—', '&ndash;')
-            
-            # 3. Заменяем символ среднего тире (–) на код &ndash;
             content = content.replace('–', '&ndash;')
-            
-            # 4. Если нейронка сама написала &mdash;, меняем на &ndash;
             content = content.replace('&mdash;', '&ndash;')
             
             return content
@@ -4637,4 +4630,5 @@ user_prompt = f"""
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
