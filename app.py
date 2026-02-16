@@ -4274,7 +4274,7 @@ with tab_monitoring:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
 # ==========================================
-# TAB 5: BULK LSI GENERATOR (PRO B2B - FIXED & CREATIVE)
+# TAB 5: BULK LSI GENERATOR (PRO B2B - FINAL FULL)
 # ==========================================
 import requests
 from bs4 import BeautifulSoup
@@ -4284,8 +4284,8 @@ import io
 import re
 
 with tab_lsi_gen:
-    st.header("🏭 Массовая генерация B2B (Creative Sales Mode)")
-    st.markdown("Генерация пачками. Креативные заголовки. Строгое ТЗ с цифрами.")
+    st.header("🏭 Массовая генерация B2B (Creative + Monitor)")
+    st.markdown("Генерация пачками. **Полный креативный промт**. Живой мониторинг.")
 
     # --- 1. ИНИЦИАЛИЗАЦИЯ SESSION STATE ---
     if 'bg_tasks_queue' not in st.session_state:
@@ -4298,12 +4298,8 @@ with tab_lsi_gen:
         st.session_state.bg_batch_size = 3
 
     # --- 2. ФУНКЦИИ ---
-
     def get_h2_from_url(url):
-        """
-        Умный парсинг H2 (Robust).
-        """
-        # Попытка 1: CURL_CFFI (Имитация браузера)
+        # Попытка 1: CURL_CFFI
         try:
             from curl_cffi import requests as cffi_requests
             r = cffi_requests.get(
@@ -4312,45 +4308,29 @@ with tab_lsi_gen:
                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'},
                 timeout=15
             )
-            content = r.content
-            encoding = r.encoding if r.encoding else 'utf-8'
-        except Exception:
-            # Попытка 2: Обычный Requests (Fallback)
+            content = r.content; encoding = r.encoding if r.encoding else 'utf-8'
+        except:
+            # Попытка 2: Requests
             try:
-                import urllib3
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                import urllib3; urllib3.disable_warnings()
                 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
                 r = requests.get(url, headers=headers, timeout=15, verify=False)
-                content = r.content
-                encoding = r.apparent_encoding
-            except Exception as e:
-                return f"ERROR: Connect Fail ({str(e)})"
-
-        # Парсинг HTML
+                content = r.content; encoding = r.apparent_encoding
+            except Exception as e: return f"ERROR: Connect ({str(e)})"
+        
         try:
             soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
-            
-            # 1. Ищем H2 в контейнере описания
             desc_div = soup.find('div', class_='description-container')
-            if desc_div:
-                h2 = desc_div.find('h2')
-                if h2: return h2.get_text(strip=True)
-
-            # 2. Ищем просто первый H2
-            h2 = soup.find('h2')
-            if h2: return h2.get_text(strip=True)
-            
-            # 3. Если H2 нет, ищем H1
-            h1 = soup.find('h1')
-            if h1: return h1.get_text(strip=True)
-
-            return f"ERROR: Тег <h2> не найден на {url}"
-        except Exception as e:
-            return f"ERROR: Parse Fail ({str(e)})"
+            if desc_div and desc_div.find('h2'): return desc_div.find('h2').get_text(strip=True)
+            if soup.find('h2'): return soup.find('h2').get_text(strip=True)
+            if soup.find('h1'): return soup.find('h1').get_text(strip=True)
+            return f"ERROR: H2 not found"
+        except Exception as e: return f"ERROR: Parse ({str(e)})"
 
     def generate_full_article(api_key, exact_h2, lsi_list):
         """
-        Генерация с КРЕАТИВНЫМ ХУКОМ (Banger Mode).
+        Генерация с ПОЛНЫМ КРЕАТИВНЫМ ПРОМТОМ.
+        Никаких сокращений. Вставлены все JS-цели и примеры.
         """
         if not api_key: return "Error: No API Key"
         
@@ -4362,6 +4342,7 @@ with tab_lsi_gen:
         
         lsi_string = ", ".join(lsi_list)
         
+        # 1. ПОЛНЫЙ БЛОК СТОП-СЛОВ
         stop_words_list = (
             "является, представляет собой, ключевой компонент, широко применяется, "
             "обладают, характеризуются, отличается, разнообразие, широкий спектр, "
@@ -4369,12 +4350,14 @@ with tab_lsi_gen:
             "высокое качество, доступная цена, индивидуальный подход"
         )
 
+        # 2. ПОЛНЫЙ БЛОК КОНТАКТОВ С JS
         contact_html_block = (
             'Предлагаем консультацию с менеджером по номеру '
             '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
             'либо пишите на почту <a href="mailto:#EMAIL#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'email\');gtag(\'event\', \'Click napisat nam\', {{\'event_category\' : \'Click\', \'event_label\' : \'napisat nam\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404">#EMAIL#</a>.'
         )
 
+        # 3. ПОЛНАЯ СИСТЕМНАЯ ИНСТРУКЦИЯ
         system_instruction = (
             "Ты — элитный B2B копирайтер с навыками креатива. "
             "Ты ненавидишь скучные вступления ('Предлагаем...', 'Компания реализует...'). "
@@ -4382,6 +4365,7 @@ with tab_lsi_gen:
             "Ты выдаешь ТОЛЬКО HTML-код."
         )
         
+        # 4. ПОЛНЫЙ ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ
         user_prompt = f"""
         ЗАДАЧА: Напиши мощный B2B текст для товара: "{exact_h2}".
         
@@ -4466,10 +4450,10 @@ with tab_lsi_gen:
                     {"role": "system", "content": system_instruction},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.4
+                temperature=0.4 # Креативность для хука
             )
             content = response.choices[0].message.content
-            
+            # Очистка
             content = re.sub(r'^```html', '', content.strip())
             content = re.sub(r'^```', '', content.strip())
             content = re.sub(r'```$', '', content.strip())
@@ -4477,7 +4461,7 @@ with tab_lsi_gen:
         except Exception as e:
             return f"API Error: {str(e)}"
 
-    # --- 3. ИНТЕРФЕЙС НАСТРОЕК ---
+    # --- 3. UI: НАСТРОЙКИ ---
     with st.expander("⚙️ Настройки и LSI", expanded=True):
         cached_key = st.session_state.get('gemini_key_cache', "")
         if not cached_key:
@@ -4486,142 +4470,150 @@ with tab_lsi_gen:
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_full")
+            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v3")
         with c2:
-            raw_lsi_common = st.text_area("Список LSI (общий для всех)", height=68, placeholder="купить, цена, гост...")
+            raw_lsi_common = st.text_area("LSI (общий)", height=68, placeholder="купить, цена, гост...")
 
-    # --- 4. ЗАГРУЗКА ЗАДАЧ ---
-    st.subheader("1. Загрузка списка")
-    
-    input_mode = st.radio("Источник данных:", ["Список URL (Парсим H2)", "Темы вручную (Это будет H2)"], horizontal=True)
+    # --- 4. UI: ЗАГРУЗКА ---
+    st.subheader("1. Загрузка задач")
+    input_mode = st.radio("Режим:", ["Список URL", "Темы вручную"], horizontal=True)
     
     col_inp, col_act = st.columns([3, 1])
     with col_inp:
-        raw_input_data = st.text_area("Вставьте список (каждый с новой строки)", height=150)
-    
+        raw_input_data = st.text_area("Список (строка = задача)", height=100)
     with col_act:
-        st.write("Действия:")
-        if st.button("📥 Загрузить очередь", use_container_width=True):
-            lines = [line.strip() for line in raw_input_data.split('\n') if line.strip()]
+        st.write(" ")
+        if st.button("📥 Загрузить", use_container_width=True):
+            lines = [l.strip() for l in raw_input_data.split('\n') if l.strip()]
             if lines:
                 st.session_state.bg_tasks_queue = []
                 st.session_state.bg_results = []
                 st.session_state.bg_current_index = 0
-                
                 t_type = 'url' if "URL" in input_mode else 'topic'
-                for l in lines:
-                    st.session_state.bg_tasks_queue.append({'type': t_type, 'val': l})
-                
+                for l in lines: st.session_state.bg_tasks_queue.append({'type': t_type, 'val': l})
                 st.success(f"Загружено: {len(lines)}")
                 st.rerun()
-            else:
-                st.warning("Пустой список!")
 
-    # --- 5. УПРАВЛЕНИЕ ГЕНЕРАЦИЕЙ ---
+    # --- 5. UI: ПРОЦЕСС ---
     total_q = len(st.session_state.bg_tasks_queue)
     completed_q = len(st.session_state.bg_results)
     remaining_q = total_q - completed_q
-    
+
     if total_q > 0:
         st.divider()
-        st.subheader(f"2. Процесс ({completed_q}/{total_q})")
+        st.subheader(f"2. Генерация ({completed_q}/{total_q})")
         
-        # Прогресс
-        progress_val = completed_q / total_q if total_q > 0 else 0
-        st.progress(progress_val)
-        
-        c_b1, c_b2, c_b3, c_b4 = st.columns([1, 1, 1, 1])
-        
+        # Контейнеры управления
+        c_b1, c_b2, c_b3 = st.columns([1, 2, 1])
         with c_b1:
-            st.session_state.bg_batch_size = st.number_input(
-                "Размер пачки", min_value=1, max_value=20, value=st.session_state.bg_batch_size
-            )
-            
+            st.session_state.bg_batch_size = st.number_input("Размер пачки", 1, 20, st.session_state.bg_batch_size)
         with c_b2:
-            label_btn = "▶️ СТАРТ" if completed_q == 0 else "⏯️ ПРОДОЛЖИТЬ"
-            if remaining_q == 0: label_btn = "✅ ГОТОВО"
-            
-            if st.button(label_btn, type="primary", disabled=(remaining_q == 0), use_container_width=True):
-                
-                if not lsi_api_key:
-                    st.error("Введите API Key!")
-                else:
-                    lsi_arr = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
-                    limit = min(st.session_state.bg_batch_size, remaining_q)
-                    start_i = st.session_state.bg_current_index
-                    end_i = start_i + limit
-                    
-                    status_ph = st.empty()
-                    
-                    for i in range(start_i, end_i):
-                        task = st.session_state.bg_tasks_queue[i]
-                        val = task['val']
-                        ttype = task['type']
-                        
-                        status_ph.info(f"⏳ Обработка [{i+1}/{total_q}]: {val}")
-                        
-                        final_h2 = ""
-                        src_url = ""
-                        
-                        if ttype == 'url':
-                            h2_res = get_h2_from_url(val)
-                            if h2_res.startswith("ERROR"):
-                                st.session_state.bg_results.append({
-                                    "source": val, "h2": "ERROR", 
-                                    "content": h2_res, "status": "Parse Fail"
-                                })
-                                continue
-                            else:
-                                final_h2 = h2_res
-                                src_url = val
-                        else:
-                            final_h2 = val
-                            src_url = "-"
-                            
-                        html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
-                        
-                        st.session_state.bg_results.append({
-                            "source": src_url,
-                            "h2": final_h2,
-                            "content": html_out,
-                            "status": "OK" if not html_out.startswith("API Error") else "Gen Fail"
-                        })
-                        time.sleep(1)
-                        
-                    st.session_state.bg_current_index = end_i
-                    status_ph.success(f"Пачка ({limit} шт.) готова!")
-
+            label_btn = "▶️ ЗАПУСК" if completed_q == 0 else "⏯️ ПРОДОЛЖИТЬ"
+            if remaining_q == 0: label_btn = "✅ ВСЕ ГОТОВО"
+            run_btn = st.button(label_btn, type="primary", disabled=(remaining_q == 0), use_container_width=True)
         with c_b3:
-            if st.button("🗑️ Сбросить всё", use_container_width=True):
+            if st.button("🗑️ Сброс", use_container_width=True):
                 st.session_state.bg_tasks_queue = []
                 st.session_state.bg_results = []
                 st.session_state.bg_current_index = 0
                 st.rerun()
 
-        with c_b4:
-            st.caption(f"Осталось: {remaining_q}")
+        # --- ЖИВАЯ ТАБЛИЦА (PLACEHOLDER) ---
+        st.write("📊 **Мониторинг процесса:**")
+        table_placeholder = st.empty()
 
-    # --- 6. ТАБЛИЦА РЕЗУЛЬТАТОВ ---
+        def render_live_table():
+            if st.session_state.bg_results:
+                display_data = []
+                for res in st.session_state.bg_results:
+                    inp_val = res['source'] if res['source'] != '-' else res['h2']
+                    content_preview = "⏳ Ожидание..."
+                    if res['status'] == 'OK':
+                        clean_text = re.sub(r'<[^>]+>', '', res['content'])[:90] + "..."
+                        content_preview = f"✅ {clean_text}"
+                    elif "Fail" in res['status']:
+                        content_preview = f"❌ Ошибка: {res['content']}"
+                    
+                    display_data.append({
+                        "Вход (URL/Тема)": inp_val,
+                        "Результат (Сниппет)": content_preview
+                    })
+                
+                df_disp = pd.DataFrame(display_data)
+                table_placeholder.dataframe(df_disp, use_container_width=True, hide_index=True)
+            else:
+                table_placeholder.info("Список пуст. Нажмите старт.")
+
+        render_live_table()
+
+        if run_btn:
+            if not lsi_api_key:
+                st.error("Нет API ключа!")
+            else:
+                lsi_arr = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
+                limit = min(st.session_state.bg_batch_size, remaining_q)
+                start_i = st.session_state.bg_current_index
+                end_i = start_i + limit
+                
+                prog_bar = st.progress(0)
+                
+                for i in range(start_i, end_i):
+                    task = st.session_state.bg_tasks_queue[i]
+                    val = task['val']; ttype = task['type']
+                    
+                    # 1. H2 Parsing
+                    final_h2 = val; src_url = "-"
+                    if ttype == 'url':
+                        h2_res = get_h2_from_url(val)
+                        if h2_res.startswith("ERROR"):
+                            st.session_state.bg_results.append({"source": val, "h2": "ERROR", "content": h2_res, "status": "Parse Fail"})
+                            render_live_table()
+                            continue
+                        final_h2 = h2_res; src_url = val
+                    
+                    # 2. Generation (Full Prompt)
+                    html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
+                    
+                    # 3. Save
+                    st.session_state.bg_results.append({
+                        "source": src_url,
+                        "h2": final_h2,
+                        "content": html_out,
+                        "status": "OK" if not html_out.startswith("API Error") else "Gen Fail"
+                    })
+                    
+                    render_live_table()
+                    prog_bar.progress((i - start_i + 1) / limit)
+                    
+                st.session_state.bg_current_index = end_i
+                st.success(f"Пачка из {limit} шт. готова!")
+
+    # --- 6. ПРЕВЬЮ И ЭКСПОРТ ---
     if st.session_state.bg_results:
         st.divider()
-        st.subheader("3. Готовые материалы")
+        st.subheader("3. Просмотр и Экспорт")
         
         df = pd.DataFrame(st.session_state.bg_results)
-        st.dataframe(df[["h2", "status", "source"]], use_container_width=True)
-        
         buf = io.BytesIO()
-        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False)
-            
-        st.download_button(
-            "📥 Скачать Excel (Все результаты)",
-            data=buf.getvalue(),
-            file_name=f"Bulk_Gen_{int(time.time())}.xlsx",
-            mime="application/vnd.ms-excel",
-            type="primary"
-        )
+        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer: df.to_excel(writer, index=False)
+        st.download_button("📥 Скачать Excel", data=buf.getvalue(), file_name="Gen_Result.xlsx", mime="application/vnd.ms-excel", type="primary")
+
+        st.markdown("---")
+        st.markdown("#### 👁️ Визуальный просмотр статьи")
         
-        with st.expander("👁️ Превью последнего результата"):
-            last = st.session_state.bg_results[-1]
-            st.markdown(f"**Тема:** {last['h2']}")
-            st.code(last['content'], language='html')
+        preview_options = [f"{i+1}. {r['h2']} (Source: {r['source']})" for i, r in enumerate(st.session_state.bg_results)]
+        selected_option = st.selectbox("Выберите статью для просмотра:", preview_options)
+        
+        if selected_option:
+            idx = int(selected_option.split(".")[0]) - 1
+            record = st.session_state.bg_results[idx]
+            content_to_show = record['content']
+            
+            with st.container(border=True):
+                if record['status'] == 'OK':
+                    st.markdown(content_to_show, unsafe_allow_html=True)
+                else:
+                    st.error(f"Ошибка генерации: {content_to_show}")
+            
+            with st.expander("Показать исходный HTML код"):
+                st.code(content_to_show, language='html')
