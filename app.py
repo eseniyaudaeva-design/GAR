@@ -4481,6 +4481,9 @@ def generate_full_article(api_key, exact_h2, lsi_list):
 
     # --- 3. UI: НАСТРОЙКИ ---
     with st.expander("⚙️ Настройки и LSI", expanded=True):
+
+    # --- 3. UI: НАСТРОЙКИ ---
+    with st.expander("⚙️ Настройки и LSI", expanded=True):
         cached_key = st.session_state.get('gemini_key_cache', "")
         if not cached_key:
             try: cached_key = st.secrets["GEMINI_KEY"]
@@ -4630,5 +4633,6 @@ def generate_full_article(api_key, exact_h2, lsi_list):
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
