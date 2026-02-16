@@ -4467,12 +4467,18 @@ with tab_lsi_gen:
             content = re.sub(r'^```', '', content.strip())
             content = re.sub(r'```$', '', content.strip())
             
-            # --- СКРИПТ: ЗАМЕНА ВСЕХ ТИРЕ НА NDASH ---
-            # 1. Заменяем длинное тире (mdash) на среднее (ndash)
-            content = content.replace('—', '–')
-            content = content.replace('&mdash;', '–')
-            # 2. Заменяем дефис с пробелами на среднее тире
-            content = content.replace(' - ', ' – ')
+            # --- СКРИПТ: ПРИНУДИТЕЛЬНАЯ ЗАМЕНА НА КОД &ndash; ---
+            # 1. Заменяем " пробел-дефис-пробел " на " пробел-&ndash;-пробел " (Для вашего скриншота)
+            content = content.replace(' - ', ' &ndash; ')
+            
+            # 2. Заменяем символ длинного тире (—) на код &ndash;
+            content = content.replace('—', '&ndash;')
+            
+            # 3. Заменяем символ среднего тире (–) на код &ndash;
+            content = content.replace('–', '&ndash;')
+            
+            # 4. Если нейронка сама написала &mdash;, меняем на &ndash;
+            content = content.replace('&mdash;', '&ndash;')
             
             return content
         except Exception as e:
