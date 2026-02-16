@@ -4274,7 +4274,7 @@ with tab_monitoring:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
 # ==========================================
-# TAB 5: BULK LSI GENERATOR (PRO B2B - FIXED)
+# TAB 5: BULK LSI GENERATOR (PRO B2B - FIXED & CREATIVE)
 # ==========================================
 import requests
 from bs4 import BeautifulSoup
@@ -4284,8 +4284,8 @@ import io
 import re
 
 with tab_lsi_gen:
-    st.header("🏭 Массовая генерация B2B (Full Prompt + Robust Parse)")
-    st.markdown("Генерация пачками. Умный парсинг H2 (обход блокировок). Строгое ТЗ.")
+    st.header("🏭 Массовая генерация B2B (Creative Sales Mode)")
+    st.markdown("Генерация пачками. Креативные заголовки. Строгое ТЗ с цифрами.")
 
     # --- 1. ИНИЦИАЛИЗАЦИЯ SESSION STATE ---
     if 'bg_tasks_queue' not in st.session_state:
@@ -4301,8 +4301,7 @@ with tab_lsi_gen:
 
     def get_h2_from_url(url):
         """
-        Умный парсинг H2.
-        Повторяет логику Таблицы 1 и 2: обход SSL и User-Agent.
+        Умный парсинг H2 (Robust).
         """
         # Попытка 1: CURL_CFFI (Имитация браузера)
         try:
@@ -4314,7 +4313,6 @@ with tab_lsi_gen:
                 timeout=15
             )
             content = r.content
-            # Кодировка
             encoding = r.encoding if r.encoding else 'utf-8'
         except Exception:
             # Попытка 2: Обычный Requests (Fallback)
@@ -4332,7 +4330,7 @@ with tab_lsi_gen:
         try:
             soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
             
-            # 1. Ищем H2 в контейнере описания (часто на B2B сайтах)
+            # 1. Ищем H2 в контейнере описания
             desc_div = soup.find('div', class_='description-container')
             if desc_div:
                 h2 = desc_div.find('h2')
@@ -4340,25 +4338,19 @@ with tab_lsi_gen:
 
             # 2. Ищем просто первый H2
             h2 = soup.find('h2')
-            if h2:
-                return h2.get_text(strip=True)
+            if h2: return h2.get_text(strip=True)
             
-            # 3. Если H2 нет, ищем H1 (как запасной вариант)
+            # 3. Если H2 нет, ищем H1
             h1 = soup.find('h1')
-            if h1:
-                return h1.get_text(strip=True)
+            if h1: return h1.get_text(strip=True)
 
             return f"ERROR: Тег <h2> не найден на {url}"
         except Exception as e:
             return f"ERROR: Parse Fail ({str(e)})"
 
-def generate_full_article(api_key, exact_h2, lsi_list):
+    def generate_full_article(api_key, exact_h2, lsi_list):
         """
         Генерация с КРЕАТИВНЫМ ХУКОМ (Banger Mode).
-        - Запрет на "Википедию" и скучное "Мы предлагаем" в начале.
-        - Хук через метафору, боль или результат.
-        - Списки с цифрами.
-        - Подводки через двоеточие.
         """
         if not api_key: return "Error: No API Key"
         
@@ -4370,7 +4362,6 @@ def generate_full_article(api_key, exact_h2, lsi_list):
         
         lsi_string = ", ".join(lsi_list)
         
-        # Блок стоп-слов (убрали коммерческие глаголы из стоп-листа, они нужны внутри текста, но не в начале)
         stop_words_list = (
             "является, представляет собой, ключевой компонент, широко применяется, "
             "обладают, характеризуются, отличается, разнообразие, широкий спектр, "
@@ -4378,7 +4369,6 @@ def generate_full_article(api_key, exact_h2, lsi_list):
             "высокое качество, доступная цена, индивидуальный подход"
         )
 
-        # HTML-блок контактов
         contact_html_block = (
             'Предлагаем консультацию с менеджером по номеру '
             '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
@@ -4409,7 +4399,7 @@ def generate_full_article(api_key, exact_h2, lsi_list):
         - "Хватит красить – начните сиять. Готовое цветное решение, которое не нужно обновлять."
         - "Фундамент, который переживет здание. Арматура с запасом прочности 30%."
         
-        Сделай так же для товара "{exact_h2}". Ударь в "боль" клиента, в экономию или надежность.
+        Сделай так же круто для товара "{exact_h2}". Ударь в "боль" клиента, в экономию или надежность.
         
         1.3. Информационный абзац 1: 
         Кратко: для какой задачи этот товар (без воды).
@@ -4476,7 +4466,7 @@ def generate_full_article(api_key, exact_h2, lsi_list):
                     {"role": "system", "content": system_instruction},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.4 # Чуть повысил креативность для хука
+                temperature=0.4
             )
             content = response.choices[0].message.content
             
@@ -4543,32 +4533,26 @@ def generate_full_article(api_key, exact_h2, lsi_list):
         c_b1, c_b2, c_b3, c_b4 = st.columns([1, 1, 1, 1])
         
         with c_b1:
-            # Выбор размера пачки
             st.session_state.bg_batch_size = st.number_input(
                 "Размер пачки", min_value=1, max_value=20, value=st.session_state.bg_batch_size
             )
             
         with c_b2:
-            # КНОПКА ЗАПУСКА / ПРОДОЛЖЕНИЯ
             label_btn = "▶️ СТАРТ" if completed_q == 0 else "⏯️ ПРОДОЛЖИТЬ"
             if remaining_q == 0: label_btn = "✅ ГОТОВО"
             
-            # Логика запуска строго по кнопке
             if st.button(label_btn, type="primary", disabled=(remaining_q == 0), use_container_width=True):
                 
                 if not lsi_api_key:
                     st.error("Введите API Key!")
                 else:
                     lsi_arr = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
-                    
-                    # Сколько делаем сейчас
                     limit = min(st.session_state.bg_batch_size, remaining_q)
                     start_i = st.session_state.bg_current_index
                     end_i = start_i + limit
                     
                     status_ph = st.empty()
                     
-                    # ЦИКЛ ОБРАБОТКИ ПАЧКИ
                     for i in range(start_i, end_i):
                         task = st.session_state.bg_tasks_queue[i]
                         val = task['val']
@@ -4576,15 +4560,12 @@ def generate_full_article(api_key, exact_h2, lsi_list):
                         
                         status_ph.info(f"⏳ Обработка [{i+1}/{total_q}]: {val}")
                         
-                        # 1. Получаем H2
                         final_h2 = ""
                         src_url = ""
                         
                         if ttype == 'url':
                             h2_res = get_h2_from_url(val)
-                            
                             if h2_res.startswith("ERROR"):
-                                # Ошибка парсинга - пишем в отчет и скипаем генерацию
                                 st.session_state.bg_results.append({
                                     "source": val, "h2": "ERROR", 
                                     "content": h2_res, "status": "Parse Fail"
@@ -4597,20 +4578,16 @@ def generate_full_article(api_key, exact_h2, lsi_list):
                             final_h2 = val
                             src_url = "-"
                             
-                        # 2. Генерируем
                         html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
                         
-                        # 3. Сохраняем
                         st.session_state.bg_results.append({
                             "source": src_url,
                             "h2": final_h2,
                             "content": html_out,
                             "status": "OK" if not html_out.startswith("API Error") else "Gen Fail"
                         })
+                        time.sleep(1)
                         
-                        time.sleep(1) # Анти-спам
-                        
-                    # После цикла обновляем индекс
                     st.session_state.bg_current_index = end_i
                     status_ph.success(f"Пачка ({limit} шт.) готова!")
 
@@ -4632,7 +4609,6 @@ def generate_full_article(api_key, exact_h2, lsi_list):
         df = pd.DataFrame(st.session_state.bg_results)
         st.dataframe(df[["h2", "status", "source"]], use_container_width=True)
         
-        # Скачивание
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
@@ -4645,9 +4621,7 @@ def generate_full_article(api_key, exact_h2, lsi_list):
             type="primary"
         )
         
-        # Превью
         with st.expander("👁️ Превью последнего результата"):
             last = st.session_state.bg_results[-1]
             st.markdown(f"**Тема:** {last['h2']}")
             st.code(last['content'], language='html')
-
