@@ -4274,57 +4274,58 @@ with tab_monitoring:
                 if st.button("🗑️", help="Удалить базу"):
                     os.remove(TRACK_FILE); st.rerun()
 # ==========================================
-# TAB 5: LSI LIST GENERATOR (PRO B2B - FINAL CLEAN)
+# TAB 5: BULK LSI GENERATOR (PRO B2B - FINAL)
 # ==========================================
+import requests
+from bs4 import BeautifulSoup
+import time
+import pandas as pd
+import io
+import re
+
 with tab_lsi_gen:
-    st.header("📝 Генерация B2B текста (Hardcore Mode)")
-    st.markdown("""
-    Генерация по строгому ТЗ: 4000 знаков, JS-цели, списки по 6 пунктов, стоп-слова < 1%, структура 1.1–1.11.
-    """)
+    st.header("🏭 Массовая генерация B2B (Full Prompt)")
+    st.markdown("Генерация пачками. Парсинг H2. Строгое ТЗ с JS-целями.")
 
-    # --- ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ ---
-    if 'lsi_gen_result_html' not in st.session_state:
-        st.session_state.lsi_gen_result_html = None
-    if 'lsi_gen_result_topic' not in st.session_state:
-        st.session_state.lsi_gen_result_topic = ""
-    if 'lsi_gen_result_list' not in st.session_state:
-        st.session_state.lsi_gen_result_list = []
+    # --- 1. ИНИЦИАЛИЗАЦИЯ SESSION STATE ---
+    if 'bg_tasks_queue' not in st.session_state:
+        st.session_state.bg_tasks_queue = []  # Очередь задач
+    if 'bg_results' not in st.session_state:
+        st.session_state.bg_results = []      # Результаты
+    if 'bg_current_index' not in st.session_state:
+        st.session_state.bg_current_index = 0 # Текущая позиция
+    if 'bg_batch_size' not in st.session_state:
+        st.session_state.bg_batch_size = 3
 
-    # 1. ВВОД ДАННЫХ
-    with st.container(border=True):
-        col_inp_1, col_inp_2 = st.columns(2)
-        
-        with col_inp_1:
-            # ОСТАЛОСЬ ТОЛЬКО ОДНО ПОЛЕ
-            target_h2_exact = st.text_input(
-                "1. Точный заголовок H2 (со страницы)", 
-                placeholder="Труба стальная бесшовная 50х3 мм ст.20 ГОСТ 8732-78", 
-                help="Скрипт поймет тему из этого заголовка и вставит его в тег <h2> без изменений."
-            )
-            
-        with col_inp_2:
-            raw_lsi_common = st.text_area(
-                "2. Список LSI", 
-                height=100, # Чуть уменьшил высоту, так как поле слева теперь одно
-                placeholder="купить\nцена\nдоставка\nв наличии\nоптом", 
-                help="Слова будут выделены жирным."
-            )
+    # --- 2. ФУНКЦИИ ---
 
-        # API KEY
-        cached_key = st.session_state.get('gemini_key_cache', "")
-        if not cached_key:
-            try: cached_key = st.secrets["GEMINI_KEY"]
-            except: pass
-        lsi_api_key = st.text_input("Google Gemini API Key", value=cached_key, type="password", key="lsi_gen_api_key")
+    def get_h2_from_url(url):
+        """Строго парсит первый H2 со страницы"""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                h2 = soup.find('h2')
+                if h2:
+                    return h2.get_text(strip=True)
+                else:
+                    return f"ERROR: Тег <h2> не найден на {url}"
+            else:
+                return f"ERROR: HTTP {response.status_code}"
+        except Exception as e:
+            return f"ERROR: {str(e)}"
 
-    # 2. ФУНКЦИЯ ГЕНЕРАЦИИ (БЕЗ ОТДЕЛЬНОГО КОНТЕКСТА)
-    def generate_lsi_article(api_key, exact_h2, lsi_keywords):
+    def generate_full_article(api_key, exact_h2, lsi_list):
+        """Генерация с ПОЛНЫМ промтом и JS-целями"""
         if not api_key: return "Error: No API Key"
         
         from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
         
-        lsi_string = ", ".join(lsi_keywords)
+        lsi_string = ", ".join(lsi_list)
         
         # 1. Блок стоп-слов
         stop_words_list = (
@@ -4335,7 +4336,7 @@ with tab_lsi_gen:
             "производитель, эффективный, кроме, рынок, рынке, решения"
         )
 
-        # 2. Блок HTML с JS
+        # 2. Блок HTML с JS (как в исходнике)
         contact_html_block = (
             'Предлагаем консультацию с менеджером по номеру '
             '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
@@ -4349,8 +4350,7 @@ with tab_lsi_gen:
             "Ты выдаешь ТОЛЬКО HTML-код."
         )
         
-        # === ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ ===
-        # Используем exact_h2 и как тему задачи, и как заголовок
+        # === ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ (ПОЛНЫЙ) ===
         user_prompt = f"""
         ЗАДАЧА: Напиши текст для товара/категории: "{exact_h2}".
         
@@ -4425,66 +4425,175 @@ with tab_lsi_gen:
                 temperature=0.3
             )
             content = response.choices[0].message.content
+            # Очистка markdown
             content = re.sub(r'^```html', '', content.strip())
             content = re.sub(r'^```', '', content.strip())
             content = re.sub(r'```$', '', content.strip())
             return content
         except Exception as e:
-            return f"Error: {str(e)}"
+            return f"API Error: {str(e)}"
 
-    # 3. КНОПКА ЗАПУСКА
-    if st.button("🚀 Сгенерировать по ТЗ", type="primary", key="btn_run_lsi_gen"):
-        if not target_h2_exact.strip():
-            st.error("❌ Заполните заголовок H2!")
-        elif not lsi_api_key:
-            st.error("❌ Введите API ключ!")
-        else:
-            # Подготовка
-            lsi_list = [x.strip() for x in re.split(r'[,\n]+', raw_lsi_common) if x.strip()]
-            
-            with st.spinner(f"⏳ Генерация (Может занять 20-30 сек)..."):
-                # Теперь передаем только exact_h2
-                article_html = generate_lsi_article(lsi_api_key, target_h2_exact, lsi_list)
-            
-            if article_html.startswith("Error"):
-                st.error(f"Сбой API: {article_html}")
+    # --- 3. ИНТЕРФЕЙС НАСТРОЕК ---
+    with st.expander("⚙️ Настройки и LSI", expanded=True):
+        cached_key = st.session_state.get('gemini_key_cache', "")
+        if not cached_key:
+            try: cached_key = st.secrets["GEMINI_KEY"]
+            except: pass
+        
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_full")
+        with c2:
+            raw_lsi_common = st.text_area("Список LSI (общий для всех)", height=68, placeholder="купить, цена, гост...")
+
+    # --- 4. ЗАГРУЗКА ЗАДАЧ ---
+    st.subheader("1. Загрузка списка")
+    
+    input_mode = st.radio("Источник данных:", ["Список URL (Парсим H2)", "Темы вручную (Это будет H2)"], horizontal=True)
+    
+    col_inp, col_act = st.columns([3, 1])
+    with col_inp:
+        raw_input_data = st.text_area("Вставьте список (каждый с новой строки)", height=150)
+    
+    with col_act:
+        st.write("Действия:")
+        if st.button("📥 Загрузить очередь", use_container_width=True):
+            lines = [line.strip() for line in raw_input_data.split('\n') if line.strip()]
+            if lines:
+                st.session_state.bg_tasks_queue = []
+                st.session_state.bg_results = []
+                st.session_state.bg_current_index = 0
+                
+                t_type = 'url' if "URL" in input_mode else 'topic'
+                for l in lines:
+                    st.session_state.bg_tasks_queue.append({'type': t_type, 'val': l})
+                
+                st.success(f"Загружено: {len(lines)}")
+                st.rerun()
             else:
-                st.success("✅ Готово!")
-                st.session_state.lsi_gen_result_html = article_html
-                st.session_state.lsi_gen_result_topic = target_h2_exact
-                st.session_state.lsi_gen_result_list = lsi_list
+                st.warning("Пустой список!")
 
-    # 4. ОТОБРАЖЕНИЕ
-    if st.session_state.lsi_gen_result_html:
+    # --- 5. УПРАВЛЕНИЕ ГЕНЕРАЦИЕЙ ---
+    total_q = len(st.session_state.bg_tasks_queue)
+    completed_q = len(st.session_state.bg_results)
+    remaining_q = total_q - completed_q
+    
+    if total_q > 0:
+        st.divider()
+        st.subheader(f"2. Процесс ({completed_q}/{total_q})")
         
-        st.markdown("---")
-        st.subheader(f"Результат: {st.session_state.lsi_gen_result_topic}")
+        # Прогресс
+        progress_val = completed_q / total_q if total_q > 0 else 0
+        st.progress(progress_val)
         
-        res_html = st.session_state.lsi_gen_result_html
+        c_b1, c_b2, c_b3, c_b4 = st.columns([1, 1, 1, 1])
         
-        st.text_area("HTML Код", value=res_html, height=400)
+        with c_b1:
+            # Выбор размера пачки
+            st.session_state.bg_batch_size = st.number_input(
+                "Размер пачки", min_value=1, max_value=20, value=st.session_state.bg_batch_size
+            )
+            
+        with c_b2:
+            # КНОПКА ЗАПУСКА / ПРОДОЛЖЕНИЯ
+            label_btn = "▶️ СТАРТ" if completed_q == 0 else "⏯️ ПРОДОЛЖИТЬ"
+            if remaining_q == 0: label_btn = "✅ ГОТОВО"
+            
+            # Логика запуска строго по кнопке
+            if st.button(label_btn, type="primary", disabled=(remaining_q == 0), use_container_width=True):
+                
+                if not lsi_api_key:
+                    st.error("Введите API Key!")
+                else:
+                    lsi_arr = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
+                    
+                    # Сколько делаем сейчас
+                    limit = min(st.session_state.bg_batch_size, remaining_q)
+                    start_i = st.session_state.bg_current_index
+                    end_i = start_i + limit
+                    
+                    status_ph = st.empty()
+                    
+                    # ЦИКЛ ОБРАБОТКИ ПАЧКИ
+                    for i in range(start_i, end_i):
+                        task = st.session_state.bg_tasks_queue[i]
+                        val = task['val']
+                        ttype = task['type']
+                        
+                        status_ph.info(f"⏳ Обработка [{i+1}/{total_q}]: {val}")
+                        
+                        # 1. Получаем H2
+                        final_h2 = ""
+                        src_url = ""
+                        
+                        if ttype == 'url':
+                            h2_res = get_h2_from_url(val)
+                            if h2_res.startswith("ERROR"):
+                                # Ошибка парсинга - пишем в отчет и скипаем генерацию
+                                st.session_state.bg_results.append({
+                                    "source": val, "h2": "ERROR", 
+                                    "content": h2_res, "status": "Parse Fail"
+                                })
+                                continue
+                            else:
+                                final_h2 = h2_res
+                                src_url = val
+                        else:
+                            final_h2 = val
+                            src_url = "-"
+                            
+                        # 2. Генерируем
+                        html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
+                        
+                        # 3. Сохраняем
+                        st.session_state.bg_results.append({
+                            "source": src_url,
+                            "h2": final_h2,
+                            "content": html_out,
+                            "status": "OK" if not html_out.startswith("API Error") else "Gen Fail"
+                        })
+                        
+                        time.sleep(1) # Анти-спам
+                        
+                    # После цикла обновляем индекс
+                    st.session_state.bg_current_index = end_i
+                    status_ph.success(f"Пачка ({limit} шт.) готова!")
+                    # Здесь можно сделать st.rerun(), если нужно сразу обновить таблицу, 
+                    # но иногда это сбивает UX. Оставим так, таблица обновится ниже.
+
+        with c_b3:
+            if st.button("🗑️ Сбросить всё", use_container_width=True):
+                st.session_state.bg_tasks_queue = []
+                st.session_state.bg_results = []
+                st.session_state.bg_current_index = 0
+                st.rerun()
+
+        with c_b4:
+            st.caption(f"Осталось: {remaining_q}")
+
+    # --- 6. ТАБЛИЦА РЕЗУЛЬТАТОВ ---
+    if st.session_state.bg_results:
+        st.divider()
+        st.subheader("3. Готовые материалы")
         
-        with st.expander("👀 Визуальный предпросмотр", expanded=True):
-            preview_html = res_html.replace("#PHONE#", "+7 (XXX) ...").replace("#EMAIL#", "mail@...")
-            st.markdown(preview_html, unsafe_allow_html=True)
+        df = pd.DataFrame(st.session_state.bg_results)
+        st.dataframe(df[["h2", "status", "source"]], use_container_width=True)
         
-        # Excel
-        result_data = [{
-            "H2 (Заголовок)": st.session_state.lsi_gen_result_topic,
-            "HTML Текст": res_html,
-            "LSI": ", ".join(st.session_state.lsi_gen_result_list),
-            "Длина": len(res_html)
-        }]
-        df_one = pd.DataFrame(result_data)
-        buffer_one = io.BytesIO()
-        with pd.ExcelWriter(buffer_one, engine='xlsxwriter') as writer:
-            df_one.to_excel(writer, index=False)
+        # Скачивание
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False)
             
         st.download_button(
-            label="📥 Скачать в Excel",
-            data=buffer_one.getvalue(),
-            file_name=f"Full_Text_{int(time.time())}.xlsx",
+            "📥 Скачать Excel (Все результаты)",
+            data=buf.getvalue(),
+            file_name=f"Bulk_Gen_{int(time.time())}.xlsx",
             mime="application/vnd.ms-excel",
             type="primary"
         )
-
+        
+        # Превью
+        with st.expander("👁️ Превью последнего результата"):
+            last = st.session_state.bg_results[-1]
+            st.markdown(f"**Тема:** {last['h2']}")
+            st.code(last['content'], language='html')
