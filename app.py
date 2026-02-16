@@ -4325,7 +4325,7 @@ with tab_lsi_gen:
             return f"ERROR: H2 not found"
         except Exception as e: return f"ERROR: Parse ({str(e)})"
 
-def generate_full_article(api_key, exact_h2, lsi_list):
+    def generate_full_article(api_key, exact_h2, lsi_list):
         if not api_key: return "Error: No API Key"
         try:
             from openai import OpenAI
@@ -4481,9 +4481,6 @@ def generate_full_article(api_key, exact_h2, lsi_list):
 
     # --- 3. UI: НАСТРОЙКИ ---
     with st.expander("⚙️ Настройки и LSI", expanded=True):
-
-    # --- 3. UI: НАСТРОЙКИ ---
-    with st.expander("⚙️ Настройки и LSI", expanded=True):
         cached_key = st.session_state.get('gemini_key_cache', "")
         if not cached_key:
             try: cached_key = st.secrets["GEMINI_KEY"]
@@ -4633,6 +4630,3 @@ def generate_full_article(api_key, exact_h2, lsi_list):
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
-
-
-
