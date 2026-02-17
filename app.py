@@ -4275,7 +4275,7 @@ with tab_monitoring:
                     os.remove(TRACK_FILE); st.rerun()
 
 # ==========================================
-# TAB 5: BULK LSI GENERATOR (PRO - FINAL TABLE FIX)
+# TAB 5: BULK LSI GENERATOR (PRO - FINAL WITH STYLES)
 # ==========================================
 import requests
 from bs4 import BeautifulSoup
@@ -4286,8 +4286,8 @@ import re
 import streamlit as st
 
 with tab_lsi_gen:
-    st.header("🏭 Массовая генерация B2B (Production Ready)")
-    st.markdown("Предзаполненные LSI. Форматирование: **Числа без 3,0**, **Таблица без div**, **Полный финал**.")
+    st.header("🏭 Массовая генерация B2B (Visual + Styles)")
+    st.markdown("Предзаполненные LSI. Форматирование: **Числа без 3,0**, **Таблица со стилями**, **Полный финал**.")
 
     # --- 1. ИНИЦИАЛИЗАЦИЯ SESSION STATE ---
     if 'bg_tasks_queue' not in st.session_state:
@@ -4674,6 +4674,86 @@ with tab_lsi_gen:
         preview_options = [f"{i+1}. {r['h2']}" for i, r in enumerate(st.session_state.bg_results)]
         selected_option = st.selectbox("Выберите статью для просмотра:", preview_options)
         
+        # --- СТИЛИ ДЛЯ ТАБЛИЦЫ (ВНЕДРЕНЫ ДЛЯ ПРЕДПРОСМОТРА) ---
+        table_css = """
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+            .brand-accent-table {
+                display: table !important;
+                width: 100% !important;
+                min-width: 100% !important;
+                border-collapse: separate !important;
+                border-spacing: 0 !important;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+                font-family: 'Inter', sans-serif;
+                border: 0 !important;
+                margin-top: 20px;
+                margin-bottom: 20px;
+            }
+
+            .brand-accent-table th {
+                background-color: #277EFF;
+                color: white;
+                text-align: left;
+                padding: 16px;
+                font-weight: 500;
+                font-size: 15px;
+                border: none;
+                vertical-align: middle;
+            }
+
+            .brand-accent-table th:first-child {
+                border-top-left-radius: 8px;
+            }
+
+            .brand-accent-table th:last-child {
+                border-top-right-radius: 8px;
+            }
+
+            .brand-accent-table td {
+                padding: 16px;
+                border-bottom: 1px solid #e5e7eb;
+                color: #4b5563;
+                font-size: 15px;
+                line-height: 1.4;
+                vertical-align: middle;
+                word-wrap: break-word;
+            }
+
+            .brand-accent-table tr:last-child td {
+                border-bottom: none;
+            }
+
+            .brand-accent-table tr:last-child td:first-child {
+                border-bottom-left-radius: 8px;
+            }
+
+            .brand-accent-table tr:last-child td:last-child {
+                border-bottom-right-radius: 8px;
+            }
+
+            .brand-accent-table tr:hover td {
+                background-color: #f8faff;
+            }
+
+            @media (max-width: 770px) {
+                .brand-accent-table th,
+                .brand-accent-table td {
+                    padding: 12px 10px !important;
+                    font-size: 13px !important;
+                }
+            }
+
+            .brand-accent-table th:first-child:nth-last-child(2),
+            .brand-accent-table th:first-child:nth-last-child(2) ~ th {
+                width: 50% !important;
+            }
+        </style>
+        """
+        
         if selected_option:
             idx = int(selected_option.split(".")[0]) - 1
             record = st.session_state.bg_results[idx]
@@ -4681,7 +4761,8 @@ with tab_lsi_gen:
             
             with st.container(border=True):
                 if record['status'] == 'OK':
-                    st.markdown(content_to_show, unsafe_allow_html=True)
+                    # Вставляем стили перед HTML контентом для корректного отображения
+                    st.markdown(table_css + content_to_show, unsafe_allow_html=True)
                 elif record['status'] == 'Skipped':
                     st.warning("Эта статья была пропущена как дубликат.")
                 else:
