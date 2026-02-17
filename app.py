@@ -4275,7 +4275,7 @@ with tab_monitoring:
                     os.remove(TRACK_FILE); st.rerun()
 
 # ==========================================
-# TAB 5: BULK LSI GENERATOR (PRO - DEFAULT LSI & FORMATS)
+# TAB 5: BULK LSI GENERATOR (PRO - AUTO BATCH & DEDUPE)
 # ==========================================
 import requests
 from bs4 import BeautifulSoup
@@ -4283,9 +4283,10 @@ import time
 import pandas as pd
 import io
 import re
+import streamlit as st # Добавил явный импорт, если его не было выше
 
 with tab_lsi_gen:
-    st.header("🏭 Массовая генерация B2B (Ready to Go)")
+    st.header("🏭 Массовая генерация B2B (Auto-Batching)")
     st.markdown("Предзаполненные LSI. Форматирование: **Цифры без знаков**, **Слова через тире**.")
 
     # --- 1. ИНИЦИАЛИЗАЦИЯ SESSION STATE ---
@@ -4296,7 +4297,7 @@ with tab_lsi_gen:
     if 'bg_current_index' not in st.session_state:
         st.session_state.bg_current_index = 0
     if 'bg_batch_size' not in st.session_state:
-        st.session_state.bg_batch_size = 3
+        st.session_state.bg_batch_size = 2 # По умолчанию 2, как просил
 
     # --- 2. ФУНКЦИИ ---
     def get_h2_from_url(url):
@@ -4496,7 +4497,6 @@ with tab_lsi_gen:
             try: cached_key = st.secrets["GEMINI_KEY"]
             except: pass
         
-        # Список LSI по умолчанию
         default_lsi_text = "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, предлагаем, рассчитать, цены"
         
         c1, c2 = st.columns([1, 2])
@@ -4534,14 +4534,19 @@ with tab_lsi_gen:
         st.divider()
         st.subheader(f"2. Генерация ({completed_q}/{total_q})")
         
+        # Настройки пачки и авто-режима
         c_b1, c_b2, c_b3 = st.columns([1, 2, 1])
         with c_b1:
             st.session_state.bg_batch_size = st.number_input("Размер пачки", 1, 20, st.session_state.bg_batch_size)
         with c_b2:
-            label_btn = "▶️ ЗАПУСК" if completed_q == 0 else "⏯️ ПРОДОЛЖИТЬ"
+            auto_run_mode = st.checkbox("🔄 Авто-переход к следующей пачке", value=True, help="Если включено, скрипт продолжит генерацию следующей пачки автоматически.")
+        
+        c_act1, c_act2 = st.columns([2, 1])
+        with c_act1:
+            label_btn = "▶️ ЗАПУСК ЦИКЛА" if completed_q == 0 else "⏯️ ПРОДОЛЖИТЬ"
             if remaining_q == 0: label_btn = "✅ ВСЕ ГОТОВО"
             run_btn = st.button(label_btn, type="primary", disabled=(remaining_q == 0), use_container_width=True)
-        with c_b3:
+        with c_act2:
             if st.button("🗑️ Сброс", use_container_width=True):
                 st.session_state.bg_tasks_queue = []
                 st.session_state.bg_results = []
@@ -4550,22 +4555,28 @@ with tab_lsi_gen:
 
         st.write("📊 **Мониторинг процесса:**")
         table_placeholder = st.empty()
+        status_placeholder = st.empty()
 
         def render_live_table():
             if st.session_state.bg_results:
                 display_data = []
                 for res in st.session_state.bg_results:
+                    # Определяем, что показывать в колонке входа
                     inp_val = res['source'] if res['source'] != '-' else res['h2']
+                    
                     content_preview = "⏳ Ожидание..."
                     if res['status'] == 'OK':
-                        clean_text = re.sub(r'<[^>]+>', '', res['content'])[:90] + "..."
+                        clean_text = re.sub(r'<[^>]+>', '', res['content'])[:70] + "..."
                         content_preview = f"✅ {clean_text}"
                     elif "Fail" in res['status']:
                         content_preview = f"❌ Ошибка: {res['content']}"
+                    elif res['status'] == 'Skipped':
+                        content_preview = "⚠️ Пропущен (Дубль)"
                     
                     display_data.append({
-                        "Вход (URL/Тема)": inp_val,
-                        "Результат (Сниппет)": content_preview
+                        "Вход": inp_val,
+                        "H2 / Тема": res['h2'],
+                        "Статус": content_preview
                     })
                 df_disp = pd.DataFrame(display_data)
                 table_placeholder.dataframe(df_disp, use_container_width=True, hide_index=True)
@@ -4577,39 +4588,93 @@ with tab_lsi_gen:
                 st.error("Нет API ключа!")
             else:
                 lsi_arr = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
-                limit = min(st.session_state.bg_batch_size, remaining_q)
-                start_i = st.session_state.bg_current_index
-                end_i = start_i + limit
                 
-                prog_bar = st.progress(0)
-                
-                for i in range(start_i, end_i):
-                    task = st.session_state.bg_tasks_queue[i]
-                    val = task['val']; ttype = task['type']
+                # --- ЦИКЛ ОБРАБОТКИ ПАЧЕК ---
+                # Бежим пока есть задачи (remaining_q > 0 пересчитывается внутри)
+                while st.session_state.bg_current_index < total_q:
                     
-                    final_h2 = val; src_url = "-"
-                    if ttype == 'url':
-                        h2_res = get_h2_from_url(val)
-                        if h2_res.startswith("ERROR"):
-                            st.session_state.bg_results.append({"source": val, "h2": "ERROR", "content": h2_res, "status": "Parse Fail"})
+                    start_i = st.session_state.bg_current_index
+                    # Определяем конец текущей пачки
+                    limit = st.session_state.bg_batch_size
+                    end_i = min(start_i + limit, total_q)
+                    
+                    status_placeholder.info(f"⏳ Обработка пачки: с {start_i+1} по {end_i}...")
+                    
+                    # Прогресс бар для текущей пачки
+                    prog_bar = st.progress(0)
+                    
+                    # Внутренний цикл пачки
+                    for i in range(start_i, end_i):
+                        task = st.session_state.bg_tasks_queue[i]
+                        val = task['val']
+                        ttype = task['type']
+                        
+                        # --- ПРОВЕРКА ДУБЛЕЙ (DEDUPLICATION) ---
+                        # Собираем список уже обработанных source (ссылок) и h2 (заголовков)
+                        existing_sources = {r['source'] for r in st.session_state.bg_results if r['source'] != '-'}
+                        existing_h2s = {r['h2'] for r in st.session_state.bg_results}
+                        
+                        is_duplicate = False
+                        if ttype == 'url' and val in existing_sources:
+                            is_duplicate = True
+                        elif ttype == 'topic' and val in existing_h2s:
+                            is_duplicate = True
+                            
+                        if is_duplicate:
+                            # Если дубль — записываем результат без траты API
+                            st.session_state.bg_results.append({
+                                "source": val if ttype == 'url' else "-",
+                                "h2": val if ttype == 'topic' else "Duplicated Link",
+                                "content": "Already processed",
+                                "status": "Skipped"
+                            })
                             render_live_table()
-                            continue
-                        final_h2 = h2_res; src_url = val
+                            prog_bar.progress((i - start_i + 1) / (end_i - start_i))
+                            continue # Пропускаем шаг генерации
+
+                        # --- ПОДГОТОВКА ДАННЫХ ---
+                        final_h2 = val
+                        src_url = "-"
+                        
+                        if ttype == 'url':
+                            h2_res = get_h2_from_url(val)
+                            if h2_res.startswith("ERROR"):
+                                st.session_state.bg_results.append({"source": val, "h2": "ERROR", "content": h2_res, "status": "Parse Fail"})
+                                render_live_table()
+                                continue
+                            final_h2 = h2_res
+                            src_url = val
+                        
+                        # --- ГЕНЕРАЦИЯ ---
+                        html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
+                        
+                        st.session_state.bg_results.append({
+                            "source": src_url,
+                            "h2": final_h2,
+                            "content": html_out,
+                            "status": "OK" if not html_out.startswith("API Error") else "Gen Fail"
+                        })
+                        
+                        render_live_table()
+                        prog_bar.progress((i - start_i + 1) / (end_i - start_i))
+                        # Небольшая пауза для стабильности UI
+                        time.sleep(0.1)
+
+                    # Обновляем глобальный индекс (курсор)
+                    st.session_state.bg_current_index = end_i
                     
-                    html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
+                    # Проверяем условия выхода из большого цикла
+                    if st.session_state.bg_current_index >= total_q:
+                        status_placeholder.success("✅ Все задачи выполнены!")
+                        break # Выход, если список кончился
                     
-                    st.session_state.bg_results.append({
-                        "source": src_url,
-                        "h2": final_h2,
-                        "content": html_out,
-                        "status": "OK" if not html_out.startswith("API Error") else "Gen Fail"
-                    })
-                    
-                    render_live_table()
-                    prog_bar.progress((i - start_i + 1) / limit)
-                    
-                st.session_state.bg_current_index = end_i
-                st.success(f"Пачка из {limit} шт. готова!")
+                    if not auto_run_mode:
+                        status_placeholder.warning("⏸️ Пауза. Нажмите кнопку, чтобы продолжить.")
+                        break # Выход, если авто-режим выключен
+                    else:
+                        # Если авто-режим включен, цикл while пойдет на новый круг
+                        time.sleep(1) # Пауза перед следующей пачкой
+                        continue
 
     # --- 6. ПРЕВЬЮ И ЭКСПОРТ ---
     if st.session_state.bg_results:
@@ -4635,6 +4700,8 @@ with tab_lsi_gen:
             with st.container(border=True):
                 if record['status'] == 'OK':
                     st.markdown(content_to_show, unsafe_allow_html=True)
+                elif record['status'] == 'Skipped':
+                    st.warning("Эта статья была пропущена как дубликат.")
                 else:
                     st.error(f"Ошибка генерации: {content_to_show}")
             
