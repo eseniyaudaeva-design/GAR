@@ -1229,12 +1229,17 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
     }
         
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
+    # --- ИМПОРТЫ И ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ВНУТРИ ---
     import math
     import pandas as pd
     import numpy as np
     from collections import Counter, defaultdict
     import re
     from urllib.parse import urlparse
+
+    # !!! ВОТ ЭТОЙ ФУНКЦИИ НЕ ХВАТАЛО !!!
+    def math_round(number): 
+        return int(number + 0.5)
 
     # --- 1. ПРИНУДИТЕЛЬНАЯ ИНИЦИАЛИЗАЦИЯ МОРФОЛОГИИ ---
     try:
@@ -1492,13 +1497,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Вхождений у вас": my_tf_count
         })
 
-    # ==========================================
+    # ============================================
     # 4. ФИНАЛЬНЫЙ СКОРИНГ (Оставляем как было для графиков)
-    # ==========================================
-    # ... (код скоринга оставляем без изменений для корректной работы графика) ...
-    # Я сокращу эту часть для компактности, так как она не влияет на таблицу TF-IDF, 
-    # но она нужна, чтобы скрипт не упал.
-    
+    # ============================================
     total_needed = len(words_with_median_gt_0)
     total_found = len(my_found_words_from_median)
     if total_needed > 0: my_width_score_final = int(min(100, (total_found / total_needed) * 105))
@@ -4762,6 +4763,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
