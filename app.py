@@ -4275,7 +4275,7 @@ with tab_monitoring:
                     os.remove(TRACK_FILE); st.rerun()
 
 # ==========================================
-# TAB 5: BULK LSI GENERATOR (PRO - FINAL WITH STYLES)
+# TAB 5: BULK LSI GENERATOR (PRO - FINAL WITH STYLES & SMART QUEUE)
 # ==========================================
 import requests
 from bs4 import BeautifulSoup
@@ -4286,16 +4286,15 @@ import re
 import streamlit as st
 
 with tab_lsi_gen:
-    st.header("🏭 Массовая генерация B2B (Visual + Styles)")
-    st.markdown("Предзаполненные LSI. Форматирование: **Числа без 3,0**, **Таблица со стилями**, **Полный финал**.")
+    st.header("🏭 Массовая генерация B2B (Visual + Styles + Fix)")
+    st.markdown("Предзаполненные LSI. Форматирование: **Числа без 3,0**, **Таблица со стилями**, **Плотность ключа 2%**.")
 
     # --- 1. ИНИЦИАЛИЗАЦИЯ SESSION STATE ---
     if 'bg_tasks_queue' not in st.session_state:
         st.session_state.bg_tasks_queue = []
     if 'bg_results' not in st.session_state:
         st.session_state.bg_results = []
-    if 'bg_current_index' not in st.session_state:
-        st.session_state.bg_current_index = 0
+    # bg_current_index убрали, так как теперь используем умную фильтрацию
     if 'bg_batch_size' not in st.session_state:
         st.session_state.bg_batch_size = 2
     # Флаг состояния: True = скрипт в цикле генерации
@@ -4362,100 +4361,42 @@ with tab_lsi_gen:
         ЗАДАЧА: Напиши мощный B2B текст для товара: "{exact_h2}".
         
         [I] ГЛАВНЫЕ ТРЕБОВАНИЯ К ОФОРМЛЕНИЮ (СТРОГО):
+        1. ЗАГОЛОВКИ H3: Обязательно содержат "{exact_h2}" (склоняй). Не используй капс.
+        2. СПИСКИ: Параметр и значение через тире (–), без лишних пробелов в цифрах. В конце пункта точка с запятой.
+        3. ЧИСЛА: Только значащие цифры (3; 5; 100). ЗАПРЕЩЕНО писать "3,0".
+        4. ДИАПАЗОНЫ: "от -40 до +450 °C", "4-60 мм".
+        5. ПОДВОДКИ: Всегда заканчиваются двоеточием.
 
-        1. ЗАГОЛОВКИ H3 (РЕГИСТР, ВХОЖДЕНИЕ, ЛАКОНИЧНОСТЬ):
-           - В КАЖДОМ H3 ОБЯЗАТЕЛЬНО ДОЛЖНО БЫТЬ НАЗВАНИЕ ТОВАРА ("{exact_h2}"), НО ЕГО НУЖНО СКЛОНЯТЬ ПО ПАДЕЖАМ.
-           - ПРАВИЛЬНО: "Механическая обработка {exact_h2} (в родительном падеже)".
-           - ЗАПРЕЩЕНО ПИСАТЬ ЗАГОЛОВКИ КАПСОМ.
-           
-        2. СПИСОК №1 (ТЕХНИЧЕСКИЙ):
-           - Цифры: между параметром и значением НЕТ знаков (пробел). Пример: "Толщина 4-60 мм".
-           - Текст: между параметром и значением СРЕДНЕЕ ТИРЕ (–). Пример: "Точность – высокая".
-           - В конце пункта точка с запятой (;), последний — точка.
-
-        3. ФОРМАТ ЧИСЕЛ (ОЧЕНЬ ВАЖНО):
-           - ПИШИ ТОЛЬКО ЗНАЧАЩИЕ ЦИФРЫ.
-           - СТРОГО ЗАПРЕЩЕНО писать "3,0", "5,0", "100,0".
-           - ПРАВИЛЬНО: 3; 5; 100.
-           - Дробные используй только если они реальные (2,5 или 0,4).
-
-        4. ДИАПАЗОНЫ:
-           - Для температур и минуса: "от -40 до +450 °C".
-           - Обычные: "4-60 мм" (дефис).
-             
-        5. ПОДВОДКИ К СПИСКАМ:
-           - Всегда заканчиваются двоеточием (:). Никаких точек.
-        
-        [II] СТРУКТУРА ТЕКСТА (ИСКЛЮЧИТЕЛЬНО ТЕХНИЧЕСКАЯ):
-        
+        [II] СТРУКТУРА ТЕКСТА:
         1.1. Заголовок: <h2>{exact_h2}</h2>.
-        
         1.2. БЭНГЕР (Хук): 3-4 ударных предложения.
-        
-        1.3. Абзац 1 + Контакты: 
-        {contact_html_block}
-        
-        1.4. Подводка к списку 1 (заканчивается на :).
-        
+        1.3. Абзац 1 + Контакты: {contact_html_block}
+        1.4. Подводка к списку 1.
         1.5. Список №1 (6 пунктов): ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ.
-        (Формат: "Толщина 4-60 мм;" или "Покрытие – цинковое;").
-           
-        1.6. Абзац 2. ТЕХНИЧЕСКОЕ ОПИСАНИЕ (4-5 предложений).
-        Раскрой тему (Способ производства, Состав, Конструкция).
-        
-        1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СТРОГИЙ HTML-ШАБЛОН):
-        Создай таблицу полезных данных (4-6 строк).
-        ВАЖНО: Данные не должны дублировать Список №1 слово в слово (дай расширенные характеристики).
-        ИСПОЛЬЗУЙ ТОЛЬКО ЭТОТ КОД (БЕЗ MARKDOWN):
-        <table class="brand-accent-table">
-            <thead>
-                <tr>
-                    <th>Характеристика</th>
-                    <th>Значения</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr><td>[Параметр 1]</td><td>[Значение 1]</td></tr>
-                <tr><td>[Параметр 2]</td><td>[Значение 2]</td></tr>
-                <tr><td>[Параметр 3]</td><td>[Значение 3]</td></tr>
-                <tr><td>[Параметр 4]</td><td>[Значение 4]</td></tr>
-            </tbody>
-        </table>
-        
-        1.8. Подзаголовок H3: 
-        Короткий заголовок (до 7 слов) с вхождением "{exact_h2}" (склоняй!).
-        (Тема: Классификация, Конструкция, Состав - выбери одну).
-        
-        1.9. Абзац 3. Детальное описание темы H3 (4-5 предложений).
-        
-        1.10. Подводка к списку 2 (заканчивается на :).
-        
+        1.6. Абзац 2. ТЕХНИЧЕСКОЕ ОПИСАНИЕ.
+        1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (HTML table class="brand-accent-table").
+        1.8. Подзаголовок H3 (с вхождением ключа).
+        1.9. Абзац 3.
+        1.10. Подводка к списку 2.
         1.11. Список №2 (6 пунктов): ПРИМЕНЕНИЕ.
-        (Полные предложения. В конце точка).
-           
-        1.12. Абзац 4. Технические детали эксплуатации.
-                              
-        1.13. Подзаголовок H3: 
-        Второй заголовок с вхождением "{exact_h2}" (склоняй!).
-        (Тема: Монтаж, Обработка, Настройка).
-        
-        1.14. Абзац 5. Описание нюансов (4-5 предложений).
-        
-        1.15. Подводка к списку 3 (заканчивается на :).
-        
-        1.16. Список №3 (6 пунктов): ВАЖНЫЕ ОСОБЕННОСТИ РАБОТЫ.
-        (Контекст: Свариваемость, Режимы, Стойкость).
-           
-        1.17. Абзац 6. Техническое резюме и условия сотрудничества (4-5 предложений).
-        Подведи итог по эксплуатационным преимуществам товара.
-        Плавно перейди к предложению обратиться в отдел продаж.
-        Это должен быть полноценный абзац такого же объема, как и предыдущие.
-        (Не используй вводные слова типа "В заключение", "В итоге").
+        1.12. Абзац 4.
+        1.13. Подзаголовок H3 (с вхождением ключа).
+        1.14. Абзац 5.
+        1.15. Подводка к списку 3.
+        1.16. Список №3 (6 пунктов): ВАЖНЫЕ ОСОБЕННОСТИ.
+        1.17. Абзац 6. Резюме и призыв к сотрудничеству.
 
         [III] ДОПОЛНИТЕЛЬНО:
         1. LSI: {{{lsi_string}}}. (70% в начале текста).
         2. СТОП-СЛОВА: ({stop_words_list}).
         3. Выведи ТОЛЬКО HTML.
+
+        [IV] SEO ТРЕБОВАНИЯ (ВАЖНО):
+        !!! КЛЮЧЕВОЕ СЛОВО: "{exact_h2}" !!!
+        Обеспечь плотность этого ключа строго около 2% от общего объема текста.
+        - Используй его в разных падежах (естественное склонение).
+        - Распредели вхождения равномерно по всем блокам (введение, списки, H3, абзацы).
+        - Не переспамливай в одном предложении, но убедись, что ключ встречается достаточно часто.
         """
         
         try:
@@ -4498,7 +4439,7 @@ with tab_lsi_gen:
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v13")
+            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v14")
         with c2:
             raw_lsi_common = st.text_area("LSI (общий)", height=150, value=default_lsi_text)
 
@@ -4516,7 +4457,7 @@ with tab_lsi_gen:
             if lines:
                 st.session_state.bg_tasks_queue = []
                 st.session_state.bg_results = []
-                st.session_state.bg_current_index = 0
+                # Сброс флагов
                 st.session_state.bg_is_running = False
                 t_type = 'url' if "URL" in input_mode else 'topic'
                 for l in lines: st.session_state.bg_tasks_queue.append({'type': t_type, 'val': l})
@@ -4526,11 +4467,26 @@ with tab_lsi_gen:
     # --- 5. UI: ПРОЦЕСС ---
     total_q = len(st.session_state.bg_tasks_queue)
     completed_q = len(st.session_state.bg_results)
-    remaining_q = total_q - completed_q
+    
+    # --- ЛОГИКА: ОПРЕДЕЛЕНИЕ ОСТАВШИХСЯ ЗАДАЧ ---
+    # Мы смотрим, какие задачи из очереди УЖЕ есть в результатах
+    existing_sources = {r['source'] for r in st.session_state.bg_results if r['source'] != '-'}
+    existing_h2s = {r['h2'] for r in st.session_state.bg_results}
+    
+    pending_indices = []
+    for idx, task in enumerate(st.session_state.bg_tasks_queue):
+        is_done = False
+        if task['type'] == 'url' and task['val'] in existing_sources: is_done = True
+        if task['type'] == 'topic' and task['val'] in existing_h2s: is_done = True
+        
+        if not is_done:
+            pending_indices.append(idx)
+            
+    remaining_real_q = len(pending_indices)
 
     if total_q > 0:
         st.divider()
-        st.subheader(f"2. Генерация ({completed_q}/{total_q})")
+        st.subheader(f"2. Генерация (Готово: {completed_q} | Осталось: {remaining_real_q})")
         
         # Настройки пачки
         c_b1, c_b2 = st.columns([1, 3])
@@ -4543,17 +4499,17 @@ with tab_lsi_gen:
         c_act1, c_act2 = st.columns([2, 1])
         with c_act1:
             if not st.session_state.bg_is_running:
-                label_btn = "▶️ ЗАПУСК ЦИКЛА" if completed_q == 0 else "⏯️ ПРОДОЛЖИТЬ"
-                if remaining_q == 0: label_btn = "✅ ВСЕ ГОТОВО"
+                label_btn = "▶️ ЗАПУСК ЦИКЛА"
+                if remaining_real_q == 0: label_btn = "✅ ВСЕ ЗАДАЧИ ВЫПОЛНЕНЫ"
                 
-                if st.button(label_btn, type="primary", disabled=(remaining_q == 0), use_container_width=True):
+                if st.button(label_btn, type="primary", disabled=(remaining_real_q == 0), use_container_width=True):
                     if not lsi_api_key:
                         st.error("Нет API ключа!")
                     else:
                         st.session_state.bg_is_running = True
                         st.rerun()
             else:
-                if st.button("⛔ СТОП (Пауза после текущей пачки)", type="secondary", use_container_width=True):
+                if st.button("⛔ СТОП (Пауза)", type="secondary", use_container_width=True):
                     st.session_state.bg_is_running = False
                     st.rerun()
 
@@ -4561,7 +4517,6 @@ with tab_lsi_gen:
             if st.button("🗑️ Сброс", use_container_width=True, disabled=st.session_state.bg_is_running):
                 st.session_state.bg_tasks_queue = []
                 st.session_state.bg_results = []
-                st.session_state.bg_current_index = 0
                 st.session_state.bg_is_running = False
                 st.rerun()
 
@@ -4571,12 +4526,14 @@ with tab_lsi_gen:
 
         def render_live_table():
             if st.session_state.bg_results:
+                # Показываем последние 10 результатов
+                disp_res = st.session_state.bg_results[::-1][:10]
                 display_data = []
-                for res in st.session_state.bg_results:
+                for res in disp_res:
                     inp_val = res['source'] if res['source'] != '-' else res['h2']
-                    content_preview = "⏳ Ожидание..."
+                    content_preview = "..."
                     if res['status'] == 'OK':
-                        clean_text = re.sub(r'<[^>]+>', '', res['content'])[:70] + "..."
+                        clean_text = re.sub(r'<[^>]+>', '', res['content'])[:50] + "..."
                         content_preview = f"✅ {clean_text}"
                     elif "Fail" in res['status']:
                         content_preview = f"❌ Ошибка: {res['content']}"
@@ -4593,70 +4550,64 @@ with tab_lsi_gen:
 
         render_live_table()
 
-        # --- ЛОГИКА ГЕНЕРАЦИИ (ТОЛЬКО ЕСЛИ ВКЛЮЧЕН ФЛАГ) ---
-        if st.session_state.bg_is_running and remaining_q > 0:
+        # --- ЛОГИКА ГЕНЕРАЦИИ (БЕЗ INDEX-HELL) ---
+        if st.session_state.bg_is_running and remaining_real_q > 0:
             lsi_arr = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
             
-            start_i = st.session_state.bg_current_index
-            limit = st.session_state.bg_batch_size
-            end_i = min(start_i + limit, total_q)
+            # Берем следующую пачку индексов из списка ожидающих
+            current_batch_indices = pending_indices[:st.session_state.bg_batch_size]
             
-            status_placeholder.info(f"🚀 Обработка пачки: {start_i+1} — {end_i} из {total_q}...")
+            status_placeholder.info(f"🚀 Обработка {len(current_batch_indices)} статей...")
             prog_bar = st.progress(0)
             
-            for i in range(start_i, end_i):
-                task = st.session_state.bg_tasks_queue[i]
+            for i, task_idx in enumerate(current_batch_indices):
+                task = st.session_state.bg_tasks_queue[task_idx]
                 val = task['val']; ttype = task['type']
                 
-                # ДУБЛИ
-                existing_sources = {r['source'] for r in st.session_state.bg_results if r['source'] != '-'}
-                existing_h2s = {r['h2'] for r in st.session_state.bg_results}
+                # Повторная проверка дублей внутри пачки (на всякий случай)
+                # Но благодаря логике pending_indices мы сюда попадаем только если их нет
                 
-                is_duplicate = False
-                if ttype == 'url' and val in existing_sources: is_duplicate = True
-                elif ttype == 'topic' and val in existing_h2s: is_duplicate = True
-                    
-                if is_duplicate:
-                    st.session_state.bg_results.append({
-                        "source": val if ttype == 'url' else "-",
-                        "h2": val if ttype == 'topic' else "Duplicated Link",
-                        "content": "Already processed",
-                        "status": "Skipped"
-                    })
-                else:
-                    # ГЕНЕРАЦИЯ
-                    final_h2 = val; src_url = "-"
-                    if ttype == 'url':
-                        h2_res = get_h2_from_url(val)
-                        if h2_res.startswith("ERROR"):
-                            st.session_state.bg_results.append({"source": val, "h2": "ERROR", "content": h2_res, "status": "Parse Fail"})
-                            render_live_table()
-                            continue
-                        final_h2 = h2_res; src_url = val
-                    
-                    html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
-                    
-                    st.session_state.bg_results.append({
-                        "source": src_url,
-                        "h2": final_h2,
-                        "content": html_out,
-                        "status": "OK" if not html_out.startswith("API Error") else "Gen Fail"
-                    })
+                final_h2 = val; src_url = "-"
+                
+                if ttype == 'url':
+                    h2_res = get_h2_from_url(val)
+                    if h2_res.startswith("ERROR"):
+                        st.session_state.bg_results.append({
+                            "source": val, 
+                            "h2": "ERROR", 
+                            "content": h2_res, 
+                            "status": "Parse Fail"
+                        })
+                        render_live_table()
+                        continue
+                    final_h2 = h2_res; src_url = val
+                
+                # Генерация с новым промтом (2%)
+                html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
+                
+                st.session_state.bg_results.append({
+                    "source": src_url,
+                    "h2": final_h2,
+                    "content": html_out,
+                    "status": "OK" if not html_out.startswith("API Error") else "Gen Fail"
+                })
                 
                 render_live_table()
-                prog_bar.progress((i - start_i + 1) / (end_i - start_i))
+                prog_bar.progress((i + 1) / len(current_batch_indices))
             
-            st.session_state.bg_current_index = end_i
-            
-            if st.session_state.bg_current_index >= total_q:
-                st.session_state.bg_is_running = False
-                status_placeholder.success("✅ Все задачи выполнены!")
-                st.rerun()
-            elif auto_run_mode:
+            # Проверка, остались ли еще задачи
+            # Пересчитываем remaining внутри цикла не обязательно, сделаем это при реране
+            if auto_run_mode:
                 st.rerun()
             else:
                 st.session_state.bg_is_running = False
+                status_placeholder.success("✅ Пачка готова! Жми продолжить или включи авто.")
                 st.rerun()
+        
+        elif st.session_state.bg_is_running and remaining_real_q == 0:
+             st.session_state.bg_is_running = False
+             st.success("Все задачи выполнены!")
+             st.rerun()
 
     # --- 6. ПРЕВЬЮ И ЭКСПОРТ ---
     if st.session_state.bg_results:
@@ -4674,83 +4625,17 @@ with tab_lsi_gen:
         preview_options = [f"{i+1}. {r['h2']}" for i, r in enumerate(st.session_state.bg_results)]
         selected_option = st.selectbox("Выберите статью для просмотра:", preview_options)
         
-        # --- СТИЛИ ДЛЯ ТАБЛИЦЫ (ВНЕДРЕНЫ ДЛЯ ПРЕДПРОСМОТРА) ---
+        # CSS STYLES
         table_css = """
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-
-            .brand-accent-table {
-                display: table !important;
-                width: 100% !important;
-                min-width: 100% !important;
-                border-collapse: separate !important;
-                border-spacing: 0 !important;
-                background: white;
-                border-radius: 8px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-                font-family: 'Inter', sans-serif;
-                border: 0 !important;
-                margin-top: 20px;
-                margin-bottom: 20px;
-            }
-
-            .brand-accent-table th {
-                background-color: #277EFF;
-                color: white;
-                text-align: left;
-                padding: 16px;
-                font-weight: 500;
-                font-size: 15px;
-                border: none;
-                vertical-align: middle;
-            }
-
-            .brand-accent-table th:first-child {
-                border-top-left-radius: 8px;
-            }
-
-            .brand-accent-table th:last-child {
-                border-top-right-radius: 8px;
-            }
-
-            .brand-accent-table td {
-                padding: 16px;
-                border-bottom: 1px solid #e5e7eb;
-                color: #4b5563;
-                font-size: 15px;
-                line-height: 1.4;
-                vertical-align: middle;
-                word-wrap: break-word;
-            }
-
-            .brand-accent-table tr:last-child td {
-                border-bottom: none;
-            }
-
-            .brand-accent-table tr:last-child td:first-child {
-                border-bottom-left-radius: 8px;
-            }
-
-            .brand-accent-table tr:last-child td:last-child {
-                border-bottom-right-radius: 8px;
-            }
-
-            .brand-accent-table tr:hover td {
-                background-color: #f8faff;
-            }
-
-            @media (max-width: 770px) {
-                .brand-accent-table th,
-                .brand-accent-table td {
-                    padding: 12px 10px !important;
-                    font-size: 13px !important;
-                }
-            }
-
-            .brand-accent-table th:first-child:nth-last-child(2),
-            .brand-accent-table th:first-child:nth-last-child(2) ~ th {
-                width: 50% !important;
-            }
+            .brand-accent-table { display: table !important; width: 100% !important; border-collapse: separate !important; border-spacing: 0 !important; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); font-family: 'Inter', sans-serif; border: 0 !important; margin-top: 20px; margin-bottom: 20px; }
+            .brand-accent-table th { background-color: #277EFF; color: white; text-align: left; padding: 16px; font-weight: 500; font-size: 15px; border: none; }
+            .brand-accent-table th:first-child { border-top-left-radius: 8px; }
+            .brand-accent-table th:last-child { border-top-right-radius: 8px; }
+            .brand-accent-table td { padding: 16px; border-bottom: 1px solid #e5e7eb; color: #4b5563; font-size: 15px; line-height: 1.4; vertical-align: middle; word-wrap: break-word; }
+            .brand-accent-table tr:last-child td { border-bottom: none; }
+            .brand-accent-table tr:hover td { background-color: #f8faff; }
         </style>
         """
         
@@ -4761,12 +4646,9 @@ with tab_lsi_gen:
             
             with st.container(border=True):
                 if record['status'] == 'OK':
-                    # Вставляем стили перед HTML контентом для корректного отображения
                     st.markdown(table_css + content_to_show, unsafe_allow_html=True)
-                elif record['status'] == 'Skipped':
-                    st.warning("Эта статья была пропущена как дубликат.")
                 else:
-                    st.error(f"Ошибка генерации: {content_to_show}")
+                    st.error(f"Статус: {record['status']}\n{content_to_show}")
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
