@@ -1230,15 +1230,38 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
     def math_round(number): return int(number + 0.5)
 
+    # Словарь для перевода частей речи pymorphy2 на русский
+    POS_MAP = {
+        'NOUN': 'Существительное', 'ADJF': 'Прилагательное', 'ADJS': 'Прилагательное (кр.)',
+        'VERB': 'Глагол', 'INFN': 'Глагол (инф.)', 'PRTF': 'Причастие',
+        'PRTS': 'Причастие (кр.)', 'GRND': 'Деепричастие', 'NUMR': 'Числительное',
+        'ADVB': 'Наречие', 'NPRO': 'Местоимение', 'PREP': 'Предлог',
+        'CONJ': 'Союз', 'PRCL': 'Частица', 'INTJ': 'Междометие', 'COMP': 'Компаратив'
+    }
+
     all_forms_map = defaultdict(set)
     global_forms_counter = defaultdict(Counter) 
-    
+    lemma_pos_map = {} # Словарь: Лемма -> Часть речи
+
+    # Вспомогательная функция для обновления мапы частей речи
+    def update_lemma_pos(word):
+        if not morph: return "Неизвестно"
+        p = morph.parse(word)[0]
+        lemma = p.normal_form
+        if lemma not in lemma_pos_map:
+            tag = p.tag.POS
+            lemma_pos_map[lemma] = POS_MAP.get(tag, 'Прочее')
+        return lemma
+
     # 1. МОЙ САЙТ
     if not my_data or not my_data.get('body_text'): 
         my_lemmas, my_forms, my_anchors, my_len = [], {}, [], 0
         my_clean_domain = "local"
     else:
+        # При обработке сразу сохраняем части речи
         my_lemmas, my_forms = process_text_detailed(my_data['body_text'], settings)
+        for w in my_lemmas: update_lemma_pos(w) # Обновляем POS
+
         my_anchors, _ = process_text_detailed(my_data['anchor_text'], settings)
         my_len = len(my_lemmas)
         for k, v in my_forms.items(): all_forms_map[k].update(v)
@@ -1250,7 +1273,10 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         if not p.get('body_text'): continue
         body, c_forms = process_text_detailed(p['body_text'], settings)
         
-        # Статистика реальных форм
+        # Обновляем POS для слов конкурентов
+        for w in body: update_lemma_pos(w)
+
+        # Статистика реальных форм (для красивого отображения в таблице Глубина)
         raw_words_for_stats = re.findall(r'[а-яА-ЯёЁ0-9a-zA-Z]+', p['body_text'].lower())
         for rw in raw_words_for_stats:
             if len(rw) < 2: continue
@@ -1270,7 +1296,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # МЕТРИКИ КОРПУСА
     c_lens = [len(d['body']) for d in comp_docs]
     avg_dl = np.mean(c_lens) if c_lens else 1
-    N = len(comp_docs) # Общее число документов в коллекции (конкурентов)
+    N = len(comp_docs) 
     
     vocab = set(my_lemmas)
     for d in comp_docs: vocab.update(d['body'])
@@ -1280,10 +1306,9 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     for d in comp_docs:
         for w in set(d['body']): doc_freqs[w] += 1
     
-    # Счетчик слов для каждого документа (нужен для TF)
     word_counts_per_doc = [Counter(d['body']) for d in comp_docs]
 
-    # IDF для скоринга (оставляем BM25 для графиков, чтобы не ломать логику баллов)
+    # IDF для BM25 (оставляем для скоринга)
     word_idf_map_bm25 = {}
     for lemma in vocab:
         df = doc_freqs[lemma]
@@ -1300,14 +1325,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     words_with_median_gt_0 = set() 
     my_found_words_from_median = set() 
     my_lemmas_set = set(my_lemmas)
-    
-    # Предварительный подсчет TF для вашего сайта (оптимизация)
     my_counts_map = Counter(my_lemmas)
 
     for lemma in vocab:
         if lemma in GARBAGE_LATIN_STOPLIST: continue
         
-        # --- 3.1. ДАННЫЕ ДЛЯ ГЛУБИНЫ (Медианы) ---
+        # Получаем часть речи
+        pos_name = lemma_pos_map.get(lemma, "Прочее")
+
+        # --- 3.1. ДАННЫЕ ДЛЯ ГЛУБИНЫ ---
         raw_counts = [word_counts_per_doc[i][lemma] for i in range(N)]
         sorted_raw = sorted(raw_counts)
         
@@ -1318,7 +1344,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         else:
             rec_median_absolute = 0; obs_min = 0; obs_max = 0
 
-        # Нормализация для медианы (если включена)
         if settings['norm'] and my_len > 0:
             norm_counts = []
             for i in range(N):
@@ -1330,10 +1355,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         else:
             rec_median_target = rec_median_absolute
 
-        # --- 3.2. ПОИСК ВХОЖДЕНИЙ (SMART FUZZY) ---
+        # --- 3.2. ПОИСК ВХОЖДЕНИЙ ---
         my_tf_count = my_counts_map[lemma]
-        
-        # Мягкий поиск корней для галочки "найдено"
         found_fuzzy = False
         if my_tf_count == 0 and rec_median_target > 0:
             for my_word in my_lemmas_set:
@@ -1344,27 +1367,20 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                     if lemma[:4] == my_word[:4]: 
                         found_fuzzy = True; break
         
-        if found_fuzzy: 
-            # Для статуса "Есть/Нет" ставим 1, но для TF-IDF оставим реальный 0, 
-            # так как физически слова нет.
-            my_tf_count_for_status = 1 
-        else:
-            my_tf_count_for_status = my_tf_count
+        my_tf_count_for_status = 1 if found_fuzzy else my_tf_count
 
         if obs_max == 0 and my_tf_count_for_status == 0: continue
 
-        # Собираем базу для ШИРИНЫ
         if rec_median_target >= 1:
             words_with_median_gt_0.add(lemma)
             if my_tf_count_for_status > 0:
                 my_found_words_from_median.add(lemma)
 
-        # Красивое слово для отображения
+        # Выбор наиболее частотной формы для отображения в "Глубине"
         display_word = lemma
         if global_forms_counter[lemma]:
             display_word = global_forms_counter[lemma].most_common(1)[0][0]
 
-        # Упущенная семантика (вес по BM25 IDF)
         if my_tf_count_for_status == 0:
             weight = word_idf_map_bm25.get(lemma, 0) * (rec_median_target if rec_median_target > 0 else 1)
             item = {'word': display_word, 'weight': weight}
@@ -1391,23 +1407,23 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "sort_val": sort_val
         })
         
-        # --- 3.3. РАСЧЕТ ДЛЯ ТАБЛИЦЫ 3 (НОВЫЙ TF-IDF) ---
-        # Формула IDF = log10(Total Docs / Docs with word)
+        # --- 3.3. РАСЧЕТ ДЛЯ ТАБЛИЦЫ 3 (TF-IDF + POS) ---
         df_val = doc_freqs[lemma]
+        
+        # IDF = log10(Total / DF). 
+        # Добавляем +1, чтобы избежать деления на ноль, если слово уникально (хотя тут vocab из всех)
         if df_val > 0:
-            # Используем log10 как в примере с Википедии (log(10M/1k) = 4)
             idf_classic = math.log10(N / df_val)
         else:
             idf_classic = 0
             
-        # 1. Считаем TF-IDF для каждого конкурента и берем среднее
+        # Средний TF-IDF конкурентов
         sum_tfidf_competitors = 0
         valid_competitors_count = 0
         
         for i in range(N):
             doc_len = c_lens[i]
             if doc_len > 0:
-                # TF = кол-во вхождений / всего слов в документе
                 tf_comp = word_counts_per_doc[i][lemma] / doc_len
                 tfidf_comp = tf_comp * idf_classic
                 sum_tfidf_competitors += tfidf_comp
@@ -1415,7 +1431,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         avg_tfidf_competitors = sum_tfidf_competitors / valid_competitors_count if valid_competitors_count > 0 else 0
         
-        # 2. Считаем TF-IDF для вашего сайта
+        # TF-IDF Ваш
         if my_len > 0:
             my_tf_real = my_counts_map[lemma] / my_len
             my_tfidf_real = my_tf_real * idf_classic
@@ -1424,18 +1440,17 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             my_tfidf_real = 0
 
         table_hybrid.append({
-            "Слово": display_word,
+            "Слово": lemma, # Для TF-IDF таблицы лучше показывать чистую лемму
+            "Часть речи": pos_name, # <-- НОВЫЙ СТОЛБЕЦ
             "TF-IDF Конкурентов": round(avg_tfidf_competitors, 6),
             "TF-IDF Ваш": round(my_tfidf_real, 6),
             "IDF Конкурентов": round(idf_classic, 4),
-            # IDF общий для корпуса, поэтому для вашего сайта он тот же
-            "IDF Ваш": round(idf_classic, 4), 
-            # Доп поля для проверки (полезно видеть частоту документов)
+            "IDF Ваш": round(idf_classic, 4),
             "Вхождений (Docs)": df_val 
         })
 
     # ============================================
-    # 4. ФИНАЛЬНЫЙ РАСЧЕТ БАЛЛОВ (BM25 Logic)
+    # 4. ФИНАЛЬНЫЙ РАСЧЕТ БАЛЛОВ
     # ============================================
     total_needed = len(words_with_median_gt_0)
     total_found = len(my_found_words_from_median)
@@ -1456,7 +1471,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         for word in S_WIDTH_CORE:
             if word not in counts: continue
             tf = counts[word]
-            # Тут используем BM25 IDF для правильного ранжирования
             idf = word_idf_map_bm25.get(word, 0)
             term_weight = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (doc_len / avg_dl)))
             score += term_weight
@@ -4739,6 +4753,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
