@@ -4275,7 +4275,7 @@ with tab_monitoring:
                     os.remove(TRACK_FILE); st.rerun()
 
 # ==========================================
-# TAB 5: BULK LSI GENERATOR (PRO - FINAL WITH STYLES & SMART QUEUE)
+# TAB 5: BULK LSI GENERATOR (PRO - FINAL + SMART QUEUE + FIXED HOOK)
 # ==========================================
 import requests
 from bs4 import BeautifulSoup
@@ -4286,18 +4286,16 @@ import re
 import streamlit as st
 
 with tab_lsi_gen:
-    st.header("🏭 Массовая генерация B2B (Visual + Styles + Fix)")
-    st.markdown("Предзаполненные LSI. Форматирование: **Числа без 3,0**, **Таблица со стилями**, **Плотность ключа 2%**.")
+    st.header("🏭 Массовая генерация B2B (Visual + Styles + Fixes)")
+    st.markdown("Предзаполненные LSI. Форматирование: **Числа без 3,0**, **Таблица со стилями**, **Плотность 2%**, **Вступление от товара**.")
 
     # --- 1. ИНИЦИАЛИЗАЦИЯ SESSION STATE ---
     if 'bg_tasks_queue' not in st.session_state:
         st.session_state.bg_tasks_queue = []
     if 'bg_results' not in st.session_state:
         st.session_state.bg_results = []
-    # bg_current_index убрали, так как теперь используем умную фильтрацию
     if 'bg_batch_size' not in st.session_state:
         st.session_state.bg_batch_size = 2
-    # Флаг состояния: True = скрипт в цикле генерации
     if 'bg_is_running' not in st.session_state:
         st.session_state.bg_is_running = False
 
@@ -4353,8 +4351,8 @@ with tab_lsi_gen:
 
         system_instruction = (
             "Ты — элитный B2B технический редактор. "
-            "Ты фанатично соблюдаешь правила пунктуации и оформления списков. "
-            "Ты пишешь дерзко, по факту и с цифрами."
+            "Ты пишешь конкретно, называя вещи своими именами. "
+            "Ты избегаешь безличных предложений в начале текста."
         )
         
         user_prompt = f"""
@@ -4369,7 +4367,14 @@ with tab_lsi_gen:
 
         [II] СТРУКТУРА ТЕКСТА:
         1.1. Заголовок: <h2>{exact_h2}</h2>.
-        1.2. БЭНГЕР (Хук): 3-4 ударных предложения.
+        
+        1.2. ВСТУПЛЕНИЕ (БЭНГЕР): 3-4 предложения.
+        !!! ВАЖНОЕ ПРАВИЛО !!!: 
+        - Первое предложение ОБЯЗАТЕЛЬНО должно начинаться с названия товара ("{exact_h2}") или содержать его как ПОДЛЕЖАЩЕЕ.
+        - СТРОГО ЗАПРЕЩЕНО начинать абзац с отглагольных существительных ("Снижение...", "Повышение...", "Обеспечение...", "Улучшение...").
+        - ПРАВИЛЬНО: "{exact_h2} обеспечивают снижение потерь..." (Сначала ТОВАР, потом ДЕЙСТВИЕ).
+        - НЕПРАВИЛЬНО: "Снижение потерь достигается за счет..." (Непонятно, о чем речь).
+        
         1.3. Абзац 1 + Контакты: {contact_html_block}
         1.4. Подводка к списку 1.
         1.5. Список №1 (6 пунктов): ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ.
@@ -4396,7 +4401,6 @@ with tab_lsi_gen:
         Обеспечь плотность этого ключа строго около 2% от общего объема текста.
         - Используй его в разных падежах (естественное склонение).
         - Распредели вхождения равномерно по всем блокам (введение, списки, H3, абзацы).
-        - Не переспамливай в одном предложении, но убедись, что ключ встречается достаточно часто.
         """
         
         try:
@@ -4439,7 +4443,7 @@ with tab_lsi_gen:
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v14")
+            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v15")
         with c2:
             raw_lsi_common = st.text_area("LSI (общий)", height=150, value=default_lsi_text)
 
@@ -4469,7 +4473,6 @@ with tab_lsi_gen:
     completed_q = len(st.session_state.bg_results)
     
     # --- ЛОГИКА: ОПРЕДЕЛЕНИЕ ОСТАВШИХСЯ ЗАДАЧ ---
-    # Мы смотрим, какие задачи из очереди УЖЕ есть в результатах
     existing_sources = {r['source'] for r in st.session_state.bg_results if r['source'] != '-'}
     existing_h2s = {r['h2'] for r in st.session_state.bg_results}
     
@@ -4526,7 +4529,6 @@ with tab_lsi_gen:
 
         def render_live_table():
             if st.session_state.bg_results:
-                # Показываем последние 10 результатов
                 disp_res = st.session_state.bg_results[::-1][:10]
                 display_data = []
                 for res in disp_res:
@@ -4550,11 +4552,10 @@ with tab_lsi_gen:
 
         render_live_table()
 
-        # --- ЛОГИКА ГЕНЕРАЦИИ (БЕЗ INDEX-HELL) ---
+        # --- ЛОГИКА ГЕНЕРАЦИИ ---
         if st.session_state.bg_is_running and remaining_real_q > 0:
             lsi_arr = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
             
-            # Берем следующую пачку индексов из списка ожидающих
             current_batch_indices = pending_indices[:st.session_state.bg_batch_size]
             
             status_placeholder.info(f"🚀 Обработка {len(current_batch_indices)} статей...")
@@ -4563,9 +4564,6 @@ with tab_lsi_gen:
             for i, task_idx in enumerate(current_batch_indices):
                 task = st.session_state.bg_tasks_queue[task_idx]
                 val = task['val']; ttype = task['type']
-                
-                # Повторная проверка дублей внутри пачки (на всякий случай)
-                # Но благодаря логике pending_indices мы сюда попадаем только если их нет
                 
                 final_h2 = val; src_url = "-"
                 
@@ -4582,7 +4580,6 @@ with tab_lsi_gen:
                         continue
                     final_h2 = h2_res; src_url = val
                 
-                # Генерация с новым промтом (2%)
                 html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
                 
                 st.session_state.bg_results.append({
@@ -4595,13 +4592,11 @@ with tab_lsi_gen:
                 render_live_table()
                 prog_bar.progress((i + 1) / len(current_batch_indices))
             
-            # Проверка, остались ли еще задачи
-            # Пересчитываем remaining внутри цикла не обязательно, сделаем это при реране
             if auto_run_mode:
                 st.rerun()
             else:
                 st.session_state.bg_is_running = False
-                status_placeholder.success("✅ Пачка готова! Жми продолжить или включи авто.")
+                status_placeholder.success("✅ Пачка готова!")
                 st.rerun()
         
         elif st.session_state.bg_is_running and remaining_real_q == 0:
@@ -4625,7 +4620,6 @@ with tab_lsi_gen:
         preview_options = [f"{i+1}. {r['h2']}" for i, r in enumerate(st.session_state.bg_results)]
         selected_option = st.selectbox("Выберите статью для просмотра:", preview_options)
         
-        # CSS STYLES
         table_css = """
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
