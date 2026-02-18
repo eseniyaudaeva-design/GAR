@@ -4326,145 +4326,158 @@ with tab_lsi_gen:
             return f"ERROR: H2 not found"
         except Exception as e: return f"ERROR: Parse ({str(e)})"
 
-    def generate_full_article(api_key, exact_h2, lsi_list):
-            if not api_key: return "Error: No API Key"
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
-            except ImportError: return "Error: Library 'openai' not installed"
-            
-            lsi_string = ", ".join(lsi_list)
-            
-            stop_words_list = (
-                "является, представляет собой, ключевой компонент, широко применяется, "
-                "обладают, характеризуются, отличается, разнообразие, широкий спектр, "
-                "оптимальный, уникальный, данный, этот, изделия, материалы, "
-                "высокое качество, доступная цена, индивидуальный подход, "
-                "доставка, оплата, условия поставки, звоните, менеджер"
+def generate_full_article(api_key, exact_h2, lsi_list):
+        if not api_key: return "Error: No API Key"
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
+        except ImportError: return "Error: Library 'openai' not installed"
+        
+        lsi_string = ", ".join(lsi_list)
+        
+        stop_words_list = (
+            "является, представляет собой, ключевой компонент, широко применяется, "
+            "обладают, характеризуются, отличается, разнообразие, широкий спектр, "
+            "оптимальный, уникальный, данный, этот, изделия, материалы, "
+            "высокое качество, доступная цена, индивидуальный подход, "
+            "доставка, оплата, условия поставки, звоните, менеджер"
+        )
+
+        contact_html_block = (
+            'Предлагаем консультацию с менеджером по номеру '
+            '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
+            'либо пишите на почту <a href="mailto:#EMAIL#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'email\');gtag(\'event\', \'Click napisat nam\', {{\'event_category\' : \'Click\', \'event_label\' : \'napisat nam\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404">#EMAIL#</a>.'
+        )
+
+        system_instruction = (
+            "Ты — технический редактор. Ты пишешь фактами, но связным русским языком. "
+            "Ты соблюдаешь строгую логику HTML-списков (<ul> для характеристик) и таблиц."
+        )
+        
+        user_prompt = f"""
+        ЗАДАЧА: Напиши техническую статью для товара: "{exact_h2}".
+        
+        [I] ЛОГИКА HTML (СТРОГО):
+        
+        1. СПИСКИ:
+           - <ol> (Нумерованный): ТОЛЬКО для пошаговых процессов.
+           - <ul> (Маркированный): ДЛЯ ВСЕГО ОСТАЛЬНОГО (Характеристики, Сферы, Плюсы). Списки №1, №2, №3 — СТРОГО <ul>.
+           
+        2. ТАБЛИЦА (СТРУКТУРА):
+           - Класс таблицы: "brand-accent-table".
+           - Шапка: <thead ><tr><th>...</th><th>...</th></tr></thead>.
+           - Тело: <tbody><tr><td>...</td><td>...</td></tr></tbody>.
+           - Не делай лишних переносов строк внутри тегов.
+           
+        [II] ЖЕСТКИЕ ПРАВИЛА СТИЛЯ:
+        
+        1. ЗАГОЛОВКИ H3:
+           - В КАЖДОМ H3 ОБЯЗАНА БЫТЬ фраза "{exact_h2}" (склоняй!).
+           - Только точное название товара (без замен на "прокат").
+           - Регистр: Первое слово с Большой, название товара внутри — с маленькой.
+           
+        2. КЛЮЧЕВОЕ СЛОВО ("{exact_h2}"):
+           - Плотность 1.5% (используй именно эти слова).
+           - Распределяй равномерно.
+
+        3. ОФОРМЛЕНИЕ:
+           - "И" заменяй на запятую в списках.
+           - Цифры с пробелом ("4 мм"). Тире среднее (–).
+           - ТОЛЬКО ЗНАЧАЩИЕ ЦИФРЫ (нет "3,0").
+           - Максимальные значения пиши одним числом ("Макс. темп +500°C").
+
+        [III] СТРУКТУРА ТЕКСТА:
+        
+        1.1. Заголовок: <h2>{exact_h2}</h2>.
+        
+        1.2. БЭНГЕР: 3-4 связных предложения (не телеграфный стиль, нормальный язык).
+        
+        1.3. Абзац 1 + Контакты: 
+        {contact_html_block}
+        
+        1.4. Подводка к списку 1 (заканчивается двоеточием).
+        
+        1.5. Список №1 (6 пунктов): ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ.
+        (Размеры, диаметры). ВАЖНО: Используй <ul>.
+           
+        1.6. Абзац 2. Описание производства.
+        
+        1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ):
+        4-5 строк. Без дублей списка №1.
+        ИСПОЛЬЗУЙ ТОЛЬКО ЭТОТ КОД:
+        <table class="brand-accent-table">
+            <thead>
+                <tr>
+                    <th>Параметр</th>
+                    <th>Значение</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>ГОСТ / ТУ</td><td>[Данные]</td></tr>
+                <tr><td>Марка сплава</td><td>[Данные]</td></tr>
+                <tr><td>[Параметр 3]</td><td>[Данные]</td></tr>
+                <tr><td>[Параметр 4]</td><td>[Данные]</td></tr>
+            </tbody>
+        </table>
+        
+        1.8. Подзаголовок H3 (ШАБЛОН): 
+        "Классификация {exact_h2} (род. падеж, с маленькой буквы)".
+        
+        1.9. Абзац 3. Виды, типы.
+        
+        1.10. Подводка к списку 2 (:).
+        
+        1.11. Список №2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ.
+        (Отрасли). ВАЖНО: Используй <ul>.
+           
+        1.12. Абзац 4. Условия эксплуатации.
+                              
+        1.13. Подзаголовок H3 (ШАБЛОН):
+        "Монтаж {exact_h2} (род. падеж)" ИЛИ "Обработка {exact_h2} (род. падеж)".
+        
+        1.14. Абзац 5. Технология работы.
+        
+        1.15. Подводка к списку 3 (:).
+        
+        1.16. Список №3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА.
+        (Без союзов "и"). ВАЖНО: Используй <ul>.
+           
+        1.17. Абзац 6. Резюме и отгрузка.
+
+        [IV] ДОПОЛНИТЕЛЬНО:
+        1. LSI: {{{lsi_string}}} (органично).
+        2. СТОП-СЛОВА: ({stop_words_list}).
+        3. ВЫВОД: ТОЛЬКО HTML КОД.
+        """
+        
+        try:
+            response = client.chat.completions.create(
+                model="google/gemini-2.5-pro",
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.25
             )
-    
-            contact_html_block = (
-                'Предлагаем консультацию с менеджером по номеру '
-                '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
-                'либо пишите на почту <a href="mailto:#EMAIL#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'email\');gtag(\'event\', \'Click napisat nam\', {{\'event_category\' : \'Click\', \'event_label\' : \'napisat nam\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404">#EMAIL#</a>.'
-            )
-    
-            system_instruction = (
-                "Ты — технический редактор. Ты пишешь фактами, но связным русским языком. "
-                "Ты соблюдаешь строгую логику HTML-списков: нумерация только для процессов, буллиты для перечислений."
-            )
+            content = response.choices[0].message.content
+            content = re.sub(r'^```html', '', content.strip())
+            content = re.sub(r'^```', '', content.strip())
+            content = re.sub(r'```$', '', content.strip())
             
-            user_prompt = f"""
-            ЗАДАЧА: Напиши техническую статью для товара: "{exact_h2}".
+            # --- СКРИПТ: ОЧИСТКА ---
+            content = content.replace(' - ', ' &ndash; ')
+            content = content.replace('—', '&ndash;')
+            content = content.replace('–', '&ndash;')
+            content = content.replace('&mdash;', '&ndash;')
+            content = content.replace('**', '').replace('__', '')
+            content = re.sub(r'<b\b[^>]*>', '', content, flags=re.IGNORECASE)
+            content = re.sub(r'</b>', '', content, flags=re.IGNORECASE)
+            content = re.sub(r'<strong\b[^>]*>', '', content, flags=re.IGNORECASE)
+            content = re.sub(r'</strong>', '', content, flags=re.IGNORECASE)
             
-            [I] ЛОГИКА СПИСКОВ (HTML) - СТРОГО:
-            
-            1. НУМЕРОВАННЫЙ СПИСОК (<ol>):
-               - Использовать ТОЛЬКО если описывается ПОСЛЕДОВАТЕЛЬНОСТЬ ДЕЙСТВИЙ (например: "Этапы монтажа: 1, 2, 3").
-               
-            2. МАРКИРОВАННЫЙ СПИСОК (<ul>):
-               - Использовать ВО ВСЕХ ОСТАЛЬНЫХ СЛУЧАЯХ (Характеристики, Применение, Плюсы).
-               - Списки №1, №2, №3 в этой задаче ДОЛЖНЫ БЫТЬ <ul> (буллиты).
-               
-            [II] ЖЕСТКИЕ ПРАВИЛА СТИЛЯ:
-            
-            1. ЗАГОЛОВКИ H3 (КРИТИЧНО):
-               - В КАЖДОМ H3 ОБЯЗАНА БЫТЬ фраза "{exact_h2}" (склоняй!).
-               - Только точное название товара (без замен на "прокат").
-               - Регистр: Первое слово с Большой, название товара внутри — с маленькой.
-               
-            2. КЛЮЧЕВОЕ СЛОВО ("{exact_h2}"):
-               - Плотность 1.5% (используй именно эти слова).
-               - Распределяй равномерно по тексту.
-    
-            3. ОФОРМЛЕНИЕ:
-               - "И" заменяй на запятую в списках.
-               - Цифры с пробелом ("4 мм"). Тире среднее (–).
-               - ТОЛЬКО ЗНАЧАЩИЕ ЦИФРЫ (нет "3,0").
-               - Максимальные значения пиши одним числом ("Макс. темп +500°C", а не "от 0 до 500").
-    
-            [III] СТРУКТУРА ТЕКСТА:
-            
-            1.1. Заголовок: <h2>{exact_h2}</h2>.
-            
-            1.2. БЭНГЕР: 3-4 связных предложения (не телеграфный стиль, нормальный язык, но без воды).
-            
-            1.3. Абзац 1 + Контакты: 
-            {contact_html_block}
-            
-            1.4. Подводка к списку 1 (заканчивается двоеточием).
-            
-            1.5. Список №1 (6 пунктов): ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ.
-            (Размеры, диаметры, марки стали).
-            ВАЖНО: Используй <ul> (буллиты).
-               
-            1.6. Абзац 2. Описание производства (метод изготовления, состояние поставки).
-            
-            1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ):
-            4-5 строк. Без дублей списка №1.
-            (ГОСТ, Сплав, Плотность, Твердость, Упаковка).
-            КОД: <table class="brand-accent-table">...</table>
-            
-            1.8. Подзаголовок H3 (ШАБЛОН): 
-            "Классификация {exact_h2} (род. падеж, с маленькой буквы)".
-            
-            1.9. Абзац 3. Виды, типы, конструктивные отличия.
-            
-            1.10. Подводка к списку 2 (:).
-            
-            1.11. Список №2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ.
-            (Отрасли, конкретные узлы).
-            ВАЖНО: Используй <ul> (буллиты).
-               
-            1.12. Абзац 4. Условия эксплуатации.
-                                  
-            1.13. Подзаголовок H3 (ШАБЛОН):
-            "Монтаж {exact_h2} (род. падеж)" ИЛИ "Обработка {exact_h2} (род. падеж)".
-            
-            1.14. Абзац 5. Технология работы (сварка, резка).
-            
-            1.15. Подводка к списку 3 (:).
-            
-            1.16. Список №3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА.
-            (Коррозия, термостойкость, ресурс). Без союзов "и".
-            ВАЖНО: Используй <ul> (буллиты).
-               
-            1.17. Абзац 6. Резюме и отгрузка (связный текст).
-    
-            [IV] ДОПОЛНИТЕЛЬНО:
-            1. LSI: {{{lsi_string}}} (органично).
-            2. СТОП-СЛОВА: ({stop_words_list}).
-            3. ВЫВОД: ТОЛЬКО HTML КОД.
-            """
-            
-            try:
-                response = client.chat.completions.create(
-                    model="google/gemini-2.5-pro",
-                    messages=[
-                        {"role": "system", "content": system_instruction},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.25
-                )
-                content = response.choices[0].message.content
-                content = re.sub(r'^```html', '', content.strip())
-                content = re.sub(r'^```', '', content.strip())
-                content = re.sub(r'```$', '', content.strip())
-                
-                # --- СКРИПТ: ОЧИСТКА ---
-                content = content.replace(' - ', ' &ndash; ')
-                content = content.replace('—', '&ndash;')
-                content = content.replace('–', '&ndash;')
-                content = content.replace('&mdash;', '&ndash;')
-                content = content.replace('**', '').replace('__', '')
-                content = re.sub(r'<b\b[^>]*>', '', content, flags=re.IGNORECASE)
-                content = re.sub(r'</b>', '', content, flags=re.IGNORECASE)
-                content = re.sub(r'<strong\b[^>]*>', '', content, flags=re.IGNORECASE)
-                content = re.sub(r'</strong>', '', content, flags=re.IGNORECASE)
-                
-                return content
-            except Exception as e:
-                return f"API Error: {str(e)}"
+            return content
+        except Exception as e:
+            return f"API Error: {str(e)}"
 
     # --- 3. UI: НАСТРОЙКИ ---
     with st.expander("⚙️ Настройки и LSI", expanded=True):
@@ -4679,6 +4692,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
