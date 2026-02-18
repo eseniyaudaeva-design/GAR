@@ -4326,157 +4326,157 @@ with tab_lsi_gen:
             return f"ERROR: H2 not found"
         except Exception as e: return f"ERROR: Parse ({str(e)})"
 
-def generate_full_article(api_key, exact_h2, lsi_list):
-            if not api_key: return "Error: No API Key"
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
-            except ImportError: return "Error: Library 'openai' not installed"
-            
-            lsi_string = ", ".join(lsi_list)
-            
-            stop_words_list = (
-                "является, представляет собой, ключевой компонент, широко применяется, "
-                "обладают, характеризуются, отличается, разнообразие, широкий спектр, "
-                "оптимальный, уникальный, данный, этот, изделия, материалы, "
-                "высокое качество, доступная цена, индивидуальный подход, "
-                "доставка, оплата, условия поставки, звоните, менеджер"
-            )
-    
-            contact_html_block = (
-                'Предлагаем консультацию с менеджером по номеру '
-                '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
-                'либо пишите на почту <a href="mailto:#EMAIL#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'email\');gtag(\'event\', \'Click napisat nam\', {{\'event_category\' : \'Click\', \'event_label\' : \'napisat nam\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404">#EMAIL#</a>.'
-            )
-    
-            system_instruction = (
-                "Ты — строгий технический редактор. Твой стиль: телеграфный, сухой, фактологический. "
-                "ТЫ НЕНАВИДИШЬ СОЮЗ 'И' при перечислении. В 95% случаев заменяй 'и' на запятую. "
-                "Ты соблюдаешь HTML-структуру."
-            )
-            
-            user_prompt = f"""
-            ЗАДАЧА: Напиши техническую статью для товара: "{exact_h2}".
-            
-            [I] ПРАВИЛА РАБОТЫ С КЛЮЧОМ ("{exact_h2}"):
-            
-            1. ПЛОТНОСТЬ (ДО 5-6 РАЗ НА СЛОВО):
-               - Каждое отдельное слово из фразы "{exact_h2}" можно использовать в тексте ДО 5-6 РАЗ.
-               - ВАЖНО: Распределяй их равномерно по всему тексту, не лепи всё в один абзац.
-            
-            2. РАЗБИВКА ДЛИННЫХ ФРАЗ (АНТИ-СПАМ):
-               - Если ключевая фраза состоит из 3 и более слов (например, "Пруток из магнитно-твердых сплавов"), ЗАПРЕЩЕНО писать её целиком внутри абзацев.
-               - Ты обязан разбивать её: писать "пруток" отдельно, "сплав" отдельно, "твердый" отдельно.
-               - Целиком фразу можно писать ТОЛЬКО в заголовках (H2, H3).
-               
-            3. ЗАПРЕТ НА СОЮЗ "И":
-               - Категорически избегай союза "и" при перечислении свойств. Используй запятую.
-               - ПЛОХО: "Прочный, легкий и надежный".
-               - ХОРОШО: "Прочный, легкий, надежный".
-               
-            [II] ЛОГИКА HTML (СТРОГО):
-            
-            1. СПИСКИ:
-               - <ol>: ТОЛЬКО для пошаговых алгоритмов.
-               - <ul>: ДЛЯ ВСЕГО ОСТАЛЬНОГО (характеристики, сферы).
-               
-            2. ТАБЛИЦА:
-               - Класс: "brand-accent-table".
-               - Шапка через <thead> и <th>.
-    
-            [III] СТРУКТУРА ТЕКСТА:
-            
-            1.1. Заголовок: <h2>{exact_h2}</h2>.
-            
-            1.2. БЭНГЕР: 3-4 предложения. Суть товара, ГОСТ, материал. (Ключ разбит).
-            
-            1.3. Абзац 1 + Контакты: 
-            {contact_html_block}
-            
-            1.4. Подводка к списку 1 (:).
-            
-            1.5. Список №1 (6 пунктов): ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ.
-            (Формат: <ul>). Без союза "и", используй запятые.
-               
-            1.6. Абзац 2. Описание производства.
-            
-            1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ):
-            4-5 строк.
-            КОД:
-            <table class="brand-accent-table">
-                <thead>
-                    <tr>
-                        <th>Параметр</th>
-                        <th>Значение</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr><td>ГОСТ / ТУ</td><td>[Данные]</td></tr>
-                    <tr><td>Марка</td><td>[Данные]</td></tr>
-                    <tr><td>[Параметр 3]</td><td>[Данные]</td></tr>
-                    <tr><td>[Параметр 4]</td><td>[Данные]</td></tr>
-                </tbody>
-            </table>
-            
-            1.8. Подзаголовок H3 (ШАБЛОН): 
-            "Классификация {exact_h2} (в род. падеже, с маленькой буквы)"
-            (Тут ключ целиком).
-            
-            1.9. Абзац 3. Виды, типы. (Строго разбивай ключ на слова).
-            
-            1.10. Подводка к списку 2 (:).
-            
-            1.11. Список №2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ.
-            (Формат: <ul>).
-               
-            1.12. Абзац 4. Условия эксплуатации.
-                                  
-            1.13. Подзаголовок H3 (ШАБЛОН):
-            "Монтаж {exact_h2} (в род. падеже)" ИЛИ "Обработка {exact_h2} (в род. падеже)".
-            
-            1.14. Абзац 5. Технология работы.
-            
-            1.15. Подводка к списку 3 (:).
-            
-            1.16. Список №3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА.
-            (Запятые вместо "и"). Формат: <ul>.
-               
-            1.17. Абзац 6. Резюме и отгрузка.
-    
-            [IV] ДОПОЛНИТЕЛЬНО:
-            1. LSI: {{{lsi_string}}} (вписать органично).
-            2. СТОП-СЛОВА: {stop_words_list}.
-            3. ВЫВОД: ТОЛЬКО HTML КОД. Без markdown.
-            """
-            
-            try:
-                response = client.chat.completions.create(
-                    model="google/gemini-2.5-pro",
-                    messages=[
-                        {"role": "system", "content": system_instruction},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.25
+    def generate_full_article(api_key, exact_h2, lsi_list):
+                if not api_key: return "Error: No API Key"
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
+                except ImportError: return "Error: Library 'openai' not installed"
+                
+                lsi_string = ", ".join(lsi_list)
+                
+                stop_words_list = (
+                    "является, представляет собой, ключевой компонент, широко применяется, "
+                    "обладают, характеризуются, отличается, разнообразие, широкий спектр, "
+                    "оптимальный, уникальный, данный, этот, изделия, материалы, "
+                    "высокое качество, доступная цена, индивидуальный подход, "
+                    "доставка, оплата, условия поставки, звоните, менеджер"
                 )
-                content = response.choices[0].message.content
-                content = re.sub(r'^```html', '', content.strip())
-                content = re.sub(r'^```', '', content.strip())
-                content = re.sub(r'```$', '', content.strip())
+        
+                contact_html_block = (
+                    'Предлагаем консультацию с менеджером по номеру '
+                    '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
+                    'либо пишите на почту <a href="mailto:#EMAIL#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'email\');gtag(\'event\', \'Click napisat nam\', {{\'event_category\' : \'Click\', \'event_label\' : \'napisat nam\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404">#EMAIL#</a>.'
+                )
+        
+                system_instruction = (
+                    "Ты — строгий технический редактор. Твой стиль: телеграфный, сухой, фактологический. "
+                    "ТЫ НЕНАВИДИШЬ СОЮЗ 'И' при перечислении. В 95% случаев заменяй 'и' на запятую. "
+                    "Ты соблюдаешь HTML-структуру."
+                )
                 
-                # --- СКРИПТ: ОЧИСТКА ---
-                content = content.replace(' - ', ' &ndash; ')
-                content = content.replace('—', '&ndash;')
-                content = content.replace('–', '&ndash;')
-                content = content.replace('&mdash;', '&ndash;')
-                content = content.replace('**', '').replace('__', '')
-                content = re.sub(r'<b\b[^>]*>', '', content, flags=re.IGNORECASE)
-                content = re.sub(r'</b>', '', content, flags=re.IGNORECASE)
-                content = re.sub(r'<strong\b[^>]*>', '', content, flags=re.IGNORECASE)
-                content = re.sub(r'</strong>', '', content, flags=re.IGNORECASE)
+                user_prompt = f"""
+                ЗАДАЧА: Напиши техническую статью для товара: "{exact_h2}".
                 
-                return content
-            except Exception as e:
-                return f"API Error: {str(e)}"
+                [I] ПРАВИЛА РАБОТЫ С КЛЮЧОМ ("{exact_h2}"):
+                
+                1. ПЛОТНОСТЬ (ДО 5-6 РАЗ НА СЛОВО):
+                   - Каждое отдельное слово из фразы "{exact_h2}" можно использовать в тексте ДО 5-6 РАЗ.
+                   - ВАЖНО: Распределяй их равномерно по всему тексту, не лепи всё в один абзац.
+                
+                2. РАЗБИВКА ДЛИННЫХ ФРАЗ (АНТИ-СПАМ):
+                   - Если ключевая фраза состоит из 3 и более слов (например, "Пруток из магнитно-твердых сплавов"), ЗАПРЕЩЕНО писать её целиком внутри абзацев.
+                   - Ты обязан разбивать её: писать "пруток" отдельно, "сплав" отдельно, "твердый" отдельно.
+                   - Целиком фразу можно писать ТОЛЬКО в заголовках (H2, H3).
+                   
+                3. ЗАПРЕТ НА СОЮЗ "И":
+                   - Категорически избегай союза "и" при перечислении свойств. Используй запятую.
+                   - ПЛОХО: "Прочный, легкий и надежный".
+                   - ХОРОШО: "Прочный, легкий, надежный".
+                   
+                [II] ЛОГИКА HTML (СТРОГО):
+                
+                1. СПИСКИ:
+                   - <ol>: ТОЛЬКО для пошаговых алгоритмов.
+                   - <ul>: ДЛЯ ВСЕГО ОСТАЛЬНОГО (характеристики, сферы).
+                   
+                2. ТАБЛИЦА:
+                   - Класс: "brand-accent-table".
+                   - Шапка через <thead> и <th>.
+        
+                [III] СТРУКТУРА ТЕКСТА:
+                
+                1.1. Заголовок: <h2>{exact_h2}</h2>.
+                
+                1.2. БЭНГЕР: 3-4 предложения. Суть товара, ГОСТ, материал. (Ключ разбит).
+                
+                1.3. Абзац 1 + Контакты: 
+                {contact_html_block}
+                
+                1.4. Подводка к списку 1 (:).
+                
+                1.5. Список №1 (6 пунктов): ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ.
+                (Формат: <ul>). Без союза "и", используй запятые.
+                   
+                1.6. Абзац 2. Описание производства.
+                
+                1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ):
+                4-5 строк.
+                КОД:
+                <table class="brand-accent-table">
+                    <thead>
+                        <tr>
+                            <th>Параметр</th>
+                            <th>Значение</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>ГОСТ / ТУ</td><td>[Данные]</td></tr>
+                        <tr><td>Марка</td><td>[Данные]</td></tr>
+                        <tr><td>[Параметр 3]</td><td>[Данные]</td></tr>
+                        <tr><td>[Параметр 4]</td><td>[Данные]</td></tr>
+                    </tbody>
+                </table>
+                
+                1.8. Подзаголовок H3 (ШАБЛОН): 
+                "Классификация {exact_h2} (в род. падеже, с маленькой буквы)"
+                (Тут ключ целиком).
+                
+                1.9. Абзац 3. Виды, типы. (Строго разбивай ключ на слова).
+                
+                1.10. Подводка к списку 2 (:).
+                
+                1.11. Список №2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ.
+                (Формат: <ul>).
+                   
+                1.12. Абзац 4. Условия эксплуатации.
+                                      
+                1.13. Подзаголовок H3 (ШАБЛОН):
+                "Монтаж {exact_h2} (в род. падеже)" ИЛИ "Обработка {exact_h2} (в род. падеже)".
+                
+                1.14. Абзац 5. Технология работы.
+                
+                1.15. Подводка к списку 3 (:).
+                
+                1.16. Список №3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА.
+                (Запятые вместо "и"). Формат: <ul>.
+                   
+                1.17. Абзац 6. Резюме и отгрузка.
+        
+                [IV] ДОПОЛНИТЕЛЬНО:
+                1. LSI: {{{lsi_string}}} (вписать органично).
+                2. СТОП-СЛОВА: {stop_words_list}.
+                3. ВЫВОД: ТОЛЬКО HTML КОД. Без markdown.
+                """
+                
+                try:
+                    response = client.chat.completions.create(
+                        model="google/gemini-2.5-pro",
+                        messages=[
+                            {"role": "system", "content": system_instruction},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=0.25
+                    )
+                    content = response.choices[0].message.content
+                    content = re.sub(r'^```html', '', content.strip())
+                    content = re.sub(r'^```', '', content.strip())
+                    content = re.sub(r'```$', '', content.strip())
+                    
+                    # --- СКРИПТ: ОЧИСТКА ---
+                    content = content.replace(' - ', ' &ndash; ')
+                    content = content.replace('—', '&ndash;')
+                    content = content.replace('–', '&ndash;')
+                    content = content.replace('&mdash;', '&ndash;')
+                    content = content.replace('**', '').replace('__', '')
+                    content = re.sub(r'<b\b[^>]*>', '', content, flags=re.IGNORECASE)
+                    content = re.sub(r'</b>', '', content, flags=re.IGNORECASE)
+                    content = re.sub(r'<strong\b[^>]*>', '', content, flags=re.IGNORECASE)
+                    content = re.sub(r'</strong>', '', content, flags=re.IGNORECASE)
+                    
+                    return content
+                except Exception as e:
+                    return f"API Error: {str(e)}"
 
     # --- 3. UI: НАСТРОЙКИ ---
     with st.expander("⚙️ Настройки и LSI", expanded=True):
@@ -4691,6 +4691,7 @@ def generate_full_article(api_key, exact_h2, lsi_list):
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
