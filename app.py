@@ -2137,6 +2137,216 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         return [f"API Error: {str(e)}"] * num_blocks
 
 # ==========================================
+# НОВЫЕ ФУНКЦИИ ДЛЯ LSI ГЕНЕРАТОРА (ВСТАВИТЬ СЮДА)
+# ==========================================
+
+def run_seo_analysis_background(query, api_token):
+    """
+    Фоновый запуск SEO-анализа для получения TF-IDF слов.
+    """
+    # Настройки
+    settings = {
+        'noindex': True, 
+        'alt_title': False, 
+        'numbers': False, 
+        'norm': True, 
+        'ua': "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", 
+        'custom_stops': []
+    }
+    
+    # Фейковая страница "Ваш сайт"
+    my_data = {'url': 'Local', 'domain': 'local', 'body_text': '', 'anchor_text': ''}
+    
+    if not api_token: 
+        return []
+    
+    try:
+        # Запрос к Арсенкину (Топ-10)
+        raw_top = get_arsenkin_urls(query, "Яндекс", "Москва", api_token, depth_val=10)
+        if not raw_top: return []
+        
+        # Фильтр мусора
+        candidates = []
+        excludes = ["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com", "dzen", "wiki"]
+        for item in raw_top:
+            if not any(x in item['url'] for x in excludes):
+                candidates.append(item)
+        
+        candidates = candidates[:10]
+        if not candidates: return []
+
+        # Парсинг
+        comp_data = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(parse_page, item['url'], settings, query): item for item in candidates}
+            for f in concurrent.futures.as_completed(futures):
+                try:
+                    res = f.result()
+                    if res:
+                        res['pos'] = futures[f]['pos']
+                        comp_data.append(res)
+                except: pass
+        
+        if not comp_data: return []
+
+        # Расчет
+        targets = [{'url': d['url'], 'pos': d['pos']} for d in comp_data]
+        results = calculate_metrics(comp_data, my_data, settings, 0, targets)
+        
+        # Извлечение TF-IDF
+        df_hybrid = results.get('hybrid')
+        if df_hybrid is not None and not df_hybrid.empty:
+            return df_hybrid.head(15)['Слово'].tolist()
+            
+    except Exception as e:
+        print(f"Background SEO Error: {e}")
+        return []
+    
+    return []
+
+def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
+    if not api_key: return "Error: No API Key"
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
+    except ImportError: return "Error: Library 'openai' not installed"
+    
+    lsi_string = ", ".join(lsi_list)
+    
+    stop_words_list = (
+        "является, представляет собой, ключевой компонент, широко применяется, "
+        "обладают, характеризуются, отличается, разнообразие, широкий спектр, "
+        "оптимальный, уникальный, данный, этот, изделия, материалы, "
+        "высокое качество, доступная цена, индивидуальный подход, "
+        "доставка, оплата, условия поставки, звоните, менеджер"
+    )
+
+    contact_html_block = (
+        'Предлагаем консультацию с менеджером по номеру '
+        '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
+        'либо пишите на почту <a href="mailto:#EMAIL#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'email\');gtag(\'event\', \'Click napisat nam\', {{\'event_category\' : \'Click\', \'event_label\' : \'napisat nam\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404">#EMAIL#</a>.'
+    )
+
+    system_instruction = (
+        "Ты — строгий технический редактор. Твой стиль: телеграфный, сухой, фактологический. "
+        "ТЫ НЕНАВИДИШЬ СОЮЗ 'И' при перечислении. В 95% случаев заменяй 'и' на запятую. "
+        "Ты соблюдаешь HTML-структуру."
+    )
+    
+    user_prompt = f"""
+    ЗАДАЧА: Напиши техническую статью.
+    
+    [I] ВВОДНЫЕ ДАННЫЕ:
+    1. ГЛАВНЫЙ ТОВАР (МАРКЕР): "{h1_marker}" 
+       - Это объект, о котором статья. Используй этот термин (и его склонения) в подзаголовках H3, таблице и теле текста.
+    2. ЗАГОЛОВОК СТАТЬИ (H2): "{h2_topic}"
+       - Это текст, который должен быть строго в теге <h2>.
+    
+    [II] ПРАВИЛА РАБОТЫ С КЛЮЧОМ ("{h1_marker}"):
+    
+    1. ПЛОТНОСТЬ (ДО 5-6 РАЗ НА СЛОВО):
+       - Каждое отдельное слово из фразы "{h1_marker}" можно использовать в тексте ДО 5-6 РАЗ.
+       - ВАЖНО: Распределяй их равномерно по всему тексту, не лепи всё в один абзац.
+    
+    2. РАЗБИВКА ДЛИННЫХ ФРАЗ (АНТИ-СПАМ):
+       - Если ключевая фраза состоит из 3 и более слов (например, "Пруток из магнитно-твердых сплавов"), ЗАПРЕЩЕНО писать её целиком внутри абзацев.
+       - Ты обязан разбивать её: писать "пруток" отдельно, "сплав" отдельно, "твердый" отдельно.
+       - Целиком фразу можно писать ТОЛЬКО в заголовках (H2, H3).
+       
+    3. ЗАПРЕТ НА СОЮЗ "И":
+       - Категорически избегай союза "и" при перечислении свойств. Используй запятую.
+       
+    [III] ЛОГИКА HTML (СТРОГО):
+    1. СПИСКИ: <ul> (для характеристик и сфер).
+    2. ТАБЛИЦА: Класс "brand-accent-table". Шапка через <thead>.
+
+    [IV] СТРУКТУРА ТЕКСТА (СТРОГО ПО ПУНКТАМ):
+    
+    1.1. Заголовок: <h2>{h2_topic}</h2>.
+    
+    1.2. БЭНГЕР: 3-4 предложения. Суть товара "{h1_marker}", ГОСТ, материал.
+    
+    1.3. Абзац 1 + Контакты: 
+    {contact_html_block}
+    
+    1.4. Подводка к списку 1 (:).
+    
+    1.5. Список №1 (6 пунктов): ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ "{h1_marker}". (<ul>, запятые).
+       
+    1.6. Абзац 2. Описание производства.
+    
+    1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ): 4-5 строк.
+    <table class="brand-accent-table">
+        <thead><tr><th>Параметр</th><th>Значение</th></tr></thead>
+        <tbody>
+            <tr><td>ГОСТ / ТУ</td><td>[Данные для {h1_marker}]</td></tr>
+            <tr><td>Марка</td><td>[Данные]</td></tr>
+            <tr><td>[Параметр 3]</td><td>[Данные]</td></tr>
+        </tbody>
+    </table>
+    
+    1.8. Подзаголовок H3 (ШАБЛОН): "Классификация {h1_marker} (в род. падеже, с маленькой буквы)".
+    
+    1.9. Абзац 3. Виды, типы.
+    
+    1.10. Подводка к списку 2 (:).
+    
+    1.11. Список №2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ. (<ul>).
+       
+    1.12. Абзац 4. Условия эксплуатации.
+                          
+    1.13. Подзаголовок H3 (ШАБЛОН): "Монтаж {h1_marker} (в род. падеже)" ИЛИ "Обработка...".
+    
+    1.14. Абзац 5. Технология работы.
+    
+    1.15. Подводка к списку 3 (:).
+    
+    1.16. Список №3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА. (<ul>).
+       
+    1.17. Абзац 6. Резюме и отгрузка.
+
+    [V] ДОПОЛНИТЕЛЬНО (LSI И СТОП-СЛОВА):
+    
+    1. LSI ЯДРО (ОБЯЗАТЕЛЬНОЕ ВНЕДРЕНИЕ):
+    {{{lsi_string}}}
+    
+    ВАЖНОЕ ТРЕБОВАНИЕ ПО ОФОРМЛЕНИЮ LSI:
+    Любое слово из списка LSI, которое ты вставляешь в текст, ДОЛЖНО БЫТЬ ВЫДЕЛЕНО тегом <b>.
+    - Пример списка: "цена, купить"
+    - Пример в тексте: "Предлагаем <b>купить</b> товар по выгодной <b>цене</b>."
+    - Склонять слова МОЖНО, но тег <b> обязателен для каждого вхождения LSI.
+
+    2. СТОП-СЛОВА: {stop_words_list} (Не используй их).
+    
+    3. ВЫВОД: ТОЛЬКО HTML КОД. Без markdown.
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="google/gemini-2.5-pro",
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.25
+        )
+        content = response.choices[0].message.content
+        content = re.sub(r'^```html', '', content.strip())
+        content = re.sub(r'^```', '', content.strip())
+        content = re.sub(r'```$', '', content.strip())
+        
+        # --- ОЧИСТКА (теги <b> оставляем) ---
+        content = content.replace(' - ', ' &ndash; ')
+        content = content.replace('—', '&ndash;')
+        content = content.replace('–', '&ndash;')
+        content = content.replace('&mdash;', '&ndash;')
+        content = content.replace('**', '').replace('__', '')
+        
+        return content
+    except Exception as e:
+        return f"API Error: {str(e)}"
+
+# ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
 tab_seo_main, tab_wholesale_main, tab_projects, tab_monitoring, tab_lsi_gen = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор", "📁 Проекты", "📉 Мониторинг позиций", "📝 LSI Тексты"])
@@ -4337,447 +4547,220 @@ with tab_monitoring:
                     os.remove(TRACK_FILE); st.rerun()
 
 # ==========================================
-# TAB 5: BULK LSI GENERATOR (PRO - FINAL + FORMAT FIX)
+# TAB 5: LSI GENERATOR (FULL CYCLE)
 # ==========================================
-import requests
-from bs4 import BeautifulSoup
-import time
-import pandas as pd
-import io
-import re
-import streamlit as st
-
 with tab_lsi_gen:
-    st.header("🏭 Массовая генерация B2B (Visual + Styles + Format Fix)")
-    st.markdown("Предзаполненные LSI. Формат: **Числа 4-10 мм (без тире)**, **Текст – через тире**, **Плотность 2%**.")
+    st.header("🏭 Массовая генерация B2B (Full Technical Mode)")
+    st.markdown("Авто-цикл: **Берем H1 -> SEO Анализ (фон) -> Получаем семантику -> Генерируем текст под H2**.")
 
-    # --- 1. ИНИЦИАЛИЗАЦИЯ SESSION STATE ---
-    if 'bg_tasks_queue' not in st.session_state:
-        st.session_state.bg_tasks_queue = []
-    if 'bg_results' not in st.session_state:
-        st.session_state.bg_results = []
-    if 'bg_batch_size' not in st.session_state:
-        st.session_state.bg_batch_size = 2
-    if 'bg_is_running' not in st.session_state:
-        st.session_state.bg_is_running = False
+    # --- ИНИЦИАЛИЗАЦИЯ ---
+    if 'bg_tasks_queue' not in st.session_state: st.session_state.bg_tasks_queue = []
+    if 'bg_results' not in st.session_state: st.session_state.bg_results = []
+    if 'bg_is_running' not in st.session_state: st.session_state.bg_is_running = False
 
-    # --- 2. ФУНКЦИИ ---
-    def get_h2_from_url(url):
-        try:
-            from curl_cffi import requests as cffi_requests
-            r = cffi_requests.get(
-                url, impersonate="chrome110", 
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'},
-                timeout=15
-            )
-            content = r.content; encoding = r.encoding if r.encoding else 'utf-8'
-        except:
-            try:
-                import urllib3; urllib3.disable_warnings()
-                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-                r = requests.get(url, headers=headers, timeout=15, verify=False)
-                content = r.content; encoding = r.apparent_encoding
-            except Exception as e: return f"ERROR: Connect ({str(e)})"
-        
-        try:
-            soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
-            desc_div = soup.find('div', class_='description-container')
-            if desc_div and desc_div.find('h2'): return desc_div.find('h2').get_text(strip=True)
-            if soup.find('h2'): return soup.find('h2').get_text(strip=True)
-            if soup.find('h1'): return soup.find('h1').get_text(strip=True)
-            return f"ERROR: H2 not found"
-        except Exception as e: return f"ERROR: Parse ({str(e)})"
-
-    def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
-        if not api_key: return "Error: No API Key"
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
-        except ImportError: return "Error: Library 'openai' not installed"
-        
-        lsi_string = ", ".join(lsi_list)
-        
-        # Полный список стоп-слов
-        stop_words_list = (
-            "является, представляет собой, ключевой компонент, широко применяется, "
-            "обладают, характеризуются, отличается, разнообразие, широкий спектр, "
-            "оптимальный, уникальный, данный, этот, изделия, материалы, "
-            "высокое качество, доступная цена, индивидуальный подход, "
-            "доставка, оплата, условия поставки, звоните, менеджер"
-        )
-    
-        # Блок контактов
-        contact_html_block = (
-            'Предлагаем консультацию с менеджером по номеру '
-            '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
-            'либо пишите на почту <a href="mailto:#EMAIL#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'email\');gtag(\'event\', \'Click napisat nam\', {{\'event_category\' : \'Click\', \'event_label\' : \'napisat nam\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404">#EMAIL#</a>.'
-        )
-    
-        system_instruction = (
-            "Ты — строгий технический редактор. Твой стиль: телеграфный, сухой, фактологический. "
-            "ТЫ НЕНАВИДИШЬ СОЮЗ 'И' при перечислении. В 95% случаев заменяй 'и' на запятую. "
-            "Ты соблюдаешь HTML-структуру."
-        )
-        
-        user_prompt = f"""
-        ЗАДАЧА: Напиши техническую статью.
-        
-        [I] ВВОДНЫЕ ДАННЫЕ:
-        1. ГЛАВНЫЙ ТОВАР (МАРКЕР): "{h1_marker}" 
-           - Это объект, о котором статья. Используй этот термин (и его склонения) в подзаголовках H3, таблице и теле текста.
-        2. ЗАГОЛОВОК СТАТЬИ (H2): "{h2_topic}"
-           - Это текст, который должен быть строго в теге <h2>.
-        
-        [II] ПРАВИЛА РАБОТЫ С КЛЮЧОМ ("{h1_marker}"):
-        
-        1. ПЛОТНОСТЬ (ДО 5-6 РАЗ НА СЛОВО):
-           - Каждое отдельное слово из фразы "{h1_marker}" можно использовать в тексте ДО 5-6 РАЗ.
-           - ВАЖНО: Распределяй их равномерно по всему тексту, не лепи всё в один абзац.
-        
-        2. РАЗБИВКА ДЛИННЫХ ФРАЗ (АНТИ-СПАМ):
-           - Если ключевая фраза состоит из 3 и более слов (например, "Пруток из магнитно-твердых сплавов"), ЗАПРЕЩЕНО писать её целиком внутри абзацев.
-           - Ты обязан разбивать её: писать "пруток" отдельно, "сплав" отдельно, "твердый" отдельно.
-           - Целиком фразу можно писать ТОЛЬКО в заголовках (H2, H3).
-           
-        3. ЗАПРЕТ НА СОЮЗ "И":
-           - Категорически избегай союза "и" при перечислении свойств. Используй запятую.
-           
-        [III] ЛОГИКА HTML (СТРОГО):
-        1. СПИСКИ: <ul> (для характеристик и сфер).
-        2. ТАБЛИЦА: Класс "brand-accent-table". Шапка через <thead>.
-    
-        [IV] СТРУКТУРА ТЕКСТА (СТРОГО ПО ПУНКТАМ):
-        
-        1.1. Заголовок: <h2>{h2_topic}</h2>.
-        
-        1.2. БЭНГЕР: 3-4 предложения. Суть товара "{h1_marker}", ГОСТ, материал.
-        
-        1.3. Абзац 1 + Контакты: 
-        {contact_html_block}
-        
-        1.4. Подводка к списку 1 (:).
-        
-        1.5. Список №1 (6 пунктов): ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ "{h1_marker}". (<ul>, запятые).
-           
-        1.6. Абзац 2. Описание производства.
-        
-        1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ): 4-5 строк.
-        <table class="brand-accent-table">
-            <thead><tr><th>Параметр</th><th>Значение</th></tr></thead>
-            <tbody>
-                <tr><td>ГОСТ / ТУ</td><td>[Данные для {h1_marker}]</td></tr>
-                <tr><td>Марка</td><td>[Данные]</td></tr>
-                <tr><td>[Параметр 3]</td><td>[Данные]</td></tr>
-            </tbody>
-        </table>
-        
-        1.8. Подзаголовок H3 (ШАБЛОН): "Классификация {h1_marker} (в род. падеже, с маленькой буквы)".
-        
-        1.9. Абзац 3. Виды, типы.
-        
-        1.10. Подводка к списку 2 (:).
-        
-        1.11. Список №2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ. (<ul>).
-           
-        1.12. Абзац 4. Условия эксплуатации.
-                              
-        1.13. Подзаголовок H3 (ШАБЛОН): "Монтаж {h1_marker} (в род. падеже)" ИЛИ "Обработка...".
-        
-        1.14. Абзац 5. Технология работы.
-        
-        1.15. Подводка к списку 3 (:).
-        
-        1.16. Список №3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА. (<ul>).
-           
-        1.17. Абзац 6. Резюме и отгрузка.
-    
-        [V] ДОПОЛНИТЕЛЬНО (LSI И СТОП-СЛОВА):
-        
-        1. LSI ЯДРО (ОБЯЗАТЕЛЬНОЕ ВНЕДРЕНИЕ):
-        {{{lsi_string}}}
-        
-        ВАЖНОЕ ТРЕБОВАНИЕ ПО ОФОРМЛЕНИЮ LSI:
-        Любое слово из списка LSI, которое ты вставляешь в текст, ДОЛЖНО БЫТЬ ВЫДЕЛЕНО тегом <b>.
-        - Пример списка: "цена, купить"
-        - Пример в тексте: "Предлагаем <b>купить</b> товар по выгодной <b>цене</b>."
-        - Склонять слова МОЖНО, но тег <b> обязателен для каждого вхождения LSI.
-    
-        2. СТОП-СЛОВА: {stop_words_list} (Не используй их).
-        
-        3. ВЫВОД: ТОЛЬКО HTML КОД. Без markdown.
-        """
-        
-        try:
-            response = client.chat.completions.create(
-                model="google/gemini-2.5-pro",
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.25
-            )
-            content = response.choices[0].message.content
-            content = re.sub(r'^```html', '', content.strip())
-            content = re.sub(r'^```', '', content.strip())
-            content = re.sub(r'```$', '', content.strip())
-            
-            # --- СКРИПТ: ОЧИСТКА ---
-            # ВАЖНО: Мы убрали удаление тегов <b> и <strong>, чтобы подсветка LSI осталась
-            content = content.replace(' - ', ' &ndash; ')
-            content = content.replace('—', '&ndash;')
-            content = content.replace('–', '&ndash;')
-            content = content.replace('&mdash;', '&ndash;')
-            content = content.replace('**', '').replace('__', '')
-            
-            return content
-        except Exception as e:
-        return f"API Error: {str(e)}"
-
-    # --- 3. UI: НАСТРОЙКИ ---
-    with st.expander("⚙️ Настройки и LSI", expanded=True):
+    # --- 1. НАСТРОЙКИ ---
+    with st.expander("⚙️ Настройки API и LSI", expanded=True):
         cached_key = st.session_state.get('gemini_key_cache', "")
         if not cached_key:
             try: cached_key = st.secrets["GEMINI_KEY"]
             except: pass
         
-        default_lsi_text = "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, предлагаем, рассчитать, цены"
+        default_lsi_text = "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, цены"
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v16")
+            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v2")
         with c2:
-            raw_lsi_common = st.text_area("LSI (общий)", height=150, value=default_lsi_text)
+            raw_lsi_common = st.text_area("LSI (Общий для всех текстов)", height=70, value=default_lsi_text)
 
-    # --- 4. UI: ЗАГРУЗКА ---
+    # --- 2. ЗАГРУЗКА ЗАДАЧ ---
     st.subheader("1. Загрузка задач")
-    input_mode = st.radio("Режим:", ["Список URL", "Темы вручную"], horizontal=True)
+    st.info("Введите список пар. Строки должны соответствовать друг другу!")
     
-    col_inp, col_act = st.columns([3, 1])
-    with col_inp:
-        raw_input_data = st.text_area("Список (строка = задача)", height=100)
-    with col_act:
-        st.write(" ")
-        if st.button("📥 Загрузить", use_container_width=True):
-            lines = [l.strip() for l in raw_input_data.split('\n') if l.strip()]
-            if lines:
-                st.session_state.bg_tasks_queue = []
-                st.session_state.bg_results = []
-                st.session_state.bg_is_running = False
-                t_type = 'url' if "URL" in input_mode else 'topic'
-                for l in lines: st.session_state.bg_tasks_queue.append({'type': t_type, 'val': l})
-                st.success(f"Загружено: {len(lines)}")
-                st.rerun()
+    col_h1, col_h2 = st.columns(2)
+    with col_h1:
+        raw_h1_input = st.text_area("H1 (МАРКЕР)", height=200, placeholder="Основной ключ (для SEO-анализа и использования в тексте).\nНапример: Труба стальная")
+    with col_h2:
+        raw_h2_input = st.text_area("H2 (ЗАГОЛОВОК)", height=200, placeholder="Тема статьи (пойдет в <h2>).\nНапример: Технические характеристики стальной трубы")
 
-    # --- 5. UI: ПРОЦЕСС ---
-    total_q = len(st.session_state.bg_tasks_queue)
-    completed_q = len(st.session_state.bg_results)
-    
-    # --- ЛОГИКА: ОПРЕДЕЛЕНИЕ ОСТАВШИХСЯ ЗАДАЧ ---
-    existing_sources = {r['source'] for r in st.session_state.bg_results if r['source'] != '-'}
-    existing_h2s = {r['h2'] for r in st.session_state.bg_results}
-    
-    pending_indices = []
-    for idx, task in enumerate(st.session_state.bg_tasks_queue):
-        is_done = False
-        if task['type'] == 'url' and task['val'] in existing_sources: is_done = True
-        if task['type'] == 'topic' and task['val'] in existing_h2s: is_done = True
+    if st.button("📥 Загрузить задачи", use_container_width=True):
+        lines_h1 = [l.strip() for l in raw_h1_input.split('\n') if l.strip()]
+        lines_h2 = [l.strip() for l in raw_h2_input.split('\n') if l.strip()]
         
-        if not is_done:
-            pending_indices.append(idx)
+        if len(lines_h1) != len(lines_h2):
+            st.error(f"❌ Ошибка: Количество строк не совпадает! H1: {len(lines_h1)}, H2: {len(lines_h2)}")
+        elif not lines_h1:
+            st.error("❌ Списки пусты!")
+        else:
+            st.session_state.bg_tasks_queue = []
+            st.session_state.bg_results = []
+            st.session_state.bg_is_running = False
             
-    remaining_real_q = len(pending_indices)
+            # Формируем задачи
+            for h1, h2 in zip(lines_h1, lines_h2):
+                st.session_state.bg_tasks_queue.append({
+                    'h1': h1,
+                    'h2': h2,
+                    'status': 'Pending',
+                    'lsi_added': []
+                })
+            st.success(f"✅ Загружено задач: {len(lines_h1)}")
+            st.rerun()
+
+    # --- 3. УПРАВЛЕНИЕ ПРОЦЕССОМ ---
+    total_q = len(st.session_state.bg_tasks_queue)
+    
+    # Фильтруем задачи, которые еще не сделаны
+    finished_keys = set((r['h1'], r['h2']) for r in st.session_state.bg_results)
+    pending_indices = [i for i, t in enumerate(st.session_state.bg_tasks_queue) if (t['h1'], t['h2']) not in finished_keys]
+    
+    remaining_q = len(pending_indices)
+    completed_q = total_q - remaining_q
 
     if total_q > 0:
         st.divider()
-        st.subheader(f"2. Генерация (Готово: {completed_q} | Осталось: {remaining_real_q})")
+        st.subheader(f"2. Генерация (Готово: {completed_q} | Осталось: {remaining_q})")
         
-        # Настройки пачки
-        c_b1, c_b2 = st.columns([1, 3])
-        with c_b1:
-            st.session_state.bg_batch_size = st.number_input("Размер пачки", 1, 20, st.session_state.bg_batch_size)
-        with c_b2:
-            auto_run_mode = st.checkbox("🔄 Авто-переход к следующей пачке", value=True)
-        
-        # КНОПКИ УПРАВЛЕНИЯ
-        c_act1, c_act2 = st.columns([2, 1])
+        c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
         with c_act1:
             if not st.session_state.bg_is_running:
-                label_btn = "▶️ ЗАПУСК ЦИКЛА"
-                if remaining_real_q == 0: label_btn = "✅ ВСЕ ЗАДАЧИ ВЫПОЛНЕНЫ"
-                
-                if st.button(label_btn, type="primary", disabled=(remaining_real_q == 0), use_container_width=True):
+                btn_label = "▶️ СТАРТ ЦИКЛА" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
+                if st.button(btn_label, type="primary", disabled=(remaining_q == 0), use_container_width=True):
                     if not lsi_api_key:
-                        st.error("Нет API ключа!")
+                        st.error("Введите API ключ!")
+                    elif not ARSENKIN_TOKEN:
+                        st.error("Нужен токен Arsenkin для SEO-анализа!")
                     else:
                         st.session_state.bg_is_running = True
                         st.rerun()
             else:
-                if st.button("⛔ СТОП (Пауза)", type="secondary", use_container_width=True):
+                if st.button("⛔ ПАУЗА", type="secondary", use_container_width=True):
                     st.session_state.bg_is_running = False
                     st.rerun()
-
-        with c_act2:
-            if st.button("🗑️ Сброс", use_container_width=True, disabled=st.session_state.bg_is_running):
+        
+        with c_act3:
+            if st.button("🗑️ Сброс очереди", disabled=st.session_state.bg_is_running):
                 st.session_state.bg_tasks_queue = []
                 st.session_state.bg_results = []
                 st.session_state.bg_is_running = False
                 st.rerun()
 
-        st.write("📊 **Мониторинг процесса:**")
+        # ТАБЛИЦА СТАТУСА
+        st.write("📊 **Очередь задач:**")
+        status_container = st.empty()
         table_placeholder = st.empty()
-        status_placeholder = st.empty()
 
-        def render_live_table():
-            if st.session_state.bg_results:
-                disp_res = st.session_state.bg_results[::-1][:10]
-                display_data = []
-                for res in disp_res:
-                    inp_val = res['source'] if res['source'] != '-' else res['h2']
-                    content_preview = "..."
-                    if res['status'] == 'OK':
-                        clean_text = re.sub(r'<[^>]+>', '', res['content'])[:50] + "..."
-                        content_preview = f"✅ {clean_text}"
-                    elif "Fail" in res['status']:
-                        content_preview = f"❌ Ошибка: {res['content']}"
-                    elif res['status'] == 'Skipped':
-                        content_preview = "⚠️ Пропущен (Дубль)"
-                    
-                    display_data.append({
-                        "Вход": inp_val,
-                        "H2 / Тема": res['h2'],
-                        "Статус": content_preview
-                    })
-                df_disp = pd.DataFrame(display_data)
-                table_placeholder.dataframe(df_disp, use_container_width=True, hide_index=True)
-
-        render_live_table()
-
-        # --- ЛОГИКА ГЕНЕРАЦИИ ---
-        if st.session_state.bg_is_running and remaining_real_q > 0:
-            lsi_arr = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
-            
-            current_batch_indices = pending_indices[:st.session_state.bg_batch_size]
-            
-            status_placeholder.info(f"🚀 Обработка {len(current_batch_indices)} статей...")
-            prog_bar = st.progress(0)
-            
-            for i, task_idx in enumerate(current_batch_indices):
-                task = st.session_state.bg_tasks_queue[task_idx]
-                val = task['val']; ttype = task['type']
-                
-                final_h2 = val; src_url = "-"
-                
-                if ttype == 'url':
-                    h2_res = get_h2_from_url(val)
-                    if h2_res.startswith("ERROR"):
-                        st.session_state.bg_results.append({
-                            "source": val, 
-                            "h2": "ERROR", 
-                            "content": h2_res, 
-                            "status": "Parse Fail"
-                        })
-                        render_live_table()
-                        continue
-                    final_h2 = h2_res; src_url = val
-                
-                html_out = generate_full_article(lsi_api_key, final_h2, lsi_arr)
-                
-                st.session_state.bg_results.append({
-                    "source": src_url,
-                    "h2": final_h2,
-                    "content": html_out,
-                    "status": "OK" if not html_out.startswith("API Error") else "Gen Fail"
+        def render_queue_table():
+            data_view = []
+            # Показываем последние 3 готовых и следующие 5 не готовых
+            for r in st.session_state.bg_results[-3:]:
+                data_view.append({
+                    "H1 (Маркер)": r['h1'],
+                    "H2 (Тема)": r['h2'],
+                    "SEO Слова": f"{len(r['lsi_added'])} шт.",
+                    "Статус": "✅ Готово" if r['status'] == 'OK' else "❌ Ошибка"
                 })
-                
-                render_live_table()
-                prog_bar.progress((i + 1) / len(current_batch_indices))
             
-            if auto_run_mode:
-                st.rerun()
-            else:
-                st.session_state.bg_is_running = False
-                status_placeholder.success("✅ Пачка готова!")
-                st.rerun()
-        
-        elif st.session_state.bg_is_running and remaining_real_q == 0:
-             st.session_state.bg_is_running = False
-             st.success("Все задачи выполнены!")
-             st.rerun()
+            cnt = 0
+            for idx in pending_indices:
+                if cnt >= 5: break
+                t = st.session_state.bg_tasks_queue[idx]
+                data_view.append({
+                    "H1 (Маркер)": t['h1'],
+                    "H2 (Тема)": t['h2'],
+                    "SEO Слова": "-",
+                    "Статус": "💤 В очереди"
+                })
+                cnt += 1
+            
+            if data_view:
+                table_placeholder.dataframe(pd.DataFrame(data_view), use_container_width=True, hide_index=True)
 
-    # --- 6. ПРЕВЬЮ И ЭКСПОРТ ---
+        render_queue_table()
+
+        # --- ЛОГИКА ВЫПОЛНЕНИЯ (ЦИКЛ) ---
+        if st.session_state.bg_is_running and remaining_q > 0:
+            
+            # 1. Берем следующую задачу
+            current_idx = pending_indices[0]
+            task = st.session_state.bg_tasks_queue[current_idx]
+            
+            h1_val = task['h1']
+            h2_val = task['h2']
+            
+            # 2. ФОНОВЫЙ SEO АНАЛИЗ
+            status_container.info(f"🔎 [Шаг 1/2] Запущен SEO Анализ для маркера: '{h1_val}'...")
+            
+            # Вызываем функцию
+            found_lsi_words = run_seo_analysis_background(h1_val, ARSENKIN_TOKEN)
+            
+            if found_lsi_words:
+                top_5_words = ", ".join(found_lsi_words[:5])
+                status_container.success(f"✅ SEO успешно! Найдено {len(found_lsi_words)} слов ({top_5_words}...). Генерируем текст...")
+            else:
+                status_container.warning("⚠️ SEO анализ не дал слов (возможно, мало конкурентов). Используем только общие LSI.")
+            
+            # 3. ПОДГОТОВКА ПРОМТА
+            common_lsi_list = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
+            combined_lsi = common_lsi_list + found_lsi_words
+            
+            # 4. ГЕНЕРАЦИЯ ТЕКСТА (НОВАЯ ФУНКЦИЯ v2)
+            html_out = generate_full_article_v2(lsi_api_key, h1_val, h2_val, combined_lsi)
+            
+            status_code = "OK"
+            if html_out.startswith("API Error") or html_out.startswith("Error"):
+                status_code = "Gen Fail"
+            
+            # 5. СОХРАНЕНИЕ
+            st.session_state.bg_results.append({
+                "h1": h1_val,
+                "h2": h2_val,
+                "lsi_added": found_lsi_words,
+                "content": html_out,
+                "status": status_code
+            })
+            
+            # Обновление UI
+            render_queue_table()
+            
+            # 6. АВТО-ПЕРЕЗАПУСК (РЕКУРСИЯ STREAMLIT)
+            time.sleep(1) # Пауза чтобы не банили
+            st.rerun()
+
+        elif st.session_state.bg_is_running and remaining_q == 0:
+            st.session_state.bg_is_running = False
+            status_container.success("🎉 Все задачи выполнены!")
+            st.balloons()
+            st.rerun()
+
+    # --- 4. ЭКСПОРТ ---
     if st.session_state.bg_results:
         st.divider()
-        st.subheader("3. Просмотр и Экспорт")
+        st.subheader("3. Результаты")
         
-        df = pd.DataFrame(st.session_state.bg_results)
+        df_res = pd.DataFrame(st.session_state.bg_results)
+        # Красивый вывод списка слов
+        df_res['lsi_added'] = df_res['lsi_added'].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
+        
         buf = io.BytesIO()
-        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer: df.to_excel(writer, index=False)
-        st.download_button("📥 Скачать Excel", data=buf.getvalue(), file_name="Gen_Result.xlsx", mime="application/vnd.ms-excel", type="primary")
-
+        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer: 
+            df_res.to_excel(writer, index=False)
+            
+        st.download_button("📥 Скачать Excel (С текстами и SEO словами)", data=buf.getvalue(), file_name="Full_SEO_Content.xlsx", mime="application/vnd.ms-excel", type="primary")
+        
+        # Визуальный просмотр
         st.markdown("---")
-        st.markdown("#### 👁️ Визуальный просмотр статьи")
+        opts = [f"{i+1}. {r['h2']} (Маркер: {r['h1']})" for i, r in enumerate(st.session_state.bg_results)]
+        sel = st.selectbox("Предпросмотр статьи:", opts)
         
-        preview_options = [f"{i+1}. {r['h2']}" for i, r in enumerate(st.session_state.bg_results)]
-        selected_option = st.selectbox("Выберите статью для просмотра:", preview_options)
-        
-        table_css = """
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-            .brand-accent-table { display: table !important; width: 100% !important; border-collapse: separate !important; border-spacing: 0 !important; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); font-family: 'Inter', sans-serif; border: 0 !important; margin-top: 20px; margin-bottom: 20px; }
-            .brand-accent-table th { background-color: #277EFF; color: white; text-align: left; padding: 16px; font-weight: 500; font-size: 15px; border: none; }
-            .brand-accent-table th:first-child { border-top-left-radius: 8px; }
-            .brand-accent-table th:last-child { border-top-right-radius: 8px; }
-            .brand-accent-table td { padding: 16px; border-bottom: 1px solid #e5e7eb; color: #4b5563; font-size: 15px; line-height: 1.4; vertical-align: middle; word-wrap: break-word; }
-            .brand-accent-table tr:last-child td { border-bottom: none; }
-            .brand-accent-table tr:hover td { background-color: #f8faff; }
-        </style>
-        """
-        
-        if selected_option:
-            idx = int(selected_option.split(".")[0]) - 1
-            record = st.session_state.bg_results[idx]
-            content_to_show = record['content']
+        if sel:
+            idx = int(sel.split(".")[0]) - 1
+            rec = st.session_state.bg_results[idx]
+            
+            st.caption(f"Внедренные SEO-слова (из анализа): {rec['lsi_added']}")
             
             with st.container(border=True):
-                if record['status'] == 'OK':
-                    st.markdown(table_css + content_to_show, unsafe_allow_html=True)
-                else:
-                    st.error(f"Статус: {record['status']}\n{content_to_show}")
+                st.markdown(rec['content'], unsafe_allow_html=True)
             
-            with st.expander("Показать исходный HTML код"):
-                st.code(content_to_show, language='html')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            with st.expander("Исходный код HTML"):
+                st.code(rec['content'], language='html')
