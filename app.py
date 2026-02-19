@@ -1447,46 +1447,56 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         df_hybrid["TF-IDF ТОП"] = df_hybrid["TF-IDF ТОП"].round(6)
         df_hybrid["IDF"] = df_hybrid["IDF"].round(4)
         
-        # --- ЗАПОЛНЕНИЕ ТАБЛИЦЫ ГЛУБИНЫ ---
+# --- ЗАПОЛНЕНИЕ ТАБЛИЦЫ ГЛУБИНЫ (Внутри того же цикла) ---
         raw_counts = data['counts_list']
-        zeros_to_add = N - len(raw_counts)
-        full_counts = raw_counts + [0] * zeros_to_add
-        full_counts.sort()
-        
+        full_counts = raw_counts + [0] * (N_sites - len(raw_counts))
         rec_median = int(np.median(full_counts) + 0.5)
         obs_max = max(full_counts) if full_counts else 0
         
-        if lemma in GARBAGE_LATIN_STOPLIST: continue
-        if obs_max == 0 and my_count == 0: continue
+        # Проверка стоп-листа БЕЗ continue, чтобы не ломать синтаксис
+        is_garbage = (lemma.lower() in ['руб', 'кг', 'ул', 'наш', 'ваш', 'ru'])
+        
+        if not is_garbage and not (obs_max == 0 and my_count == 0):
+            if rec_median >= 1:
+                words_with_median_gt_0.add(lemma)
+                if my_count > 0: my_found_words.add(lemma)
 
-        if rec_median >= 1:
-            words_with_median_gt_0.add(lemma)
-            if my_count > 0: my_found_words.add(lemma)
+            if my_count == 0:
+                weight = tf_idf_value * (rec_median if rec_median > 0 else 0.5)
+                item = {'word': lemma, 'weight': weight}
+                if rec_median >= 1: missing_semantics_high.append(item)
+                else: missing_semantics_low.append(item)
 
-        forms_str = ", ".join(sorted(list(data['forms'])))[:100]
+            forms_str = ", ".join(sorted(list(data['forms'])))[:100]
+            diff = rec_median - my_count
+            status = "Норма" if diff == 0 else ("Недоспам" if diff > 0 else "Переспам")
+            action_text = "✅" if diff == 0 else (f"+{diff}" if diff > 0 else f"{diff}")
 
-        if my_count == 0:
-            weight = tf_idf_value * (rec_median if rec_median > 0 else 0.5)
-            item = {'word': lemma, 'weight': weight}
-            if rec_median >= 1: missing_semantics_high.append(item)
-            else: missing_semantics_low.append(item)
+            table_depth.append({
+                "Слово": lemma,
+                "Словоформы": forms_str,
+                "Вхождений у вас": my_count,
+                "Медиана": rec_median,
+                "Максимум (конкур.)": obs_max,
+                "Статус": status,
+                "Рекомендация": action_text,
+                "is_missing": (my_count == 0),
+                "sort_val": abs(diff)
+            })
 
-        diff = rec_median - my_count
-        if diff == 0: status = "Норма"; action_text = "✅"; sort_val = 0
-        elif diff > 0: status = "Недоспам"; action_text = f"+{diff}"; sort_val = diff
-        else: status = "Переспам"; action_text = f"{diff}"; sort_val = abs(diff)
-
-        table_depth.append({
-            "Слово": lemma,
-            "Словоформы": forms_str,
-            "Вхождений у вас": my_count,
-            "Медиана": rec_median,
-            "Максимум (конкур.)": obs_max,
-            "Статус": status,
-            "Рекомендация": action_text,
-            "is_missing": (my_count == 0),
-            "sort_val": sort_val
-        })
+    # ТЕПЕРЬ ФИЛЬТРУЕМ ТАБЛИЦУ TF-IDF ПО УБЫВАНИЮ И БЕРЕМ ТОП-1000
+    df_hybrid = pd.DataFrame(table_hybrid)
+    if not df_hybrid.empty:
+        # Убираем мусор из TF-IDF перед обрезкой
+        trash = ['руб', 'кг', 'ул', 'наш', 'ваш', 'ru']
+        df_hybrid = df_hybrid[~df_hybrid['Слово'].isin(trash)]
+        
+        # Сортируем и берем 1000
+        df_hybrid = df_hybrid.sort_values(by="TF-IDF ТОП", ascending=False).head(1000)
+        
+        # Округляем числа
+        df_hybrid["TF-IDF ТОП"] = df_hybrid["TF-IDF ТОП"].round(6)
+        df_hybrid["IDF"] = df_hybrid["IDF"].round(4)
 
     # --- 4. ИТОГОВЫЙ СКОРИНГ ---
     total_needed = len(words_with_median_gt_0)
@@ -4727,6 +4737,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
