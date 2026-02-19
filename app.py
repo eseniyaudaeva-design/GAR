@@ -2211,6 +2211,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     except ImportError: return "Error: Library 'openai' not installed"
     
+    # Объединяем список в строку для промта
     lsi_string = ", ".join(lsi_list)
     
     stop_words_list = (
@@ -2237,88 +2238,79 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     ЗАДАЧА: Напиши техническую статью.
     
     [I] ВВОДНЫЕ ДАННЫЕ:
-    1. ГЛАВНЫЙ ТОВАР (МАРКЕР): "{h1_marker}" 
-       - Это объект, о котором статья. Используй этот термин (и его склонения) в подзаголовках H3, таблице и теле текста.
-    2. ЗАГОЛОВОК СТАТЬИ (H2): "{h2_topic}"
-       - Это текст, который должен быть строго в теге <h2>.
+    1. ГЛАВНЫЙ МАРКЕР (H1): "{h1_marker}" (Используй как объект описания).
+    2. ЗАГОЛОВОК СТАТЬИ (H2): "{h2_topic}" (Строго в тег <h2>).
     
-    [II] ПРАВИЛА РАБОТЫ С КЛЮЧОМ ("{h1_marker}"):
+    [II] ТРЕБОВАНИЯ К LSI (СТРОГО):
+    Список слов: {{{lsi_string}}}
     
-    1. ПЛОТНОСТЬ (ДО 5-6 РАЗ НА СЛОВО):
-       - Каждое отдельное слово из фразы "{h1_marker}" можно использовать в тексте ДО 5-6 РАЗ.
-       - ВАЖНО: Распределяй их равномерно по всему тексту, не лепи всё в один абзац.
+    ПРАВИЛА LSI:
+    1. ИСПОЛЬЗУЙ ВЕСЬ СПИСОК. Каждое слово из списка должно быть в тексте.
+    2. ЕДИНОРАЗОВОЕ УПОТРЕБЛЕНИЕ: Каждое LSI-слово вставляй РОВНО 1 РАЗ. Не повторяй их.
+    3. ОФОРМЛЕНИЕ: Каждое вставленное LSI-слово выделяй тегом <b>жирный</b>.
+    4. СКЛОНЕНИЕ: Можно менять окончания, падежи. Главное — сохранить корень и смысл.
     
-    2. РАЗБИВКА ДЛИННЫХ ФРАЗ (АНТИ-СПАМ):
-       - Если ключевая фраза состоит из 3 и более слов (например, "Пруток из магнитно-твердых сплавов"), ЗАПРЕЩЕНО писать её целиком внутри абзацев.
-       - Ты обязан разбивать её: писать "пруток" отдельно, "сплав" отдельно, "твердый" отдельно.
-       - Целиком фразу можно писать ТОЛЬКО в заголовках (H2, H3).
-       
-    3. ЗАПРЕТ НА СОЮЗ "И":
-       - Категорически избегай союза "и" при перечислении свойств. Используй запятую.
-       
-    [III] ЛОГИКА HTML (СТРОГО):
-    1. СПИСКИ: <ul> (для характеристик и сфер).
-    2. ТАБЛИЦА: Класс "brand-accent-table". Шапка через <thead>.
-
-    [IV] СТРУКТУРА ТЕКСТА (СТРОГО ПО ПУНКТАМ):
+    [III] СТРУКТУРА HTML (ОФОРМЛЕНИЕ):
+    1. Таблицы: ОБЯЗАТЕЛЬНО класс <table class="brand-accent-table">. Шапка <thead>.
+    2. Списки: Используй <ul>. Пункты заканчивай точкой или точкой с запятой.
     
-    1.1. Заголовок: <h2>{h2_topic}</h2>.
+    [IV] СТРУКТУРА ТЕКСТА:
     
-    1.2. БЭНГЕР: 3-4 предложения. Суть товара "{h1_marker}", ГОСТ, материал.
+    1. Заголовок: <h2>{h2_topic}</h2>
     
-    1.3. Абзац 1 + Контакты: 
+    2. Бэнгер: 3-4 предложения. Суть "{h1_marker}".
+    
+    3. Блок контактов: 
     {contact_html_block}
     
-    1.4. Подводка к списку 1 (:).
+    4. Подводка к списку 1.
     
-    1.5. Список №1 (6 пунктов): ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ "{h1_marker}". (<ul>, запятые).
+    5. Список №1 (Технические параметры "{h1_marker}"):
+       - <ul>, 6 пунктов.
+       - Без союза "и" (заменяй на запятую).
        
-    1.6. Абзац 2. Описание производства.
+    6. Абзац 2 (Производство/Особенности).
     
-    1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ): 4-5 строк.
+    7. ТАБЛИЦА ХАРАКТЕРИСТИК:
     <table class="brand-accent-table">
         <thead><tr><th>Параметр</th><th>Значение</th></tr></thead>
         <tbody>
-            <tr><td>ГОСТ / ТУ</td><td>[Данные для {h1_marker}]</td></tr>
-            <tr><td>Марка</td><td>[Данные]</td></tr>
-            <tr><td>[Параметр 3]</td><td>[Данные]</td></tr>
+            <tr><td>ГОСТ / ТУ</td><td>[Данные]</td></tr>
+            <tr><td>Марка стали</td><td>[Данные]</td></tr>
+            <tr><td>Размеры</td><td>[Данные]</td></tr>
+            <tr><td>Покрытие</td><td>[Данные]</td></tr>
         </tbody>
     </table>
     
-    1.8. Подзаголовок H3 (ШАБЛОН): "Классификация {h1_marker} (в род. падеже, с маленькой буквы)".
+    8. Подзаголовок H3.
+       - ТЕМА: Виды, Сортамент или Классификация.
+       - ЗАДАЧА: Придумай заголовок сам, исходя из типа товара (например: "Марки...", "Разновидности...", "Типы профиля...").
+       - ВАЖНО: Включи в заголовок ключ "{h1_marker}".
     
-    1.9. Абзац 3. Виды, типы.
+    9. Абзац 3 (Раскрытие темы видов/типов).
     
-    1.10. Подводка к списку 2 (:).
+    10. Подводка к списку 2.
     
-    1.11. Список №2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ. (<ul>).
+    11. Список №2 (Сферы применения): <ul>, 6 пунктов.
        
-    1.12. Абзац 4. Условия эксплуатации.
+    12. Абзац 4 (Условия эксплуатации).
                           
-    1.13. Подзаголовок H3 (ШАБЛОН): "Монтаж {h1_marker} (в род. падеже)" ИЛИ "Обработка...".
+    1.13. Подзаголовок H3.
+       - ТЕМА: Работа с материалом (Монтаж / Обработка / Сварка / Резка).
+       - ЗАДАЧА: Выбери процесс, наиболее подходящий для этого товара.
+       - ВАЖНО: Включи в заголовок ключ "{h1_marker}".
     
-    1.14. Абзац 5. Технология работы.
+    1.14. Абзац 5 (Технология выбранного процесса).
     
-    1.15. Подводка к списку 3 (:).
+    1.15. Подводка к списку 3.
     
-    1.16. Список №3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА. (<ul>).
+    1.16. Список №3 (Эксплуатационные свойства): <ul>, 6 пунктов.
        
-    1.17. Абзац 6. Резюме и отгрузка.
+    1.17. Абзац 6 (Заключение).
 
-    [V] ДОПОЛНИТЕЛЬНО (LSI И СТОП-СЛОВА):
+    [V] СТОП-СЛОВА (ИЗБЕГАТЬ): {stop_words_list}.
     
-    1. LSI ЯДРО (ОБЯЗАТЕЛЬНОЕ ВНЕДРЕНИЕ):
-    {{{lsi_string}}}
-    
-    ВАЖНОЕ ТРЕБОВАНИЕ ПО ОФОРМЛЕНИЮ LSI:
-    Любое слово из списка LSI, которое ты вставляешь в текст, ДОЛЖНО БЫТЬ ВЫДЕЛЕНО тегом <b>.
-    - Пример списка: "цена, купить"
-    - Пример в тексте: "Предлагаем <b>купить</b> товар по выгодной <b>цене</b>."
-    - Склонять слова МОЖНО, но тег <b> обязателен для каждого вхождения LSI.
-
-    2. СТОП-СЛОВА: {stop_words_list} (Не используй их).
-    
-    3. ВЫВОД: ТОЛЬКО HTML КОД. Без markdown.
+    ВЫВОД: ТОЛЬКО HTML КОД. Без markdown.
     """
     
     try:
@@ -4609,16 +4601,18 @@ with tab_monitoring:
                     os.remove(TRACK_FILE); st.rerun()
 
 # ==========================================
-# TAB 5: LSI GENERATOR (FULL CYCLE + URL PARSING)
+# TAB 5: LSI GENERATOR (FULL CYCLE + FIXES)
 # ==========================================
 with tab_lsi_gen:
     st.header("🏭 Массовая генерация B2B (Full Technical Mode)")
-    st.markdown("Авто-цикл: **H1 (Маркер) -> SEO Анализ -> Генерация текста под H2**.")
+    st.markdown("Авто-цикл: **H1 (Маркер) -> SEO Анализ (фон) -> LSI -> Генерация текста под H2**.")
 
-    # --- ИНИЦИАЛИЗАЦИЯ ---
+    # --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
     if 'bg_tasks_queue' not in st.session_state: st.session_state.bg_tasks_queue = []
     if 'bg_results' not in st.session_state: st.session_state.bg_results = []
     if 'bg_is_running' not in st.session_state: st.session_state.bg_is_running = False
+    # Инициализация размера пачки (дефолт 3)
+    if 'bg_batch_size' not in st.session_state: st.session_state.bg_batch_size = 3
 
     # --- 1. НАСТРОЙКИ ---
     with st.expander("⚙️ Настройки API и LSI", expanded=True):
@@ -4638,34 +4632,36 @@ with tab_lsi_gen:
     # --- 2. ЗАГРУЗКА ЗАДАЧ ---
     st.subheader("1. Загрузка задач")
     
-    # === ВЫБОР РЕЖИМА ===
+    # Выбор режима
     load_mode = st.radio(
         "Источник данных:", 
         ["📝 Вручную (Списки H1 и H2)", "🔗 Список ссылок (Авто-парсинг)"], 
         horizontal=True
     )
     
-    # ЛОГИКА ДЛЯ РАЗНЫХ РЕЖИМОВ
+    # 2.1 РУЧНОЙ ВВОД
     if "Вручную" in load_mode:
         st.info("Введите списки. Строка 1 в левом поле соответствует Строке 1 в правом.")
         col_h1, col_h2 = st.columns(2)
         with col_h1:
-            raw_h1_input = st.text_area("Список H1 (МАРКЕР)", height=200, placeholder="Труба стальная\nЛист оцинкованный")
+            raw_h1_input = st.text_area("Список H1 (МАРКЕР ДЛЯ АНАЛИЗА)", height=200, placeholder="Труба стальная\nЛист оцинкованный")
         with col_h2:
             raw_h2_input = st.text_area("Список H2 (ЗАГОЛОВОК СТАТЬИ)", height=200, placeholder="Технические характеристики трубы\nПреимущества оцинкованного листа")
-        
-        raw_urls_input = None # Не используется
+        raw_urls_input = None
 
+    # 2.2 ПАРСИНГ ССЫЛОК
     else:
         st.info("Скрипт зайдет на каждую ссылку, найдет там H1 (станет маркером) и H2 (станет заголовком).")
         raw_urls_input = st.text_area("Список ссылок (каждая с новой строки)", height=200, placeholder="https://site.ru/catalog/tovar1\nhttps://site.ru/catalog/tovar2")
-        raw_h1_input = None
-        raw_h2_input = None
+        raw_h1_input = None; raw_h2_input = None
 
-    # КНОПКА ЗАГРУЗКИ
+    # КНОПКА ЗАГРУЗКИ В ОЧЕРЕДЬ
     if st.button("📥 Загрузить задачи в очередь", use_container_width=True):
+        st.session_state.bg_tasks_queue = [] # Очищаем старую очередь при новой загрузке
+        st.session_state.bg_results = []
+        st.session_state.bg_is_running = False
         
-        # 1. ОБРАБОТКА РУЧНОГО ВВОДА
+        # ЛОГИКА ЗАГРУЗКИ (РУЧНАЯ)
         if "Вручную" in load_mode:
             lines_h1 = [l.strip() for l in raw_h1_input.split('\n') if l.strip()]
             lines_h2 = [l.strip() for l in raw_h2_input.split('\n') if l.strip()]
@@ -4675,67 +4671,57 @@ with tab_lsi_gen:
             elif not lines_h1:
                 st.error("❌ Списки пусты!")
             else:
-                st.session_state.bg_tasks_queue = []
-                st.session_state.bg_results = []
-                st.session_state.bg_is_running = False
-                
                 for h1, h2 in zip(lines_h1, lines_h2):
                     st.session_state.bg_tasks_queue.append({
                         'h1': h1,
                         'h2': h2,
                         'source_url': 'Manual',
-                        'status': 'Pending',
                         'lsi_added': []
                     })
                 st.success(f"✅ Загружено задач вручную: {len(lines_h1)}")
                 st.rerun()
 
-        # 2. ОБРАБОТКА ССЫЛОК (ПАРСИНГ)
+        # ЛОГИКА ЗАГРУЗКИ (ССЫЛКИ)
         else:
             urls_list = [u.strip() for u in raw_urls_input.split('\n') if u.strip()]
             if not urls_list:
                 st.error("❌ Список ссылок пуст!")
             else:
-                st.session_state.bg_tasks_queue = []
-                st.session_state.bg_results = []
-                st.session_state.bg_is_running = False
-                
                 progress_bar = st.progress(0)
                 status_box = st.status("🔗 Парсинг ссылок...", expanded=True)
-                
                 valid_count = 0
-                
                 for i, url in enumerate(urls_list):
                     status_box.write(f"Сканирую: {url}...")
-                    
-                    # Вызов функции парсинга (которую мы добавили в Этапе 1)
                     h1_found, h2_found, err = scrape_h1_h2_from_url(url)
-                    
                     if h1_found:
                         st.session_state.bg_tasks_queue.append({
                             'h1': h1_found,
                             'h2': h2_found,
                             'source_url': url,
-                            'status': 'Pending',
                             'lsi_added': []
                         })
                         valid_count += 1
                     else:
                         status_box.warning(f"⚠️ Сбой {url}: {err}")
-                    
                     progress_bar.progress((i + 1) / len(urls_list))
                 
-                status_box.update(label=f"✅ Готово! Успешно добавлено: {valid_count}", state="complete")
+                status_box.update(label=f"✅ Готово! Добавлено: {valid_count}", state="complete")
                 time.sleep(1)
                 st.rerun()
 
-    # --- 3. УПРАВЛЕНИЕ ПРОЦЕССОМ (ОБЩЕЕ ДЛЯ ОБОИХ РЕЖИМОВ) ---
+    # --- 3. УПРАВЛЕНИЕ ПРОЦЕССОМ ---
+    
+    # Считаем задачи
     total_q = len(st.session_state.bg_tasks_queue)
+    # Определяем готовые по уникальной паре (h1, h2)
+    finished_ids = set(f"{r['h1']}|{r['h2']}" for r in st.session_state.bg_results)
     
-    # Фильтруем задачи, которые еще не сделаны
-    finished_keys = set((r['h1'], r['h2']) for r in st.session_state.bg_results)
-    pending_indices = [i for i, t in enumerate(st.session_state.bg_tasks_queue) if (t['h1'], t['h2']) not in finished_keys]
-    
+    pending_indices = []
+    for i, t in enumerate(st.session_state.bg_tasks_queue):
+        unique_id = f"{t['h1']}|{t['h2']}"
+        if unique_id not in finished_ids:
+            pending_indices.append(i)
+            
     remaining_q = len(pending_indices)
     completed_q = total_q - remaining_q
 
@@ -4743,6 +4729,14 @@ with tab_lsi_gen:
         st.divider()
         st.subheader(f"2. Генерация (Готово: {completed_q} | Осталось: {remaining_q})")
         
+        # НАСТРОЙКИ ПАЧКИ (ВЕРНУЛ ОБРАТНО)
+        c_set1, c_set2 = st.columns([1, 3])
+        with c_set1:
+            st.session_state.bg_batch_size = st.number_input("Размер пачки (шт)", 1, 10, st.session_state.bg_batch_size)
+        with c_set2:
+            st.info("⚠️ Большой размер пачки может вызвать тайм-аут. Рекомендуется 2-3.")
+
+        # КНОПКИ УПРАВЛЕНИЯ
         c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
         with c_act1:
             if not st.session_state.bg_is_running:
@@ -4751,7 +4745,7 @@ with tab_lsi_gen:
                     if not lsi_api_key:
                         st.error("Введите API ключ!")
                     elif not ARSENKIN_TOKEN:
-                        st.error("Нужен токен Arsenkin для SEO-анализа!")
+                        st.error("Нужен токен Arsenkin для SEO!")
                     else:
                         st.session_state.bg_is_running = True
                         st.rerun()
@@ -4761,97 +4755,94 @@ with tab_lsi_gen:
                     st.rerun()
         
         with c_act3:
-            if st.button("🗑️ Сброс очереди", disabled=st.session_state.bg_is_running):
+            if st.button("🗑️ Сброс очереди", disabled=st.session_state.bg_is_running, use_container_width=True):
                 st.session_state.bg_tasks_queue = []
                 st.session_state.bg_results = []
                 st.session_state.bg_is_running = False
                 st.rerun()
 
-        # ТАБЛИЦА СТАТУСА
+        # ТАБЛИЦА СТАТУСА (ОБНОВЛЕННАЯ)
         st.write("📊 **Очередь задач:**")
-        status_container = st.empty()
         table_placeholder = st.empty()
+        status_container = st.empty()
 
         def render_queue_table():
             data_view = []
-            # Показываем последние 3 готовых
+            # Последние 3 готовых
             for r in st.session_state.bg_results[-3:]:
+                lsi_preview = ", ".join(r['lsi_added'][:5]) + ("..." if len(r['lsi_added']) > 5 else "") if r['lsi_added'] else "Только общие"
                 data_view.append({
-                    "Источник": r.get('source_url', 'Manual'),
                     "H1 (Маркер)": r['h1'],
                     "H2 (Тема)": r['h2'],
-                    "SEO Слова": f"{len(r['lsi_added'])} шт.",
+                    "Собранные LSI": lsi_preview,
                     "Статус": "✅ Готово" if r['status'] == 'OK' else "❌ Ошибка"
                 })
-            
-            # Показываем следующие 5 в очереди
+            # Следующие в очереди
             cnt = 0
             for idx in pending_indices:
                 if cnt >= 5: break
                 t = st.session_state.bg_tasks_queue[idx]
                 data_view.append({
-                    "Источник": t.get('source_url', 'Manual'),
                     "H1 (Маркер)": t['h1'],
                     "H2 (Тема)": t['h2'],
-                    "SEO Слова": "-",
+                    "Собранные LSI": "⏳ Ожидание...",
                     "Статус": "💤 В очереди"
                 })
                 cnt += 1
-            
             if data_view:
                 table_placeholder.dataframe(pd.DataFrame(data_view), use_container_width=True, hide_index=True)
 
         render_queue_table()
 
-        # --- ЛОГИКА ВЫПОЛНЕНИЯ (ЦИКЛ) ---
+        # --- ЛОГИКА ВЫПОЛНЕНИЯ (ЦИКЛ ПО ПАЧКЕ) ---
         if st.session_state.bg_is_running and remaining_q > 0:
             
-            # 1. Берем следующую задачу
-            current_idx = pending_indices[0]
-            task = st.session_state.bg_tasks_queue[current_idx]
+            # Определяем текущую пачку (Batch)
+            current_batch_indices = pending_indices[:st.session_state.bg_batch_size]
             
-            h1_val = task['h1']
-            h2_val = task['h2']
-            source_u = task.get('source_url', 'Manual')
+            status_container.info(f"🚀 Обработка пачки из {len(current_batch_indices)} шт...")
+            prog_bar = st.progress(0)
             
-            # 2. ФОНОВЫЙ SEO АНАЛИЗ
-            status_container.info(f"🔎 [Шаг 1/2] Запущен SEO Анализ для маркера: '{h1_val}'...")
+            for i, task_idx in enumerate(current_batch_indices):
+                task = st.session_state.bg_tasks_queue[task_idx]
+                h1_val = task['h1']
+                h2_val = task['h2']
+                
+                # 1. SEO АНАЛИЗ (ФОНОВЫЙ)
+                status_container.write(f"🔎 [{i+1}/{len(current_batch_indices)}] Анализ топа по запросу: **{h1_val}**...")
+                
+                # Вызов фоновой функции (без переключения вкладок!)
+                found_lsi_words = run_seo_analysis_background(h1_val, ARSENKIN_TOKEN)
+                
+                # 2. ГЕНЕРАЦИЯ ТЕКСТА
+                status_container.write(f"✍️ [{i+1}/{len(current_batch_indices)}] Пишем текст для: **{h2_val}**...")
+                
+                common_lsi_list = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
+                combined_lsi = list(set(common_lsi_list + found_lsi_words)) # Убираем дубли
+                
+                html_out = generate_full_article_v2(lsi_api_key, h1_val, h2_val, combined_lsi)
+                
+                status_code = "OK"
+                if html_out.startswith("API Error") or html_out.startswith("Error"):
+                    status_code = "Gen Fail"
+                
+                # 3. СОХРАНЕНИЕ В РЕЗУЛЬТАТЫ (Мгновенно)
+                st.session_state.bg_results.append({
+                    "h1": h1_val,
+                    "h2": h2_val,
+                    "source_url": task.get('source_url', '-'),
+                    "lsi_added": found_lsi_words, # Сохраняем только уникальные найденные
+                    "content": html_out,
+                    "status": status_code
+                })
+                
+                # Обновляем прогресс
+                prog_bar.progress((i + 1) / len(current_batch_indices))
             
-            # Вызываем функцию
-            found_lsi_words = run_seo_analysis_background(h1_val, ARSENKIN_TOKEN)
-            
-            if found_lsi_words:
-                top_5_words = ", ".join(found_lsi_words[:5])
-                status_container.success(f"✅ SEO успешно! Найдено {len(found_lsi_words)} слов ({top_5_words}...). Генерируем текст...")
-            else:
-                status_container.warning("⚠️ SEO анализ не дал слов (возможно, мало конкурентов). Используем только общие LSI.")
-            
-            # 3. ПОДГОТОВКА ПРОМТА
-            common_lsi_list = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
-            combined_lsi = common_lsi_list + found_lsi_words
-            
-            # 4. ГЕНЕРАЦИЯ ТЕКСТА (НОВАЯ ФУНКЦИЯ v2)
-            html_out = generate_full_article_v2(lsi_api_key, h1_val, h2_val, combined_lsi)
-            
-            status_code = "OK"
-            if html_out.startswith("API Error") or html_out.startswith("Error"):
-                status_code = "Gen Fail"
-            
-            # 5. СОХРАНЕНИЕ
-            st.session_state.bg_results.append({
-                "h1": h1_val,
-                "h2": h2_val,
-                "source_url": source_u,
-                "lsi_added": found_lsi_words,
-                "content": html_out,
-                "status": status_code
-            })
-            
-            # Обновление UI
+            # Обновляем таблицу (чтобы пользователь видел результат перед релоадом)
             render_queue_table()
-            
-            # 6. АВТО-ПЕРЕЗАПУСК (РЕКУРСИЯ STREAMLIT)
-            time.sleep(1) # Пауза чтобы не банили
+            status_container.success("✅ Пачка завершена! Перезагрузка для следующей...")
+            time.sleep(1)
             st.rerun()
 
         elif st.session_state.bg_is_running and remaining_q == 0:
@@ -4860,34 +4851,49 @@ with tab_lsi_gen:
             st.balloons()
             st.rerun()
 
-    # --- 4. ЭКСПОРТ ---
+    # --- 4. ЭКСПОРТ И ПРОСМОТР ---
     if st.session_state.bg_results:
         st.divider()
         st.subheader("3. Результаты")
         
         df_res = pd.DataFrame(st.session_state.bg_results)
-        # Красивый вывод списка слов
+        # Преобразуем список LSI в строку
         df_res['lsi_added'] = df_res['lsi_added'].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
         
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='xlsxwriter') as writer: 
             df_res.to_excel(writer, index=False)
             
-        st.download_button("📥 Скачать Excel (С текстами и SEO словами)", data=buf.getvalue(), file_name="Full_SEO_Content.xlsx", mime="application/vnd.ms-excel", type="primary")
+        st.download_button("📥 Скачать Excel (Full Report)", data=buf.getvalue(), file_name="SEO_Content_Result.xlsx", mime="application/vnd.ms-excel", type="primary")
         
-        # Визуальный просмотр
         st.markdown("---")
-        opts = [f"{i+1}. {r['h2']} (Маркер: {r['h1']})" for i, r in enumerate(st.session_state.bg_results)]
-        sel = st.selectbox("Предпросмотр статьи:", opts)
+        st.markdown("#### 👁️ Просмотр статьи")
+        
+        # Стили для предпросмотра (ЧТОБЫ НЕ СЛЕТАЛИ)
+        table_css = """
+        <style>
+            .brand-accent-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-family: 'Inter', sans-serif; font-size: 14px; }
+            .brand-accent-table th { background-color: #277EFF; color: white; padding: 12px; text-align: left; }
+            .brand-accent-table td { border: 1px solid #e5e7eb; padding: 10px; color: #374151; }
+            .brand-accent-table tr:nth-child(even) { background-color: #f9fafb; }
+            ul { margin-bottom: 15px; }
+            li { margin-bottom: 5px; }
+        </style>
+        """
+        
+        opts = [f"{i+1}. {r['h2']} (H1: {r['h1']})" for i, r in enumerate(st.session_state.bg_results)]
+        sel = st.selectbox("Выберите статью:", opts)
         
         if sel:
             idx = int(sel.split(".")[0]) - 1
             rec = st.session_state.bg_results[idx]
             
-            st.caption(f"Внедренные SEO-слова (из анализа): {rec['lsi_added']}")
+            lsi_str = ", ".join(rec['lsi_added']) if rec['lsi_added'] else "Нет уникальных LSI"
+            st.info(f"📊 **Собранная семантика (расширение):** {lsi_str}")
             
             with st.container(border=True):
-                st.markdown(rec['content'], unsafe_allow_html=True)
+                # Вставляем стили + контент
+                st.markdown(table_css + rec['content'], unsafe_allow_html=True)
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
