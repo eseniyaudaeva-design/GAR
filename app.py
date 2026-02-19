@@ -1371,11 +1371,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         lemma, pos = key
         data = global_stats[key]
         
-# 1. IDF = log10( Всего / В скольких документах встретилось )
+# 1. IDF сглаженный (как в оригинальных алгоритмах)
         df = data['docs_containing']
         if df == 0: continue
-        # Добавляем +1.0 (сглаживание), чтобы значения не обнулялись и были разными
-        idf = math.log10(N / df) + 1.0
+        
+        # Используем натуральный логарифм и прибавку, чтобы расширить диапазон значений
+        # Это даст гораздо больше РАЗНЫХ цифр в колонке IDF
+        idf = math.log((N + 1) / (df + 0.5)) + 1.2
         
         # 2. Средний TF = Сумма TF / Кол-во конкурентов
         avg_tf = data['sum_tf'] / N
@@ -4676,6 +4678,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
