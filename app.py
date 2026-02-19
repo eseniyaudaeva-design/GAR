@@ -1754,9 +1754,9 @@ def analyze_ideal_name(comp_data_full):
 def run_seo_analysis_background(query, api_token):
     """
     Фоновый запуск SEO-анализа для получения TF-IDF слов.
-    Эмулирует действия вкладки 1: "Без страницы" -> API Arsenkin -> Анализ -> TF-IDF.
+    Теперь обновляет данные и на 1-й вкладке!
     """
-    # 1. Настройки (Дефолтные)
+    # Настройки
     settings = {
         'noindex': True, 
         'alt_title': False, 
@@ -1766,30 +1766,28 @@ def run_seo_analysis_background(query, api_token):
         'custom_stops': []
     }
     
-    # 2. Эмуляция "Ваш сайт - Без страницы"
+    # Фейковая страница "Ваш сайт" (так как при генерации своего URL еще нет)
     my_data = {'url': 'Local', 'domain': 'local', 'body_text': '', 'anchor_text': ''}
     
-    # 3. Получение ТОП-10 через Arsenkin
     if not api_token: 
         return []
     
     try:
-        # Используем дефолтный регион Москва (213) и Яндекс
+        # Запрос к Арсенкину (Топ-10)
         raw_top = get_arsenkin_urls(query, "Яндекс", "Москва", api_token, depth_val=10)
         if not raw_top: return []
         
-        # Фильтруем агрегаторы (упрощенно)
+        # Фильтр мусора
         candidates = []
         excludes = ["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com", "dzen", "wiki"]
         for item in raw_top:
             if not any(x in item['url'] for x in excludes):
                 candidates.append(item)
         
-        # Берем топ-10
         candidates = candidates[:10]
         if not candidates: return []
 
-        # 4. Скачивание (Парсинг)
+        # Парсинг
         comp_data = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             futures = {executor.submit(parse_page, item['url'], settings, query): item for item in candidates}
@@ -1803,16 +1801,37 @@ def run_seo_analysis_background(query, api_token):
         
         if not comp_data: return []
 
-        # 5. Расчет метрик (TF-IDF)
+        # Расчет метрик
         targets = [{'url': d['url'], 'pos': d['pos']} for d in comp_data]
         results = calculate_metrics(comp_data, my_data, settings, 0, targets)
         
-        # 6. Извлечение TF-IDF (Топ-15 слов)
+        # === СОХРАНЕНИЕ В STATE (ДЛЯ ВКЛАДКИ 1) ===
+        # Теперь результаты этого анализа будут видны на первой вкладке
+        st.session_state['analysis_results'] = results
+        st.session_state['analysis_done'] = True
+        st.session_state['query_input'] = query # Подставляем текущий запрос в поле
+        st.session_state['my_page_source_radio'] = "Без страницы" # Переключаем режим
+        
+        # Сохраняем "сырые" данные конкурентов (нужны для Meta Dashboard)
+        st.session_state['raw_comp_data'] = comp_data 
+        
+        # Считаем и сохраняем Нейминг и Идеальный H1
+        naming_df = calculate_naming_metrics(comp_data, my_data, settings)
+        st.session_state['naming_table_df'] = naming_df
+        st.session_state['ideal_h1_result'] = analyze_ideal_name(comp_data)
+        
+        # Данные для графика
+        st.session_state['full_graph_data'] = results['relevance_top']
+        
+        # Чтобы не крашился график трендов
+        _, _, trend = analyze_serp_anomalies(results['relevance_top'])
+        st.session_state['serp_trend_info'] = trend
+        # ==========================================
+
+        # Извлечение TF-IDF (возвращаем для генератора LSI)
         df_hybrid = results.get('hybrid')
         if df_hybrid is not None and not df_hybrid.empty:
-            # Сортировка уже есть в calculate_metrics, но на всякий случай
-            top_words = df_hybrid.head(15)['Слово'].tolist()
-            return top_words
+            return df_hybrid.head(15)['Слово'].tolist()
             
     except Exception as e:
         print(f"Background SEO Error: {e}")
@@ -4945,3 +4964,4 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
