@@ -1,5 +1,5 @@
 import streamlit as st
-import pymorphy2
+import pymorphy3 as pymorphy2
 import pandas as pd
 import numpy as np
 import requests
@@ -4657,6 +4657,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
