@@ -2346,6 +2346,68 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     except Exception as e:
         return f"API Error: {str(e)}"
 
+def scrape_h1_h2_from_url(url):
+    """
+    Заходит на страницу, забирает H1 (как маркер) и первый релевантный H2.
+    """
+    # 1. Попытка через curl_cffi (чтобы обойти 403)
+    try:
+        from curl_cffi import requests as cffi_requests
+        r = cffi_requests.get(
+            url, 
+            impersonate="chrome110", 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'},
+            timeout=20
+        )
+        content = r.content
+        encoding = r.encoding if r.encoding else 'utf-8'
+    except:
+        # 2. Fallback на requests
+        try:
+            import requests
+            import urllib3
+            urllib3.disable_warnings()
+            r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20, verify=False)
+            content = r.content
+            encoding = r.apparent_encoding
+        except Exception as e:
+            return None, None, f"Ошибка соединения: {e}"
+
+    if r.status_code != 200:
+        return None, None, f"HTTP Error {r.status_code}"
+
+    try:
+        soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
+        
+        # --- ИЩЕМ H1 ---
+        h1_tag = soup.find('h1')
+        h1_text = h1_tag.get_text(strip=True) if h1_tag else ""
+        
+        # --- ИЩЕМ H2 ---
+        # Сначала пробуем найти H2 внутри контентного блока (частая практика)
+        h2_text = ""
+        content_div = soup.find('div', class_=re.compile(r'(desc|content|text|article)'))
+        if content_div:
+            h2_tag = content_div.find('h2')
+            if h2_tag: h2_text = h2_tag.get_text(strip=True)
+        
+        # Если не нашли в контенте, берем просто первый попавшийся H2 на странице
+        if not h2_text:
+            h2_tag = soup.find('h2')
+            if h2_tag: h2_text = h2_tag.get_text(strip=True)
+            
+        # Если H2 вообще нет, используем H1 как тему (fallback)
+        if not h2_text:
+            h2_text = h1_text
+
+        if not h1_text:
+            return None, None, "H1 не найден"
+
+        return h1_text, h2_text, "OK"
+
+    except Exception as e:
+        return None, None, f"Ошибка парсинга: {e}"
+
 # ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
@@ -4547,11 +4609,11 @@ with tab_monitoring:
                     os.remove(TRACK_FILE); st.rerun()
 
 # ==========================================
-# TAB 5: LSI GENERATOR (FULL CYCLE)
+# TAB 5: LSI GENERATOR (FULL CYCLE + URL PARSING)
 # ==========================================
 with tab_lsi_gen:
     st.header("🏭 Массовая генерация B2B (Full Technical Mode)")
-    st.markdown("Авто-цикл: **Берем H1 -> SEO Анализ (фон) -> Получаем семантику -> Генерируем текст под H2**.")
+    st.markdown("Авто-цикл: **H1 (Маркер) -> SEO Анализ -> Генерация текста под H2**.")
 
     # --- ИНИЦИАЛИЗАЦИЯ ---
     if 'bg_tasks_queue' not in st.session_state: st.session_state.bg_tasks_queue = []
@@ -4569,45 +4631,105 @@ with tab_lsi_gen:
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v2")
+            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v3")
         with c2:
             raw_lsi_common = st.text_area("LSI (Общий для всех текстов)", height=70, value=default_lsi_text)
 
     # --- 2. ЗАГРУЗКА ЗАДАЧ ---
     st.subheader("1. Загрузка задач")
-    st.info("Введите список пар. Строки должны соответствовать друг другу!")
     
-    col_h1, col_h2 = st.columns(2)
-    with col_h1:
-        raw_h1_input = st.text_area("H1 (МАРКЕР)", height=200, placeholder="Основной ключ (для SEO-анализа и использования в тексте).\nНапример: Труба стальная")
-    with col_h2:
-        raw_h2_input = st.text_area("H2 (ЗАГОЛОВОК)", height=200, placeholder="Тема статьи (пойдет в <h2>).\nНапример: Технические характеристики стальной трубы")
-
-    if st.button("📥 Загрузить задачи", use_container_width=True):
-        lines_h1 = [l.strip() for l in raw_h1_input.split('\n') if l.strip()]
-        lines_h2 = [l.strip() for l in raw_h2_input.split('\n') if l.strip()]
+    # === ВЫБОР РЕЖИМА ===
+    load_mode = st.radio(
+        "Источник данных:", 
+        ["📝 Вручную (Списки H1 и H2)", "🔗 Список ссылок (Авто-парсинг)"], 
+        horizontal=True
+    )
+    
+    # ЛОГИКА ДЛЯ РАЗНЫХ РЕЖИМОВ
+    if "Вручную" in load_mode:
+        st.info("Введите списки. Строка 1 в левом поле соответствует Строке 1 в правом.")
+        col_h1, col_h2 = st.columns(2)
+        with col_h1:
+            raw_h1_input = st.text_area("Список H1 (МАРКЕР)", height=200, placeholder="Труба стальная\nЛист оцинкованный")
+        with col_h2:
+            raw_h2_input = st.text_area("Список H2 (ЗАГОЛОВОК СТАТЬИ)", height=200, placeholder="Технические характеристики трубы\nПреимущества оцинкованного листа")
         
-        if len(lines_h1) != len(lines_h2):
-            st.error(f"❌ Ошибка: Количество строк не совпадает! H1: {len(lines_h1)}, H2: {len(lines_h2)}")
-        elif not lines_h1:
-            st.error("❌ Списки пусты!")
-        else:
-            st.session_state.bg_tasks_queue = []
-            st.session_state.bg_results = []
-            st.session_state.bg_is_running = False
-            
-            # Формируем задачи
-            for h1, h2 in zip(lines_h1, lines_h2):
-                st.session_state.bg_tasks_queue.append({
-                    'h1': h1,
-                    'h2': h2,
-                    'status': 'Pending',
-                    'lsi_added': []
-                })
-            st.success(f"✅ Загружено задач: {len(lines_h1)}")
-            st.rerun()
+        raw_urls_input = None # Не используется
 
-    # --- 3. УПРАВЛЕНИЕ ПРОЦЕССОМ ---
+    else:
+        st.info("Скрипт зайдет на каждую ссылку, найдет там H1 (станет маркером) и H2 (станет заголовком).")
+        raw_urls_input = st.text_area("Список ссылок (каждая с новой строки)", height=200, placeholder="https://site.ru/catalog/tovar1\nhttps://site.ru/catalog/tovar2")
+        raw_h1_input = None
+        raw_h2_input = None
+
+    # КНОПКА ЗАГРУЗКИ
+    if st.button("📥 Загрузить задачи в очередь", use_container_width=True):
+        
+        # 1. ОБРАБОТКА РУЧНОГО ВВОДА
+        if "Вручную" in load_mode:
+            lines_h1 = [l.strip() for l in raw_h1_input.split('\n') if l.strip()]
+            lines_h2 = [l.strip() for l in raw_h2_input.split('\n') if l.strip()]
+            
+            if len(lines_h1) != len(lines_h2):
+                st.error(f"❌ Ошибка: Несовпадение строк! H1: {len(lines_h1)}, H2: {len(lines_h2)}")
+            elif not lines_h1:
+                st.error("❌ Списки пусты!")
+            else:
+                st.session_state.bg_tasks_queue = []
+                st.session_state.bg_results = []
+                st.session_state.bg_is_running = False
+                
+                for h1, h2 in zip(lines_h1, lines_h2):
+                    st.session_state.bg_tasks_queue.append({
+                        'h1': h1,
+                        'h2': h2,
+                        'source_url': 'Manual',
+                        'status': 'Pending',
+                        'lsi_added': []
+                    })
+                st.success(f"✅ Загружено задач вручную: {len(lines_h1)}")
+                st.rerun()
+
+        # 2. ОБРАБОТКА ССЫЛОК (ПАРСИНГ)
+        else:
+            urls_list = [u.strip() for u in raw_urls_input.split('\n') if u.strip()]
+            if not urls_list:
+                st.error("❌ Список ссылок пуст!")
+            else:
+                st.session_state.bg_tasks_queue = []
+                st.session_state.bg_results = []
+                st.session_state.bg_is_running = False
+                
+                progress_bar = st.progress(0)
+                status_box = st.status("🔗 Парсинг ссылок...", expanded=True)
+                
+                valid_count = 0
+                
+                for i, url in enumerate(urls_list):
+                    status_box.write(f"Сканирую: {url}...")
+                    
+                    # Вызов функции парсинга (которую мы добавили в Этапе 1)
+                    h1_found, h2_found, err = scrape_h1_h2_from_url(url)
+                    
+                    if h1_found:
+                        st.session_state.bg_tasks_queue.append({
+                            'h1': h1_found,
+                            'h2': h2_found,
+                            'source_url': url,
+                            'status': 'Pending',
+                            'lsi_added': []
+                        })
+                        valid_count += 1
+                    else:
+                        status_box.warning(f"⚠️ Сбой {url}: {err}")
+                    
+                    progress_bar.progress((i + 1) / len(urls_list))
+                
+                status_box.update(label=f"✅ Готово! Успешно добавлено: {valid_count}", state="complete")
+                time.sleep(1)
+                st.rerun()
+
+    # --- 3. УПРАВЛЕНИЕ ПРОЦЕССОМ (ОБЩЕЕ ДЛЯ ОБОИХ РЕЖИМОВ) ---
     total_q = len(st.session_state.bg_tasks_queue)
     
     # Фильтруем задачи, которые еще не сделаны
@@ -4624,7 +4746,7 @@ with tab_lsi_gen:
         c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
         with c_act1:
             if not st.session_state.bg_is_running:
-                btn_label = "▶️ СТАРТ ЦИКЛА" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
+                btn_label = "▶️ СТАРТ ГЕНЕРАЦИИ" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
                 if st.button(btn_label, type="primary", disabled=(remaining_q == 0), use_container_width=True):
                     if not lsi_api_key:
                         st.error("Введите API ключ!")
@@ -4652,20 +4774,23 @@ with tab_lsi_gen:
 
         def render_queue_table():
             data_view = []
-            # Показываем последние 3 готовых и следующие 5 не готовых
+            # Показываем последние 3 готовых
             for r in st.session_state.bg_results[-3:]:
                 data_view.append({
+                    "Источник": r.get('source_url', 'Manual'),
                     "H1 (Маркер)": r['h1'],
                     "H2 (Тема)": r['h2'],
                     "SEO Слова": f"{len(r['lsi_added'])} шт.",
                     "Статус": "✅ Готово" if r['status'] == 'OK' else "❌ Ошибка"
                 })
             
+            # Показываем следующие 5 в очереди
             cnt = 0
             for idx in pending_indices:
                 if cnt >= 5: break
                 t = st.session_state.bg_tasks_queue[idx]
                 data_view.append({
+                    "Источник": t.get('source_url', 'Manual'),
                     "H1 (Маркер)": t['h1'],
                     "H2 (Тема)": t['h2'],
                     "SEO Слова": "-",
@@ -4687,6 +4812,7 @@ with tab_lsi_gen:
             
             h1_val = task['h1']
             h2_val = task['h2']
+            source_u = task.get('source_url', 'Manual')
             
             # 2. ФОНОВЫЙ SEO АНАЛИЗ
             status_container.info(f"🔎 [Шаг 1/2] Запущен SEO Анализ для маркера: '{h1_val}'...")
@@ -4715,6 +4841,7 @@ with tab_lsi_gen:
             st.session_state.bg_results.append({
                 "h1": h1_val,
                 "h2": h2_val,
+                "source_url": source_u,
                 "lsi_added": found_lsi_words,
                 "content": html_out,
                 "status": status_code
