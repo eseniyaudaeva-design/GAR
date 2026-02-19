@@ -1353,35 +1353,33 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         'counts_list': []
     })
 
-# --- 2. СБОР ДАННЫХ (Нарезка на фиксированные пассажи для 500+ IDF) ---
+# --- 2. СБОР ДАННЫХ (Формируем корпус N из пассажей) ---
     all_text_blocks = [] 
     N_sites = len(comp_data_full) if len(comp_data_full) > 0 else 1
-    PASSAGE_SIZE = 20 # Размер одного "документа" в словах
+    PASSAGE_SIZE = 20 # Окно в 20 слов для создания микро-контекста
 
     for p in comp_data_full:
         if not p.get('body_text'): continue
         
-        # Полный анализ текста для TF и форм
         doc_tokens, doc_forms, doc_len = analyze_text_structure(p['body_text'])
         if doc_len > 0:
             doc_counter = Counter(doc_tokens)
             for key, count in doc_counter.items():
+                # TF по-прежнему считаем как среднее по сайтам для стабильности
                 global_stats[key]['sum_tf'] += (count / doc_len)
                 global_stats[key]['forms'].update(doc_forms[key])
                 global_stats[key]['counts_list'].append(count)
 
-            # НАРЕЗКА: превращаем плоский список слов в куски по 20 слов
-            # Это гарантированно создаст сотни "документов" (N)
-            # Если на сайте 400 слов, получится 20 пассажей. 10 сайтов = 200 пассажей.
+            # НАРЕЗКА: создаем массив документов N
             for i in range(0, len(doc_tokens), PASSAGE_SIZE):
                 passage = doc_tokens[i : i + PASSAGE_SIZE]
-                if len(passage) > 5: # игнорим обрубки в конце
+                if len(passage) > 5: # Игнорируем слишком мелкие хвосты
                     all_text_blocks.append(set(passage))
 
-    # Теперь N — это сотни пассажей. Это даст уникальность логарифма.
-    N = len(all_text_blocks) if len(all_text_blocks) > 0 else 1
+    # Твоё итоговое N — это общее кол-во всех пассажей
+    N_passages = len(all_text_blocks) if len(all_text_blocks) > 0 else 1
     
-    # Считаем DF (в скольких пассажах встретилось слово)
+    # Считаем df (в скольких пассажах есть слово)
     for b_set in all_text_blocks:
         for key in b_set:
             global_stats[key]['docs_containing'] += 1
@@ -1412,16 +1410,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         lemma, pos = key
         data = global_stats[key]
         
-        df = data['docs_containing']
-        if df == 0: continue
+        df_passages = data['docs_containing']
+        if df_passages == 0: continue
         
-        # Расчет IDF по пассажирам/окнам
-        idf = math.log10(N / df)
-        # Средний TF по сайтам
+        # ЧЕСТНЫЙ IDF: натуральный логарифм ln(N / (df + 1)) + 1
+        # Чем больше N (пассажей), тем точнее и "взрослее" расчет
+        idf = math.log(N_passages / (1 + df_passages)) + 1
+        
         avg_tf = data['sum_tf'] / N_sites
-        # Итоговый вес
         tf_idf_value = avg_tf * idf
-        
         my_count = my_counts_map[key]
 
         table_hybrid.append({
@@ -1429,23 +1426,23 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Часть речи": pos,
             "TF-IDF ТОП": tf_idf_value, 
             "IDF": idf, 
-            "Кол-во сайтов": df,
+            "Кол-во сайтов": df_passages,
             "Вхождений у вас": my_count
         })
 
-    # --- ТА САМАЯ ФИЛЬТРАЦИЯ ТОП-1000 ---
+# --- ФИНАЛЬНЫЙ ФИЛЬТР (ТОП-1000 как в ГАР) ---
     df_hybrid = pd.DataFrame(table_hybrid)
     if not df_hybrid.empty:
-        # Сортируем строго по убыванию веса (самые важные сверху)
-        df_hybrid = df_hybrid.sort_values(by="TF-IDF ТОП", ascending=False)
+        # Убираем мусор по списку
+        trash = ['руб', 'кг', 'ул', 'наш', 'ваш', 'ru']
+        df_hybrid = df_hybrid[~df_hybrid['Слово'].str.lower().isin(trash)]
+
+        # Сортируем по TF-IDF и берем ровно 1000 лучших
+        df_hybrid = df_hybrid.sort_values(by="TF-IDF ТОП", ascending=False).head(1000)
         
-        # Отрезаем ровно 1000 строк
-        df_hybrid = df_hybrid.head(1000)
-        
-        # ФИНАЛЬНЫЙ ШТРИХ: причесываем числа, чтобы не было "е-05"
-        # Округляем до 6 знаков после запятой
-        df_hybrid["TF-IDF ТОП"] = df_hybrid["TF-IDF ТОП"].round(6)
-        df_hybrid["IDF"] = df_hybrid["IDF"].round(4)
+        # Форматирование: 6 знаков для TF-IDF, 2 знака для IDF
+        df_hybrid["TF-IDF ТОП"] = df_hybrid["TF-IDF ТОП"].apply(lambda x: float(f"{x:.6f}"))
+        df_hybrid["IDF"] = df_hybrid["IDF"].round(2)
         
 # --- ЗАПОЛНЕНИЕ ТАБЛИЦЫ ГЛУБИНЫ (Внутри того же цикла) ---
         raw_counts = data['counts_list']
@@ -4737,6 +4734,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
