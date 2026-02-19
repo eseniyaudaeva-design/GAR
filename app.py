@@ -4641,7 +4641,6 @@ with tab_lsi_gen:
     if 'bg_tasks_queue' not in st.session_state: st.session_state.bg_tasks_queue = []
     if 'bg_results' not in st.session_state: st.session_state.bg_results = []
     if 'bg_is_running' not in st.session_state: st.session_state.bg_is_running = False
-    # Инициализация размера пачки (дефолт 3)
     if 'bg_batch_size' not in st.session_state: st.session_state.bg_batch_size = 3
 
     # --- 1. НАСТРОЙКИ ---
@@ -4674,15 +4673,27 @@ with tab_lsi_gen:
         st.info("Введите списки. Строка 1 в левом поле соответствует Строке 1 в правом.")
         col_h1, col_h2 = st.columns(2)
         with col_h1:
-            raw_h1_input = st.text_area("Список H1 (МАРКЕР ДЛЯ АНАЛИЗА)", height=200, placeholder="Труба стальная\nЛист оцинкованный")
+            # ДОБАВИЛ KEY
+            raw_h1_input = st.text_area(
+                "Список H1 (МАРКЕР ДЛЯ АНАЛИЗА)", 
+                height=200, 
+                placeholder="Труба стальная\nЛист оцинкованный",
+                key="manual_h1_input" 
+            )
         with col_h2:
-            raw_h2_input = st.text_area("Список H2 (ЗАГОЛОВОК СТАТЬИ)", height=200, placeholder="Технические характеристики трубы\nПреимущества оцинкованного листа")
+            # ДОБАВИЛ KEY
+            raw_h2_input = st.text_area(
+                "Список H2 (ЗАГОЛОВОК СТАТЬИ)", 
+                height=200, 
+                placeholder="Технические характеристики трубы\nПреимущества оцинкованного листа",
+                key="manual_h2_input"
+            )
         raw_urls_input = None
 
     # 2.2 ПАРСИНГ ССЫЛОК
     else:
         st.info("Скрипт зайдет на каждую ссылку, найдет там H1 (станет маркером) и H2 (станет заголовком).")
-        raw_urls_input = st.text_area("Список ссылок (каждая с новой строки)", height=200, placeholder="https://site.ru/catalog/tovar1\nhttps://site.ru/catalog/tovar2")
+        raw_urls_input = st.text_area("Список ссылок (каждая с новой строки)", height=200, placeholder="https://site.ru/catalog/tovar1\nhttps://site.ru/catalog/tovar2", key="url_list_input")
         raw_h1_input = None; raw_h2_input = None
 
     # КНОПКА ЗАГРУЗКИ В ОЧЕРЕДЬ
@@ -4709,6 +4720,7 @@ with tab_lsi_gen:
                         'lsi_added': []
                     })
                 st.success(f"✅ Загружено задач вручную: {len(lines_h1)}")
+                time.sleep(1)
                 st.rerun()
 
         # ЛОГИКА ЗАГРУЗКИ (ССЫЛКИ)
@@ -4741,9 +4753,8 @@ with tab_lsi_gen:
 
     # --- 3. УПРАВЛЕНИЕ ПРОЦЕССОМ ---
     
-    # Считаем задачи
     total_q = len(st.session_state.bg_tasks_queue)
-    # Определяем готовые по уникальной паре (h1, h2)
+    # Определяем готовые по уникальной паре
     finished_ids = set(f"{r['h1']}|{r['h2']}" for r in st.session_state.bg_results)
     
     pending_indices = []
@@ -4785,13 +4796,20 @@ with tab_lsi_gen:
                     st.rerun()
         
         with c_act3:
+            # КНОПКА СБРОСА С ОЧИСТКОЙ ПОЛЕЙ
             if st.button("🗑️ Сброс очереди", disabled=st.session_state.bg_is_running, use_container_width=True):
                 st.session_state.bg_tasks_queue = []
                 st.session_state.bg_results = []
                 st.session_state.bg_is_running = False
+                
+                # Очищаем поля ввода (через session_state, так как мы дали им ключи)
+                if "manual_h1_input" in st.session_state: del st.session_state["manual_h1_input"]
+                if "manual_h2_input" in st.session_state: del st.session_state["manual_h2_input"]
+                if "url_list_input" in st.session_state: del st.session_state["url_list_input"]
+                
                 st.rerun()
 
-        # ТАБЛИЦА СТАТУСА (ОБНОВЛЕННАЯ)
+        # ТАБЛИЦА СТАТУСА
         st.write("📊 **Очередь задач:**")
         table_placeholder = st.empty()
         status_container = st.empty()
@@ -4861,7 +4879,7 @@ with tab_lsi_gen:
                     "h1": h1_val,
                     "h2": h2_val,
                     "source_url": task.get('source_url', '-'),
-                    "lsi_added": found_lsi_words, # Сохраняем только уникальные найденные
+                    "lsi_added": found_lsi_words,
                     "content": html_out,
                     "status": status_code
                 })
@@ -4899,7 +4917,7 @@ with tab_lsi_gen:
         st.markdown("---")
         st.markdown("#### 👁️ Просмотр статьи")
         
-        # Стили для предпросмотра (ЧТОБЫ НЕ СЛЕТАЛИ)
+        # Стили для предпросмотра
         table_css = """
         <style>
             .brand-accent-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-family: 'Inter', sans-serif; font-size: 14px; }
@@ -4927,4 +4945,3 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
-
