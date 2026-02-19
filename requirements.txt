@@ -16,7 +16,8 @@ XlsxWriter
 curl_cffi
 plotly
 google-genai
-
+pymorphy2-dicts-ru
+DAWG-Python
 
 
 
