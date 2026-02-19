@@ -1341,14 +1341,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         'counts_list': []
     })
 
-# --- 2. СБОР ДАННЫХ (Расчет по пассажам для уникальности IDF) ---
-    all_passages_tokens = [] 
+# --- 2. СБОР ДАННЫХ (Дробление на блоки для разнообразия IDF как в ГАР) ---
+    all_text_blocks = [] # Сюда соберем все "куски" текста для IDF
     N_sites = len(comp_data_full) if len(comp_data_full) > 0 else 1
 
+    # Проход по КОНКУРЕНТАМ
     for p in comp_data_full:
         if not p.get('body_text'): continue
         
-        # 1. Считаем глобальную статистику (TF, Формы) по сайту в целом
+        # 1. Глобальная статистика сайта (для TF и словоформ)
         doc_tokens, doc_forms, doc_len = analyze_text_structure(p['body_text'])
         if doc_len > 0:
             doc_counter = Counter(doc_tokens)
@@ -1357,23 +1358,28 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 global_stats[key]['forms'].update(doc_forms[key])
                 global_stats[key]['counts_list'].append(count)
 
-        # 2. Разбиваем сайт на пассажи для расчета IDF (разнообразие значений)
-        passages = re.split(r'[.!?\n]+', p['body_text'])
-        for pass_text in passages:
-            if len(pass_text.strip()) < 15: continue 
-            p_tokens, _, p_len = analyze_text_structure(pass_text)
-            if p_len > 0:
-                all_passages_tokens.append(set(p_tokens))
+        # 2. РЕЖЕМ САЙТ НА БЛОКИ (чтобы раздуть N и получить уникальные IDF)
+        # Разбиваем по переносу строки, так мы получаем абзацы, пункты меню, ячейки таблиц
+        raw_blocks = p['body_text'].split('\n')
+        for b_text in raw_blocks:
+            clean_b = b_text.strip()
+            if len(clean_b) < 10: continue # Игнорим слишком короткий мусор
+            
+            b_tokens, _, b_len = analyze_text_structure(clean_b)
+            if b_len > 0:
+                # Добавляем каждый блок как отдельный микродoкумент
+                all_text_blocks.append(set(b_tokens))
 
-    # N теперь — общее кол-во предложений. IDF будет уникальным для каждого слова.
-    N = len(all_passages_tokens) if len(all_passages_tokens) > 0 else 1
+    # ТЕПЕРЬ ГЛАВНОЕ: N для формулы IDF — это количество всех блоков со всех сайтов
+    # Их будет 300, 500 или 1000. Это и даст 500+ уникальных значений IDF
+    N = len(all_text_blocks) if len(all_text_blocks) > 0 else 1
     
-    # Считаем DF (в скольких пассажах встретилось слово)
-    for p_set in all_passages_tokens:
-        for key in p_set:
+    # Считаем DF (в скольких блоках встретилось слово)
+    for b_set in all_text_blocks:
+        for key in b_set:
             global_stats[key]['docs_containing'] += 1
 
-    # Проход по ВАШЕМУ сайту
+    # Проход по ВАШЕМУ сайту (оставляем как было)
     my_counts_map = Counter()
     my_clean_domain = "local"
     
@@ -4705,6 +4711,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
