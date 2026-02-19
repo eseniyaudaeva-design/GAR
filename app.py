@@ -625,6 +625,7 @@ SENSITIVE_STOPLIST_RAW = {
     "мелитополь", "бердянск", "бахмут", "запорожье", "херсон",
     "крым", "севастополь", "симферополь"
 }
+STOP_POS = {'PREP', 'CONJ', 'PRCL', 'INTJ', 'NPRO'}
 SENSITIVE_STOPLIST = {w.lower() for w in SENSITIVE_STOPLIST_RAW}
 
 def check_password():
@@ -862,18 +863,35 @@ def process_text_detailed(text, settings, n_gram=1):
     stops = set(w.lower().replace('ё', 'е') for w in settings['custom_stops'])
     lemmas = []
     forms_map = defaultdict(set)
+
+    # Список частей речи, которые мы ВЫКИДЫВАЕМ (союзы, предлоги, местоимения и т.д.)
+    # Добавь INTJ (междометия), если нужно еще чище
+    BAD_POS = {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ'}
+
     for w in words:
-        if len(w) < 2: continue
+        # 1. Фильтр по длине: убираем всё, что короче 3 символов (было < 2)
+        if len(w) < 3: 
+            continue
+            
+        # 2. Фильтр цифр и кастомных стоп-слов
         if not settings['numbers'] and w.isdigit(): continue
         if w in stops: continue
+        
         lemma = w
         if USE_NLP and n_gram == 1:
             p = morph.parse(w)[0]
-            if 'PREP' in p.tag or 'CONJ' in p.tag or 'PRCL' in p.tag or 'NPRO' in p.tag: continue
+            # Если часть речи в списке мусора (STOP_POS) — пропускаем слово
+            if p.tag.POS in STOP_POS: 
+                continue
             lemma = p.normal_form.replace('ё', 'е')
+            # Дополнительная проверка: если лемма стала слишком короткой после очистки
+            if len(lemma) < 3:
+                continue
+
         lemmas.append(lemma)
         forms_map[lemma].add(w)
-    return lemmas, forms_map
+        
+    return lemmas, forms_map # Не забудь про return, если он был в конце
 
 def check_positions_NO_ALT(query, target_url, region_name, api_token):
     """
@@ -1353,10 +1371,11 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         lemma, pos = key
         data = global_stats[key]
         
-        # 1. IDF = log10( Всего / В скольких документах встретилось )
+# 1. IDF = log10( Всего / В скольких документах встретилось )
         df = data['docs_containing']
         if df == 0: continue
-        idf = math.log10(N / df)
+        # Добавляем +1.0 (сглаживание), чтобы значения не обнулялись и были разными
+        idf = math.log10(N / df) + 1.0
         
         # 2. Средний TF = Сумма TF / Кол-во конкурентов
         avg_tf = data['sum_tf'] / N
@@ -1366,12 +1385,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         
         my_count = my_counts_map[key]
         
-        # --- ЗАПОЛНЕНИЕ ТАБЛИЦЫ TF-IDF ---
-        # Округляем до 2 знаков (1.23 или 0.00)
+# --- ЗАПОЛНЕНИЕ ТАБЛИЦЫ TF-IDF ---
+        # Убрали round для TF-IDF, чтобы не видеть 0.00 при малых значениях
         table_hybrid.append({
             "Слово": lemma,
             "Часть речи": pos,
-            "TF-IDF ТОП": round(tf_idf_value, 2),
+            "TF-IDF ТОП": tf_idf_value,
             "IDF": round(idf, 2),
             "Кол-во сайтов": df,
             "Вхождений у вас": my_count
@@ -4657,6 +4676,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
