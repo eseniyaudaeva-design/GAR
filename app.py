@@ -50,7 +50,8 @@ try:
     import pymorphy2
     morph = pymorphy2.MorphAnalyzer()
     USE_NLP = True
-except ImportError:
+except Exception as e:
+    st.error(f"❌ ОШИБКА: Не удалось загрузить pymorphy2. Проверьте requirements.txt. Детали: {e}")
     morph = None
     USE_NLP = False
 
@@ -1229,7 +1230,6 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
     }
         
 def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_results):
-    # --- ИМПОРТЫ ---
     import math
     import pandas as pd
     import numpy as np
@@ -1237,63 +1237,47 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     import re
     from urllib.parse import urlparse
 
-    # 1. СТРОГОЕ ОКРУГЛЕНИЕ ДО СОТЫХ
-    def strict_round(num):
-        return round(num, 2)
-
-    # --- 2. ИНИЦИАЛИЗАЦИЯ МОРФОЛОГИИ ---
-    try:
-        import pymorphy2
-        if 'local_morph' not in locals():
-            local_morph = pymorphy2.MorphAnalyzer()
-    except ImportError:
-        local_morph = None
+    # Проверка на наличие библиотеки (чтобы не падало молча)
+    if morph is None:
+        st.error("CRITICAL: Лемматизация не работает! Проверьте установку pymorphy2 в requirements.txt")
+        return { "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}, "missing_semantics_high": [], "missing_semantics_low": [] }
 
     # Карта частей речи
     POS_MAP = {
         'NOUN': 'Существительное', 'ADJF': 'Прилагательное', 'ADJS': 'Прилагательное',
-        'VERB': 'Глагол', 'INFN': 'Глагол', 'PRTF': 'Причастие',
-        'PRTS': 'Причастие', 'GRND': 'Деепричастие', 'NUMR': 'Числительное',
-        'ADVB': 'Наречие', 'NPRO': 'Местоимение', 'PREP': 'Предлог',
-        'CONJ': 'Союз', 'PRCL': 'Частица', 'INTJ': 'Междометие'
+        'VERB': 'Глагол', 'INFN': 'Глагол', 'PRTF': 'Причастие', 'PRTS': 'Причастие',
+        'GRND': 'Деепричастие', 'NUMR': 'Числительное', 'ADVB': 'Наречие',
+        'NPRO': 'Местоимение', 'PREP': 'Предлог', 'CONJ': 'Союз', 'PRCL': 'Частица', 'INTJ': 'Междометие'
     }
 
-    # ГРУППИРОВКА: Лемма + Часть речи
-    def get_lemma_pos_key(word):
-        if not local_morph:
-            return (word.lower(), "Прочее")
-        try:
-            p = local_morph.parse(word)[0]
-            # Нормальная форма (трубы -> труба)
-            lemma = p.normal_form.replace('ё', 'е')
-            # Часть речи (чтобы "трубный" и "труба" не смешивались)
-            pos_tag = p.tag.POS
-            pos_ru = POS_MAP.get(pos_tag, 'Прочее')
-            return (lemma, pos_ru)
-        except:
-            return (word.lower(), "Прочее")
-
-    # АНАЛИЗ ТЕКСТА
+    # --- 1. АНАЛИЗАТОР ТЕКСТА ---
     def analyze_text_structure(text):
         if not text: return [], {}, 0
-        
         words = re.findall(r'[а-яА-ЯёЁa-zA-Z0-9\-]+', text.lower())
         
-        lemma_pos_list = []      
+        lemma_pos_list = []
         forms_map = defaultdict(set)
-        valid_word_count = 0     
+        valid_word_count = 0
 
         for w in words:
             if len(w) < 2: continue
             if not settings['numbers'] and w.isdigit(): continue
             
-            # Убираем мусорные части речи из подсчета
-            if local_morph:
-                p = local_morph.parse(w)[0]
-                if p.tag.POS in {'PREP', 'CONJ', 'PRCL', 'INTJ', 'NPRO'}:
-                    continue
+            # Используем глобальный morph
+            p = morph.parse(w)[0]
             
-            key = get_lemma_pos_key(w)
+            # Фильтр стоп-слов (предлоги не считаем в статистику)
+            if p.tag.POS in {'PREP', 'CONJ', 'PRCL', 'INTJ', 'NPRO'}:
+                continue
+            
+            # Лемма (трубы -> труба)
+            lemma = p.normal_form.replace('ё', 'е')
+            # Часть речи
+            pos_tag = p.tag.POS
+            pos_ru = POS_MAP.get(pos_tag, 'Прочее')
+            
+            # КЛЮЧ: (лемма, часть речи) - это позволяет объединять формы
+            key = (lemma, pos_ru)
             
             lemma_pos_list.append(key)
             forms_map[key].add(w)
@@ -1301,43 +1285,38 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             
         return lemma_pos_list, forms_map, valid_word_count
 
-    # ==========================================
-    # 3. СБОР СТАТИСТИКИ (TF)
-    # ==========================================
-    
-    # Хранилище статистики по ТОПу
+    # --- 2. СБОР ДАННЫХ ---
+    # Храним: { (lemma, pos): { 'docs_containing': 0, 'sum_tf': 0.0, ... } }
     global_stats = defaultdict(lambda: {
-        'docs_containing': 0,  # DF
-        'sum_tf': 0.0,         # Сумма TF для расчета среднего
-        'forms': set(),        
-        'counts_list': []      # Для медианы
+        'docs_containing': 0,
+        'sum_tf': 0.0,
+        'forms': set(),
+        'counts_list': []
     })
 
-    N = len(comp_data_full) # Всего документов
-    if N == 0: N = 1 
+    N = len(comp_data_full)
+    if N == 0: N = 1
 
-    # --- Проход по КОНКУРЕНТАМ ---
+    # Проход по КОНКУРЕНТАМ
     for p in comp_data_full:
         if not p.get('body_text'): continue
         
         doc_tokens, doc_forms, doc_len = analyze_text_structure(p['body_text'])
-        
         if doc_len == 0: continue
 
-        # Считаем сколько раз слово встретилось в ЭТОМ документе
-        doc_counter = Counter(doc_tokens) 
-
-        # Рассчитываем TF для каждого слова в ЭТОМ документе
+        # Считаем вхождения в конкретном документе
+        doc_counter = Counter(doc_tokens)
+        
         for key, count in doc_counter.items():
-            # TF = Кол-во вхождений слова / Всего слов в документе
+            # TF = (Кол-во в документе) / (Всего слов в документе)
             tf = count / doc_len
             
             global_stats[key]['docs_containing'] += 1
-            global_stats[key]['sum_tf'] += tf 
+            global_stats[key]['sum_tf'] += tf
             global_stats[key]['forms'].update(doc_forms[key])
             global_stats[key]['counts_list'].append(count)
 
-    # --- Проход по ВАШЕМУ сайту ---
+    # Проход по ВАШЕМУ сайту
     my_counts_map = Counter()
     my_clean_domain = "local"
     
@@ -1347,10 +1326,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         if my_data.get('domain'):
             my_clean_domain = my_data.get('domain').lower().replace('www.', '').split(':')[0]
 
-    # ==========================================
-    # 4. РАСЧЕТ МЕТРИК И ТАБЛИЦ
-    # ==========================================
-    
+    # --- 3. РАСЧЕТ И ОКРУГЛЕНИЕ ---
     table_depth = []
     table_hybrid = []
     missing_semantics_high = []
@@ -1365,31 +1341,31 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         lemma, pos = key
         data = global_stats[key]
         
-        # 1. Расчет IDF = log10(Всего доков / Доков со словом)
+        # 1. IDF = log10( Всего / В скольких документах встретилось )
         df = data['docs_containing']
-        if df == 0: continue 
-        
+        if df == 0: continue
         idf = math.log10(N / df)
         
-        # 2. Расчет Среднего TF = (Сумма TF всех конкурентов) / Кол-во конкурентов
+        # 2. Средний TF = Сумма TF / Кол-во конкурентов
         avg_tf = data['sum_tf'] / N
         
-        # 3. Итоговый TF-IDF = Avg_TF * IDF
+        # 3. Итоговый TF-IDF = Avg TF * IDF
         tf_idf_value = avg_tf * idf
         
         my_count = my_counts_map[key]
         
-        # --- ТАБЛИЦА TF-IDF (Только нужные колонки) ---
+        # --- ЗАПОЛНЕНИЕ ТАБЛИЦЫ TF-IDF ---
+        # Округляем до 2 знаков (1.23 или 0.00)
         table_hybrid.append({
             "Слово": lemma,
             "Часть речи": pos,
-            "TF-IDF ТОП": strict_round(tf_idf_value), # Округляем до 2 знаков (1.23)
-            "IDF": strict_round(idf),                 # Округляем до 2 знаков
+            "TF-IDF ТОП": round(tf_idf_value, 2),
+            "IDF": round(idf, 2),
             "Кол-во сайтов": df,
             "Вхождений у вас": my_count
         })
         
-        # --- ТАБЛИЦА ГЛУБИНЫ (Медианы) ---
+        # --- ЗАПОЛНЕНИЕ ТАБЛИЦЫ ГЛУБИНЫ ---
         raw_counts = data['counts_list']
         zeros_to_add = N - len(raw_counts)
         full_counts = raw_counts + [0] * zeros_to_add
@@ -1407,7 +1383,6 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
         forms_str = ", ".join(sorted(list(data['forms'])))[:100]
 
-        # Логика рекомендаций (Упущенная семантика)
         if my_count == 0:
             weight = tf_idf_value * (rec_median if rec_median > 0 else 0.5)
             item = {'word': lemma, 'weight': weight}
@@ -1431,9 +1406,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "sort_val": sort_val
         })
 
-    # ============================================
-    # 5. ФИНАЛЬНЫЙ РАСЧЕТ РЕЛЕВАНТНОСТИ
-    # ============================================
+    # --- 4. ИТОГОВЫЙ СКОРИНГ ---
     total_needed = len(words_with_median_gt_0)
     total_found = len(my_found_words)
     my_width_score = int(min(100, (total_found / total_needed) * 105)) if total_needed > 0 else 0
@@ -1455,25 +1428,11 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         d_name = urlparse(url).netloc
         if my_clean_domain != "local" and my_clean_domain in d_name:
             d_name += " (Вы)"; my_site_found = True
-            
-        table_rel.append({ 
-            "Домен": d_name, 
-            "URL": url, 
-            "Позиция": item['pos'], 
-            "Ширина (балл)": width_val, 
-            "Глубина (балл)": width_val 
-        })
+        table_rel.append({ "Домен": d_name, "URL": url, "Позиция": item['pos'], "Ширина (балл)": width_val, "Глубина (балл)": width_val })
 
     if not my_site_found:
-        my_l = "Ваш сайт"
-        my_u_val = my_data.get('url', '#') if my_data else '#'
-        table_rel.append({ 
-            "Домен": my_l, 
-            "URL": my_u_val, 
-            "Позиция": my_serp_pos, 
-            "Ширина (балл)": my_width_score, 
-            "Глубина (балл)": my_width_score 
-        })
+        my_l = "Ваш сайт"; my_u_val = my_data.get('url', '#') if my_data else '#'
+        table_rel.append({ "Домен": my_l, "URL": my_u_val, "Позиция": my_serp_pos, "Ширина (балл)": my_width_score, "Глубина (балл)": my_width_score })
 
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['weight'], reverse=True)
@@ -4686,6 +4645,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
