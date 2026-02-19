@@ -1404,15 +1404,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         lemma, pos = key
         data = global_stats[key]
         
-# 1. IDF сглаженный (как в оригинальных алгоритмах)
+# 1. IDF (теперь считается по блокам, поэтому будет уникальным)
         df = data['docs_containing']
         if df == 0: continue
+        idf = math.log10(N / df) # Используем новое большое N
         
-        # Используем натуральный логарифм и прибавку, чтобы расширить диапазон значений
-        # Это даст гораздо больше РАЗНЫХ цифр в колонке IDF
-        idf = math.log((N + 1) / (df + 0.5)) + 1.2
-        
-        # 2. Средний TF = Сумма TF / Кол-во конкурентов
+        # 2. Средний TF (делим на N_sites, т.е. на кол-во сайтов, а не блоков!)
         avg_tf = data['sum_tf'] / N_sites
         
         # 3. Итоговый TF-IDF = Avg TF * IDF
@@ -4711,6 +4708,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
