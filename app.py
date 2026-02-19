@@ -1395,34 +1395,45 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     sorted_keys = sorted(global_stats.keys(), key=lambda x: x[0])
 
+# 3. ФОРМИРОВАНИЕ ТАБЛИЦЫ
     for key in sorted_keys:
         lemma, pos = key
         data = global_stats[key]
         
-# 1. IDF (теперь считается по блокам, поэтому будет уникальным)
         df = data['docs_containing']
         if df == 0: continue
-        # Добавляем +0.01 для того, чтобы исключить любые совпадения при делении
-        idf = math.log10(N / (df + 0.01))
         
-        # 2. Средний TF (делим на N_sites, т.е. на кол-во сайтов, а не блоков!)
+        # Расчет IDF по пассажирам/окнам
+        idf = math.log10(N / df)
+        # Средний TF по сайтам
         avg_tf = data['sum_tf'] / N_sites
-        
-        # 3. Итоговый TF-IDF = Avg TF * IDF
+        # Итоговый вес
         tf_idf_value = avg_tf * idf
         
         my_count = my_counts_map[key]
-        
-# --- ЗАПОЛНЕНИЕ ТАБЛИЦЫ TF-IDF ---
-        # Убрали round для TF-IDF, чтобы не видеть 0.00 при малых значениях
+
         table_hybrid.append({
             "Слово": lemma,
             "Часть речи": pos,
-            "TF-IDF ТОП": tf_idf_value,
-            "IDF": round(idf, 2),
+            "TF-IDF ТОП": tf_idf_value, 
+            "IDF": idf, 
             "Кол-во сайтов": df,
             "Вхождений у вас": my_count
         })
+
+    # --- ТА САМАЯ ФИЛЬТРАЦИЯ ТОП-1000 ---
+    df_hybrid = pd.DataFrame(table_hybrid)
+    if not df_hybrid.empty:
+        # Сортируем строго по убыванию веса (самые важные сверху)
+        df_hybrid = df_hybrid.sort_values(by="TF-IDF ТОП", ascending=False)
+        
+        # Отрезаем ровно 1000 строк
+        df_hybrid = df_hybrid.head(1000)
+        
+        # ФИНАЛЬНЫЙ ШТРИХ: причесываем числа, чтобы не было "е-05"
+        # Округляем до 6 знаков после запятой
+        df_hybrid["TF-IDF ТОП"] = df_hybrid["TF-IDF ТОП"].round(6)
+        df_hybrid["IDF"] = df_hybrid["IDF"].round(4)
         
         # --- ЗАПОЛНЕНИЕ ТАБЛИЦЫ ГЛУБИНЫ ---
         raw_counts = data['counts_list']
@@ -4704,6 +4715,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
