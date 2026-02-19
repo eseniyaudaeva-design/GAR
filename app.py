@@ -1119,48 +1119,65 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
     MIN_COUNT = max(2, int(TOTAL_COMPS * MIN_OCCURRENCE_PCT))
 
     # Вспомогательная функция токенизации (Чистка мусора)
-    def fast_tokenize(text):
-        if not text: return set()
-        
-        # Список стоп-слов
-        stop_garbage = {
-            'в', 'на', 'и', 'с', 'со', 'по', 'для', 'от', 'до', 'из', 'к', 'у', 
-            'о', 'об', 'за', 'над', 'под', 'при', 'про', 'без', 'через', 'между',
-            'а', 'но', 'или', 'да', 'как', 'что', 'чтобы', 'если', 'то', 'ли', 'бы', 'же', 
-            'г', 'обл', 'р', 'руб', 'мм', 'см', 'м', 'кг', 'т', 'шт', 'дн',
-            'весь', 'все', 'всё', 'свой', 'ваш', 'наш', 'мы', 'вы', 'он', 'она', 'они',
-            'купить', 'цена', 'заказать', 'стоимость', 'продажа', 'недорого', 
-            'москва', 'спб' 
-        }
-        # Убираем коммерческие штампы из стоп-листа, чтобы они попадали в рекомендации
-        if 'купить' in stop_garbage: stop_garbage.remove('купить') 
-        if 'цена' in stop_garbage: stop_garbage.remove('цена')
-        
-        if settings.get('custom_stops'):
-            stop_garbage.update(set(settings['custom_stops']))
+def fast_tokenize(text):
+    if not text: return set()
+    
+    # 1. Твой расширенный список + единицы измерения
+    stop_garbage = {
+        'в', 'на', 'и', 'с', 'со', 'по', 'для', 'от', 'до', 'из', 'к', 'у', 
+        'о', 'об', 'за', 'над', 'под', 'при', 'про', 'без', 'через', 'между',
+        'а', 'но', 'или', 'да', 'как', 'что', 'чтобы', 'если', 'то', 'ли', 'бы', 'же', 
+        'г', 'обл', 'р', 'руб', 'мм', 'см', 'м', 'кг', 'т', 'шт', 'дн',
+        'весь', 'все', 'всё', 'свой', 'ваш', 'наш', 'мы', 'вы', 'он', 'она', 'они',
+        'купить', 'цена', 'заказать', 'стоимость', 'продажа', 'недорого', 
+        'москва', 'спб',
+        # Добавляем точно по твоему списку:
+        'рублей', 'стр', 'ул', 'кв', 'м²', 'см²', 'м2', 'см2'
+    }
 
-        lemmas = set()
-        words = re.findall(r'[а-яА-Яa-zA-Z0-9]+', text.lower())
+    # Убираем коммерцию, если нужно (как в твоем исходнике)
+    if 'купить' in stop_garbage: stop_garbage.remove('купить') 
+    if 'цена' in stop_garbage: stop_garbage.remove('цена')
+    
+    if settings.get('custom_stops'):
+        stop_garbage.update(set(settings['custom_stops']))
+
+    lemmas = set()
+    # ИСПРАВЛЕННАЯ РЕГУЛЯРКА: добавлена поддержка цифр и спецсимволов площадей ²
+    words = re.findall(r'[а-яА-Яa-zA-Z0-9²]+', text.lower())
+    
+    for w in words:
+        # Фильтр длины
+        if len(w) < 2: continue 
         
-        for w in words:
-            if len(w) < 2: continue 
-            if w in stop_garbage: continue
-            
-            # NLP Фильтр
-            if morph:
-                try:
-                    p = morph.parse(w)[0]
-                    # Исключаем Предлоги, Союзы, Частицы, Местоимения, Междометия
-                    if p.tag.POS in {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ'}:
+        # Проверка ДО лемматизации (на случай "руб", "м2")
+        if w in stop_garbage: continue
+        
+        if morph:
+            try:
+                p = morph.parse(w)[0]
+                # Исключаем служебные части речи
+                if p.tag.POS in {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ'}:
+                    continue
+                
+                normal_form = p.normal_form
+                # Проверка ПОСЛЕ лемматизации (на случай "рублей" -> "рубль")
+                # Чтобы "рубль" тоже отсекался, если в списке есть "руб"
+                if normal_form in stop_garbage:
+                    continue
+                
+                # Дополнительная проверка на сокращения (р., руб. и т.д.)
+                if any(normal_form.startswith(s) for s in ['рубл', 'метр', 'сантим', 'килогр']):
+                    if w in stop_garbage or normal_form in stop_garbage:
                         continue
-                    if p.normal_form in stop_garbage:
-                        continue
-                    lemmas.add(p.normal_form)
-                except: 
-                    lemmas.add(w)
-            else:
+
+                lemmas.add(normal_form)
+            except: 
                 lemmas.add(w)
-        return lemmas
+        else:
+            lemmas.add(w)
+            
+    return lemmas
 
     # === 2. СБОР ДАННЫХ С ВЕСАМИ ===
     # Структура: word -> {'count': 0, 'score': 0.0}
@@ -4678,6 +4695,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
