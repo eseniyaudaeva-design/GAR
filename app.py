@@ -47,11 +47,23 @@ if not hasattr(inspect, 'getargspec'):
     inspect.getargspec = getargspec
 
 try:
-    import pymorphy2
+    # Используем pymorphy3, но импортируем как pymorphy2, 
+    # чтобы не переписывать весь остальной код
+    import pymorphy3 as pymorphy2
     morph = pymorphy2.MorphAnalyzer()
     USE_NLP = True
+except ImportError:
+    # Резервный вариант, если вдруг стоит старая версия
+    try:
+        import pymorphy2
+        morph = pymorphy2.MorphAnalyzer()
+        USE_NLP = True
+    except Exception as e:
+        st.error(f"❌ ОШИБКА: Не удалось загрузить pymorphy. Детали: {e}")
+        morph = None
+        USE_NLP = False
 except Exception as e:
-    st.error(f"❌ ОШИБКА: Не удалось загрузить pymorphy2. Проверьте requirements.txt. Детали: {e}")
+    st.error(f"❌ ОШИБКА: Не удалось загрузить pymorphy3. Детали: {e}")
     morph = None
     USE_NLP = False
 
@@ -4645,6 +4657,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
