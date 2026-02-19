@@ -1341,27 +1341,37 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         'counts_list': []
     })
 
-    N = len(comp_data_full)
-    if N == 0: N = 1
+# --- 2. СБОР ДАННЫХ (Расчет по пассажам для уникальности IDF) ---
+    all_passages_tokens = [] 
+    N_sites = len(comp_data_full) if len(comp_data_full) > 0 else 1
 
-    # Проход по КОНКУРЕНТАМ
     for p in comp_data_full:
         if not p.get('body_text'): continue
         
+        # 1. Считаем глобальную статистику (TF, Формы) по сайту в целом
         doc_tokens, doc_forms, doc_len = analyze_text_structure(p['body_text'])
-        if doc_len == 0: continue
+        if doc_len > 0:
+            doc_counter = Counter(doc_tokens)
+            for key, count in doc_counter.items():
+                global_stats[key]['sum_tf'] += (count / doc_len)
+                global_stats[key]['forms'].update(doc_forms[key])
+                global_stats[key]['counts_list'].append(count)
 
-        # Считаем вхождения в конкретном документе
-        doc_counter = Counter(doc_tokens)
-        
-        for key, count in doc_counter.items():
-            # TF = (Кол-во в документе) / (Всего слов в документе)
-            tf = count / doc_len
-            
+        # 2. Разбиваем сайт на пассажи для расчета IDF (разнообразие значений)
+        passages = re.split(r'[.!?\n]+', p['body_text'])
+        for pass_text in passages:
+            if len(pass_text.strip()) < 15: continue 
+            p_tokens, _, p_len = analyze_text_structure(pass_text)
+            if p_len > 0:
+                all_passages_tokens.append(set(p_tokens))
+
+    # N теперь — общее кол-во предложений. IDF будет уникальным для каждого слова.
+    N = len(all_passages_tokens) if len(all_passages_tokens) > 0 else 1
+    
+    # Считаем DF (в скольких пассажах встретилось слово)
+    for p_set in all_passages_tokens:
+        for key in p_set:
             global_stats[key]['docs_containing'] += 1
-            global_stats[key]['sum_tf'] += tf
-            global_stats[key]['forms'].update(doc_forms[key])
-            global_stats[key]['counts_list'].append(count)
 
     # Проход по ВАШЕМУ сайту
     my_counts_map = Counter()
@@ -1397,7 +1407,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         idf = math.log((N + 1) / (df + 0.5)) + 1.2
         
         # 2. Средний TF = Сумма TF / Кол-во конкурентов
-        avg_tf = data['sum_tf'] / N
+        avg_tf = data['sum_tf'] / N_sites
         
         # 3. Итоговый TF-IDF = Avg TF * IDF
         tf_idf_value = avg_tf * idf
@@ -4695,6 +4705,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
