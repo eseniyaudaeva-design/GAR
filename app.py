@@ -1341,15 +1341,15 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         'counts_list': []
     })
 
-# --- 2. СБОР ДАННЫХ (Дробление на блоки для разнообразия IDF как в ГАР) ---
-    all_text_blocks = [] # Сюда соберем все "куски" текста для IDF
+# --- 2. СБОР ДАННЫХ (Нарезка на фиксированные пассажи для 500+ IDF) ---
+    all_text_blocks = [] 
     N_sites = len(comp_data_full) if len(comp_data_full) > 0 else 1
+    PASSAGE_SIZE = 20 # Размер одного "документа" в словах
 
-    # Проход по КОНКУРЕНТАМ
     for p in comp_data_full:
         if not p.get('body_text'): continue
         
-        # 1. Глобальная статистика сайта (для TF и словоформ)
+        # Полный анализ текста для TF и форм
         doc_tokens, doc_forms, doc_len = analyze_text_structure(p['body_text'])
         if doc_len > 0:
             doc_counter = Counter(doc_tokens)
@@ -1358,23 +1358,18 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
                 global_stats[key]['forms'].update(doc_forms[key])
                 global_stats[key]['counts_list'].append(count)
 
-        # 2. РЕЖЕМ САЙТ НА БЛОКИ (чтобы раздуть N и получить уникальные IDF)
-        # Разбиваем по переносу строки, так мы получаем абзацы, пункты меню, ячейки таблиц
-        raw_blocks = p['body_text'].split('\n')
-        for b_text in raw_blocks:
-            clean_b = b_text.strip()
-            if len(clean_b) < 10: continue # Игнорим слишком короткий мусор
-            
-            b_tokens, _, b_len = analyze_text_structure(clean_b)
-            if b_len > 0:
-                # Добавляем каждый блок как отдельный микродoкумент
-                all_text_blocks.append(set(b_tokens))
+            # НАРЕЗКА: превращаем плоский список слов в куски по 20 слов
+            # Это гарантированно создаст сотни "документов" (N)
+            # Если на сайте 400 слов, получится 20 пассажей. 10 сайтов = 200 пассажей.
+            for i in range(0, len(doc_tokens), PASSAGE_SIZE):
+                passage = doc_tokens[i : i + PASSAGE_SIZE]
+                if len(passage) > 5: # игнорим обрубки в конце
+                    all_text_blocks.append(set(passage))
 
-    # ТЕПЕРЬ ГЛАВНОЕ: N для формулы IDF — это количество всех блоков со всех сайтов
-    # Их будет 300, 500 или 1000. Это и даст 500+ уникальных значений IDF
+    # Теперь N — это сотни пассажей. Это даст уникальность логарифма.
     N = len(all_text_blocks) if len(all_text_blocks) > 0 else 1
     
-    # Считаем DF (в скольких блоках встретилось слово)
+    # Считаем DF (в скольких пассажах встретилось слово)
     for b_set in all_text_blocks:
         for key in b_set:
             global_stats[key]['docs_containing'] += 1
@@ -1407,7 +1402,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 # 1. IDF (теперь считается по блокам, поэтому будет уникальным)
         df = data['docs_containing']
         if df == 0: continue
-        idf = math.log10(N / df) # Используем новое большое N
+        # Добавляем +0.01 для того, чтобы исключить любые совпадения при делении
+        idf = math.log10(N / (df + 0.01))
         
         # 2. Средний TF (делим на N_sites, т.е. на кол-во сайтов, а не блоков!)
         avg_tf = data['sum_tf'] / N_sites
@@ -4708,6 +4704,7 @@ with tab_lsi_gen:
             
             with st.expander("Показать исходный HTML код"):
                 st.code(content_to_show, language='html')
+
 
 
 
