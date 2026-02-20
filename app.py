@@ -3258,6 +3258,78 @@ with tab_seo_main:
             
             # Ставим флаг переключения радио-кнопки
             st.session_state['force_radio_switch'] = True
+
+# ==================================================================
+            # 🔥 HOOK ДЛЯ LSI ГЕНЕРАТОРА (ВКЛАДКА 5)
+            # Если этот анализ был заказан Вкладкой 5, мы генерируем текст и идем дальше
+            # ==================================================================
+            if st.session_state.get('lsi_automode_active'):
+                
+                # 1. Достаем данные текущей задачи
+                current_idx = st.session_state.get('lsi_processing_task_id')
+                task = st.session_state.bg_tasks_queue[current_idx]
+                
+                # 2. Достаем LSI (TF-IDF) из результатов анализа Вкладки 1
+                lsi_words = []
+                if results_final.get('hybrid') is not None and not results_final['hybrid'].empty:
+                    lsi_words = results_final['hybrid'].head(15)['Слово'].tolist()
+                
+                # 3. Добавляем общие слова из настроек (нужно сохранить их в session_state во вкладке 5)
+                # (Предполагаем, что они есть, или берем дефолт)
+                common_lsi = ["гарантия", "доставка", "цена", "купить"] # Или возьми из st.session_state.lsi_common_input
+                combined_lsi = list(set(common_lsi + lsi_words))
+                
+                # 4. ГЕНЕРИРУЕМ СТАТЬЮ (Используем твою функцию)
+                # Важно: берем API ключ, который ввели на 5 вкладке
+                api_key_gen = st.session_state.get('bulk_api_key_v3') 
+                
+                try:
+                    html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
+                    status_code = "OK"
+                except Exception as e:
+                    html_out = f"Error: {e}"
+                    status_code = "Error"
+
+                # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
+                st.session_state.bg_results.append({
+                    "h1": task['h1'],
+                    "h2": task['h2'],
+                    "source_url": task.get('source_url', '-'),
+                    "lsi_added": lsi_words,
+                    "content": html_out,
+                    "status": status_code
+                })
+
+                # 6. ПЛАНИРУЕМ СЛЕДУЮЩУЮ ЗАДАЧУ
+                # Ищем следующую необработанную задачу
+                finished_ids = set(f"{r['h1']}|{r['h2']}" for r in st.session_state.bg_results)
+                next_task_idx = -1
+                
+                for i, t in enumerate(st.session_state.bg_tasks_queue):
+                    unique_id = f"{t['h1']}|{t['h2']}"
+                    if unique_id not in finished_ids:
+                        next_task_idx = i
+                        break
+                
+                if next_task_idx != -1:
+                    # ЕСТЬ СЛЕДУЮЩАЯ ЗАДАЧА -> ЗАПУСКАЕМ КРУГ ЗАНОВО
+                    next_task = st.session_state.bg_tasks_queue[next_task_idx]
+                    
+                    st.session_state.query_input = next_task['h1'] # Меняем запрос
+                    st.session_state.start_analysis_flag = True # Снова жмем кнопку "Анализ"
+                    st.session_state.lsi_processing_task_id = next_task_idx
+                    
+                    st.toast(f"✅ Статья готова! Запускаю следующую: {next_task['h1']}")
+                else:
+                    # ВСЕ ЗАДАЧИ ВЫПОЛНЕНЫ
+                    st.session_state.lsi_automode_active = False
+                    st.balloons()
+                    st.success("🎉 ВСЕ СТАТЬИ СГЕНЕРИРОВАНЫ ЧЕРЕЗ ВКЛАДКУ 1!")
+            
+            # ==================================================================
+            
+            # Перезагружаем страницу, чтобы применить изменения СВЕРХУ
+            st.rerun()
             
             # Перезагружаем страницу, чтобы применить изменения СВЕРХУ
             st.rerun()
@@ -4889,37 +4961,47 @@ with tab_lsi_gen:
         with c_set2:
             st.info("⚠️ Большой размер пачки может вызвать тайм-аут. Рекомендуется 2-3.")
 
-        # КНОПКИ УПРАВЛЕНИЯ
+# КНОПКИ УПРАВЛЕНИЯ ВО ВКЛАДКЕ 5
         c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
         with c_act1:
-            if not st.session_state.bg_is_running:
-                btn_label = "▶️ СТАРТ ГЕНЕРАЦИИ" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
+            # Если авто-режим НЕ активен
+            if not st.session_state.get('lsi_automode_active'):
+                btn_label = "▶️ СТАРТ ЧЕРЕЗ ВКЛАДКУ 1" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
                 if st.button(btn_label, type="primary", disabled=(remaining_q == 0), use_container_width=True):
                     if not lsi_api_key:
                         st.error("Введите API ключ!")
                     elif not ARSENKIN_TOKEN:
                         st.error("Нужен токен Arsenkin для SEO!")
                     else:
-                        st.session_state.bg_is_running = True
+                        # 1. ЗАПУСКАЕМ РЕЖИМ АВТОПИЛОТА
+                        st.session_state.lsi_automode_active = True
+                        st.session_state.lsi_current_index = 0
+                        
+                        # 2. БЕРЕМ ПЕРВУЮ ЗАДАЧУ
+                        first_task_idx = pending_indices[0]
+                        first_task = st.session_state.bg_tasks_queue[first_task_idx]
+                        
+                        # 3. НАСТРАИВАЕМ ВКЛАДКУ 1 (ИМИТАЦИЯ ПОЛЬЗОВАТЕЛЯ)
+                        st.session_state.query_input = first_task['h1']  # Вбиваем запрос
+                        st.session_state.competitor_source_radio = "Поиск через API Arsenkin (TOP-30)" # Выбираем API
+                        
+                        # 4. НАЖИМАЕМ КНОПКУ "ЗАПУСТИТЬ АНАЛИЗ" (ВИРТУАЛЬНО)
+                        st.session_state.start_analysis_flag = True
+                        
+                        # 5. СООБЩАЕМ, КАКУЮ ЗАДАЧУ ДЕЛАЕМ (для логов)
+                        st.session_state.lsi_processing_task_id = first_task_idx
+                        
+                        st.toast(f"🚀 Переходим на Вкладку 1 для анализа: {first_task['h1']}")
+                        time.sleep(1)
                         st.rerun()
             else:
-                if st.button("⛔ ПАУЗА", type="secondary", use_container_width=True):
-                    st.session_state.bg_is_running = False
+                if st.button("⛔ ОСТАНОВИТЬ", type="secondary", use_container_width=True):
+                    st.session_state.lsi_automode_active = False
                     st.rerun()
-        
-        with c_act3:
-            # КНОПКА СБРОСА С ОЧИСТКОЙ ПОЛЕЙ
-            if st.button("🗑️ Сброс очереди", disabled=st.session_state.bg_is_running, use_container_width=True):
-                st.session_state.bg_tasks_queue = []
-                st.session_state.bg_results = []
-                st.session_state.bg_is_running = False
-                
-                # Очищаем поля ввода (через session_state, так как мы дали им ключи)
-                if "manual_h1_input" in st.session_state: del st.session_state["manual_h1_input"]
-                if "manual_h2_input" in st.session_state: del st.session_state["manual_h2_input"]
-                if "url_list_input" in st.session_state: del st.session_state["url_list_input"]
-                
-                st.rerun()
+
+        # ОТОБРАЖЕНИЕ СТАТУСА, КОГДА РАБОТАЕТ
+        if st.session_state.get('lsi_automode_active'):
+             st.info(f"🔄 **РАБОТАЕТ АВТОПИЛОТ...** Сейчас анализируется на Вкладке 1: задача №{st.session_state.get('lsi_processing_task_id', 0)}")
 
         # ТАБЛИЦА СТАТУСА
         st.write("📊 **Очередь задач:**")
@@ -5057,5 +5139,6 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
