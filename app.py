@@ -3506,9 +3506,13 @@ with tab_seo_main:
 
                 if next_task_idx != -1:
                     # 1. СОХРАНЯЕМ КЛЮЧИ (то, что нельзя удалять ни в коем случае)
-                    # Если у тебя ключ API или пароль называются иначе - добавь их в список
-                    safe_keys = ['bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
-                                 'api_key_input', 'password', 'authenticated']
+                    # ИСПРАВЛЕНИЕ: Добавлены lsi_automode_active, lsi_processing_task_id и ключи API
+                    safe_keys = [
+                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
+                        'api_key_input', 'password', 'authenticated',
+                        'lsi_automode_active', 'lsi_processing_task_id',
+                        'arsenkin_token', 'yandex_dict_key', 'bulk_api_key_v3'
+                    ]
                     
                     # 2. УДАЛЯЕМ ВСЁ ОСТАЛЬНОЕ (чистим мусор от прошлой статьи)
                     for key in list(st.session_state.keys()):
@@ -5371,6 +5375,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
