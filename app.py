@@ -233,8 +233,14 @@ def render_clean_block(title, icon, words_list):
     st.markdown(html_code, unsafe_allow_html=True)
 
 def render_relevance_chart(df_rel, unique_key="default"):
-    if df_rel.empty:
+    # Добавь эту проверку:
+    if df_rel is None or not isinstance(df_rel, pd.DataFrame) or df_rel.empty:
         return
+
+    # Защита от пустых колонок
+    if 'Позиция' not in df_rel.columns:
+        return
+    
 
     # 1. ЖЕСТКАЯ ФИЛЬТРАЦИЯ: Оставляем только то, что > 0
     # Ваш сайт (позиция 0) удаляется из данных для графика
@@ -3312,19 +3318,28 @@ with tab_seo_main:
                         break
                 
                 if next_task_idx != -1:
-                    # ЕСТЬ СЛЕДУЮЩАЯ ЗАДАЧА -> ЗАПУСКАЕМ КРУГ ЗАНОВО
-                    next_task = st.session_state.bg_tasks_queue[next_task_idx]
+                    # 1. СБРОС СОСТОЯНИЯ (чтобы не было "огромной ошибки")
+                    st.session_state.analysis_done = False
+                    st.session_state.analysis_results = None
+                    if 'raw_comp_data' in st.session_state: 
+                        del st.session_state['raw_comp_data']
                     
-                    st.session_state.query_input = next_task['h1'] # Меняем запрос
-                    st.session_state.start_analysis_flag = True # Снова жмем кнопку "Анализ"
+                    # 2. ПЕРЕКЛЮЧЕНИЕ ЧЕК-БОКСОВ (для Вкладки 1)
+                    # Выбираем пункт "Без страницы"
+                    st.session_state['my_page_source_radio'] = "Без страницы"
+                    # Очищаем URL, чтобы он не пытался анализировать старую страницу
+                    st.session_state['my_url_input'] = ""
+                    # Выбираем API Арсенкина для конкурентов
+                    st.session_state['competitor_source_radio'] = "Поиск через API Arsenkin (TOP-30)"
+                    
+                    # 3. ПОДГОТОВКА СЛЕДУЮЩЕГО ЗАПРОСА
+                    next_task = st.session_state.bg_tasks_queue[next_task_idx]
+                    st.session_state.query_input = next_task['h1'] 
+                    st.session_state.start_analysis_flag = True 
                     st.session_state.lsi_processing_task_id = next_task_idx
                     
-                    st.toast(f"✅ Статья готова! Запускаю следующую: {next_task['h1']}")
-                else:
-                    # ВСЕ ЗАДАЧИ ВЫПОЛНЕНЫ
-                    st.session_state.lsi_automode_active = False
-                    st.balloons()
-                    st.success("🎉 ВСЕ СТАТЬИ СГЕНЕРИРОВАНЫ ЧЕРЕЗ ВКЛАДКУ 1!")
+                    st.toast(f"🚀 Запускаю анализ: {next_task['h1']}", icon="⏳")
+                    st.rerun()
             
             # ==================================================================
             
@@ -5162,6 +5177,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
