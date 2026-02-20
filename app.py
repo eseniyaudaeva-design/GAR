@@ -3030,6 +3030,74 @@ with tab_seo_main:
                     </div>
                     """, unsafe_allow_html=True)
 
+# === ВОТ ЭТОТ БЛОК ПЕРЕНОСИТ ДАННЫЕ И ЗАПУСКАЕТ ГЕНЕРАЦИЮ ===
+        if st.session_state.get('lsi_automode_active'):
+            # Создаем контейнер для статуса, который будет виден всегда
+            status_container = st.empty() 
+            
+            with status_container.container():
+                st.info(f"⚙️ Робот работает... Текущий ключ: {st.session_state.query_input}")
+                
+                # 1. Извлекаем чистые слова (LSI)
+                current_lsi_words = [x['word'] for x in high] if high else []
+                
+                # 2. Находим задачу в очереди
+                t_id = st.session_state.get('lsi_processing_task_id', 0)
+                if t_id < len(st.session_state.bg_tasks_queue):
+                    task = st.session_state.bg_tasks_queue[t_id]
+                    
+                    # 3. ПРОВЕРЯЕМ: А нет ли уже этой статьи в результатах?
+                    # Если нет — добавляем. Если есть и статус не 'Done' — обновляем.
+                    if 'bg_results' not in st.session_state:
+                        st.session_state.bg_results = []
+                    
+                    # Ищем, есть ли уже запись для этого H1
+                    found_idx = next((i for i, r in enumerate(st.session_state.bg_results) if r['h1'] == task['h1']), None)
+                    
+                    if found_idx is None:
+                        st.write("📥 Записываю LSI в базу для генерации...")
+                        new_rec = {
+                            "h1": task['h1'], "h2": task['h2'],
+                            "lsi_added": current_lsi_words, "content": "",
+                            "status": "Wait for Gemini", "date": "2026-02-10"
+                        }
+                        st.session_state.bg_results.append(new_rec)
+                        target_idx = len(st.session_state.bg_results) - 1
+                    else:
+                        target_idx = found_idx
+                        # Обновляем LSI, если их еще не было
+                        st.session_state.bg_results[target_idx]['lsi_added'] = current_lsi_words
+
+                    # 4. ЗАПУСК ГЕНЕРАЦИИ (Если текста еще нет)
+                    if not st.session_state.bg_results[target_idx]['content']:
+                        st.write("🤖 Gemini начинает писать текст... Ждем.")
+                        try:
+                            # ВАЖНО: Проверь, что функция называется так!
+                            text = generate_article_with_gemini(task['h1'], current_lsi_words)
+                            st.session_state.bg_results[target_idx]['content'] = text
+                            st.session_state.bg_results[target_idx]['status'] = "Done"
+                            st.success(f"✅ Текст для '{task['h1']}' готов!")
+                        except Exception as gen_err:
+                            st.error(f"Ошибка генерации: {gen_err}")
+
+                    # 5. ПЕРЕХОД К СЛЕДУЮЩЕМУ КЛЮЧУ
+                    next_t_id = t_id + 1
+                    if next_t_id < len(st.session_state.bg_tasks_queue):
+                        st.write(f"➡️ Готовлюсь к следующему запросу: {st.session_state.bg_tasks_queue[next_t_id]['h1']}")
+                        
+                        # Ключевые настройки для перезапуска
+                        st.session_state.lsi_processing_task_id = next_t_id
+                        st.session_state.query_input = st.session_state.bg_tasks_queue[next_t_id]['h1']
+                        st.session_state.start_analysis_flag = True
+                        st.session_state.analysis_done = False # Обязательно сбрасываем!
+                        
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.session_state.lsi_automode_active = False
+                        st.success("🏁 Все задачи из списка выполнены!")
+                        st.balloons()
+
 # =========================================================
         # 🔥 БЛОК АВТОМАТИЗАЦИИ: ПЕРЕНОС В ТАБ 5 И ГЕНЕРАЦИЯ
         # =========================================================
@@ -5314,6 +5382,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
