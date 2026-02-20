@@ -3030,6 +3030,78 @@ with tab_seo_main:
                     </div>
                     """, unsafe_allow_html=True)
 
+# =========================================================
+        # 🔥 БЛОК АВТОМАТИЗАЦИИ: ПЕРЕНОС В ТАБ 5 И ГЕНЕРАЦИЯ
+        # =========================================================
+        if st.session_state.get('lsi_automode_active'):
+            with st.status("🚀 Автоматизация: обработка LSI и генерация...", expanded=True) as status:
+                
+                # 1. Извлекаем слова из результатов анализа
+                st.write("📥 Собираю LSI-слова из таблицы TF-IDF...")
+                current_lsi = [x['word'] for x in high] if high else []
+                
+                # 2. Находим текущую задачу в очереди
+                task_id = st.session_state.get('lsi_processing_task_id', 0)
+                task = st.session_state.bg_tasks_queue[task_id]
+                
+                # 3. Формируем запись для Вкладки №5
+                st.write(f"💾 Переношу данные для ключа: **{task['h1']}**")
+                
+                new_entry = {
+                    "h1": task['h1'],
+                    "h2": task['h2'],
+                    "lsi_added": current_lsi,
+                    "content": "",  # Сюда запишем текст ниже
+                    "status": "Generating",
+                    "date": "05.02.2026" # Установлено согласно вашим правилам
+                }
+                
+                if 'bg_results' not in st.session_state:
+                    st.session_state.bg_results = []
+                
+                # Добавляем в результаты (или обновляем, если уже есть)
+                # Чтобы не было дублей при случайном реране
+                existing_idx = next((i for i, r in enumerate(st.session_state.bg_results) if r['h1'] == task['h1']), None)
+                if existing_idx is not None:
+                    st.session_state.bg_results[existing_idx] = new_entry
+                    res_idx = existing_idx
+                else:
+                    st.session_state.bg_results.append(new_entry)
+                    res_idx = len(st.session_state.bg_results) - 1
+
+                # 4. ГЕНЕРАЦИЯ ТЕКСТА (чтобы не заходить на 5 вкладку вручную)
+                st.write("🤖 Gemini генерирует текст статьи... Подождите.")
+                try:
+                    # Вызываем вашу функцию генерации. 
+                    # Убедитесь, что название функции совпадает (обычно generate_article_with_gemini)
+                    generated_text = generate_article_with_gemini(task['h1'], current_lsi)
+                    st.session_state.bg_results[res_idx]['content'] = generated_text
+                    st.session_state.bg_results[res_idx]['status'] = "Done"
+                    st.write("✅ Текст успешно сгенерирован и сохранен!")
+                except Exception as e:
+                    st.error(f"❌ Ошибка Gemini: {e}")
+                    st.session_state.bg_results[res_idx]['status'] = "Error"
+
+                # 5. ПЕРЕХОД К СЛЕДУЮЩЕМУ КЛЮЧУ
+                next_task_idx = task_id + 1
+                if next_task_idx < len(st.session_state.bg_tasks_queue):
+                    st.write(f"⏭️ Следующий ключ в очереди: **{st.session_state.bg_tasks_queue[next_task_idx]['h1']}**")
+                    
+                    # Обновляем состояние для следующей итерации
+                    st.session_state.lsi_processing_task_id = next_task_idx
+                    st.session_state.query_input = st.session_state.bg_tasks_queue[next_task_idx]['h1']
+                    st.session_state.start_analysis_flag = True 
+                    st.session_state.analysis_done = False # Сбрасываем флаг, чтобы запустить новый поиск
+                    
+                    status.update(label="🔄 Перехожу к анализу следующего ключа...", state="running")
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.session_state.lsi_automode_active = False
+                    status.update(label="🏁 ВСЕ ЗАДАЧИ ЗАВЕРШЕНЫ!", state="complete")
+                    st.balloons()
+                    st.success("Все ключи из списка обработаны. Результаты на вкладке 5.")
+
 # 6. ГЛУБИНА (ЗАКРЫТО)
         with st.expander("📉 1. Глубина (Детальная таблица)", expanded=False):
             render_paginated_table(
@@ -5242,6 +5314,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
