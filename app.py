@@ -2946,60 +2946,131 @@ with tab_seo_main:
             else:
                 st.warning("Данные по мета-тегам недоступны (возможно, ошибка при анализе).")
 
-# =========================================================
-        # 🔥 АВТОМАТИЗАЦИЯ: ПЕРЕНОС LSI И ПЕРЕХОД К СЛЕДУЮЩЕМУ КЛЮЧУ
-        # =========================================================
-        if st.session_state.get('lsi_automode_active'):
-            with st.status("🛠️ Авто-режим: Обработка результатов...", expanded=True) as status:
-                # 1. Извлекаем чистые слова из списка объектов
-                lsi_to_save = [x['word'] for x in high] if high else []
+# ==================================================================
+            # 🔥 HOOK ДЛЯ LSI ГЕНЕРАТОРА (ВКЛАДКА 5) - ИСПРАВЛЕННАЯ ВЕРСИЯ
+            # ==================================================================
+            if st.session_state.get('lsi_automode_active'):
                 
-                # 2. Получаем ID текущей задачи
-                task_id = st.session_state.get('lsi_processing_task_id')
+                # 1. Достаем данные текущей задачи
+                current_idx = st.session_state.get('lsi_processing_task_id')
+                # Защита от выхода за пределы списка
+                if current_idx >= len(st.session_state.bg_tasks_queue):
+                    st.session_state.lsi_automode_active = False
+                    st.success("Все задачи выполнены!")
+                    st.stop()
+
+                task = st.session_state.bg_tasks_queue[current_idx]
                 
-                if task_id is not None:
-                    task = st.session_state.bg_tasks_queue[task_id]
-                    
-                    # 3. Сохраняем в bg_results для Вкладки 5
-                    new_rec = {
+                # 2. Достаем LSI (TF-IDF) из результатов анализа Вкладки 1
+                lsi_words = []
+                # Проверяем, есть ли результаты в results_final (они рассчитаны выше)
+                if results_final.get('hybrid') is not None and not results_final['hybrid'].empty:
+                    # Берем топ-15 слов
+                    lsi_words = results_final['hybrid'].head(15)['Слово'].tolist()
+                
+                # 3. Добавляем общие слова из настроек
+                # Берем их из переменной или дефолтные
+                common_lsi = ["гарантия", "доставка", "цена", "купить", "оптом", "в наличии"] 
+                combined_lsi = list(set(common_lsi + lsi_words))
+                
+                # 4. ГЕНЕРИРУЕМ СТАТЬЮ
+                # Важно: берем API ключ, который ввели на 5 вкладке
+                api_key_gen = st.session_state.get('bulk_api_key_v3') 
+                
+                html_out = ""
+                status_code = "Error"
+                
+                if not api_key_gen:
+                    html_out = "Ошибка: Нет API ключа Gemini (введите на вкладке 5)"
+                else:
+                    try:
+                        # Генерируем текст
+                        html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
+                        status_code = "OK"
+                    except Exception as e:
+                        html_out = f"Error generating: {e}"
+                        status_code = "Gen Error"
+
+                # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
+                # Проверяем, нет ли уже записи для этого H1, чтобы обновить, а не дублировать
+                found_existing = False
+                for existing_res in st.session_state.bg_results:
+                    if existing_res['h1'] == task['h1'] and existing_res['h2'] == task['h2']:
+                        existing_res['content'] = html_out
+                        existing_res['lsi_added'] = lsi_words
+                        existing_res['status'] = status_code
+                        found_existing = True
+                        break
+                
+                if not found_existing:
+                    st.session_state.bg_results.append({
                         "h1": task['h1'],
                         "h2": task['h2'],
-                        "lsi_added": lsi_to_save,
-                        "content": "",
-                        "status": "Ready"
+                        "source_url": task.get('source_url', '-'),
+                        "lsi_added": lsi_words,
+                        "content": html_out,
+                        "status": status_code
+                    })
+
+                # 6. ПЛАНИРУЕМ СЛЕДУЮЩУЮ ЗАДАЧУ
+                next_task_idx = current_idx + 1
+                
+                # Проверяем, есть ли еще задачи
+                if next_task_idx < len(st.session_state.bg_tasks_queue):
+                    next_task = st.session_state.bg_tasks_queue[next_task_idx]
+                    
+                    st.toast(f"✅ Готово: {task['h1']}. Переход к: {next_task['h1']}...")
+                    
+                    # === ВАЖНЕЙШИЙ МОМЕНТ: ОЧИСТКА SESSION STATE ===
+                    # Мы должны удалить мусор от текущего анализа, НО сохранить:
+                    # 1. Авторизацию (чтобы не выкинуло)
+                    # 2. Настройки API
+                    # 3. Очередь задач и результаты
+                    # 4. Флаги автоматизации
+                    
+                    safe_keys = {
+                        # АВТОРИЗАЦИЯ
+                        'authenticated', 'password', 
+                        # API КЛЮЧИ
+                        'arsenkin_token', 'yandex_dict_key', 'bulk_api_key_v3', 'gemini_key_cache',
+                        # ДАННЫЕ LSI ГЕНЕРАТОРА
+                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
+                        'lsi_automode_active', 'lsi_processing_task_id',
+                        # НАСТРОЙКИ UI (чтобы не сбивались радио-кнопки)
+                        'competitor_source_radio', 'settings_search_engine', 'settings_region' 
                     }
                     
-                    if 'bg_results' not in st.session_state:
-                        st.session_state.bg_results = []
+                    # Удаляем всё, чего нет в safe_keys
+                    for key in list(st.session_state.keys()):
+                        if key not in safe_keys:
+                            del st.session_state[key]
+
+                    # УСТАНАВЛИВАЕМ ПАРАМЕТРЫ ДЛЯ СЛЕДУЮЩЕГО ЦИКЛА
+                    st.session_state['query_input'] = next_task['h1']
                     
-                    # Проверяем, нет ли уже такого ключа, чтобы не дублировать
-                    if not any(r['h1'] == task['h1'] for r in st.session_state.bg_results):
-                        st.session_state.bg_results.append(new_rec)
-                        st.write(f"✅ LSI для '{task['h1']}' сохранены (найдено: {len(lsi_to_save)} слов)")
+                    # Важно: принудительно ставим режим API и "Без страницы"
+                    st.session_state['competitor_source_radio'] = "Поиск через API Arsenkin (TOP-30)"
+                    st.session_state['my_page_source_radio'] = "Без страницы"
+                    st.session_state['my_url_input'] = ""
                     
-                    # 4. Логика перехода к следующему ключу
-                    next_idx = task_id + 1
-                    if next_idx < len(st.session_state.bg_tasks_queue):
-                        next_task = st.session_state.bg_tasks_queue[next_idx]
-                        st.write(f"⏭️ Перехожу к следующему ключу: **{next_task['h1']}**")
-                        
-                        # Настраиваем состояние для следующего цикла
-                        st.session_state.lsi_processing_task_id = next_idx
-                        st.session_state.query_input = next_task['h1']
-                        st.session_state.start_analysis_flag = True
-                        
-                        # Сбрасываем флаги текущего анализа, чтобы триггернуть новый
-                        st.session_state.analysis_done = False
-                        if 'analysis_results' in st.session_state:
-                            del st.session_state['analysis_results']
-                        
-                        status.update(label="🔄 Запуск анализа следующего ключа...", state="running")
-                        time.sleep(2)
-                        st.rerun()
-                    else:
-                        st.session_state.lsi_automode_active = False
-                        status.update(label="🏁 Все ключи из очереди обработаны!", state="complete")
-                        st.success("Все задачи выполнены! Перейдите на вкладку 5.")
+                    # Переключаем ID задачи
+                    st.session_state['lsi_processing_task_id'] = next_task_idx
+                    
+                    # ЗАПУСКАЕМ АНАЛИЗАТОР ЗАНОВО
+                    st.session_state['start_analysis_flag'] = True 
+                    st.session_state['analysis_done'] = False
+                    
+                    # Даем скрипту секунду на сохранение и перезагружаем
+                    time.sleep(0.5)
+                    st.rerun()
+                    
+                else:
+                    # ЕСЛИ ЗАДАЧ БОЛЬШЕ НЕТ
+                    st.session_state.lsi_automode_active = False
+                    st.balloons()
+                    st.success("🏁 ВСЕ ЗАДАЧИ В ОЧЕРЕДИ ОБРАБОТАНЫ! Результаты на вкладке 5.")
+            
+            # ==================================================================
 
 # 5. УПУЩЕННАЯ СЕМАНТИКА + МОТОР АВТОМАТИЗАЦИИ
         high = results.get('missing_semantics_high', [])
@@ -5375,6 +5446,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
