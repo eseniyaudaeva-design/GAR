@@ -2946,6 +2946,61 @@ with tab_seo_main:
             else:
                 st.warning("Данные по мета-тегам недоступны (возможно, ошибка при анализе).")
 
+# =========================================================
+        # 🔥 АВТОМАТИЗАЦИЯ: ПЕРЕНОС LSI И ПЕРЕХОД К СЛЕДУЮЩЕМУ КЛЮЧУ
+        # =========================================================
+        if st.session_state.get('lsi_automode_active'):
+            with st.status("🛠️ Авто-режим: Обработка результатов...", expanded=True) as status:
+                # 1. Извлекаем чистые слова из списка объектов
+                lsi_to_save = [x['word'] for x in high] if high else []
+                
+                # 2. Получаем ID текущей задачи
+                task_id = st.session_state.get('lsi_processing_task_id')
+                
+                if task_id is not None:
+                    task = st.session_state.bg_tasks_queue[task_id]
+                    
+                    # 3. Сохраняем в bg_results для Вкладки 5
+                    new_rec = {
+                        "h1": task['h1'],
+                        "h2": task['h2'],
+                        "lsi_added": lsi_to_save,
+                        "content": "",
+                        "status": "Ready"
+                    }
+                    
+                    if 'bg_results' not in st.session_state:
+                        st.session_state.bg_results = []
+                    
+                    # Проверяем, нет ли уже такого ключа, чтобы не дублировать
+                    if not any(r['h1'] == task['h1'] for r in st.session_state.bg_results):
+                        st.session_state.bg_results.append(new_rec)
+                        st.write(f"✅ LSI для '{task['h1']}' сохранены (найдено: {len(lsi_to_save)} слов)")
+                    
+                    # 4. Логика перехода к следующему ключу
+                    next_idx = task_id + 1
+                    if next_idx < len(st.session_state.bg_tasks_queue):
+                        next_task = st.session_state.bg_tasks_queue[next_idx]
+                        st.write(f"⏭️ Перехожу к следующему ключу: **{next_task['h1']}**")
+                        
+                        # Настраиваем состояние для следующего цикла
+                        st.session_state.lsi_processing_task_id = next_idx
+                        st.session_state.query_input = next_task['h1']
+                        st.session_state.start_analysis_flag = True
+                        
+                        # Сбрасываем флаги текущего анализа, чтобы триггернуть новый
+                        st.session_state.analysis_done = False
+                        if 'analysis_results' in st.session_state:
+                            del st.session_state['analysis_results']
+                        
+                        status.update(label="🔄 Запуск анализа следующего ключа...", state="running")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.session_state.lsi_automode_active = False
+                        status.update(label="🏁 Все ключи из очереди обработаны!", state="complete")
+                        st.success("Все задачи выполнены! Перейдите на вкладку 5.")
+
         # 5. УПУЩЕННАЯ СЕМАНТИКА
         high = results.get('missing_semantics_high', [])
         low = results.get('missing_semantics_low', [])
@@ -3321,43 +3376,34 @@ with tab_seo_main:
                 st.write(f"DEBUG: Найдена следующая задача под индексом: {next_task_idx}") # Вы увидите это на экране
 
                 if next_task_idx != -1:
-                    # 1. СПИСОК ТОГО, ЧТО МЫ ОСТАВЛЯЕМ (НЕ УДАЛЯТЬ!)
-                    # Здесь все, что отвечает за вход, настройки и саму очередь
-                    keep_keys = [
-                        'bg_tasks_queue', 
-                        'bg_results', 
-                        'bg_tasks_started', 
-                        'api_key_input', 
-                        'password',       # Ваша авторизация
-                        'authenticated',  # Флаг входа
-                        'user_auth'       # Доп. флаг входа
-                    ]
+                    # 1. СОХРАНЯЕМ КЛЮЧИ (то, что нельзя удалять ни в коем случае)
+                    # Если у тебя ключ API или пароль называются иначе - добавь их в список
+                    safe_keys = ['bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
+                                 'api_key_input', 'password', 'authenticated']
                     
-                    # 2. УДАЛЯЕМ ТОЛЬКО РЕЗУЛЬТАТЫ АНАЛИЗА
-                    # Проходим по всем ключам и удаляем те, которых нет в списке keep_keys
+                    # 2. УДАЛЯЕМ ВСЁ ОСТАЛЬНОЕ (чистим мусор от прошлой статьи)
                     for key in list(st.session_state.keys()):
-                        if key not in keep_keys:
+                        if key not in safe_keys:
                             del st.session_state[key]
 
-                    # 3. ПОДГОТОВКА СЛЕДУЮЩЕГО ШАГА
+                    # 3. БЕРЕМ НОВУЮ ЗАДАЧУ
                     next_task = st.session_state.bg_tasks_queue[next_task_idx]
                     
-                    # Вписываем новый запрос
+                    # Ставим статус "В работе" для таблицы очереди
+                    st.session_state.bg_tasks_queue[next_task_idx]['status'] = "🔍 Инициализация парсинга..."
+                    
+                    # Прописываем данные для первой вкладки (Парсер)
                     st.session_state['query_input'] = next_task['h1']
                     st.session_state['my_page_source_radio'] = "Без страницы"
                     st.session_state['my_url_input'] = ""
                     
-                    # ГЛАВНЫЙ МОМЕНТ: Включаем авто-старт
-                    # Эти флаги заставят первую вкладку начать работу без вашего клика
+                    # Включаем "автопилот"
                     st.session_state['start_analysis_flag'] = True
                     st.session_state['analysis_done'] = False
                     st.session_state['lsi_processing_task_id'] = next_task_idx
                     
-                    # Сообщаем пользователю
-                    st.toast(f"✅ Статья сохранена. Начинаем: {next_task['h1']}")
-                    
-                    # Маленькая задержка и авто-перезагрузка
-                    time.sleep(1)
+                    st.toast(f"🚀 Начинаем работу над: {next_task['h1']}")
+                    time.sleep(1) # Даем время на запись в память
                     st.rerun()
             
             # ==================================================================
@@ -5196,6 +5242,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
