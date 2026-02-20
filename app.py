@@ -3031,20 +3031,36 @@ with tab_seo_main:
                     
                     st.toast(f"✅ Готово: {task['h1']}. Переход к: {next_task['h1']}...")
                     
-# === ОЧИСТКА МУСОРА С СОХРАНЕНИЕМ КЛЮЧЕЙ (ИСПРАВЛЕНО) ===
+# === ЖЕСТКАЯ ЗАЩИТА ПЕРЕМЕННЫХ ===
+                    # Мы явно указываем все возможные названия переменных, где может лежать ключ
                     safe_keys = {
+                        # Системные
                         'authenticated', 'password', 
+                        # API Ключи (ВСЕ ВАРИАНТЫ)
                         'arsenkin_token', 'yandex_dict_key', 
-                        'bulk_api_key_v3', 'gemini_key_persistent', 'gemini_key_cache', # <--- ВАЖНО
+                        'bulk_api_key_v3', 'gemini_key_persistent', 'gemini_key_cache', 'input_arsenkin',
+                        # Данные задач
                         'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
                         'lsi_automode_active', 'lsi_processing_task_id',
-                        'competitor_source_radio', 'settings_search_engine', 'settings_region',
+                        # Настройки поиска (чтобы не сбрасывались)
+                        'competitor_source_radio', 'settings_search_engine', 'settings_region', 
+                        'settings_ua', 'settings_top_n',
+                        # Списки (чтобы не удалялись при ручном вводе)
                         'manual_h1_input', 'manual_h2_input', 'url_list_input'
                     }
                     
+                    # УДАЛЯЕМ ТОЛЬКО ТО, ЧЕГО НЕТ В СПИСКЕ
                     for key in list(st.session_state.keys()):
                         if key not in safe_keys:
                             del st.session_state[key]
+                    
+                    # === ПРИНУДИТЕЛЬНОЕ ВОССТАНОВЛЕНИЕ ===
+                    # Если ключ вдруг удалился, но есть в secrets или другой переменной - восстанавливаем
+                    if 'bulk_api_key_v3' not in st.session_state:
+                         # Пытаемся найти в persist или secrets
+                         recovered = st.session_state.get('gemini_key_persistent') or st.secrets.get("GEMINI_KEY", "")
+                         if recovered:
+                             st.session_state.bulk_api_key_v3 = recovered
 
                     # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
                     st.session_state['query_input'] = next_task['h1']
@@ -5498,6 +5514,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
