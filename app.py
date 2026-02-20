@@ -3319,29 +3319,52 @@ with tab_seo_main:
                         break
                 
                 if next_task_idx != -1:
-                    # 1. Очищаем результаты предыдущего анализа
+                    # 1. СПИСОК ТОГО, ЧТО НУЖНО УДАЛИТЬ (Результаты прошлого круга)
+                    # Мы удаляем только данные анализа, НЕ трогая настройки API
+                    to_clear = [
+                        'analysis_done', 
+                        'analysis_results', 
+                        'lsi_data', 
+                        'tf_idf_results', 
+                        'combined_lsi',
+                        'final_article_text',
+                        'query_input',
+                        'my_page_source_radio',
+                        'my_url_input',
+                        'full_lsi_list' # если такая переменная есть у вас для 5 вкладки
+                    ]
+                    
+                    for key in to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
+
+                    # 2. ПРИНУДИТЕЛЬНОЕ ОБНУЛЕНИЕ ФЛАГОВ
                     st.session_state.analysis_done = False
                     st.session_state.analysis_results = None
                     
-                    # 2. БЕЗОПАСНЫЙ СБРОС (Удаляем ключи, чтобы Streamlit позволил записать новые)
-                    # Добавляем сюда 'query_input', так как на нем сейчас вылетает ошибка
-                    for key_to_del in ['my_page_source_radio', 'my_url_input', 'query_input']:
-                        if key_to_del in st.session_state:
-                            del st.session_state[key_to_del]
+                    # 3. ПОДГОТОВКА НОВЫХ ДАННЫХ ДЛЯ СЛЕДУЮЩЕГО КРУГА
+                    next_task = st.session_state.bg_tasks_queue[next_task_idx]
                     
-                    # 3. Устанавливаем новые значения
+                    # Устанавливаем новый поисковый запрос (ключ)
+                    st.session_state['query_input'] = next_task['h1']
+                    # Сбрасываем источник на "Без страницы"
                     st.session_state['my_page_source_radio'] = "Без страницы"
                     st.session_state['my_url_input'] = ""
                     
-                    # Берем новую задачу и записываем H1 в query_input
-                    next_task = st.session_state.bg_tasks_queue[next_task_idx]
-                    st.session_state['query_input'] = next_task['h1'] 
-                    
-                    # 4. Включаем флаги для запуска парсинга в первой вкладке
+                    # Активируем запуск анализа
                     st.session_state.start_analysis_flag = True
                     st.session_state.lsi_processing_task_id = next_task_idx
+
+                    # 4. ПРОВЕРКА API КЛЮЧА
+                    # Если ключ лежит в 'api_key_input', мы его НЕ удаляли выше.
+                    # Но на всякий случай убедимся, что он есть в логах перед рестартом.
+                    if 'api_key_input' not in st.session_state or not st.session_state['api_key_input']:
+                        st.warning("⚠️ Внимание: API ключ может быть потерян при переходе!")
+
+                    st.toast(f"✅ Готово! Переходим к задаче №{next_task_idx + 1}: {next_task['h1']}")
                     
-                    st.toast(f"🚀 Запуск автоматического цикла для: {next_task['h1']}")
+                    # Небольшая пауза, чтобы Streamlit успел записать стейт в память
+                    time.sleep(0.5) 
                     st.rerun()
             
             # ==================================================================
@@ -5180,6 +5203,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
