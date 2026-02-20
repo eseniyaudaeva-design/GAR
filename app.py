@@ -2977,14 +2977,21 @@ with tab_seo_main:
                 common_lsi = ["гарантия", "доставка", "цена", "купить", "оптом", "в наличии"] 
                 combined_lsi = list(set(common_lsi + lsi_words))
                 
-                # 4. ГЕНЕРИРУЕМ СТАТЬЮ
-                api_key_gen = st.session_state.get('bulk_api_key_v3') 
+# 4. ГЕНЕРИРУЕМ СТАТЬЮ
+                # --- ИСПРАВЛЕНИЕ: Ищем ключ везде ---
+                api_key_gen = st.session_state.get('gemini_key_persistent')
+                if not api_key_gen:
+                    api_key_gen = st.session_state.get('bulk_api_key_v3')
+                if not api_key_gen:
+                    try: api_key_gen = st.secrets["GEMINI_KEY"]
+                    except: pass
                 
                 html_out = ""
                 status_code = "Error"
                 
                 if not api_key_gen:
-                    html_out = "Ошибка: Нет API ключа Gemini (введите на вкладке 5)"
+                    html_out = "Ошибка: Нет API ключа Gemini (введите на вкладке 5). Нажмите Enter после ввода ключа!"
+                    status_code = "Key Error"
                 else:
                     try:
                         html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
@@ -3024,13 +3031,15 @@ with tab_seo_main:
                     
                     st.toast(f"✅ Готово: {task['h1']}. Переход к: {next_task['h1']}...")
                     
-                    # === ОЧИСТКА МУСОРА С СОХРАНЕНИЕМ КЛЮЧЕЙ ===
+# === ОЧИСТКА МУСОРА С СОХРАНЕНИЕМ КЛЮЧЕЙ (ИСПРАВЛЕНО) ===
                     safe_keys = {
                         'authenticated', 'password', 
-                        'arsenkin_token', 'yandex_dict_key', 'bulk_api_key_v3', 'gemini_key_cache',
+                        'arsenkin_token', 'yandex_dict_key', 
+                        'bulk_api_key_v3', 'gemini_key_persistent', 'gemini_key_cache', # <--- ВАЖНО
                         'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
                         'lsi_automode_active', 'lsi_processing_task_id',
-                        'competitor_source_radio', 'settings_search_engine', 'settings_region' 
+                        'competitor_source_radio', 'settings_search_engine', 'settings_region',
+                        'manual_h1_input', 'manual_h2_input', 'url_list_input'
                     }
                     
                     for key in list(st.session_state.keys()):
@@ -5489,6 +5498,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
