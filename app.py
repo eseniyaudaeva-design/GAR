@@ -5343,21 +5343,34 @@ with tab_lsi_gen:
                 common_lsi = ["гарантия", "доставка", "цена", "купить", "оптом", "в наличии"] 
                 combined_lsi = list(set(common_lsi + lsi_words))
                 
-                # 4. ГЕНЕРИРУЕМ СТАТЬЮ
-                # БЕРЕМ КЛЮЧ ИЗ НАДЕЖНОГО ИСТОЧНИКА
+# 4. ГЕНЕРИРУЕМ СТАТЬЮ
+                # --- ИСПРАВЛЕНИЕ: Агрессивный поиск ключа ---
                 api_key_gen = st.session_state.get('gemini_key_persistent')
                 
-                # Если вдруг пусто, пробуем виджет или секреты
+                # 1. Если нет в persistent, ищем в виджете
                 if not api_key_gen:
                     api_key_gen = st.session_state.get('bulk_api_key_v3')
                 
+                # 2. Если все еще нет, ищем в secrets
+                if not api_key_gen:
+                    try: api_key_gen = st.secrets["GEMINI_KEY"]
+                    except: pass
+                
+                # 3. Если все еще нет, ищем в кэше генератора
+                if not api_key_gen:
+                    api_key_gen = st.session_state.get('gemini_key_cache')
+
                 html_out = ""
                 status_code = "Error"
                 
                 if not api_key_gen:
-                    html_out = "ОШИБКА: Ключ API не найден. Введите его на Вкладке 5 и нажмите Enter."
-                    st.error(html_out)
+                    html_out = "ОШИБКА: Ключ API потерялся при перезагрузке. Убедитесь, что нажали Enter после ввода ключа."
+                    # Не прерываем, чтобы пользователь увидел ошибку в отчете, но цикл не сломался
                 else:
+                    # Восстанавливаем ключ в сессию, чтобы он не пропал на следующем круге
+                    st.session_state.bulk_api_key_v3 = api_key_gen
+                    st.session_state.gemini_key_persistent = api_key_gen
+                    
                     try:
                         html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
                         status_code = "OK"
@@ -5396,15 +5409,16 @@ with tab_lsi_gen:
                     next_task = st.session_state.bg_tasks_queue[next_task_idx]
                     st.toast(f"✅ Готово: {task['h1']}. Дальше: {next_task['h1']}")
                     
-                    # === ОЧИСТКА МУСОРА (БЕЗОПАСНАЯ) ===
-                    # Сюда внесены ВСЕ переменные, которые нельзя удалять
+# === ОЧИСТКА МУСОРА (ИСПРАВЛЕННАЯ) ===
+                    # Мы добавили сюда ВСЕ варианты названия ключей
                     safe_keys = {
                         'authenticated', 'password', 
                         'arsenkin_token', 'yandex_dict_key', 
-                        'bulk_api_key_v3', 'gemini_key_persistent', # <--- КЛЮЧИ
-                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started', # <--- ТАБЛИЦЫ
+                        'bulk_api_key_v3', 'gemini_key_persistent', 'gemini_key_cache', # <--- ВАЖНО: Ключи здесь
+                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started',
                         'lsi_automode_active', 'lsi_processing_task_id',
-                        'competitor_source_radio', 'settings_search_engine', 'settings_region' 
+                        'competitor_source_radio', 'settings_search_engine', 'settings_region',
+                        'manual_h1_input', 'manual_h2_input', 'url_list_input' # Сохраняем введенные списки
                     }
                     
                     # Удаляем только то, чего нет в safe_keys
@@ -5475,6 +5489,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
