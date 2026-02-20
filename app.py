@@ -3319,28 +3319,29 @@ with tab_seo_main:
                         break
                 
                 if next_task_idx != -1:
-                    # Очищаем результаты предыдущего анализа, чтобы не было конфликтов
+                    # 1. Очищаем результаты предыдущего анализа
                     st.session_state.analysis_done = False
                     st.session_state.analysis_results = None
                     
-                    # ПЕРЕКЛЮЧАЕМ ЧЕК-БОКС НА "БЕЗ СТРАНИЦЫ"
-                    # Это те самые ключи из твоей 1-й вкладки
-                    # Безопасный сброс состояния виджетов перед изменением
-                    if 'my_page_source_radio' in st.session_state:
-                        del st.session_state['my_page_source_radio']
-                    if 'my_url_input' in st.session_state:
-                        del st.session_state['my_url_input']
+                    # 2. БЕЗОПАСНЫЙ СБРОС (Удаляем ключи, чтобы Streamlit позволил записать новые)
+                    # Добавляем сюда 'query_input', так как на нем сейчас вылетает ошибка
+                    for key_to_del in ['my_page_source_radio', 'my_url_input', 'query_input']:
+                        if key_to_del in st.session_state:
+                            del st.session_state[key_to_del]
                     
+                    # 3. Устанавливаем новые значения
                     st.session_state['my_page_source_radio'] = "Без страницы"
                     st.session_state['my_url_input'] = ""
                     
-                    # Берем новую задачу
+                    # Берем новую задачу и записываем H1 в query_input
                     next_task = st.session_state.bg_tasks_queue[next_task_idx]
-                    st.session_state.query_input = next_task['h1']
+                    st.session_state['query_input'] = next_task['h1'] 
+                    
+                    # 4. Включаем флаги для запуска парсинга в первой вкладке
                     st.session_state.start_analysis_flag = True
                     st.session_state.lsi_processing_task_id = next_task_idx
                     
-                    st.toast(f"Переходим к следующей категории: {next_task['h1']}")
+                    st.toast(f"🚀 Запуск автоматического цикла для: {next_task['h1']}")
                     st.rerun()
             
             # ==================================================================
@@ -5179,6 +5180,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
