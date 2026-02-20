@@ -5275,6 +5275,12 @@ with tab_lsi_gen:
             if not st.session_state.get('lsi_automode_active'):
                 btn_label = "▶️ СТАРТ ЧЕРЕЗ ВКЛАДКУ 1" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
                 
+                # === ИСПРАВЛЕНИЕ НАЧАЛО: Определяем переменную перед использованием ===
+                lsi_api_key = st.session_state.get('gemini_key_persistent')
+                if not lsi_api_key:
+                    lsi_api_key = st.session_state.get('bulk_api_key_v3')
+                # === ИСПРАВЛЕНИЕ КОНЕЦ ===
+
                 # Проверяем ключи перед нажатием (для логики кнопки)
                 keys_valid = bool(lsi_api_key and ARSENKIN_TOKEN)
                 
@@ -5469,6 +5475,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
