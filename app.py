@@ -3318,54 +3318,47 @@ with tab_seo_main:
                         next_task_idx = i
                         break
                 
+                st.write(f"DEBUG: Найдена следующая задача под индексом: {next_task_idx}") # Вы увидите это на экране
+
                 if next_task_idx != -1:
-                    # 1. СПИСОК ТОГО, ЧТО НУЖНО УДАЛИТЬ (Результаты прошлого круга)
-                    # Мы удаляем только данные анализа, НЕ трогая настройки API
-                    to_clear = [
-                        'analysis_done', 
-                        'analysis_results', 
-                        'lsi_data', 
-                        'tf_idf_results', 
-                        'combined_lsi',
-                        'final_article_text',
-                        'query_input',
-                        'my_page_source_radio',
-                        'my_url_input',
-                        'full_lsi_list' # если такая переменная есть у вас для 5 вкладки
-                    ]
+                    st.warning("🔄 Запуск процесса полной очистки для нового цикла...")
                     
-                    for key in to_clear:
-                        if key in st.session_state:
+                    # 1. ПРИНУДИТЕЛЬНОЕ ОБНУЛЕНИЕ ВСЕХ ДАННЫХ
+                    # Мы очищаем абсолютно всё, что связано с процессом анализа
+                    for key in list(st.session_state.keys()):
+                        # Список ключей, которые НЕЛЬЗЯ удалять (настройки и очередь)
+                        protected_keys = [
+                            'bg_tasks_queue', 
+                            'bg_results', 
+                            'bg_tasks_started', 
+                            'api_key_input', 
+                            'proxy_config', 
+                            'main_config'
+                        ]
+                        if key not in protected_keys:
                             del st.session_state[key]
 
-                    # 2. ПРИНУДИТЕЛЬНОЕ ОБНУЛЕНИЕ ФЛАГОВ
-                    st.session_state.analysis_done = False
-                    st.session_state.analysis_results = None
-                    
-                    # 3. ПОДГОТОВКА НОВЫХ ДАННЫХ ДЛЯ СЛЕДУЮЩЕГО КРУГА
-                    next_task = st.session_state.bg_tasks_queue[next_task_idx]
-                    
-                    # Устанавливаем новый поисковый запрос (ключ)
-                    st.session_state['query_input'] = next_task['h1']
-                    # Сбрасываем источник на "Без страницы"
-                    st.session_state['my_page_source_radio'] = "Без страницы"
-                    st.session_state['my_url_input'] = ""
-                    
-                    # Активируем запуск анализа
-                    st.session_state.start_analysis_flag = True
-                    st.session_state.lsi_processing_task_id = next_task_idx
+                    # 2. ПЕРЕЗАПИСЬ ДАННЫХ ДЛЯ НОВОГО КЛЮЧА
+                    # Берем задачу заново, так как мы могли очистить локальную переменную
+                    # (Убедитесь, что bg_tasks_queue все еще существует)
+                    if 'bg_tasks_queue' in st.session_state:
+                        next_task = st.session_state.bg_tasks_queue[next_task_idx]
+                        
+                        st.session_state['query_input'] = next_task['h1']
+                        st.session_state['my_page_source_radio'] = "Без страницы"
+                        st.session_state['start_analysis_flag'] = True
+                        st.session_state['lsi_processing_task_id'] = next_task_idx
+                        st.session_state['analysis_done'] = False
+                        
+                        st.success(f"✅ Данные для '{next_task['h1']}' подготовлены!")
+                    else:
+                        st.error("❌ Очередь задач bg_tasks_queue потеряна!")
 
-                    # 4. ПРОВЕРКА API КЛЮЧА
-                    # Если ключ лежит в 'api_key_input', мы его НЕ удаляли выше.
-                    # Но на всякий случай убедимся, что он есть в логах перед рестартом.
-                    if 'api_key_input' not in st.session_state or not st.session_state['api_key_input']:
-                        st.warning("⚠️ Внимание: API ключ может быть потерян при переходе!")
-
-                    st.toast(f"✅ Готово! Переходим к задаче №{next_task_idx + 1}: {next_task['h1']}")
-                    
-                    # Небольшая пауза, чтобы Streamlit успел записать стейт в память
-                    time.sleep(0.5) 
+                    # 3. ПАУЗА И ПЕРЕЗАПУСК
+                    time.sleep(2) # Увеличили паузу, чтобы вы успели прочитать DEBUG-сообщения
                     st.rerun()
+                else:
+                    st.info("🏁 Все задачи из очереди выполнены.")
             
             # ==================================================================
             
@@ -5203,6 +5196,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
