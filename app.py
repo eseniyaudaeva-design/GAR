@@ -5095,24 +5095,38 @@ with tab_lsi_gen:
     if 'bg_is_running' not in st.session_state: st.session_state.bg_is_running = False
     if 'bg_batch_size' not in st.session_state: st.session_state.bg_batch_size = 3
 
-# --- 1. НАСТРОЙКИ ---
+# --- 1. НАСТРОЙКИ (ИСПРАВЛЕННОЕ СОХРАНЕНИЕ КЛЮЧА) ---
     with st.expander("⚙️ Настройки API и LSI", expanded=True):
-        # Пытаемся достать ключ из кэша или секретов
-        cached_key = st.session_state.get('gemini_key_cache', "")
-        if not cached_key:
-            try: cached_key = st.secrets["GEMINI_KEY"]
+        
+        # 1. Функция для сохранения ключа при изменении
+        def update_key():
+            st.session_state.gemini_key_persistent = st.session_state.bulk_api_key_v3
+
+        # 2. Инициализация постоянной переменной, если её нет
+        if 'gemini_key_persistent' not in st.session_state:
+            st.session_state.gemini_key_persistent = ""
+
+        # Пытаемся достать ключ из секретов, если пусто
+        if not st.session_state.gemini_key_persistent:
+            try: st.session_state.gemini_key_persistent = st.secrets["GEMINI_KEY"]
             except: pass
         
         default_lsi_text = "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, цены"
         
         c1, c2 = st.columns([1, 2])
         with c1:
-            # Виджет ввода
-            lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v3")
+            # Виджет ввода с привязкой к постоянной переменной через on_change
+            st.text_input(
+                "Gemini API Key", 
+                value=st.session_state.gemini_key_persistent, 
+                type="password", 
+                key="bulk_api_key_v3",
+                on_change=update_key # <--- ЭТО ВАЖНО
+            )
             
-            # 🔥 ВАЖНОЕ ДОБАВЛЕНИЕ: Сохраняем ключ в постоянную память сразу после ввода
-            if lsi_api_key:
-                st.session_state['gemini_key_cache'] = lsi_api_key
+            # Дублирующее сохранение на случай, если on_change не сработал
+            if st.session_state.bulk_api_key_v3:
+                st.session_state.gemini_key_persistent = st.session_state.bulk_api_key_v3
                 
         with c2:
             raw_lsi_common = st.text_area("LSI (Общий для всех текстов)", height=70, value=default_lsi_text)
@@ -5298,17 +5312,17 @@ with tab_lsi_gen:
                 st.rerun()
 
 # ==================================================================
-            # 🔥 HOOK ДЛЯ LSI ГЕНЕРАТОРА (ВКЛАДКА 5) - ИСПРАВЛЕННАЯ ВЕРСИЯ v3 (FIX API KEY)
+            # 🔥 HOOK ДЛЯ LSI ГЕНЕРАТОРА (ВКЛАДКА 5) - ФИНАЛЬНЫЙ ФИКС (v4)
             # ==================================================================
             if st.session_state.get('lsi_automode_active'):
                 
                 # 1. Достаем данные текущей задачи
                 current_idx = st.session_state.get('lsi_processing_task_id')
                 
-                # Защита: проверяем существование очереди и индекса
+                # Защита от сбоя индекса
                 if 'bg_tasks_queue' not in st.session_state or current_idx is None or current_idx >= len(st.session_state.bg_tasks_queue):
                     st.session_state.lsi_automode_active = False
-                    st.success("Все задачи выполнены (или очередь пуста)!")
+                    st.success("Очередь пуста или завершена.")
                     st.stop()
 
                 task = st.session_state.bg_tasks_queue[current_idx]
@@ -5319,25 +5333,25 @@ with tab_lsi_gen:
                 if results_data and results_data.get('hybrid') is not None and not results_data['hybrid'].empty:
                     lsi_words = results_data['hybrid'].head(15)['Слово'].tolist()
                 
-                # 3. Добавляем общие слова из настроек
+                # 3. Добавляем общие слова
                 common_lsi = ["гарантия", "доставка", "цена", "купить", "оптом", "в наличии"] 
                 combined_lsi = list(set(common_lsi + lsi_words))
                 
                 # 4. ГЕНЕРИРУЕМ СТАТЬЮ
-                # --- ИСПРАВЛЕНИЕ: Читаем ключ из кэша (он надежнее), либо из виджета ---
-                api_key_gen = st.session_state.get('gemini_key_cache') or st.session_state.get('bulk_api_key_v3')
-                # -----------------------------------------------------------------------
+                # БЕРЕМ КЛЮЧ ИЗ НАДЕЖНОГО ИСТОЧНИКА
+                api_key_gen = st.session_state.get('gemini_key_persistent')
+                
+                # Если вдруг пусто, пробуем виджет или секреты
+                if not api_key_gen:
+                    api_key_gen = st.session_state.get('bulk_api_key_v3')
                 
                 html_out = ""
                 status_code = "Error"
                 
                 if not api_key_gen:
-                    html_out = "Ошибка: Нет API ключа Gemini (введите на вкладке 5 и нажмите Enter)"
-                    # Пытаемся взять из секретов как последний шанс
-                    try: api_key_gen = st.secrets["GEMINI_KEY"]
-                    except: pass
-                
-                if api_key_gen:
+                    html_out = "ОШИБКА: Ключ API не найден. Введите его на Вкладке 5 и нажмите Enter."
+                    st.error(html_out)
+                else:
                     try:
                         html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
                         status_code = "OK"
@@ -5345,10 +5359,11 @@ with tab_lsi_gen:
                         html_out = f"Error generating: {e}"
                         status_code = "Gen Error"
 
-                # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
+                # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ (ТАБЛИЦА НЕ ПРОПАДЕТ)
                 if 'bg_results' not in st.session_state:
                     st.session_state.bg_results = []
                     
+                # Обновляем или добавляем запись
                 found_existing = False
                 for existing_res in st.session_state.bg_results:
                     if existing_res['h1'] == task['h1'] and existing_res['h2'] == task['h2']:
@@ -5368,29 +5383,30 @@ with tab_lsi_gen:
                         "status": status_code
                     })
 
-                # 6. ПЛАНИРУЕМ СЛЕДУЮЩУЮ ЗАДАЧУ
+                # 6. ПЕРЕХОД К СЛЕДУЮЩЕЙ ЗАДАЧЕ
                 next_task_idx = current_idx + 1
                 
                 if next_task_idx < len(st.session_state.bg_tasks_queue):
                     next_task = st.session_state.bg_tasks_queue[next_task_idx]
+                    st.toast(f"✅ Готово: {task['h1']}. Дальше: {next_task['h1']}")
                     
-                    st.toast(f"✅ Готово: {task['h1']}. Переход к: {next_task['h1']}...")
-                    
-                    # === ОЧИСТКА МУСОРА (С СОХРАНЕНИЕМ API КЛЮЧЕЙ) ===
+                    # === ОЧИСТКА МУСОРА (БЕЗОПАСНАЯ) ===
+                    # Сюда внесены ВСЕ переменные, которые нельзя удалять
                     safe_keys = {
                         'authenticated', 'password', 
                         'arsenkin_token', 'yandex_dict_key', 
-                        'bulk_api_key_v3', 'gemini_key_cache', # <--- ЭТИ КЛЮЧИ ТЕПЕРЬ ЗАЩИЩЕНЫ
-                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
+                        'bulk_api_key_v3', 'gemini_key_persistent', # <--- КЛЮЧИ
+                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started', # <--- ТАБЛИЦЫ
                         'lsi_automode_active', 'lsi_processing_task_id',
                         'competitor_source_radio', 'settings_search_engine', 'settings_region' 
                     }
                     
+                    # Удаляем только то, чего нет в safe_keys
                     for key in list(st.session_state.keys()):
                         if key not in safe_keys:
                             del st.session_state[key]
 
-                    # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
+                    # Настройка следующего запуска
                     st.session_state['query_input'] = next_task['h1']
                     st.session_state['competitor_source_radio'] = "Поиск через API Arsenkin (TOP-30)"
                     st.session_state['my_page_source_radio'] = "Без страницы"
@@ -5405,7 +5421,7 @@ with tab_lsi_gen:
                 else:
                     st.session_state.lsi_automode_active = False
                     st.balloons()
-                    st.success("🏁 ВСЕ ЗАДАЧИ В ОЧЕРЕДИ ОБРАБОТАНЫ! Результаты на вкладке 5.")
+                    st.success("🏁 ВСЕ ЗАДАЧИ В ОЧЕРЕДИ ВЫПОЛНЕНЫ!")
 
     # --- 4. ЭКСПОРТ И ПРОСМОТР ---
     if st.session_state.bg_results:
@@ -5453,6 +5469,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
