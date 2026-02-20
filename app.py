@@ -3325,8 +3325,14 @@ with tab_seo_main:
                     
                     # ПЕРЕКЛЮЧАЕМ ЧЕК-БОКС НА "БЕЗ СТРАНИЦЫ"
                     # Это те самые ключи из твоей 1-й вкладки
+                    # Безопасный сброс состояния виджетов перед изменением
+                    if 'my_page_source_radio' in st.session_state:
+                        del st.session_state['my_page_source_radio']
+                    if 'my_url_input' in st.session_state:
+                        del st.session_state['my_url_input']
+                    
                     st.session_state['my_page_source_radio'] = "Без страницы"
-                    st.session_state['my_url_input'] = "" # Стираем старый URL, чтобы не мешал
+                    st.session_state['my_url_input'] = ""
                     
                     # Берем новую задачу
                     next_task = st.session_state.bg_tasks_queue[next_task_idx]
