@@ -77,6 +77,18 @@ try:
 except ImportError:
     genai = None
 
+
+# ... (тут идут импорты) ...
+import datetime
+
+# === ВСТАВИТЬ СЮДА (СТРОКА ~40) ===
+if 'SUPER_GLOBAL_KEY' not in st.session_state:
+    st.session_state.SUPER_GLOBAL_KEY = ""
+    # Пробуем подтянуть из secrets сразу при старте
+    try: st.session_state.SUPER_GLOBAL_KEY = st.secrets["GEMINI_KEY"]
+    except: pass
+# ==================================
+
 # ==========================================
 # 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ
 # ==========================================
@@ -3550,9 +3562,13 @@ with tab_seo_main:
                 common_lsi = ["гарантия", "доставка", "цена", "купить"] # Или возьми из st.session_state.lsi_common_input
                 combined_lsi = list(set(common_lsi + lsi_words))
                 
-                # 4. ГЕНЕРИРУЕМ СТАТЬЮ (Используем твою функцию)
-                # Важно: берем API ключ, который ввели на 5 вкладке
-                api_key_gen = st.session_state.get('bulk_api_key_v3') 
+# 4. ГЕНЕРИРУЕМ СТАТЬЮ
+                # Читаем из SUPER_GLOBAL_KEY (который мы создали в Шаге 1)
+                api_key_gen = st.session_state.get('SUPER_GLOBAL_KEY')
+                
+                # Фолбэк: если вдруг его нет, пробуем старый метод
+                if not api_key_gen:
+                    api_key_gen = st.session_state.get('bulk_api_key_v3')
                 
                 try:
                     html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
@@ -3572,7 +3588,6 @@ with tab_seo_main:
                 })
 
                 # 6. ПЛАНИРУЕМ СЛЕДУЮЩУЮ ЗАДАЧУ
-                # Ищем следующую необработанную задачу
                 finished_ids = set(f"{r['h1']}|{r['h2']}" for r in st.session_state.bg_results)
                 next_task_idx = -1
                 
@@ -3582,19 +3597,20 @@ with tab_seo_main:
                         next_task_idx = i
                         break
                 
-                st.write(f"DEBUG: Найдена следующая задача под индексом: {next_task_idx}") # Вы увидите это на экране
+                st.write(f"DEBUG: Найдена следующая задача под индексом: {next_task_idx}")
 
                 if next_task_idx != -1:
-                    # 1. СОХРАНЯЕМ КЛЮЧИ (то, что нельзя удалять ни в коем случае)
-                    # ИСПРАВЛЕНИЕ: Добавлены lsi_automode_active, lsi_processing_task_id и ключи API
-                    safe_keys = [
+# === ОЧИСТКА МУСОРА ===
+                    safe_keys = {
+                        'authenticated', 'password', 
+                        'arsenkin_token', 'yandex_dict_key', 
+                        'SUPER_GLOBAL_KEY',  # <--- ВОТ ОН! БЕЗ НЕГО ВСЕ СЛОМАЕТСЯ
                         'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
-                        'api_key_input', 'password', 'authenticated',
                         'lsi_automode_active', 'lsi_processing_task_id',
-                        'arsenkin_token', 'yandex_dict_key', 'bulk_api_key_v3'
-                    ]
+                        'competitor_source_radio', 'settings_search_engine', 'settings_region',
+                        'manual_h1_input', 'manual_h2_input', 'url_list_input'
+                    }
                     
-                    # 2. УДАЛЯЕМ ВСЁ ОСТАЛЬНОЕ (чистим мусор от прошлой статьи)
                     for key in list(st.session_state.keys()):
                         if key not in safe_keys:
                             del st.session_state[key]
@@ -3616,16 +3632,8 @@ with tab_seo_main:
                     st.session_state['lsi_processing_task_id'] = next_task_idx
                     
                     st.toast(f"🚀 Начинаем работу над: {next_task['h1']}")
-                    time.sleep(1) # Даем время на запись в память
+                    time.sleep(1)
                     st.rerun()
-            
-            # ==================================================================
-            
-            # Перезагружаем страницу, чтобы применить изменения СВЕРХУ
-            st.rerun()
-            
-            # Перезагружаем страницу, чтобы применить изменения СВЕРХУ
-            st.rerun()
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -5141,19 +5149,20 @@ with tab_lsi_gen:
 
         c1, c2 = st.columns([1, 2])
         with c1:
-            st.text_input(
+            # Читаем текущее значение
+            current_val = st.session_state.SUPER_GLOBAL_KEY
+            
+            # Создаем инпут БЕЗ параметра key (это важно!)
+            new_val = st.text_input(
                 "Gemini API Key", 
-                value=st.session_state.FINAL_GEMINI_KEY, 
-                type="password", 
-                key="bulk_api_key_v3",
-                on_change=update_final_key
+                value=current_val, 
+                type="password"
             )
-            # Дублирующее сохранение (на случай, если Enter не нажали, но фокус убрали)
-            if st.session_state.bulk_api_key_v3:
-                st.session_state.FINAL_GEMINI_KEY = st.session_state.bulk_api_key_v3
-                
-        with c2:
-            raw_lsi_common = st.text_area("LSI (Общий для всех текстов)", height=70, value=default_lsi_text)
+            
+            # Если ввели что-то новое — сохраняем в глобалку
+            if new_val != current_val:
+                st.session_state.SUPER_GLOBAL_KEY = new_val
+                st.rerun() # Обновляем, чтобы зафиксировать
 
     # --- 2. ЗАГРУЗКА ЗАДАЧ ---
     st.subheader("1. Загрузка задач")
@@ -5503,6 +5512,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
