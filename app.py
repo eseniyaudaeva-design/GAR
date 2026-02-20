@@ -5095,8 +5095,9 @@ with tab_lsi_gen:
     if 'bg_is_running' not in st.session_state: st.session_state.bg_is_running = False
     if 'bg_batch_size' not in st.session_state: st.session_state.bg_batch_size = 3
 
-    # --- 1. НАСТРОЙКИ ---
+# --- 1. НАСТРОЙКИ ---
     with st.expander("⚙️ Настройки API и LSI", expanded=True):
+        # Пытаемся достать ключ из кэша или секретов
         cached_key = st.session_state.get('gemini_key_cache', "")
         if not cached_key:
             try: cached_key = st.secrets["GEMINI_KEY"]
@@ -5106,7 +5107,13 @@ with tab_lsi_gen:
         
         c1, c2 = st.columns([1, 2])
         with c1:
+            # Виджет ввода
             lsi_api_key = st.text_input("Gemini API Key", value=cached_key, type="password", key="bulk_api_key_v3")
+            
+            # 🔥 ВАЖНОЕ ДОБАВЛЕНИЕ: Сохраняем ключ в постоянную память сразу после ввода
+            if lsi_api_key:
+                st.session_state['gemini_key_cache'] = lsi_api_key
+                
         with c2:
             raw_lsi_common = st.text_area("LSI (Общий для всех текстов)", height=70, value=default_lsi_text)
 
@@ -5290,99 +5297,115 @@ with tab_lsi_gen:
                 
                 st.rerun()
 
-        # ОТОБРАЖЕНИЕ СТАТУСА, КОГДА РАБОТАЕТ
-        if st.session_state.get('lsi_automode_active'):
-             st.info(f"🔄 **РАБОТАЕТ АВТОПИЛОТ...** Сейчас анализируется на Вкладке 1: задача №{st.session_state.get('lsi_processing_task_id', 0)}")
+# ==================================================================
+            # 🔥 HOOK ДЛЯ LSI ГЕНЕРАТОРА (ВКЛАДКА 5) - ИСПРАВЛЕННАЯ ВЕРСИЯ v3 (FIX API KEY)
+            # ==================================================================
+            if st.session_state.get('lsi_automode_active'):
+                
+                # 1. Достаем данные текущей задачи
+                current_idx = st.session_state.get('lsi_processing_task_id')
+                
+                # Защита: проверяем существование очереди и индекса
+                if 'bg_tasks_queue' not in st.session_state or current_idx is None or current_idx >= len(st.session_state.bg_tasks_queue):
+                    st.session_state.lsi_automode_active = False
+                    st.success("Все задачи выполнены (или очередь пуста)!")
+                    st.stop()
 
-        # ТАБЛИЦА СТАТУСА
-        st.write("📊 **Очередь задач:**")
-        table_placeholder = st.empty()
-        status_container = st.empty()
+                task = st.session_state.bg_tasks_queue[current_idx]
+                
+                # 2. Достаем LSI (TF-IDF) из результатов анализа
+                lsi_words = []
+                results_data = st.session_state.get('analysis_results')
+                if results_data and results_data.get('hybrid') is not None and not results_data['hybrid'].empty:
+                    lsi_words = results_data['hybrid'].head(15)['Слово'].tolist()
+                
+                # 3. Добавляем общие слова из настроек
+                common_lsi = ["гарантия", "доставка", "цена", "купить", "оптом", "в наличии"] 
+                combined_lsi = list(set(common_lsi + lsi_words))
+                
+                # 4. ГЕНЕРИРУЕМ СТАТЬЮ
+                # --- ИСПРАВЛЕНИЕ: Читаем ключ из кэша (он надежнее), либо из виджета ---
+                api_key_gen = st.session_state.get('gemini_key_cache') or st.session_state.get('bulk_api_key_v3')
+                # -----------------------------------------------------------------------
+                
+                html_out = ""
+                status_code = "Error"
+                
+                if not api_key_gen:
+                    html_out = "Ошибка: Нет API ключа Gemini (введите на вкладке 5 и нажмите Enter)"
+                    # Пытаемся взять из секретов как последний шанс
+                    try: api_key_gen = st.secrets["GEMINI_KEY"]
+                    except: pass
+                
+                if api_key_gen:
+                    try:
+                        html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
+                        status_code = "OK"
+                    except Exception as e:
+                        html_out = f"Error generating: {e}"
+                        status_code = "Gen Error"
 
-        def render_queue_table():
-            data_view = []
-            # Последние 3 готовых
-            for r in st.session_state.bg_results[-3:]:
-                lsi_preview = ", ".join(r['lsi_added'][:5]) + ("..." if len(r['lsi_added']) > 5 else "") if r['lsi_added'] else "Только общие"
-                data_view.append({
-                    "H1 (Маркер)": r['h1'],
-                    "H2 (Тема)": r['h2'],
-                    "Собранные LSI": lsi_preview,
-                    "Статус": "✅ Готово" if r['status'] == 'OK' else "❌ Ошибка"
-                })
-            # Следующие в очереди
-            cnt = 0
-            for idx in pending_indices:
-                if cnt >= 5: break
-                t = st.session_state.bg_tasks_queue[idx]
-                data_view.append({
-                    "H1 (Маркер)": t['h1'],
-                    "H2 (Тема)": t['h2'],
-                    "Собранные LSI": "⏳ Ожидание...",
-                    "Статус": "💤 В очереди"
-                })
-                cnt += 1
-            if data_view:
-                table_placeholder.dataframe(pd.DataFrame(data_view), use_container_width=True, hide_index=True)
+                # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
+                if 'bg_results' not in st.session_state:
+                    st.session_state.bg_results = []
+                    
+                found_existing = False
+                for existing_res in st.session_state.bg_results:
+                    if existing_res['h1'] == task['h1'] and existing_res['h2'] == task['h2']:
+                        existing_res['content'] = html_out
+                        existing_res['lsi_added'] = lsi_words
+                        existing_res['status'] = status_code
+                        found_existing = True
+                        break
+                
+                if not found_existing:
+                    st.session_state.bg_results.append({
+                        "h1": task['h1'],
+                        "h2": task['h2'],
+                        "source_url": task.get('source_url', '-'),
+                        "lsi_added": lsi_words,
+                        "content": html_out,
+                        "status": status_code
+                    })
 
-        render_queue_table()
+                # 6. ПЛАНИРУЕМ СЛЕДУЮЩУЮ ЗАДАЧУ
+                next_task_idx = current_idx + 1
+                
+                if next_task_idx < len(st.session_state.bg_tasks_queue):
+                    next_task = st.session_state.bg_tasks_queue[next_task_idx]
+                    
+                    st.toast(f"✅ Готово: {task['h1']}. Переход к: {next_task['h1']}...")
+                    
+                    # === ОЧИСТКА МУСОРА (С СОХРАНЕНИЕМ API КЛЮЧЕЙ) ===
+                    safe_keys = {
+                        'authenticated', 'password', 
+                        'arsenkin_token', 'yandex_dict_key', 
+                        'bulk_api_key_v3', 'gemini_key_cache', # <--- ЭТИ КЛЮЧИ ТЕПЕРЬ ЗАЩИЩЕНЫ
+                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
+                        'lsi_automode_active', 'lsi_processing_task_id',
+                        'competitor_source_radio', 'settings_search_engine', 'settings_region' 
+                    }
+                    
+                    for key in list(st.session_state.keys()):
+                        if key not in safe_keys:
+                            del st.session_state[key]
 
-        # --- ЛОГИКА ВЫПОЛНЕНИЯ (ЦИКЛ ПО ПАЧКЕ) ---
-        if st.session_state.bg_is_running and remaining_q > 0:
-            
-            # Определяем текущую пачку (Batch)
-            current_batch_indices = pending_indices[:st.session_state.bg_batch_size]
-            
-            status_container.info(f"🚀 Обработка пачки из {len(current_batch_indices)} шт...")
-            prog_bar = st.progress(0)
-            
-            for i, task_idx in enumerate(current_batch_indices):
-                task = st.session_state.bg_tasks_queue[task_idx]
-                h1_val = task['h1']
-                h2_val = task['h2']
-                
-                # 1. SEO АНАЛИЗ (ФОНОВЫЙ)
-                status_container.write(f"🔎 [{i+1}/{len(current_batch_indices)}] Анализ топа по запросу: **{h1_val}**...")
-                
-                # Вызов фоновой функции (без переключения вкладок!)
-                found_lsi_words = run_seo_analysis_background(h1_val, ARSENKIN_TOKEN)
-                
-                # 2. ГЕНЕРАЦИЯ ТЕКСТА
-                status_container.write(f"✍️ [{i+1}/{len(current_batch_indices)}] Пишем текст для: **{h2_val}**...")
-                
-                common_lsi_list = [x.strip() for x in raw_lsi_common.split(',') if x.strip()]
-                combined_lsi = list(set(common_lsi_list + found_lsi_words)) # Убираем дубли
-                
-                html_out = generate_full_article_v2(lsi_api_key, h1_val, h2_val, combined_lsi)
-                
-                status_code = "OK"
-                if html_out.startswith("API Error") or html_out.startswith("Error"):
-                    status_code = "Gen Fail"
-                
-                # 3. СОХРАНЕНИЕ В РЕЗУЛЬТАТЫ (Мгновенно)
-                st.session_state.bg_results.append({
-                    "h1": h1_val,
-                    "h2": h2_val,
-                    "source_url": task.get('source_url', '-'),
-                    "lsi_added": found_lsi_words,
-                    "content": html_out,
-                    "status": status_code
-                })
-                
-                # Обновляем прогресс
-                prog_bar.progress((i + 1) / len(current_batch_indices))
-            
-            # Обновляем таблицу (чтобы пользователь видел результат перед релоадом)
-            render_queue_table()
-            status_container.success("✅ Пачка завершена! Перезагрузка для следующей...")
-            time.sleep(1)
-            st.rerun()
-
-        elif st.session_state.bg_is_running and remaining_q == 0:
-            st.session_state.bg_is_running = False
-            status_container.success("🎉 Все задачи выполнены!")
-            st.balloons()
-            st.rerun()
+                    # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
+                    st.session_state['query_input'] = next_task['h1']
+                    st.session_state['competitor_source_radio'] = "Поиск через API Arsenkin (TOP-30)"
+                    st.session_state['my_page_source_radio'] = "Без страницы"
+                    st.session_state['my_url_input'] = ""
+                    st.session_state['lsi_processing_task_id'] = next_task_idx
+                    st.session_state['start_analysis_flag'] = True 
+                    st.session_state['analysis_done'] = False
+                    
+                    time.sleep(0.5)
+                    st.rerun()
+                    
+                else:
+                    st.session_state.lsi_automode_active = False
+                    st.balloons()
+                    st.success("🏁 ВСЕ ЗАДАЧИ В ОЧЕРЕДИ ОБРАБОТАНЫ! Результаты на вкладке 5.")
 
     # --- 4. ЭКСПОРТ И ПРОСМОТР ---
     if st.session_state.bg_results:
@@ -5430,6 +5453,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
