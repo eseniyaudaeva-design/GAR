@@ -4961,43 +4961,66 @@ with tab_lsi_gen:
         with c_set2:
             st.info("⚠️ Большой размер пачки может вызвать тайм-аут. Рекомендуется 2-3.")
 
-# КНОПКИ УПРАВЛЕНИЯ ВО ВКЛАДКЕ 5
+# --- ФУНКЦИЯ-ОБРАБОТЧИК (CALLBACK) ---
+        # Она выполнится ДО перезагрузки страницы, поэтому ошибки не будет
+        def start_automode_callback(indices_list):
+            st.session_state.lsi_automode_active = True
+            
+            if indices_list:
+                idx = indices_list[0]
+                task = st.session_state.bg_tasks_queue[idx]
+                
+                # Теперь это безопасно: меняем значение ДО отрисовки виджета
+                st.session_state.query_input = task['h1']
+                st.session_state.competitor_source_radio = "Поиск через API Arsenkin (TOP-30)"
+                st.session_state.lsi_processing_task_id = idx
+                st.session_state.start_analysis_flag = True
+                
+                # Чистим старые результаты
+                st.session_state.pop('analysis_results', None)
+                st.session_state.pop('analysis_done', None)
+        # -------------------------------------
+
         c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
         with c_act1:
-            # Если авто-режим НЕ активен
             if not st.session_state.get('lsi_automode_active'):
                 btn_label = "▶️ СТАРТ ЧЕРЕЗ ВКЛАДКУ 1" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
-                if st.button(btn_label, type="primary", disabled=(remaining_q == 0), use_container_width=True):
-                    if not lsi_api_key:
-                        st.error("Введите API ключ!")
-                    elif not ARSENKIN_TOKEN:
-                        st.error("Нужен токен Arsenkin для SEO!")
+                
+                # Проверяем ключи перед нажатием (для логики кнопки)
+                keys_valid = bool(lsi_api_key and ARSENKIN_TOKEN)
+                
+                # ВАЖНО: on_click вызывает функцию start_automode_callback
+                if st.button(btn_label, type="primary", disabled=(remaining_q == 0), 
+                             use_container_width=True,
+                             on_click=start_automode_callback if keys_valid else None,
+                             args=(pending_indices,) if keys_valid else None):
+                    
+                    # Этот блок сработает, только если ключей нет (т.к. callback = None)
+                    if not keys_valid:
+                        if not lsi_api_key: st.error("Введите API ключ Gemini!")
+                        if not ARSENKIN_TOKEN: st.error("Нужен токен Arsenkin!")
                     else:
-                        # 1. ЗАПУСКАЕМ РЕЖИМ АВТОПИЛОТА
-                        st.session_state.lsi_automode_active = True
-                        st.session_state.lsi_current_index = 0
-                        
-                        # 2. БЕРЕМ ПЕРВУЮ ЗАДАЧУ
-                        first_task_idx = pending_indices[0]
-                        first_task = st.session_state.bg_tasks_queue[first_task_idx]
-                        
-                        # 3. НАСТРАИВАЕМ ВКЛАДКУ 1 (ИМИТАЦИЯ ПОЛЬЗОВАТЕЛЯ)
-                        st.session_state.query_input = first_task['h1']  # Вбиваем запрос
-                        st.session_state.competitor_source_radio = "Поиск через API Arsenkin (TOP-30)" # Выбираем API
-                        
-                        # 4. НАЖИМАЕМ КНОПКУ "ЗАПУСТИТЬ АНАЛИЗ" (ВИРТУАЛЬНО)
-                        st.session_state.start_analysis_flag = True
-                        
-                        # 5. СООБЩАЕМ, КАКУЮ ЗАДАЧУ ДЕЛАЕМ (для логов)
-                        st.session_state.lsi_processing_task_id = first_task_idx
-                        
-                        st.toast(f"🚀 Переходим на Вкладку 1 для анализа: {first_task['h1']}")
-                        time.sleep(1)
-                        st.rerun()
+                        # Если ключи есть, callback уже отработал и обновил данные.
+                        # Просто показываем уведомление, скрипт перезагрузится сам.
+                        st.toast(f"🚀 Запуск... Переход на Вкладку 1")
             else:
-                if st.button("⛔ ОСТАНОВИТЬ", type="secondary", use_container_width=True):
+                if st.button("⛔ ОСТАНОВИТЬ ПРОЦЕСС", type="secondary", use_container_width=True):
                     st.session_state.lsi_automode_active = False
                     st.rerun()
+
+        with c_act3:
+            # Кнопка сброса (блокируем во время работы)
+            if st.button("🗑️ Сброс очереди", disabled=st.session_state.get('lsi_automode_active', False), use_container_width=True):
+                st.session_state.bg_tasks_queue = []
+                st.session_state.bg_results = []
+                st.session_state.lsi_automode_active = False
+                
+                # Чистим поля
+                keys_to_del = ["manual_h1_input", "manual_h2_input", "url_list_input"]
+                for k in keys_to_del:
+                    if k in st.session_state: del st.session_state[k]
+                
+                st.rerun()
 
         # ОТОБРАЖЕНИЕ СТАТУСА, КОГДА РАБОТАЕТ
         if st.session_state.get('lsi_automode_active'):
@@ -5139,6 +5162,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
