@@ -3330,16 +3330,17 @@ with tab_seo_main:
                     # ЕСТЬ СЛЕДУЮЩАЯ ЗАДАЧА -> ЗАПУСКАЕМ КРУГ ЗАНОВО
                     next_task = st.session_state.bg_tasks_queue[next_task_idx]
                     
-                    st.session_state.query_input = next_task['h1'] # Меняем запрос
+                    # === 🔥 ФИКС ОШИБКИ КРАСНОГО ЭКРАНА 🔥 ===
+                    # Удаляем ключ перед обновлением, чтобы Streamlit не ругался
+                    if 'query_input' in st.session_state:
+                        del st.session_state['query_input']
+                    st.session_state['query_input'] = next_task['h1']
+                    # =========================================
+                    
                     st.session_state.start_analysis_flag = True # Снова жмем кнопку "Анализ"
                     st.session_state.lsi_processing_task_id = next_task_idx
                     
                     st.toast(f"✅ Статья готова! Запускаю следующую: {next_task['h1']}")
-                else:
-                    # ВСЕ ЗАДАЧИ ВЫПОЛНЕНЫ
-                    st.session_state.lsi_automode_active = False
-                    st.balloons()
-                    st.success("🎉 ВСЕ СТАТЬИ СГЕНЕРИРОВАНЫ ЧЕРЕЗ ВКЛАДКУ 1!")
             
             # ==================================================================
             
@@ -5177,6 +5178,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
