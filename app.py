@@ -1910,7 +1910,8 @@ def run_seo_analysis_background(query, api_token):
         st.session_state['query_input'] = query
         
         # 2. Переключаем режим "Ваша страница" -> "Без страницы"
-        st.session_state['my_page_source_radio'] = "Без страницы"
+        if 'my_page_source_radio' not in st.session_state:
+            st.session_state['my_page_source_radio'] = "Без страницы"
         
         # 3. Переключаем источник конкурентов -> "API"
         # Это самое важное, чтобы UI не искал список ссылок
@@ -5172,6 +5173,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
