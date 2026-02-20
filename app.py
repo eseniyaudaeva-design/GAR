@@ -233,8 +233,8 @@ def render_clean_block(title, icon, words_list):
     st.markdown(html_code, unsafe_allow_html=True)
 
 def render_relevance_chart(df_rel, unique_key="default"):
-    # Добавь эту проверку:
-    if df_rel is None or not isinstance(df_rel, pd.DataFrame) or df_rel.empty:
+    # Добавляем проверку на None, чтобы график не падал при переключении категорий
+    if df_rel is None or (isinstance(df_rel, pd.DataFrame) and df_rel.empty):
         return
 
     # Защита от пустых колонок
@@ -3318,27 +3318,22 @@ with tab_seo_main:
                         break
                 
                 if next_task_idx != -1:
-                    # 1. СБРОС СОСТОЯНИЯ (чтобы не было "огромной ошибки")
+                    # Очищаем результаты предыдущего анализа, чтобы не было конфликтов
                     st.session_state.analysis_done = False
                     st.session_state.analysis_results = None
-                    if 'raw_comp_data' in st.session_state: 
-                        del st.session_state['raw_comp_data']
                     
-                    # 2. ПЕРЕКЛЮЧЕНИЕ ЧЕК-БОКСОВ (для Вкладки 1)
-                    # Выбираем пункт "Без страницы"
+                    # ПЕРЕКЛЮЧАЕМ ЧЕК-БОКС НА "БЕЗ СТРАНИЦЫ"
+                    # Это те самые ключи из твоей 1-й вкладки
                     st.session_state['my_page_source_radio'] = "Без страницы"
-                    # Очищаем URL, чтобы он не пытался анализировать старую страницу
-                    st.session_state['my_url_input'] = ""
-                    # Выбираем API Арсенкина для конкурентов
-                    st.session_state['competitor_source_radio'] = "Поиск через API Arsenkin (TOP-30)"
+                    st.session_state['my_url_input'] = "" # Стираем старый URL, чтобы не мешал
                     
-                    # 3. ПОДГОТОВКА СЛЕДУЮЩЕГО ЗАПРОСА
+                    # Берем новую задачу
                     next_task = st.session_state.bg_tasks_queue[next_task_idx]
-                    st.session_state.query_input = next_task['h1'] 
-                    st.session_state.start_analysis_flag = True 
+                    st.session_state.query_input = next_task['h1']
+                    st.session_state.start_analysis_flag = True
                     st.session_state.lsi_processing_task_id = next_task_idx
                     
-                    st.toast(f"🚀 Запускаю анализ: {next_task['h1']}", icon="⏳")
+                    st.toast(f"Переходим к следующей категории: {next_task['h1']}")
                     st.rerun()
             
             # ==================================================================
@@ -5177,6 +5172,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
