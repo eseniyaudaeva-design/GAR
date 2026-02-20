@@ -5123,35 +5123,34 @@ with tab_lsi_gen:
 # --- 1. НАСТРОЙКИ (ИСПРАВЛЕННОЕ СОХРАНЕНИЕ КЛЮЧА) ---
     with st.expander("⚙️ Настройки API и LSI", expanded=True):
         
-        # 1. Функция для сохранения ключа при изменении
-        def update_key():
-            st.session_state.gemini_key_persistent = st.session_state.bulk_api_key_v3
-
-        # 2. Инициализация постоянной переменной, если её нет
-        if 'gemini_key_persistent' not in st.session_state:
-            st.session_state.gemini_key_persistent = ""
-
-        # Пытаемся достать ключ из секретов, если пусто
-        if not st.session_state.gemini_key_persistent:
-            try: st.session_state.gemini_key_persistent = st.secrets["GEMINI_KEY"]
+# === ЖЕЛЕЗОБЕТОННОЕ СОХРАНЕНИЕ КЛЮЧА ===
+        # 1. Создаем переменную, которая НЕ зависит от виджета
+        if 'FINAL_GEMINI_KEY' not in st.session_state:
+            st.session_state.FINAL_GEMINI_KEY = ""
+            
+        # 2. Пытаемся найти ключ в секретах или в старых переменных
+        if not st.session_state.FINAL_GEMINI_KEY:
+            try: st.session_state.FINAL_GEMINI_KEY = st.secrets["GEMINI_KEY"]
             except: pass
-        
+            
+        # 3. Функция обновления при вводе
+        def update_final_key():
+            st.session_state.FINAL_GEMINI_KEY = st.session_state.bulk_api_key_v3
+
         default_lsi_text = "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, цены"
-        
+
         c1, c2 = st.columns([1, 2])
         with c1:
-            # Виджет ввода с привязкой к постоянной переменной через on_change
             st.text_input(
                 "Gemini API Key", 
-                value=st.session_state.gemini_key_persistent, 
+                value=st.session_state.FINAL_GEMINI_KEY, 
                 type="password", 
                 key="bulk_api_key_v3",
-                on_change=update_key # <--- ЭТО ВАЖНО
+                on_change=update_final_key
             )
-            
-            # Дублирующее сохранение на случай, если on_change не сработал
+            # Дублирующее сохранение (на случай, если Enter не нажали, но фокус убрали)
             if st.session_state.bulk_api_key_v3:
-                st.session_state.gemini_key_persistent = st.session_state.bulk_api_key_v3
+                st.session_state.FINAL_GEMINI_KEY = st.session_state.bulk_api_key_v3
                 
         with c2:
             raw_lsi_common = st.text_area("LSI (Общий для всех текстов)", height=70, value=default_lsi_text)
@@ -5369,28 +5368,20 @@ with tab_lsi_gen:
                 combined_lsi = list(set(common_lsi + lsi_words))
                 
 # 4. ГЕНЕРИРУЕМ СТАТЬЮ
-                # --- ИСПРАВЛЕНИЕ: Агрессивный поиск ключа ---
-                api_key_gen = st.session_state.get('gemini_key_persistent')
+                # Берем ключ из нашей "Железобетонной переменной"
+                api_key_gen = st.session_state.get('FINAL_GEMINI_KEY')
                 
-                # 1. Если нет в persistent, ищем в виджете
+                # Если вдруг пусто, пробуем старые методы (на всякий случай)
                 if not api_key_gen:
                     api_key_gen = st.session_state.get('bulk_api_key_v3')
                 
-                # 2. Если все еще нет, ищем в secrets
-                if not api_key_gen:
-                    try: api_key_gen = st.secrets["GEMINI_KEY"]
-                    except: pass
-                
-                # 3. Если все еще нет, ищем в кэше генератора
-                if not api_key_gen:
-                    api_key_gen = st.session_state.get('gemini_key_cache')
-
                 html_out = ""
                 status_code = "Error"
                 
                 if not api_key_gen:
-                    html_out = "ОШИБКА: Ключ API потерялся при перезагрузке. Убедитесь, что нажали Enter после ввода ключа."
-                    # Не прерываем, чтобы пользователь увидел ошибку в отчете, но цикл не сломался
+                    html_out = "ОШИБКА: Ключ не найден в памяти. Введите ключ на Вкладке 5 и нажмите Enter!"
+                    st.error(html_out)
+                    # Можно даже стопнуть тут, чтобы не тратить время
                 else:
                     # Восстанавливаем ключ в сессию, чтобы он не пропал на следующем круге
                     st.session_state.bulk_api_key_v3 = api_key_gen
@@ -5434,19 +5425,17 @@ with tab_lsi_gen:
                     next_task = st.session_state.bg_tasks_queue[next_task_idx]
                     st.toast(f"✅ Готово: {task['h1']}. Дальше: {next_task['h1']}")
                     
-# === ОЧИСТКА МУСОРА (ИСПРАВЛЕННАЯ) ===
-                    # Мы добавили сюда ВСЕ варианты названия ключей
+# === ОЧИСТКА МУСОРА (С ЗАЩИТОЙ КЛЮЧА) ===
                     safe_keys = {
                         'authenticated', 'password', 
                         'arsenkin_token', 'yandex_dict_key', 
-                        'bulk_api_key_v3', 'gemini_key_persistent', 'gemini_key_cache', # <--- ВАЖНО: Ключи здесь
-                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started',
+                        'bulk_api_key_v3', 'FINAL_GEMINI_KEY', # <--- ВОТ ОН, ГЛАВНЫЙ!
+                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
                         'lsi_automode_active', 'lsi_processing_task_id',
                         'competitor_source_radio', 'settings_search_engine', 'settings_region',
-                        'manual_h1_input', 'manual_h2_input', 'url_list_input' # Сохраняем введенные списки
+                        'manual_h1_input', 'manual_h2_input', 'url_list_input'
                     }
                     
-                    # Удаляем только то, чего нет в safe_keys
                     for key in list(st.session_state.keys()):
                         if key not in safe_keys:
                             del st.session_state[key]
@@ -5514,6 +5503,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
