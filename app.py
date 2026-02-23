@@ -2335,6 +2335,48 @@ def run_seo_analysis_background(query, api_token):
     
     return []
 
+# ==========================================
+# НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (6 ВКЛАДКА)
+# ==========================================
+def generate_faq_gemini(api_key, h1, lsi_words):
+    import json
+    from google import genai
+    client = genai.Client(api_key=api_key)
+    
+    lsi_text = ", ".join(lsi_words)
+    prompt = f"""
+    Ты эксперт в SEO и поддержке клиентов. Твоя задача — составить FAQ (Часто задаваемые вопросы) для веб-страницы с заголовком "{h1}".
+    
+    ОБЯЗАТЕЛЬНЫЕ УСЛОВИЯ:
+    1. Органично впиши следующие LSI-слова в текст вопросов и ответов: {lsi_text}
+    2. Вопросы должны быть жизненными, живыми и реально полезными для обычного клиента. Никаких заумных или узкоспециализированных терминов, если они не требуются по смыслу "{h1}".
+    3. Напиши 4-6 вопросов и четкие, информативные ответы на них без "воды".
+    4. ВЕРНИ ОТВЕТ СТРОГО В ФОРМАТЕ JSON, без markdown-разметки, без слов "Вот ваш JSON". Только голый массив!
+    
+    Формат:
+    [
+        {{"Вопрос": "Текст вопроса?", "Ответ": "Текст ответа."}},
+        {{"Вопрос": "Текст вопроса 2?", "Ответ": "Текст ответа 2."}}
+    ]
+    """
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-pro',
+            contents=prompt,
+        )
+        raw_text = response.text.strip()
+        # Очищаем от возможных блоков ```json ... ```
+        if raw_text.startswith("```json"): raw_text = raw_text[7:]
+        if raw_text.startswith("```"): raw_text = raw_text[3:]
+        if raw_text.endswith("```"): raw_text = raw_text[:-3]
+        
+        return json.loads(raw_text.strip())
+    except Exception as e:
+        return [{"Вопрос": "Ошибка генерации", "Ответ": str(e)}]
+
+
+def generate_full_article_v2(api_key, h1, h2, lsi_words):
+
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
     try:
@@ -2569,7 +2611,7 @@ if 'pending_widget_updates' in st.session_state:
 # ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
-tab_seo_main, tab_wholesale_main, tab_projects, tab_monitoring, tab_lsi_gen = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор", "📁 Проекты", "📉 Мониторинг позиций", "📝 LSI Тексты"])
+tab_seo_main, tab_wholesale_main, tab_projects, tab_monitoring, tab_lsi_gen, tab_faq_gen = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор", "📁 Проекты", "📉 Мониторинг позиций", "📝 LSI Тексты", "❓ FAQ Генератор"])
 
 # ------------------------------------------
 # TAB 1: SEO ANALYSIS (KEPT AS IS)
@@ -5493,11 +5535,209 @@ with tab_lsi_gen:
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
 
+# ==================================================================
+# ❓ ВКЛАДКА 6: FAQ ГЕНЕРАТОР
+# ==================================================================
+with tab_faq_gen:
+    st.markdown("### ❓ Генерация человечных FAQ по TF-IDF")
+    
+    c_faq1, c_faq2 = st.columns([1, 2])
+    with c_faq1:
+        faq_source = st.radio("Источник данных для FAQ:", ["Вручную (Списки H1)", "Список ссылок (Авто-парсинг H1)"])
+        
+    with c_faq2:
+        st.info("Скрипт по очереди проведет SEO-анализ каждого запроса/ссылки, возьмет 15 топовых слов и сгенерирует JSON-массив с вопросами и ответами.")
+        
+    faq_input = st.text_area("Введите H1 или URL (каждый с новой строки):", height=150)
+    
+    # 1. ЗАГРУЗКА ЗАДАЧ
+    if st.button("📥 Загрузить задачи (FAQ)", use_container_width=True):
+        tasks = []
+        lines = [line.strip() for line in faq_input.split('\n') if line.strip()]
+        
+        if faq_source == "Вручную (Списки H1)":
+            for line in lines:
+                tasks.append({"h1": line, "url": "-"})
+        else:
+            with st.spinner("🕵️ Парсим H1 с указанных сайтов..."):
+                import requests
+                from bs4 import BeautifulSoup
+                for url in lines:
+                    try:
+                        res = requests.get(url, timeout=5)
+                        soup = BeautifulSoup(res.text, 'html.parser')
+                        h1_tag = soup.find('h1')
+                        h1_text = h1_tag.text.strip() if h1_tag else f"Без H1 ({url})"
+                        tasks.append({"h1": h1_text, "url": url})
+                    except:
+                        tasks.append({"h1": f"Ошибка парсинга", "url": url})
+                        
+        st.session_state.faq_tasks_queue = tasks
+        st.session_state.faq_results = []
+        st.success(f"✅ В очередь добавлено задач: {len(tasks)}")
 
+    st.markdown("---")
+    
+    # 2. ИНФО О ЗАДАЧАХ И КНОПКА СТАРТА
+    faq_queue = st.session_state.get('faq_tasks_queue', [])
+    faq_q_count = len(faq_queue)
+    
+    c_fstart1, c_fstart2 = st.columns([1, 1])
+    with c_fstart1:
+        st.markdown(f"**В очереди:** {faq_q_count} шт. | **Готово:** {len(st.session_state.get('faq_results', []))} шт.")
+        
+        if not st.session_state.get('faq_automode_active'):
+            btn_lbl = "▶️ СТАРТ ГЕНЕРАЦИИ FAQ" if faq_q_count > 0 else "✅ ВСЕ ГОТОВО"
+            if st.button(btn_lbl, type="primary", disabled=(faq_q_count == 0), use_container_width=True):
+                api_key_check = st.session_state.get('SUPER_GLOBAL_KEY')
+                if not api_key_check:
+                    st.error("Введите API ключ Gemini (на Вкладке 5)!")
+                else:
+                    st.session_state.faq_automode_active = True
+                    st.session_state.faq_processing_task_id = 0
+                    first_t = st.session_state.faq_tasks_queue[0]
+                    
+                    st.session_state['pending_widget_updates'] = {
+                        'query_input': first_t['h1'],
+                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                        'my_page_source_radio': "Без страницы",
+                        'my_url_input': ""
+                    }
+                    st.session_state['start_analysis_flag'] = True 
+                    st.session_state['analysis_done'] = False
+                    st.toast("🚀 Запуск FAQ генератора... Переход на Вкладку 1")
+                    st.rerun()
+        else:
+            if st.button("⛔ ОСТАНОВИТЬ FAQ", type="secondary", use_container_width=True):
+                st.session_state.faq_automode_active = False
+                st.rerun()
 
+    with c_fstart2:
+        if st.button("🗑️ Сбросить очередь FAQ", disabled=st.session_state.get('faq_automode_active', False), use_container_width=True):
+            st.session_state.faq_tasks_queue = []
+            st.session_state.faq_results = []
+            st.session_state.faq_automode_active = False
+            st.rerun()
 
+    # ==================================================================
+    # 🔥 HOOK ДЛЯ FAQ ГЕНЕРАТОРА (СРАБАТЫВАЕТ ПОСЛЕ ПЕРВОЙ ВКЛАДКИ)
+    # ==================================================================
+    if st.session_state.get('faq_automode_active'):
+        curr_idx = st.session_state.get('faq_processing_task_id')
+        if 'faq_tasks_queue' not in st.session_state or curr_idx is None or curr_idx >= len(st.session_state.faq_tasks_queue):
+            st.session_state.faq_automode_active = False
+            st.stop()
 
+        task = st.session_state.faq_tasks_queue[curr_idx]
+        
+        lsi_words = []
+        res_data = st.session_state.get('analysis_results')
+        if res_data and res_data.get('hybrid') is not None and not res_data['hybrid'].empty:
+            lsi_words = res_data['hybrid'].head(15)['Слово'].tolist()
+        
+        # ГЕНЕРАЦИЯ
+        api_key_gen = st.session_state.get('SUPER_GLOBAL_KEY')
+        faq_json_result = generate_faq_gemini(api_key_gen, task['h1'], lsi_words)
+        
+        if 'faq_results' not in st.session_state: st.session_state.faq_results = []
+        
+        st.session_state.faq_results.append({
+            "h1": task['h1'],
+            "url": task['url'],
+            "lsi": lsi_words,
+            "faq_data": faq_json_result
+        })
 
+        # ПЕРЕХОД ДАЛЬШЕ
+        next_idx = curr_idx + 1
+        if next_idx < len(st.session_state.faq_tasks_queue):
+            next_t = st.session_state.faq_tasks_queue[next_idx]
+            st.toast(f"✅ FAQ готов: {task['h1']}")
+            
+            # Очистка мусора
+            keys_to_clear = ['analysis_results', 'analysis_done', 'naming_table_df', 'ideal_h1_result', 'raw_comp_data', 'full_graph_data', 'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto']
+            for k in keys_to_clear: st.session_state.pop(k, None)
+            
+            # Буфер виджетов
+            st.session_state['pending_widget_updates'] = {
+                'query_input': next_t['h1'],
+                'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                'my_page_source_radio': "Без страницы",
+                'my_url_input': ""
+            }
+            st.session_state['faq_processing_task_id'] = next_idx
+            st.session_state['start_analysis_flag'] = True 
+            st.session_state['analysis_done'] = False
+            import time
+            time.sleep(0.5)
+            st.rerun()
+        else:
+            st.session_state.faq_automode_active = False
+            st.balloons()
+            st.success("🏁 ВСЕ FAQ СГЕНЕРИРОВАНЫ!")
 
+# 3. ВЫВОД РЕЗУЛЬТАТОВ И ЭКСПОРТ В EXCEL
+    if st.session_state.get('faq_results'):
+        st.markdown("### 📋 Результаты генерации")
+        
+        # --- ПОДГОТОВКА ДАННЫХ ДЛЯ EXCEL ---
+        all_faq_rows = []
+        for res in st.session_state.faq_results:
+            h1_val = res['h1']
+            url_val = res['url']
+            lsi_val = ", ".join(res['lsi'])
+            
+            faq_items = res['faq_data']
+            if isinstance(faq_items, list):
+                for item in faq_items:
+                    if isinstance(item, dict):
+                        all_faq_rows.append({
+                            "H1 / Заголовок": h1_val,
+                            "URL источника": url_val,
+                            "Использованные LSI": lsi_val,
+                            "Вопрос": item.get("Вопрос", ""),
+                            "Ответ": item.get("Ответ", "")
+                        })
+        
+        # --- КНОПКА СКАЧИВАНИЯ EXCEL ---
+        if all_faq_rows:
+            import pandas as pd
+            import io
+            
+            df_export = pd.DataFrame(all_faq_rows)
+            
+            # Создаем Excel-файл в оперативной памяти
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_export.to_excel(writer, index=False, sheet_name='FAQ_Результаты')
+                
+                # Делаем колонки шире для удобства чтения
+                worksheet = writer.sheets['FAQ_Результаты']
+                worksheet.set_column('A:B', 30)
+                worksheet.set_column('C:C', 40)
+                worksheet.set_column('D:E', 70)
 
-
+            excel_data = output.getvalue()
+            
+            st.download_button(
+                label="💾 СКАЧАТЬ ВСЕ FAQ В EXCEL",
+                data=excel_data,
+                file_name="Сгенерированные_FAQ.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
+            
+            st.markdown("---")
+            
+        # --- ПРЕДПРОСМОТР НА ЭКРАНЕ ---
+        for res in st.session_state.faq_results:
+            with st.expander(f"📌 {res['h1']} ({res['url']})"):
+                st.caption(f"**Использованы слова:** {', '.join(res['lsi'])}")
+                faq_items = res['faq_data']
+                if isinstance(faq_items, list) and len(faq_items) > 0 and isinstance(faq_items[0], dict):
+                    import pandas as pd
+                    st.table(pd.DataFrame(faq_items))
+                else:
+                    st.error("Ошибка формата ответа нейросети:")
+                    st.write(faq_items)
