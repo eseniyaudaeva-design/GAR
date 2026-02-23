@@ -3550,7 +3550,9 @@ with tab_seo_main:
                 
                 # 3. Добавляем общие слова из настроек (нужно сохранить их в session_state во вкладке 5)
                 # (Предполагаем, что они есть, или берем дефолт)
-                common_lsi = ["гарантия", "доставка", "цена", "купить"] # Или возьми из st.session_state.lsi_common_input
+# 3. Добавляем общие слова из поля ввода
+                raw_common = st.session_state.get('common_lsi_input', "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, цены")
+                common_lsi = [w.strip() for w in raw_common.split(",") if w.strip()]
                 combined_lsi = list(set(common_lsi + lsi_words))
                 
 # 4. ГЕНЕРИРУЕМ СТАТЬЮ
@@ -5158,6 +5160,19 @@ with tab_lsi_gen:
                 st.session_state.SUPER_GLOBAL_KEY = new_val
                 st.rerun() # Обновляем, чтобы зафиксировать
 
+# Если ввели что-то новое — сохраняем в глобалку
+            if new_val != current_val:
+                st.session_state.SUPER_GLOBAL_KEY = new_val
+                st.rerun() # Обновляем, чтобы зафиксировать
+
+        with c2:
+            # === ПОЛЕ ДЛЯ ОБЩИХ LSI ===
+            st.session_state['common_lsi_input'] = st.text_area(
+                "Общие LSI-слова (добавляются ко всем статьям):", 
+                value=st.session_state.get('common_lsi_input', default_lsi_text),
+                help="Укажите слова через запятую. Они будут объединены с 15 словами из парсинга."
+            )
+
     # --- 2. ЗАГРУЗКА ЗАДАЧ ---
     st.subheader("1. Загрузка задач")
     
@@ -5479,6 +5494,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
