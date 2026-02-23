@@ -5666,6 +5666,7 @@ with tab_faq_gen:
             lsi_words = res_data['hybrid'].head(150)['Слово'].tolist()
         
         # ГЕНЕРАЦИЯ
+        api_key_gen = str(st.session_state.get('SUPER_GLOBAL_KEY', '')).strip()
         faq_json_result = generate_faq_gemini(api_key_gen, task['h1'], lsi_words, target_q_count)
         
         if 'faq_results' not in st.session_state: st.session_state.faq_results = []
@@ -5770,6 +5771,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
