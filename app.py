@@ -849,7 +849,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
     if status != "done": st.error(f"⏳ Тайм-аут API"); return []
 
     try:
-        r_final = requests.post(url_get, headers=headers, json={"task_id": task_id}, timeout=30)
+        r_final = requests.post(url_get, headers=headers, json={"task_id": task_id}, timeout=200)
         res_data = r_final.json()
     except Exception as e: st.error(f"❌ Ошибка получения результата: {e}"); return []
 
@@ -4458,14 +4458,14 @@ with tab_wholesale_main:
                     r = cffi_requests.get(
                         main_category_url, 
                         impersonate="chrome110", 
-                        timeout=30,
+                        timeout=200,
                         headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
                     )
                     html_content = r.content
                 except:
                     # Fallback
                     session = requests.Session()
-                    r = session.get(main_category_url, timeout=30, verify=False)
+                    r = session.get(main_category_url, timeout=200, verify=False)
                     html_content = r.text
 
                 if r.status_code == 200: 
@@ -5115,7 +5115,7 @@ with tab_monitoring:
                             
                             try:
                                 # SET
-                                r_set = requests.post("https://arsenkin.ru/api/tools/set", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json=payload, timeout=30)
+                                r_set = requests.post("https://arsenkin.ru/api/tools/set", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json=payload, timeout=200)
                                 if r_set.status_code != 200:
                                     st.error(f"HTTP Error: {r_set.status_code}")
                                     continue
@@ -5804,6 +5804,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
