@@ -2336,12 +2336,17 @@ def run_seo_analysis_background(query, api_token):
     return []
 
 # ==========================================
-# НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (С ФИЛЬТРАЦИЕЙ СЛОВ)
+# НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (ЧЕРЕЗ ПРОКСИ LITELLM)
 # ==========================================
 def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     import json
-    from google import genai
-    client = genai.Client(api_key=api_key)
+    from openai import OpenAI
+    
+    try:
+        # Инициализируем клиент через ваш сторонний сервис
+        client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
+    except Exception as e:
+        return [{"Вопрос": "Ошибка инициализации API", "Ответ": str(e)}]
     
     lsi_text = ", ".join(lsi_words)
     
@@ -2355,11 +2360,19 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     3. ВЕРНИ СТРОГО В ФОРМАТЕ JSON! Массив объектов: [{{"Вопрос": "...", "Ответ": "..."}}]
     """
     try:
-        res_1 = client.models.generate_content(model='gemini-2.5-pro', contents=prompt_1)
-        draft_text = res_1.text.strip()
+        # Отправляем запрос на модель gemini через прокси
+        res_1 = client.chat.completions.create(
+            model="google/gemini-2.5-pro",
+            messages=[{"role": "user", "content": prompt_1}],
+            temperature=0.3
+        )
+        draft_text = res_1.choices[0].message.content.strip()
+        
+        # Очистка Markdown
         if draft_text.startswith("```json"): draft_text = draft_text[7:]
         if draft_text.startswith("```"): draft_text = draft_text[3:]
         if draft_text.endswith("```"): draft_text = draft_text[:-3]
+        draft_text = draft_text.strip()
         
         # --- ЭТАП 2: РЕДАКТУРА И ФАКТЧЕКИНГ ---
         prompt_2 = f"""
@@ -2376,13 +2389,20 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         6. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ! Без markdown-разметки.
         """
         
-        res_2 = client.models.generate_content(model='gemini-2.5-pro', contents=prompt_2)
-        final_text = res_2.text.strip()
+        res_2 = client.chat.completions.create(
+            model="google/gemini-2.5-pro",
+            messages=[{"role": "user", "content": prompt_2}],
+            temperature=0.3
+        )
+        final_text = res_2.choices[0].message.content.strip()
+        
+        # Очистка Markdown
         if final_text.startswith("```json"): final_text = final_text[7:]
         if final_text.startswith("```"): final_text = final_text[3:]
         if final_text.endswith("```"): final_text = final_text[:-3]
+        final_text = final_text.strip()
         
-        return json.loads(final_text.strip())
+        return json.loads(final_text)
     except Exception as e:
         return [{"Вопрос": "Ошибка генерации", "Ответ": str(e)}]
 
@@ -5771,6 +5791,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
