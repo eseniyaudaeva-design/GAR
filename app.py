@@ -2336,10 +2336,7 @@ def run_seo_analysis_background(query, api_token):
     return []
 
 # ==========================================
-# НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (6 ВКЛАДКА)
-# ==========================================
-# ==========================================
-# НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (С ПРОВЕРКОЙ)
+# НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (С ФИЛЬТРАЦИЕЙ СЛОВ)
 # ==========================================
 def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     import json
@@ -2352,7 +2349,8 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     prompt_1 = f"""
     Ты эксперт в SEO и поддержке клиентов. Составь FAQ для страницы "{h1}".
     УСЛОВИЯ:
-    1. Впиши LSI-слова: {lsi_text}
+    1. Вот список LSI-слов, собранных парсером: {lsi_text}
+    ВНИМАНИЕ: Не все слова здесь хорошие! Отфильтруй мусорные, нерелевантные или бессмысленные слова. Органично впиши только те слова, которые реально подходят по смыслу.
     2. Напиши ровно {target_count} вопросов и ответов.
     3. ВЕРНИ СТРОГО В ФОРМАТЕ JSON! Массив объектов: [{{"Вопрос": "...", "Ответ": "..."}}]
     """
@@ -2363,18 +2361,18 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         if draft_text.startswith("```"): draft_text = draft_text[3:]
         if draft_text.endswith("```"): draft_text = draft_text[:-3]
         
-        # --- ЭТАП 2: РЕДАКТУРА И ОЧЕЛОВЕЧИВАНИЕ ---
+        # --- ЭТАП 2: РЕДАКТУРА И ФАКТЧЕКИНГ ---
         prompt_2 = f"""
         Я сгенерировал черновик FAQ для страницы "{h1}". Вот он (JSON):
         {draft_text}
 
-        Выступи в роли строгого коммерческого редактора. Твоя задача — "очеловечить" текст.
+        Выступи в роли строгого коммерческого редактора. Твоя задача — "очеловечить" текст и вычистить мусор.
         ПРАВИЛА:
-        1. Удали артефакты ИИ (фразы "Важно отметить", "Конечно, вот", "В заключение").
-        2. Исправь лже-информацию и воду. Отвечай только фактами по теме "{h1}".
-        3. Вопросы должны звучать так, как их гуглят или спрашивают реальные люди (например, "А что если...", "Как быстро...", "Сколько стоит...").
-        4. Ответы должны быть короткими, емкими и полезными.
-        5. Сохрани заданное количество вопросов ({target_count}) и LSI-слова.
+        1. Удали типичные фразы ИИ ("Важно отметить", "Конечно, вот", "В заключение").
+        2. Удали или перепиши любые предложения с бредовыми, "мусорными" словами, которые могли проскочить на прошлом этапе. Отвечай только по теме "{h1}".
+        3. Вопросы должны звучать так, как их реально спрашивают люди (например, "Как...", "Что делать если...", "Сколько...").
+        4. Ответы должны быть короткими и без "воды".
+        5. Сохрани заданное количество вопросов ({target_count}).
         6. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ! Без markdown-разметки.
         """
         
@@ -2386,7 +2384,7 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         
         return json.loads(final_text.strip())
     except Exception as e:
-        return [{"Вопрос": "Ошибка генерации/парсинга JSON", "Ответ": str(e)}]
+        return [{"Вопрос": "Ошибка генерации", "Ответ": str(e)}]
 
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
@@ -5557,9 +5555,10 @@ with tab_faq_gen:
     with c_faq1:
         faq_source = st.radio("Источник данных для FAQ:", ["Вручную (Списки H1)", "Список ссылок (Авто-парсинг H1)"])
         # Ползунок количества вопросов
-        st.session_state['faq_questions_count'] = st.slider(
-            "Количество вопросов на страницу:", 
-            min_value=2, max_value=15, value=st.session_state.get('faq_questions_count', 5)
+        # Ручной ввод количества вопросов
+        st.session_state['faq_questions_count'] = st.number_input(
+            "Количество вопросов (от 2 до 100):", 
+            min_value=2, max_value=100, value=st.session_state.get('faq_questions_count', 10), step=1
         )
         
     with c_faq2:
@@ -5658,16 +5657,15 @@ with tab_faq_gen:
             st.stop()
 
         task = st.session_state.faq_tasks_queue[curr_idx]
+        target_q_count = st.session_state.get('faq_questions_count', 10)
         
         lsi_words = []
         res_data = st.session_state.get('analysis_results')
         if res_data and res_data.get('hybrid') is not None and not res_data['hybrid'].empty:
-            lsi_words = res_data['hybrid'].head(15)['Слово'].tolist()
+            # Жестко берем ТОП-150 слов, чтобы не перегружать нейросеть мусором
+            lsi_words = res_data['hybrid'].head(150)['Слово'].tolist()
         
         # ГЕНЕРАЦИЯ
-        api_key_gen = st.session_state.get('SUPER_GLOBAL_KEY')
-        # ГЕНЕРАЦИЯ (С УЧЕТОМ ПОЛЗУНКА)
-        target_q_count = st.session_state.get('faq_questions_count', 5)
         faq_json_result = generate_faq_gemini(api_key_gen, task['h1'], lsi_words, target_q_count)
         
         if 'faq_results' not in st.session_state: st.session_state.faq_results = []
@@ -5772,6 +5770,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
