@@ -5311,13 +5311,6 @@ with tab_lsi_gen:
                 st.session_state.pop('analysis_results', None)
                 st.session_state.pop('analysis_done', None)
         # -------------------------------------
-# === ПОЛЕ ДЛЯ ОБЩИХ LSI ===
-        default_lsi = "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, предлагаем, рассчитать, цены"
-        st.session_state['common_lsi_input'] = st.text_area(
-            "Общие LSI-слова (добавляются ко всем статьям):", 
-            value=st.session_state.get('common_lsi_input', default_lsi),
-            help="Укажите слова через запятую. Они будут объединены с 15 словами из парсинга."
-        )
         c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
         with c_act1:
             if not st.session_state.get('lsi_automode_active'):
@@ -5494,6 +5487,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
