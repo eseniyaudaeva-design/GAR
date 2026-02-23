@@ -2561,6 +2561,11 @@ def scrape_h1_h2_from_url(url):
     except Exception as e:
         return None, None, f"Ошибка парсинга: {e}"
 
+# === ФИКС ОШИБКИ ВИДЖЕТОВ (StreamlitAPIException) ===
+if 'pending_widget_updates' in st.session_state:
+    for k, v in st.session_state['pending_widget_updates'].items():
+        st.session_state[k] = v
+    del st.session_state['pending_widget_updates']
 # ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
@@ -5401,10 +5406,13 @@ with tab_lsi_gen:
                 for k in keys_to_clear:
                     st.session_state.pop(k, None)
                 
-                st.session_state['query_input'] = next_task['h1']
-                st.session_state['competitor_source_radio'] = "Поиск через API Arsenkin (TOP-30)"
-                st.session_state['my_page_source_radio'] = "Без страницы"
-                st.session_state['my_url_input'] = ""
+# Сохраняем обновления виджетов в буфер, чтобы применить ДО их отрисовки
+                st.session_state['pending_widget_updates'] = {
+                    'query_input': next_task['h1'],
+                    'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                    'my_page_source_radio': "Без страницы",
+                    'my_url_input': ""
+                }
                 st.session_state['lsi_processing_task_id'] = next_task_idx
                 st.session_state['start_analysis_flag'] = True 
                 st.session_state['analysis_done'] = False
@@ -5463,6 +5471,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
