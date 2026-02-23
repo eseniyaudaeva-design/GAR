@@ -3066,10 +3066,12 @@ with tab_seo_main:
                         st.session_state.pop(k, None)
                         
                     # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
-                    st.session_state['query_input'] = next_task['h1']
-                    st.session_state['competitor_source_radio'] = "Поиск через API Arsenkin (TOP-30)"
-                    st.session_state['my_page_source_radio'] = "Без страницы"
-                    st.session_state['my_url_input'] = ""
+                    st.session_state['pending_widget_updates'] = {
+                        'query_input': next_task['h1'],
+                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                        'my_page_source_radio': "Без страницы",
+                        'my_url_input': ""
+                    }
                     st.session_state['lsi_processing_task_id'] = next_task_idx
                     st.session_state['start_analysis_flag'] = True 
                     st.session_state['analysis_done'] = False
@@ -3618,9 +3620,12 @@ with tab_seo_main:
                         st.session_state.pop(k, None)
                         
                     # Прописываем данные для первой вкладки (Парсер)
-                    st.session_state['query_input'] = next_task['h1']
-                    st.session_state['my_page_source_radio'] = "Без страницы"
-                    st.session_state['my_url_input'] = ""
+                    st.session_state['pending_widget_updates'] = {
+                        'query_input': next_task['h1'],
+                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                        'my_page_source_radio': "Без страницы",
+                        'my_url_input': ""
+                    }
                     
                     # Включаем "автопилот"
                     st.session_state['start_analysis_flag'] = True
@@ -5487,6 +5492,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
