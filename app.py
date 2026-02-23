@@ -2375,8 +2375,6 @@ def generate_faq_gemini(api_key, h1, lsi_words):
         return [{"Вопрос": "Ошибка генерации", "Ответ": str(e)}]
 
 
-def generate_full_article_v2(api_key, h1, h2, lsi_words):
-
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
     try:
@@ -5741,3 +5739,4 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
