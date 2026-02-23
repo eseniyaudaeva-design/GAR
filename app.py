@@ -5296,7 +5296,13 @@ with tab_lsi_gen:
                 st.session_state.pop('analysis_results', None)
                 st.session_state.pop('analysis_done', None)
         # -------------------------------------
-
+# === ПОЛЕ ДЛЯ ОБЩИХ LSI ===
+        default_lsi = "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, предлагаем, рассчитать, цены"
+        st.session_state['common_lsi_input'] = st.text_area(
+            "Общие LSI-слова (добавляются ко всем статьям):", 
+            value=st.session_state.get('common_lsi_input', default_lsi),
+            help="Укажите слова через запятую. Они будут объединены с 15 словами из парсинга."
+        )
         c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
         with c_act1:
             if not st.session_state.get('lsi_automode_active'):
@@ -5348,9 +5354,11 @@ with tab_lsi_gen:
             if results_data and results_data.get('hybrid') is not None and not results_data['hybrid'].empty:
                 lsi_words = results_data['hybrid'].head(15)['Слово'].tolist()
             
-            common_lsi = ["гарантия", "доставка", "цена", "купить", "оптом", "в наличии"] 
+# Читаем общие LSI из поля ввода и объединяем с парсингом
+            raw_common = st.session_state.get('common_lsi_input', "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, предлагаем, рассчитать, цены")
+            common_lsi = [w.strip() for w in raw_common.split(",") if w.strip()]
             combined_lsi = list(set(common_lsi + lsi_words))
-            
+
             # 4. ГЕНЕРИРУЕМ СТАТЬЮ
             api_key_gen = st.session_state.get('SUPER_GLOBAL_KEY')
             html_out = ""
@@ -5471,6 +5479,7 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
