@@ -2336,7 +2336,7 @@ def run_seo_analysis_background(query, api_token):
     return []
 
 # ==========================================
-# НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (ЧЕРЕЗ ПРОКСИ LITELLM)
+# НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (ЖИРНЫЙ ШРИФТ + АВТОТИРЕ)
 # ==========================================
 def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     import json
@@ -2354,13 +2354,13 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     prompt_1 = f"""
     Ты эксперт в SEO и поддержке клиентов. Составь FAQ для страницы "{h1}".
     УСЛОВИЯ:
-    1. Вот список LSI-слов, собранных парсером: {lsi_text}
-    ВНИМАНИЕ: Не все слова здесь хорошие! Отфильтруй мусорные, нерелевантные или бессмысленные слова. Органично впиши только те слова, которые реально подходят по смыслу.
-    2. Напиши ровно {target_count} вопросов и ответов.
-    3. ВЕРНИ СТРОГО В ФОРМАТЕ JSON! Массив объектов: [{{"Вопрос": "...", "Ответ": "..."}}]
+    1. Вот список LSI-слов: {lsi_text}
+    Отфильтруй мусорные слова. Органично впиши только те, которые подходят по смыслу.
+    2. ВЫДЕЛИ ЖИРНЫМ ШРИФТОМ (**слово**) все использованные LSI-слова прямо в тексте вопросов и ответов!
+    3. Напиши ровно {target_count} вопросов и ответов.
+    4. ВЕРНИ СТРОГО В ФОРМАТЕ JSON! Массив объектов: [{{"Вопрос": "...", "Ответ": "..."}}]
     """
     try:
-        # Отправляем запрос на модель gemini через прокси
         res_1 = client.chat.completions.create(
             model="google/gemini-2.5-pro",
             messages=[{"role": "user", "content": prompt_1}],
@@ -2368,7 +2368,7 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         )
         draft_text = res_1.choices[0].message.content.strip()
         
-        # Очистка Markdown
+        # Очистка Markdown для JSON
         if draft_text.startswith("```json"): draft_text = draft_text[7:]
         if draft_text.startswith("```"): draft_text = draft_text[3:]
         if draft_text.endswith("```"): draft_text = draft_text[:-3]
@@ -2379,14 +2379,15 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         Я сгенерировал черновик FAQ для страницы "{h1}". Вот он (JSON):
         {draft_text}
 
-        Выступи в роли строгого коммерческого редактора. Твоя задача — "очеловечить" текст и вычистить мусор.
+        Выступи в роли строгого коммерческого редактора.
         ПРАВИЛА:
-        1. Удали типичные фразы ИИ ("Важно отметить", "Конечно, вот", "В заключение").
-        2. Удали или перепиши любые предложения с бредовыми, "мусорными" словами, которые могли проскочить на прошлом этапе. Отвечай только по теме "{h1}".
-        3. Вопросы должны звучать так, как их реально спрашивают люди (например, "Как...", "Что делать если...", "Сколько...").
-        4. Ответы должны быть короткими и без "воды".
+        1. Удали типичные фразы ИИ ("Важно отметить", "Конечно, вот").
+        2. Вычисти предложения с бредовыми словами. Отвечай только по теме "{h1}".
+        3. Вопросы должны звучать живо, как их реально спрашивают люди.
+        4. Ответы должны быть короткими и полезными.
         5. Сохрани заданное количество вопросов ({target_count}).
-        6. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ! Без markdown-разметки.
+        6. ОБЯЗАТЕЛЬНО СОХРАНИ ИЛИ ДОБАВЬ выделение жирным шрифтом (**слово**) для всех LSI-слов!
+        7. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ! Без markdown-разметки блока.
         """
         
         res_2 = client.chat.completions.create(
@@ -2396,13 +2397,25 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         )
         final_text = res_2.choices[0].message.content.strip()
         
-        # Очистка Markdown
+        # Очистка Markdown для JSON
         if final_text.startswith("```json"): final_text = final_text[7:]
         if final_text.startswith("```"): final_text = final_text[3:]
         if final_text.endswith("```"): final_text = final_text[:-3]
         final_text = final_text.strip()
         
-        return json.loads(final_text)
+        # Превращаем текст в объекты Python
+        parsed_data = json.loads(final_text)
+        
+        # --- ЭТАП 3: СКРИПТОВАЯ АВТОЗАМЕНА ТИРЕ ---
+        # Жестко заменяем длинное тире (—) и дефисы с пробелами ( - ) на цифровое тире (–, Alt+0150)
+        for item in parsed_data:
+            if "Вопрос" in item:
+                item["Вопрос"] = item["Вопрос"].replace("—", "–").replace(" - ", " – ")
+            if "Ответ" in item:
+                item["Ответ"] = item["Ответ"].replace("—", "–").replace(" - ", " – ")
+                
+        return parsed_data
+        
     except Exception as e:
         return [{"Вопрос": "Ошибка генерации", "Ответ": str(e)}]
 
@@ -5791,6 +5804,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
