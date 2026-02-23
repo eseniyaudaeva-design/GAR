@@ -5585,8 +5585,8 @@ with tab_faq_gen:
         st.markdown(f"**В очереди:** {faq_q_count} шт. | **Готово:** {len(st.session_state.get('faq_results', []))} шт.")
         
         if not st.session_state.get('faq_automode_active'):
-            btn_lbl = "▶️ СТАРТ ГЕНЕРАЦИИ FAQ" if faq_q_count > 0 else "✅ ВСЕ ГОТОВО"
-            if st.button(btn_lbl, type="primary", disabled=(faq_q_count == 0), use_container_width=True):
+            btn_lbl = "▶️ СТАРТ ГЕНЕРАЦИИ FAQ" if faq_q_count > 0 else "✅ ВСЕ FAQ ГОТОВЫ"
+            if st.button(btn_lbl, type="primary", disabled=(faq_q_count == 0), use_container_width=True, key="faq_start_btn_unique"):
                 api_key_check = st.session_state.get('SUPER_GLOBAL_KEY')
                 if not api_key_check:
                     st.error("Введите API ключ Gemini (на Вкладке 5)!")
@@ -5739,4 +5739,5 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
