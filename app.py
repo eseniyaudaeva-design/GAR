@@ -5292,8 +5292,8 @@ with tab_lsi_gen:
                 st.session_state.pop('analysis_done', None)
         # -------------------------------------
 
-c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
-            with c_act1:
+        c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
+        with c_act1:
             if not st.session_state.get('lsi_automode_active'):
                 btn_label = "▶️ СТАРТ ЧЕРЕЗ ВКЛАДКУ 1" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
                 lsi_api_key = st.session_state.get('SUPER_GLOBAL_KEY')
@@ -5463,6 +5463,7 @@ c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
 
 
 
