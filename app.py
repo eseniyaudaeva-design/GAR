@@ -3043,29 +3043,6 @@ with tab_seo_main:
                     
                     st.toast(f"✅ Готово: {task['h1']}. Переход к: {next_task['h1']}...")
                     
-# === ЖЕСТКАЯ ЗАЩИТА ПЕРЕМЕННЫХ ===
-                    # Мы явно указываем все возможные названия переменных, где может лежать ключ
-                    safe_keys = {
-                        # Системные
-                        'authenticated', 'password', 
-                        # API Ключи (ВСЕ ВАРИАНТЫ)
-                        'arsenkin_token', 'yandex_dict_key', 
-                        'bulk_api_key_v3', 'gemini_key_persistent', 'gemini_key_cache', 'input_arsenkin',
-                        # Данные задач
-                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
-                        'lsi_automode_active', 'lsi_processing_task_id',
-                        # Настройки поиска (чтобы не сбрасывались)
-                        'competitor_source_radio', 'settings_search_engine', 'settings_region', 
-                        'settings_ua', 'settings_top_n',
-                        # Списки (чтобы не удалялись при ручном вводе)
-                        'manual_h1_input', 'manual_h2_input', 'url_list_input'
-                    }
-                    
-                    # УДАЛЯЕМ ТОЛЬКО ТО, ЧЕГО НЕТ В СПИСКЕ
-                    for key in list(st.session_state.keys()):
-                        if key not in safe_keys:
-                            del st.session_state[key]
-                    
                     # === ПРИНУДИТЕЛЬНОЕ ВОССТАНОВЛЕНИЕ ===
                     # Если ключ вдруг удалился, но есть в secrets или другой переменной - восстанавливаем
                     if 'bulk_api_key_v3' not in st.session_state:
@@ -3074,6 +3051,15 @@ with tab_seo_main:
                          if recovered:
                              st.session_state.bulk_api_key_v3 = recovered
 
+# === ТОЧЕЧНАЯ ОЧИСТКА СТАРЫХ РЕЗУЛЬТАТОВ ===
+                    keys_to_clear = [
+                        'analysis_results', 'analysis_done', 'naming_table_df', 
+                        'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
+                        'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                    ]
+                    for k in keys_to_clear:
+                        st.session_state.pop(k, None)
+                        
                     # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
                     st.session_state['query_input'] = next_task['h1']
                     st.session_state['competitor_source_radio'] = "Поиск через API Arsenkin (TOP-30)"
@@ -3621,6 +3607,15 @@ with tab_seo_main:
                     # Ставим статус "В работе" для таблицы очереди
                     st.session_state.bg_tasks_queue[next_task_idx]['status'] = "🔍 Инициализация парсинга..."
                     
+                    # === ТОЧЕЧНАЯ ОЧИСТКА СТАРЫХ РЕЗУЛЬТАТОВ ===
+                    keys_to_clear = [
+                        'analysis_results', 'analysis_done', 'naming_table_df', 
+                        'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
+                        'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                    ]
+                    for k in keys_to_clear:
+                        st.session_state.pop(k, None)
+                        
                     # Прописываем данные для первой вкладки (Парсер)
                     st.session_state['query_input'] = next_task['h1']
                     st.session_state['my_page_source_radio'] = "Без страницы"
@@ -5308,11 +5303,26 @@ with tab_lsi_gen:
             if not st.session_state.get('lsi_automode_active'):
                 btn_label = "▶️ СТАРТ ЧЕРЕЗ ВКЛАДКУ 1" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
                 
-                # === ИСПРАВЛЕНИЕ НАЧАЛО: Определяем переменную перед использованием ===
-                lsi_api_key = st.session_state.get('gemini_key_persistent')
-                if not lsi_api_key:
-                    lsi_api_key = st.session_state.get('bulk_api_key_v3')
-                # === ИСПРАВЛЕНИЕ КОНЕЦ ===
+                lsi_api_key = st.session_state.get('SUPER_GLOBAL_KEY')
+                keys_valid = bool(lsi_api_key and ARSENKIN_TOKEN)
+                
+                if st.button(btn_label, type="primary", disabled=(remaining_q == 0), 
+                             use_container_width=True,
+                             on_click=start_automode_callback if keys_valid else None,
+                             args=(pending_indices,) if keys_valid else None):
+                    
+                    if not keys_valid:
+                        if not lsi_api_key: st.error("Введите API ключ Gemini!")
+                        if not ARSENKIN_TOKEN: st.error("Нужен токен Arsenkin!")
+                    else:
+                        st.toast(f"🚀 Запуск... Переход на Вкладку 1")
+            else:
+                if st.button("⛔ ОСТАНОВИТЬ ПРОЦЕСС", type="secondary", use_container_width=True):
+                    st.session_state.lsi_automode_active = False
+                    st.rerun()
+                
+# ЕДИНАЯ ПЕРЕМЕННАЯ ДЛЯ КЛЮЧА
+                lsi_api_key = st.session_state.get('SUPER_GLOBAL_KEY')
 
                 # Проверяем ключи перед нажатием (для логики кнопки)
                 keys_valid = bool(lsi_api_key and ARSENKIN_TOKEN)
@@ -5377,25 +5387,15 @@ with tab_lsi_gen:
                 combined_lsi = list(set(common_lsi + lsi_words))
                 
 # 4. ГЕНЕРИРУЕМ СТАТЬЮ
-                # Берем ключ из нашей "Железобетонной переменной"
-                api_key_gen = st.session_state.get('FINAL_GEMINI_KEY')
-                
-                # Если вдруг пусто, пробуем старые методы (на всякий случай)
-                if not api_key_gen:
-                    api_key_gen = st.session_state.get('bulk_api_key_v3')
-                
+# 4. ГЕНЕРИРУЕМ СТАТЬЮ
+                api_key_gen = st.session_state.get('SUPER_GLOBAL_KEY')
                 html_out = ""
                 status_code = "Error"
                 
                 if not api_key_gen:
-                    html_out = "ОШИБКА: Ключ не найден в памяти. Введите ключ на Вкладке 5 и нажмите Enter!"
+                    html_out = "ОШИБКА: Ключ не найден. Введите ключ на Вкладке 5!"
                     st.error(html_out)
-                    # Можно даже стопнуть тут, чтобы не тратить время
                 else:
-                    # Восстанавливаем ключ в сессию, чтобы он не пропал на следующем круге
-                    st.session_state.bulk_api_key_v3 = api_key_gen
-                    st.session_state.gemini_key_persistent = api_key_gen
-                    
                     try:
                         html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
                         status_code = "OK"
@@ -5434,21 +5434,14 @@ with tab_lsi_gen:
                     next_task = st.session_state.bg_tasks_queue[next_task_idx]
                     st.toast(f"✅ Готово: {task['h1']}. Дальше: {next_task['h1']}")
                     
-# === ОЧИСТКА МУСОРА (С ЗАЩИТОЙ КЛЮЧА) ===
-                    safe_keys = {
-                        'authenticated', 'password', 
-                        'arsenkin_token', 'yandex_dict_key', 
-                        'bulk_api_key_v3', 'FINAL_GEMINI_KEY', # <--- ВОТ ОН, ГЛАВНЫЙ!
-                        'bg_tasks_queue', 'bg_results', 'bg_tasks_started', 
-                        'lsi_automode_active', 'lsi_processing_task_id',
-                        'competitor_source_radio', 'settings_search_engine', 'settings_region',
-                        'manual_h1_input', 'manual_h2_input', 'url_list_input'
-                    }
-                    
-                    for key in list(st.session_state.keys()):
-                        if key not in safe_keys:
-                            del st.session_state[key]
-
+# === ТОЧЕЧНАЯ ОЧИСТКА СТАРЫХ РЕЗУЛЬТАТОВ ===
+                    keys_to_clear = [
+                        'analysis_results', 'analysis_done', 'naming_table_df', 
+                        'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
+                        'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                    ]
+                    for k in keys_to_clear:
+                        st.session_state.pop(k, None)
                     # Настройка следующего запуска
                     st.session_state['query_input'] = next_task['h1']
                     st.session_state['competitor_source_radio'] = "Поиск через API Arsenkin (TOP-30)"
@@ -5512,3 +5505,4 @@ with tab_lsi_gen:
             
             with st.expander("Исходный код HTML"):
                 st.code(rec['content'], language='html')
+
