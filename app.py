@@ -3915,105 +3915,105 @@ with tab_seo_main:
         st.session_state['force_radio_switch'] = True
 
 # ==================================================================
-            # 🔥 HOOK ДЛЯ LSI ГЕНЕРАТОРА (ВКЛАДКА 5)
-            # Если этот анализ был заказан Вкладкой 5, мы генерируем текст и идем дальше
-            # ==================================================================
-            if st.session_state.get('lsi_automode_active'):
-                
-                # 1. Достаем данные текущей задачи
-                current_idx = st.session_state.get('lsi_processing_task_id')
-                task = st.session_state.bg_tasks_queue[current_idx]
-                
-                # 2. Достаем LSI (TF-IDF) из результатов анализа Вкладки 1
-                lsi_words = []
-                if results_final.get('hybrid') is not None and not results_final['hybrid'].empty:
-                    lsi_words = results_final['hybrid'].head(15)['Слово'].tolist()
-                
-                # 3. Добавляем общие слова из настроек (нужно сохранить их в session_state во вкладке 5)
-                # (Предполагаем, что они есть, или берем дефолт)
+        # 🔥 HOOK ДЛЯ LSI ГЕНЕРАТОРА (ВКЛАДКА 5)
+        # Если этот анализ был заказан Вкладкой 5, мы генерируем текст и идем дальше
+        # ==================================================================
+        if st.session_state.get('lsi_automode_active'):
+            
+            # 1. Достаем данные текущей задачи
+            current_idx = st.session_state.get('lsi_processing_task_id')
+            task = st.session_state.bg_tasks_queue[current_idx]
+            
+            # 2. Достаем LSI (TF-IDF) из результатов анализа Вкладки 1
+            lsi_words = []
+            if results_final.get('hybrid') is not None and not results_final['hybrid'].empty:
+                lsi_words = results_final['hybrid'].head(15)['Слово'].tolist()
+            
+            # 3. Добавляем общие слова из настроек (нужно сохранить их в session_state во вкладке 5)
+            # (Предполагаем, что они есть, или берем дефолт)
 # 3. Добавляем общие слова из поля ввода
-                raw_common = st.session_state.get('common_lsi_input', "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, цены")
-                common_lsi = [w.strip() for w in raw_common.split(",") if w.strip()]
-                combined_lsi = list(set(common_lsi + lsi_words))
-                
+            raw_common = st.session_state.get('common_lsi_input', "гарантия, звоните, консультация, купить, оплата, оптом, отгрузка, под заказ, поставка, прайс-лист, цены")
+            common_lsi = [w.strip() for w in raw_common.split(",") if w.strip()]
+            combined_lsi = list(set(common_lsi + lsi_words))
+            
 # 4. ГЕНЕРИРУЕМ СТАТЬЮ
-                # Читаем из SUPER_GLOBAL_KEY (который мы создали в Шаге 1)
-                api_key_gen = st.session_state.get('SUPER_GLOBAL_KEY')
-                
-                # Фолбэк: если вдруг его нет, пробуем старый метод
-                if not api_key_gen:
-                    api_key_gen = st.session_state.get('bulk_api_key_v3')
-                
-                try:
-                    html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
-                    status_code = "OK"
-                except Exception as e:
-                    html_out = f"Error: {e}"
-                    status_code = "Error"
+            # Читаем из SUPER_GLOBAL_KEY (который мы создали в Шаге 1)
+            api_key_gen = st.session_state.get('SUPER_GLOBAL_KEY')
+            
+            # Фолбэк: если вдруг его нет, пробуем старый метод
+            if not api_key_gen:
+                api_key_gen = st.session_state.get('bulk_api_key_v3')
+            
+            try:
+                html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
+                status_code = "OK"
+            except Exception as e:
+                html_out = f"Error: {e}"
+                status_code = "Error"
 
-                # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
-                st.session_state.bg_results.append({
-                    "h1": task['h1'],
-                    "h2": task['h2'],
-                    "source_url": task.get('source_url', '-'),
-                    "lsi_added": lsi_words,
-                    "content": html_out,
-                    "status": status_code
-                })
+            # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
+            st.session_state.bg_results.append({
+                "h1": task['h1'],
+                "h2": task['h2'],
+                "source_url": task.get('source_url', '-'),
+                "lsi_added": lsi_words,
+                "content": html_out,
+                "status": status_code
+            })
 
-                # 6. ПЛАНИРУЕМ СЛЕДУЮЩУЮ ЗАДАЧУ
-                finished_ids = set(f"{r['h1']}|{r['h2']}" for r in st.session_state.bg_results)
-                next_task_idx = -1
-                
-                for i, t in enumerate(st.session_state.bg_tasks_queue):
-                    unique_id = f"{t['h1']}|{t['h2']}"
-                    if unique_id not in finished_ids:
-                        next_task_idx = i
-                        break
-                
-                st.write(f"DEBUG: Найдена следующая задача под индексом: {next_task_idx}")
+            # 6. ПЛАНИРУЕМ СЛЕДУЮЩУЮ ЗАДАЧУ
+            finished_ids = set(f"{r['h1']}|{r['h2']}" for r in st.session_state.bg_results)
+            next_task_idx = -1
+            
+            for i, t in enumerate(st.session_state.bg_tasks_queue):
+                unique_id = f"{t['h1']}|{t['h2']}"
+                if unique_id not in finished_ids:
+                    next_task_idx = i
+                    break
+            
+            st.write(f"DEBUG: Найдена следующая задача под индексом: {next_task_idx}")
 
-                if next_task_idx != -1:
+            if next_task_idx != -1:
 # === ТОЧЕЧНАЯ ОЧИСТКА СТАРЫХ РЕЗУЛЬТАТОВ ===
-                    keys_to_clear = [
-                        'analysis_results', 'analysis_done', 'naming_table_df', 
-                        'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
-                        'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
-                    ]
-                    for k in keys_to_clear:
-                        st.session_state.pop(k, None)
+                keys_to_clear = [
+                    'analysis_results', 'analysis_done', 'naming_table_df', 
+                    'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
+                    'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                ]
+                for k in keys_to_clear:
+                    st.session_state.pop(k, None)
 
-                    # 3. БЕРЕМ НОВУЮ ЗАДАЧУ
-                    next_task = st.session_state.bg_tasks_queue[next_task_idx]
+                # 3. БЕРЕМ НОВУЮ ЗАДАЧУ
+                next_task = st.session_state.bg_tasks_queue[next_task_idx]
+                
+                # Ставим статус "В работе" для таблицы очереди
+                st.session_state.bg_tasks_queue[next_task_idx]['status'] = "🔍 Инициализация парсинга..."
+                
+                # === ТОЧЕЧНАЯ ОЧИСТКА СТАРЫХ РЕЗУЛЬТАТОВ ===
+                keys_to_clear = [
+                    'analysis_results', 'analysis_done', 'naming_table_df', 
+                    'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
+                    'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                ]
+                for k in keys_to_clear:
+                    st.session_state.pop(k, None)
                     
-                    # Ставим статус "В работе" для таблицы очереди
-                    st.session_state.bg_tasks_queue[next_task_idx]['status'] = "🔍 Инициализация парсинга..."
-                    
-                    # === ТОЧЕЧНАЯ ОЧИСТКА СТАРЫХ РЕЗУЛЬТАТОВ ===
-                    keys_to_clear = [
-                        'analysis_results', 'analysis_done', 'naming_table_df', 
-                        'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
-                        'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
-                    ]
-                    for k in keys_to_clear:
-                        st.session_state.pop(k, None)
-                        
-                    # Прописываем данные для первой вкладки (Парсер)
-                    st.session_state['pending_widget_updates'] = {
-                        'query_input': next_task['h1'],
-                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                        'my_page_source_radio': "Без страницы",
-                        'my_url_input': ""
-                    }
-                    
-                    # Включаем "автопилот"
-                    st.session_state['start_analysis_flag'] = True
-                    st.session_state['analysis_done'] = False
-                    st.session_state['lsi_processing_task_id'] = next_task_idx
-                    
-                    st.toast(f"🚀 Начинаем работу над: {next_task['h1']}")
-                    time.sleep(1)
-                    st.rerun()
+                # Прописываем данные для первой вкладки (Парсер)
+                st.session_state['pending_widget_updates'] = {
+                    'query_input': next_task['h1'],
+                    'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                    'my_page_source_radio': "Без страницы",
+                    'my_url_input': ""
+                }
+                
+                # Включаем "автопилот"
+                st.session_state['start_analysis_flag'] = True
+                st.session_state['analysis_done'] = False
+                st.session_state['lsi_processing_task_id'] = next_task_idx
+                
+                st.toast(f"🚀 Начинаем работу над: {next_task['h1']}")
+                time.sleep(1)
+                st.rerun()
 
 # ------------------------------------------
 # TAB 2: WHOLESALE GENERATOR (COMBINED)
@@ -6178,6 +6178,7 @@ with tab_reviews_gen:
         # Кнопка скачивания
         csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
