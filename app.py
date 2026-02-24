@@ -5455,8 +5455,6 @@ with tab_lsi_gen:
             else:
                 # === ИЗМЕНИТЬ ВОТ ЭТОТ БЛОК ===
                 st.button("⛔ ОСТАНОВИТЬ ГЕНЕРАЦИЮ", type="secondary", use_container_width=True, on_click=global_stop_callback)
-                    st.session_state.lsi_automode_active = False
-                    st.rerun()
 
         with c_act3:
             # Кнопка сброса
@@ -5840,6 +5838,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
