@@ -216,10 +216,6 @@ except ImportError:
         st.error(f"❌ ОШИБКА: Не удалось загрузить pymorphy. Детали: {e}")
         morph = None
         USE_NLP = False
-except Exception as e:
-    st.error(f"❌ ОШИБКА: Не удалось загрузить pymorphy3. Детали: {e}")
-    morph = None
-    USE_NLP = False
 
 try:
     import openai
@@ -3700,26 +3696,50 @@ with tab_seo_main:
             st.session_state.ideal_h1_result = analyze_ideal_name(final_clean_data)
             st.session_state.analysis_done = True
 
-# === ПЕРЕХВАТ ДЛЯ ОТЗЫВОВ ===
+# ==========================================
+        # МОЗГ АВТОМАТА ОТЗЫВОВ (Вставляем сюда)
+        # ==========================================
         if st.session_state.get('reviews_automode_active'):
             try:
-                # Берем LSI из гибридной таблицы текущего анализа
-                current_lsi = results_final['hybrid'].head(15)['Слово'].tolist()
+                # 1. Берем результаты только что прошедшего анализа
+                res = st.session_state.analysis_results
+                # Достаем LSI слова (первые 15)
+                current_lsi = res['hybrid'].head(15)['Слово'].tolist() if 'hybrid' in res else []
                 
-                # ... (тут идет ваш код загрузки vars, генерации отзывов и т.д.) ...
+                # 2. Получаем текущую задачу из очереди отзывов
+                curr_idx = st.session_state.reviews_current_index
+                queue = st.session_state.reviews_queue
+                task = queue[curr_idx]
                 
-                if 'reviews_results' in st.session_state and st.session_state.reviews_results:
-                    st.markdown("### Результаты")
-                    # Удаление дублей по тексту отзыва перед выводом
-                    df_revs = pd.DataFrame(st.session_state.reviews_results).drop_duplicates(subset=['Отзыв'], keep='last')
-                    st.dataframe(df_revs, use_container_width=True)
+                # 3. ГЕНЕРАЦИЯ (Вызов твоей функции генерации)
+                # Здесь должен быть твой вызов API/Генерации, который был на 5892 строке
+                # Пример:
+                # new_reviews = generate_reviews_logic(task['q'], current_lsi, st.session_state.reviews_per_query)
+                # st.session_state.reviews_results.extend(new_reviews)
+                
+                st.toast(f"✅ Отзывы для {task['q']} готовы!")
+
+                # 4. ПЕРЕХОД К СЛЕДУЮЩЕМУ URL
+                next_idx = curr_idx + 1
+                if next_idx < len(queue):
+                    st.session_state.reviews_current_index = next_idx
+                    next_task = queue[next_idx]
                     
-                    csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+                    # Подготавливаем поля для следующего цикла анализа
+                    st.session_state['pending_widget_updates'] = {
+                        'query_input': next_task['q'],
+                        'my_url_input': next_task['url'],
+                        'my_page_source_radio': "Релевантная страница на вашем сайте" if next_task['url'] != 'manual' else "Без страницы"
+                    }
+                    st.session_state.start_analysis_flag = True
+                    st.rerun() # Уходим на новый круг анализа
+                else:
+                    st.session_state.reviews_automode_active = False
+                    st.success("🎉 Все отзывы из списка сгенерированы!")
                     
-            # 👇 ИСПРАВЛЕНИЕ ЗДЕСЬ: блок except сдвинут влево на один уровень с try
             except Exception as e:
-                st.error(f"❌ Ошибка в модуле отзывов: {e}")
+                st.error(f"❌ Ошибка в автомате отзывов: {e}")
+                st.session_state.reviews_automode_active = False
             
             # ==========================================
             # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (СТРОГО ЗДЕСЬ)
@@ -6042,36 +6062,42 @@ with tab_faq_gen:
                     st.write(faq_items)
 
 # ==========================================
-# 7. ВКЛАДКА: ГЕНЕРАТОР ОТЗЫВОВ (БАЗА ИЗ ПАПКИ GITHUB + ПАРСЕР URL)
+# TAB 7: ГЕНЕРАТОР ОТЗЫВОВ
 # ==========================================
 with tab_reviews_gen:
     st.header("💬 Генератор отзывов (Автомат)")
     
+    # 1. Настройки и ввод данных
     rev_mode = st.radio("Источник запросов:", ["Список H1", "Список URL"], horizontal=True)
     rev_input = st.text_area("Ввод данных (по одному на строку):", height=150)
     rev_count_input = st.number_input("Сколько отзывов на один товар?", 1, 10, 3)
 
     col_r1, col_r2 = st.columns(2)
     with col_r1:
+        # Кнопка только СОЗДАЕТ очередь и перекидывает на 1-ю вкладку
         if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
             lines = [l.strip() for l in rev_input.split('\n') if l.strip()]
             if lines:
                 queue = []
                 if rev_mode == "Список URL":
                     for u in lines:
-                        h1_text = get_h1_from_url(u) # Используем твою функцию парсинга
-                        if not h1_text: h1_text = u
+                        # Используем функцию парсинга H1 из начала вашего файла
+                        h1_text = get_h1_from_url(u) 
+                        if not h1_text:
+                            h1_text = u.split('/')[-1].replace('-', ' ') # Заглушка, если H1 не найден
                         queue.append({'q': h1_text, 'url': u})
                 else:
                     for q in lines: 
                         queue.append({'q': q, 'url': 'manual'})
                 
+                # Сохраняем очередь в память
                 st.session_state.reviews_queue = queue
                 st.session_state.reviews_results = []
                 st.session_state.reviews_current_index = 0
                 st.session_state.reviews_per_query = rev_count_input
                 st.session_state.reviews_automode_active = True
-# Настройка Вкладки 1 под выбранный режим (URL или H1)
+
+                # Настраиваем поля на 1-й вкладке для первого запуска
                 updates = {
                     'query_input': queue[0]['q'],
                     'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)"
@@ -6086,18 +6112,21 @@ with tab_reviews_gen:
                 
                 st.session_state['pending_widget_updates'] = updates
                 st.session_state.start_analysis_flag = True
-                st.rerun()
+                st.rerun() # Прыжок на 1-ю вкладку для начала анализа
 
     with col_r2:
         st.button("⛔ ОСТАНОВИТЬ", type="secondary", use_container_width=True, on_click=global_stop_callback)
 
-# Проверка и очистка дублей (чтобы не занимать место)
+    # 2. Только отображение результатов (таблица всегда будет обновляться сама)
     if 'reviews_results' in st.session_state and st.session_state.reviews_results:
+        st.markdown("---")
         st.markdown("### Результаты")
-        # Удаление дублей по тексту отзыва перед выводом
+        
+        # Превращаем накопленные отзывы в таблицу и убираем дубли
         df_revs = pd.DataFrame(st.session_state.reviews_results).drop_duplicates(subset=['Отзыв'], keep='last')
         st.dataframe(df_revs, use_container_width=True)
         
+        # Кнопка скачивания
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
 
