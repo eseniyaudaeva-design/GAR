@@ -750,16 +750,15 @@ if 'analysis_done' not in st.session_state: st.session_state.analysis_done = Fal
 if 'ai_generated_df' not in st.session_state: st.session_state.ai_generated_df = None
 if 'ai_excel_bytes' not in st.session_state: st.session_state.ai_excel_bytes = None
 if 'tags_html_result' not in st.session_state: st.session_state.tags_html_result = None
-# === Инициализация всех состояний (строки 73-74+) ===
 if 'table_html_result' not in st.session_state: st.session_state.table_html_result = None
 if 'tags_generated_df' not in st.session_state: st.session_state.tags_generated_df = None
 if 'tags_excel_data' not in st.session_state: st.session_state.tags_excel_data = None
-
-# Инициализация переменных для отзывов (чтобы не вылетало AttributeError)
 if 'reviews_results' not in st.session_state: st.session_state.reviews_results = []
 if 'reviews_queue' not in st.session_state: st.session_state.reviews_queue = []
 if 'reviews_automode_active' not in st.session_state: st.session_state.reviews_automode_active = False
 if 'reviews_current_index' not in st.session_state: st.session_state.reviews_current_index = 0
+if 'reviews_per_query' not in st.session_state: st.session_state.reviews_per_query = 3
+if 'pending_widget_updates' not in st.session_state: st.session_state.pending_widget_updates = {}
 
 # Current lists
 if 'categorized_products' not in st.session_state: st.session_state.categorized_products = []
@@ -5587,18 +5586,20 @@ with tab_lsi_gen:
         # Она выполнится ДО перезагрузки страницы, поэтому ошибки не будет
         def start_automode_callback(indices_list):
             st.session_state.lsi_automode_active = True
-            
             if indices_list:
                 idx = indices_list[0]
                 task = st.session_state.bg_tasks_queue[idx]
                 
-                # Теперь это безопасно: меняем значение ДО отрисовки виджета
-                st.session_state.query_input = task['h1']
-                st.session_state.competitor_source_radio = "Поиск через API Arsenkin (TOP-30)"
+                # Для LSI текстов всегда режим "Без страницы"
+                st.session_state['pending_widget_updates'] = {
+                    'query_input': task['h1'],
+                    'my_page_source_radio': "Без страницы",
+                    'my_url_input': "",
+                    'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)"
+                }
+                
                 st.session_state.lsi_processing_task_id = idx
                 st.session_state.start_analysis_flag = True
-                
-                # Чистим старые результаты
                 st.session_state.pop('analysis_results', None)
                 st.session_state.pop('analysis_done', None)
         # -------------------------------------
@@ -5901,15 +5902,14 @@ with tab_faq_gen:
 
                 # Двигаем очередь
                 st.session_state.reviews_current_index += 1
-                if st.session_state.reviews_current_index < len(st.session_state.reviews_queue):
-                    st.session_state.query_input = st.session_state.reviews_queue[st.session_state.reviews_current_index]['q']
-                    st.session_state.start_analysis_flag = True
-                else:
-                    st.session_state.reviews_automode_active = False
-                st.rerun()
-            except Exception as e:
-                st.error(f"Ошибка в блоке отзывов: {e}")
-                st.session_state.reviews_automode_active = False
+                if 'reviews_results' in st.session_state and st.session_state.reviews_results:
+                    st.markdown("### Результаты")
+                    # Удаление дублей по тексту отзыва перед выводом
+                    df_revs = pd.DataFrame(st.session_state.reviews_results).drop_duplicates(subset=['Отзыв'], keep='last')
+                    st.dataframe(df_revs, use_container_width=True)
+                    
+                    csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
 # ==================================================================
     # 🔥 HOOK ДЛЯ FAQ ГЕНЕРАТОРА (СРАБАТЫВАЕТ ПОСЛЕ ПЕРВОЙ ВКЛАДКИ)
     # ==================================================================
@@ -6074,12 +6074,20 @@ with tab_reviews_gen:
                 st.session_state.reviews_current_index = 0
                 st.session_state.reviews_per_query = rev_count_input
                 st.session_state.reviews_automode_active = True
-                # Используем буфер для безопасного обновления виджета query_input
-                st.session_state['pending_widget_updates'] = {
+# Настройка Вкладки 1 под выбранный режим (URL или H1)
+                updates = {
                     'query_input': queue[0]['q'],
-                    'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                    'my_page_source_radio': "Без страницы"
+                    'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)"
                 }
+                
+                if rev_mode == "Список URL":
+                    updates['my_page_source_radio'] = "Релевантная страница на вашем сайте"
+                    updates['my_url_input'] = queue[0]['url']
+                else:
+                    updates['my_page_source_radio'] = "Без страницы"
+                    updates['my_url_input'] = ""
+                
+                st.session_state['pending_widget_updates'] = updates
                 st.session_state.start_analysis_flag = True
                 st.rerun()
 
@@ -6089,13 +6097,13 @@ with tab_reviews_gen:
 # Проверка и очистка дублей (чтобы не занимать место)
     if 'reviews_results' in st.session_state and st.session_state.reviews_results:
         st.markdown("### Результаты")
-        # Удаляем дубликаты отзывов по тексту, чтобы экономить память
+        # Удаление дублей по тексту отзыва перед выводом
         df_revs = pd.DataFrame(st.session_state.reviews_results).drop_duplicates(subset=['Отзыв'], keep='last')
         st.dataframe(df_revs, use_container_width=True)
         
-        # Кнопка скачивания
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
