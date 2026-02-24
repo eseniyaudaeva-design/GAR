@@ -5994,22 +5994,51 @@ with tab_faq_gen:
                     st.write(faq_items)
 
 # ==========================================
-# 7. ВКЛАДКА: ГЕНЕРАТОР ОТЗЫВОВ (БАЗА ИЗ ПАПКИ GITHUB)
+# 7. ВКЛАДКА: ГЕНЕРАТОР ОТЗЫВОВ (БАЗА ИЗ ПАПКИ GITHUB + ПАРСЕР URL)
 # ==========================================
 with tab_reviews_gen:
     st.header("💬 Генератор отзывов (Локальная база)")
     st.markdown("Справочники подтягиваются автоматически из папки `dicts`.")
     
-    rev_queries = st.text_area("Список запросов (H1) для отзывов:", height=150, help="Каждый запрос с новой строки.")
-    reviews_count = st.number_input("Сколько отзывов на 1 запрос?", min_value=1, max_value=20, value=3)
+    # === ВЫБОР РЕЖИМА ВВОДА ===
+    input_mode = st.radio("Откуда брать названия товаров (запросы)?", ["Список H1 (ручной ввод)", "Список URL (скрипт сам спарсит H1 с сайта)"], horizontal=True)
+    rev_input = st.text_area("Введите данные (каждый с новой строки):", height=150)
+    
+    reviews_count = st.number_input("Сколько отзывов на 1 товар?", min_value=1, max_value=20, value=3)
     
     if st.button("🚀 Сгенерировать отзывы", type="primary", use_container_width=True):
-        if not rev_queries.strip():
-            st.warning("Введите хотя бы один запрос!")
+        if not rev_input.strip():
+            st.warning("Введите хотя бы одну строчку!")
         else:
-            with st.spinner("Читаем базу данных и собираем отзывы..."):
+            with st.spinner("Подготавливаем данные и собираем отзывы..."):
                 try:
-                    # 1. Читаем переменные
+                    import requests
+                    from bs4 import BeautifulSoup
+                    import os
+                    
+                    # === 1. ПОЛУЧАЕМ ЗАПРОСЫ (ПАРСИМ URL, ЕСЛИ НУЖНО) ===
+                    queries_list = []
+                    raw_lines = [line.strip() for line in rev_input.split('\n') if line.strip()]
+                    
+                    if "URL" in input_mode:
+                        st.toast("🕵️ Заходим на сайты и собираем H1...", icon="⏳")
+                        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                        for url in raw_lines:
+                            try:
+                                # Используем verify=False на случай проблем с SSL
+                                resp = requests.get(url, headers=headers, timeout=10, verify=False)
+                                soup = BeautifulSoup(resp.content, 'html.parser')
+                                h1_tag = soup.find('h1')
+                                if h1_tag and h1_tag.text:
+                                    queries_list.append(h1_tag.text.strip())
+                                else:
+                                    queries_list.append("Товар без названия")
+                            except Exception as e:
+                                queries_list.append("Ошибка парсинга URL")
+                    else:
+                        queries_list = raw_lines
+
+                    # === 2. ЧИТАЕМ БАЗУ ДАННЫХ ИЗ GITHUB ===
                     df_vars = pd.read_csv("dicts/vars.csv", sep=None, engine='python')
                     repo_vars = {}
                     col_var_name = next((c for c in df_vars.columns if 'переменная' in c.lower() or 'код' in c.lower()), df_vars.columns[0])
@@ -6019,7 +6048,6 @@ with tab_reviews_gen:
                         if key and key != 'nan':
                             repo_vars[key] = [v.strip() for v in str(row[col_var_val]).split('|') if v.strip()]
 
-                    # 2. Читаем ФИО (Имя, Фамилия, Отчество, Пол)
                     df_fio = pd.read_csv("dicts/fio.csv", sep=None, engine='python')
                     repo_fio = {'MALE': {'names': [], 'surnames': [], 'patronymics': []}, 'FEMALE': {'names': [], 'surnames': [], 'patronymics': []}}
                     for _, row in df_fio.iterrows():
@@ -6034,17 +6062,25 @@ with tab_reviews_gen:
                             if surname and surname != 'nan': repo_fio[g_key]['surnames'].append(surname)
                             if patronymic and patronymic != 'nan': repo_fio[g_key]['patronymics'].append(patronymic)
 
-                    # 3. Читаем шаблоны
                     df_tpl = pd.read_csv("dicts/templates.csv", sep=None, engine='python')
                     col_tpl = next((c for c in df_tpl.columns if 'шаблон' in c.lower()), df_tpl.columns[0])
                     repo_tpl = [str(t).strip() for t in df_tpl[col_tpl].dropna().tolist() if str(t).strip() and str(t).strip() != 'nan']
 
-                    # === ГЕНЕРАЦИЯ ===
-                    queries_list = [q.strip() for q in rev_queries.split('\n') if q.strip()]
+                    # === 3. ГЕНЕРАЦИЯ ОТЗЫВОВ ===
                     final_reviews_data = []
                     progress_bar = st.progress(0)
                     
                     for idx, q in enumerate(queries_list):
+                        # Если H1 не спарсился, пропускаем умную логику
+                        if q in ["Товар без названия", "Ошибка парсинга URL"]:
+                            final_reviews_data.append({
+                                "URL / Запрос": raw_lines[idx],
+                                "Имя": "—",
+                                "Отзыв": f"⚠️ {q}. Проверьте ссылку.",
+                                "Вставленные LSI": "—"
+                            })
+                            continue
+
                         cached = get_cached_analysis(q)
                         lsi_words = []
                         if cached:
@@ -6054,13 +6090,14 @@ with tab_reviews_gen:
                                 lsi_words = df_cache['word'].head(15).tolist()
                         
                         if not lsi_words:
-                            st.warning(f"⚠️ По запросу '{q}' нет LSI в базе SQLite. Отзывы собраны без ключей. Сначала проанализируй запрос на 1 вкладке!")
+                            st.warning(f"⚠️ Для '{q}' нет LSI в базе SQLite (отзывы собраны без ключей). Прогоните его через 1 вкладку для сбора LSI!")
                         
                         for _ in range(reviews_count):
                             tpl = random.choice(repo_tpl)
                             name, text, used_lsi = build_review_from_repo(tpl, repo_vars, repo_fio, lsi_words)
                             final_reviews_data.append({
-                                "Запрос (H1)": q,
+                                "URL / Запрос": raw_lines[idx] if "URL" in input_mode else q,
+                                "H1 (Товар)": q,
                                 "Имя": name,
                                 "Отзыв": text,
                                 "Вставленные LSI": ", ".join(used_lsi) if used_lsi else "—"
@@ -6073,7 +6110,7 @@ with tab_reviews_gen:
                         df_res = pd.DataFrame(final_reviews_data)
                         st.dataframe(df_res, use_container_width=True)
                         csv = df_res.to_csv(index=False).encode('utf-8-sig')
-                        st.download_button("💾 Скачать (CSV)", data=csv, file_name="generated_reviews.csv", mime="text/csv", type="primary")
+                        st.download_button("💾 Скачать отзывы (CSV)", data=csv, file_name="generated_reviews.csv", mime="text/csv", type="primary")
 
                 except FileNotFoundError as e:
                     st.error(f"❌ Файл не найден: `{e.filename}`. Проверь папку `dicts` в GitHub.")
