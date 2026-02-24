@@ -3695,92 +3695,9 @@ with tab_seo_main:
             st.session_state.naming_table_df = naming_df 
             st.session_state.ideal_h1_result = analyze_ideal_name(final_clean_data)
             st.session_state.analysis_done = True
-
-# ==========================================
-# 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (ИСПРАВЛЕННЫЙ)
-# ==========================================
-if st.session_state.get('reviews_automode_active'):
-    try:
-        # 1. Данные из анализа
-        res_seo = st.session_state.analysis_results
-        lsi_pool = res_seo['hybrid'].head(15)['Слово'].tolist() if 'hybrid' in res_seo else []
-        
-        curr_idx = st.session_state.reviews_current_index
-        queue = st.session_state.reviews_queue
-        
-        # ОПРЕДЕЛЯЕМ TASK (чтобы не было NameError)
-        if curr_idx < len(queue):
-            task = queue[curr_idx]
-        else:
-            st.session_state.reviews_automode_active = False
-            st.rerun()
-
-        # 2. ЗАГРУЗКА ИЗ ПАПКИ dicts С ПРАВИЛЬНЫМИ ПУТЯМИ
-        df_fio = pd.read_csv("dicts/fio.csv", sep=";")
-        df_templates = pd.read_csv("dicts/templates.csv", sep=";")
-        df_vars = pd.read_csv("dicts/vars.csv", sep=";")
-        
-        # Собираем словарь переменных (Скриншот 1)
-        var_dict = {}
-        for _, row in df_vars.iterrows():
-            var_name = str(row['Переменная']).strip()
-            var_values = str(row['Значения']).split('|')
-            var_dict[f"{{{var_name}}}"] = [v.strip() for v in var_values]
-
-        with st.spinner(f"📦 Сборка отзывов для: {task['q']}..."):
-            for _ in range(st.session_state.reviews_per_query):
-                # --- РАНДОМ ФИО ---
-                fio_row = df_fio.sample(n=1).iloc[0]
-                current_fio = f"{fio_row['Фамилия']} {fio_row['Имя']}"
-                
-                # --- ВЫБОР ШАБЛОНА (Скриншот 2) ---
-                template = random.choice(df_templates['Шаблон'].values)
-               
-                # --- ЗАМЕНА ПЕРЕМЕННЫХ (Скриншот 3 - исправление) ---
-                # Регулярка теперь видит кириллицу внутри {скрепок}
-                found_placeholders = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", template)
-
-                for ph in found_placeholders:
-                    if ph in var_dict:
-                        # Рандомим фразу из vars.csv
-                        template = template.replace(ph, random.choice(var_dict[ph]), 1)
-                    elif ph == "{дата}":
-                        # Свежая дата: сегодня или до 3 дней назад
-                        days_ago = random.randint(0, 3)
-                        fresh_date = (datetime.datetime.now() - datetime.timedelta(days=days_ago)).strftime("%d.%m.%Y")
-                        template = template.replace("{дата}", fresh_date)
-                
-                # Сохраняем результат
-                st.session_state.reviews_results.append({
-                    "ФИО": current_fio,
-                    "Запрос": task['q'],
-                    "URL": task.get('url', '-'),
-                    "Отзыв": template.strip()
-                })
-
-        # 3. ЛОГИКА ПЕРЕКЛЮЧЕНИЯ НА СЛЕДУЮЩИЙ URL
-        next_idx = curr_idx + 1
-        if next_idx < len(queue):
-            st.session_state.reviews_current_index = next_idx
-            next_task = queue[next_idx]
-            st.session_state['pending_widget_updates'] = {
-                'query_input': next_task['q'],
-                'my_url_input': next_task['url'],
-                'my_page_source_radio': "Релевантная страница на вашем сайте" if next_task['url'] != 'manual' else "Без страницы"
-            }
-            st.session_state.start_analysis_flag = True
-            st.rerun() 
-        else:
-            st.session_state.reviews_automode_active = False
-            st.success("✅ Все отзывы успешно сгенерированы!")
-            st.rerun()
             
-    except Exception as e:
-        st.error(f"❌ Ошибка в движке отзывов: {e}")
-        st.session_state.reviews_automode_active = False
-            
-        # ==========================================
-        # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (ИСПРАВЛЕННЫЙ)
+# ==========================================
+        # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ
         # ==========================================
         if st.session_state.get('reviews_automode_active'):
             try:
@@ -3796,7 +3713,7 @@ if st.session_state.get('reviews_automode_active'):
                     st.session_state.reviews_automode_active = False
                     st.rerun()
 
-                # Загрузка из папки dicts
+                # Загрузка справочников
                 df_fio = pd.read_csv("dicts/fio.csv", sep=";")
                 df_templates = pd.read_csv("dicts/templates.csv", sep=";")
                 df_vars = pd.read_csv("dicts/vars.csv", sep=";")
@@ -3859,7 +3776,7 @@ if st.session_state.get('reviews_automode_active'):
                 st.session_state.reviews_automode_active = False
 
         # ==========================================
-        # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (ИСПРАВЛЕННЫЙ)
+        # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ
         # ==========================================
         words_to_check = [x['word'] for x in results_final.get('missing_semantics_high', [])]
         
@@ -3893,7 +3810,6 @@ if st.session_state.get('reviews_automode_active'):
             st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
             st.session_state.orig_general = categorized['general'] + categorized['sensitive']
 
-        # Готовим обновления для виджетов (ЧЕРЕЗ UPDATES)
         if 'pending_widget_updates' not in st.session_state:
             st.session_state['pending_widget_updates'] = {}
         
@@ -3916,6 +3832,8 @@ if st.session_state.get('reviews_automode_active'):
         updates['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
         updates['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
         st.session_state['pending_widget_updates'] = updates
+
+        current_source_val = st.session_state.get('competitor_source_radio', '')
             # ==========================================
             
             
@@ -6254,6 +6172,7 @@ with tab_reviews_gen:
         # Кнопка скачивания
         csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
