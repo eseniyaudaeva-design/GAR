@@ -3697,10 +3697,11 @@ with tab_seo_main:
             st.session_state.analysis_done = True
             
 # ==========================================
-        # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ
+        # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (ИСПРАВЛЕННЫЙ)
         # ==========================================
         if st.session_state.get('reviews_automode_active'):
             try:
+                # 1. Данные из анализа
                 res_seo = st.session_state.analysis_results
                 lsi_pool = res_seo['hybrid'].head(15)['Слово'].tolist() if (res_seo and 'hybrid' in res_seo) else []
                 
@@ -3713,7 +3714,7 @@ with tab_seo_main:
                     st.session_state.reviews_automode_active = False
                     st.rerun()
 
-                # Загрузка справочников из папки dicts
+                # 2. Загрузка справочников из папки dicts
                 df_fio = pd.read_csv("dicts/fio.csv", sep=";")
                 df_templates = pd.read_csv("dicts/templates.csv", sep=";")
                 df_vars = pd.read_csv("dicts/vars.csv", sep=";")
@@ -3726,9 +3727,11 @@ with tab_seo_main:
 
                 with st.spinner(f"📦 Сборка отзывов для: {task.get('q', 'запроса')}..."):
                     for _ in range(st.session_state.reviews_per_query):
+                        # Рандом ФИО
                         f_row = df_fio.sample(n=1).iloc[0]
                         c_fio = f"{f_row['Фамилия']} {f_row['Имя']}"
                         
+                        # Выбор шаблона
                         text = random.choice(df_templates['Шаблон'].values)
                         
                         # Замена переменных (поддержка кириллицы)
@@ -3741,13 +3744,14 @@ with tab_seo_main:
                                 dt = (datetime.datetime.now() - datetime.timedelta(days=d_off)).strftime("%d.%m.%Y")
                                 text = text.replace("{дата}", dt)
                         
+                        # Добавление LSI
                         if lsi_pool:
                             l_word = random.choice(lsi_pool)
                             try:
                                 inflected = inflect_lsi_phrase(l_word, 'accs')
-                                text += f" Отдельно отмечу {inflected}."
+                                text += f" Отмечу также {inflected}."
                             except:
-                                text += f" Отдельно отмечу {l_word}."
+                                text += f" Отмечу также {l_word}."
 
                         st.session_state.reviews_results.append({
                             "ФИО": c_fio,
@@ -3756,6 +3760,7 @@ with tab_seo_main:
                             "Отзыв": text.strip()
                         })
 
+                # Переход к следующему шагу
                 n_idx = curr_idx + 1
                 if n_idx < len(queue):
                     st.session_state.reviews_current_index = n_idx
@@ -3770,7 +3775,8 @@ with tab_seo_main:
                 else:
                     st.session_state.reviews_automode_active = False
                     st.success("✅ Генерация завершена!")
-            
+                    st.rerun()
+
             except Exception as e:
                 st.error(f"❌ Ошибка в блоке отзывов: {e}")
                 st.session_state.reviews_automode_active = False
@@ -3779,7 +3785,6 @@ with tab_seo_main:
         # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (ИСПРАВЛЕННЫЙ)
         # ==========================================
         words_to_check = [x['word'] for x in results_final.get('missing_semantics_high', [])]
-        
         if len(words_to_check) < 5:
             words_to_check.extend([x['word'] for x in results_final.get('missing_semantics_low', [])[:20]])
 
@@ -3792,23 +3797,24 @@ with tab_seo_main:
             st.session_state.categorized_general = []
             st.session_state.categorized_sensitive = []
         else:
-            with st.spinner("Классификация семантики..."):
-                categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
-            
-            st.session_state.categorized_products = categorized['products']
-            st.session_state.categorized_services = categorized['services']
-            st.session_state.categorized_commercial = categorized['commercial']
-            st.session_state.categorized_geo = categorized['geo']
-            st.session_state.categorized_dimensions = categorized['dimensions']
-            st.session_state.categorized_general = categorized['general']
-            st.session_state.categorized_sensitive = categorized['sensitive']
+            if 'categorized_products' not in st.session_state or not st.session_state.categorized_products:
+                with st.spinner("Классификация семантики..."):
+                    categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
+                
+                st.session_state.categorized_products = categorized['products']
+                st.session_state.categorized_services = categorized['services']
+                st.session_state.categorized_commercial = categorized['commercial']
+                st.session_state.categorized_geo = categorized['geo']
+                st.session_state.categorized_dimensions = categorized['dimensions']
+                st.session_state.categorized_general = categorized['general']
+                st.session_state.categorized_sensitive = categorized['sensitive']
 
-            st.session_state.orig_products = categorized['products'] + categorized['sensitive']
-            st.session_state.orig_services = categorized['services'] + categorized['sensitive']
-            st.session_state.orig_commercial = categorized['commercial'] + categorized['sensitive']
-            st.session_state.orig_geo = categorized['geo'] + categorized['sensitive']
-            st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
-            st.session_state.orig_general = categorized['general'] + categorized['sensitive']
+                st.session_state.orig_products = categorized['products'] + categorized['sensitive']
+                st.session_state.orig_services = categorized['services'] + categorized['sensitive']
+                st.session_state.orig_commercial = categorized['commercial'] + categorized['sensitive']
+                st.session_state.orig_geo = categorized['geo'] + categorized['sensitive']
+                st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
+                st.session_state.orig_general = categorized['general'] + categorized['sensitive']
 
         # Готовим обновления для виджетов
         if 'pending_widget_updates' not in st.session_state:
@@ -3816,33 +3822,30 @@ with tab_seo_main:
         
         updates = st.session_state['pending_widget_updates']
 
-        if words_to_check:
-            updates['sensitive_words_input_final'] = "\n".join(st.session_state.categorized_sensitive)
+        if words_to_check and 'categorized_sensitive' in locals() or 'categorized' in locals():
+            # Если классификация только что прошла, берем из локальной переменной
+            sens = categorized['sensitive'] if 'categorized' in locals() else st.session_state.categorized_sensitive
+            updates['sensitive_words_input_final'] = "\n".join(sens)
         
         all_found_products = st.session_state.get('categorized_products', [])
         count_prods = len(all_found_products)
         
-        if count_prods < 20:
-            st.session_state.auto_tags_words = all_found_products
-            st.session_state.auto_promo_words = []
-        else:
-            half_count = int(math.ceil(count_prods / 2))
-            st.session_state.auto_tags_words = all_found_products[:half_count]
-            st.session_state.auto_promo_words = all_found_products[half_count:]
+        if count_prods > 0:
+            if count_prods < 20:
+                st.session_state.auto_tags_words = all_found_products
+                st.session_state.auto_promo_words = []
+            else:
+                half_count = int(math.ceil(count_prods / 2))
+                st.session_state.auto_tags_words = all_found_products[:half_count]
+                st.session_state.auto_promo_words = all_found_products[half_count:]
+            
+            updates['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
+            updates['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
         
-        updates['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
-        updates['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
         st.session_state['pending_widget_updates'] = updates
 
-        # ПЕРЕХОД К ГРАФИКАМ (выравниваем по левому краю основного блока)
+        # --- ГРАФИКИ ---
         current_source_val = st.session_state.get('competitor_source_radio', '')
-        if "API" in current_source_val and 'full_graph_data' in st.session_state:
-            # ==========================================
-            
-            
-        # === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
-        
-        # 1. Берем данные для проверки аномалий
         if "API" in current_source_val and 'full_graph_data' in st.session_state:
             df_rel_check = st.session_state['full_graph_data']
         else:
@@ -6175,6 +6178,7 @@ with tab_reviews_gen:
         # Кнопка скачивания
         csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
