@@ -36,11 +36,13 @@ import copy
 import plotly.graph_objects as go
 import pickle
 import datetime
+# ==========================================
+# ЯДРО БАЗЫ ДАННЫХ (КЭШИРОВАНИЕ SEO-АНАЛИЗА НА 90 ДНЕЙ)
+# ==========================================
 import sqlite3
 import json
-from datetime import datetime, timedelta
+import datetime # <-- Исправленный безопасный импорт
 
-# Инициализация базы данных
 def init_seo_db():
     conn = sqlite3.connect('seo_cache.db')
     c = conn.cursor()
@@ -48,8 +50,7 @@ def init_seo_db():
         CREATE TABLE IF NOT EXISTS seo_analysis (
             query TEXT PRIMARY KEY,
             timestamp TEXT,
-            lsi_words TEXT,
-            full_data TEXT
+            parsed_data TEXT
         )
     ''')
     conn.commit()
@@ -57,34 +58,27 @@ def init_seo_db():
 
 init_seo_db()
 
-# Функция проверки кэша (Актуальность 3 месяца / 90 дней)
 def get_cached_analysis(query):
     conn = sqlite3.connect('seo_cache.db')
     c = conn.cursor()
-    c.execute('SELECT timestamp, lsi_words, full_data FROM seo_analysis WHERE query = ?', (query.lower().strip(),))
+    c.execute('SELECT timestamp, parsed_data FROM seo_analysis WHERE query = ?', (query.lower().strip(),))
     row = c.fetchone()
     conn.close()
     
     if row:
-        cached_date = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
-        # Проверяем, прошло ли меньше 90 дней
-        if datetime.now() - cached_date < timedelta(days=90):
-            return {
-                "lsi_words": json.loads(row[1]),
-                "full_data": json.loads(row[2])
-            }
+        cached_date = datetime.datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+        if datetime.datetime.now() - cached_date < datetime.timedelta(days=90):
+            return json.loads(row[1])
     return None
 
-# Функция сохранения в кэш
-def save_cached_analysis(query, lsi_words, full_data):
+def save_cached_analysis(query, data_for_graph):
     conn = sqlite3.connect('seo_cache.db')
     c = conn.cursor()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # Переводим словари/списки в JSON-строку для хранения
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     c.execute('''
-        INSERT OR REPLACE INTO seo_analysis (query, timestamp, lsi_words, full_data)
-        VALUES (?, ?, ?, ?)
-    ''', (query.lower().strip(), timestamp, json.dumps(lsi_words), json.dumps(full_data)))
+        INSERT OR REPLACE INTO seo_analysis (query, timestamp, parsed_data)
+        VALUES (?, ?, ?)
+    ''', (query.lower().strip(), timestamp, json.dumps(data_for_graph)))
     conn.commit()
     conn.close()
 
@@ -5946,6 +5940,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
