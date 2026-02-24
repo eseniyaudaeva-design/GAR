@@ -36,6 +36,57 @@ import copy
 import plotly.graph_objects as go
 import pickle
 import datetime
+import sqlite3
+import json
+from datetime import datetime, timedelta
+
+# Инициализация базы данных
+def init_seo_db():
+    conn = sqlite3.connect('seo_cache.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS seo_analysis (
+            query TEXT PRIMARY KEY,
+            timestamp TEXT,
+            lsi_words TEXT,
+            full_data TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_seo_db()
+
+# Функция проверки кэша (Актуальность 3 месяца / 90 дней)
+def get_cached_analysis(query):
+    conn = sqlite3.connect('seo_cache.db')
+    c = conn.cursor()
+    c.execute('SELECT timestamp, lsi_words, full_data FROM seo_analysis WHERE query = ?', (query.lower().strip(),))
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        cached_date = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+        # Проверяем, прошло ли меньше 90 дней
+        if datetime.now() - cached_date < timedelta(days=90):
+            return {
+                "lsi_words": json.loads(row[1]),
+                "full_data": json.loads(row[2])
+            }
+    return None
+
+# Функция сохранения в кэш
+def save_cached_analysis(query, lsi_words, full_data):
+    conn = sqlite3.connect('seo_cache.db')
+    c = conn.cursor()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Переводим словари/списки в JSON-строку для хранения
+    c.execute('''
+        INSERT OR REPLACE INTO seo_analysis (query, timestamp, lsi_words, full_data)
+        VALUES (?, ?, ?, ?)
+    ''', (query.lower().strip(), timestamp, json.dumps(lsi_words), json.dumps(full_data)))
+    conn.commit()
+    conn.close()
 
 # ==========================================
 # FIX FOR PYTHON 3.11+
@@ -622,6 +673,53 @@ if 'auto_promo_words' not in st.session_state: st.session_state.auto_promo_words
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
 
 st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
+
+# ==========================================
+# ЯДРО БАЗЫ ДАННЫХ (КЭШИРОВАНИЕ SEO-АНАЛИЗА НА 90 ДНЕЙ)
+# ==========================================
+import sqlite3
+import json
+from datetime import datetime, timedelta
+
+def init_seo_db():
+    conn = sqlite3.connect('seo_cache.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS seo_analysis (
+            query TEXT PRIMARY KEY,
+            timestamp TEXT,
+            parsed_data TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_seo_db()
+
+def get_cached_analysis(query):
+    conn = sqlite3.connect('seo_cache.db')
+    c = conn.cursor()
+    c.execute('SELECT timestamp, parsed_data FROM seo_analysis WHERE query = ?', (query.lower().strip(),))
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        cached_date = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+        if datetime.now() - cached_date < timedelta(days=90):
+            return json.loads(row[1])
+    return None
+
+def save_cached_analysis(query, data_for_graph):
+    conn = sqlite3.connect('seo_cache.db')
+    c = conn.cursor()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute('''
+        INSERT OR REPLACE INTO seo_analysis (query, timestamp, parsed_data)
+        VALUES (?, ?, ?)
+    ''', (query.lower().strip(), timestamp, json.dumps(data_for_graph)))
+    conn.commit()
+    conn.close()
+# ==========================================
 
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
@@ -3407,75 +3505,90 @@ with tab_seo_main:
 
         st.session_state['saved_my_data'] = my_data 
             
-        # 2. Сбор КАНДИДАТОВ
-        candidates_pool = []
+# 2. Сбор КАНДИДАТОВ И ПРОВЕРКА КЭША БД
         current_source_val = st.session_state.get("competitor_source_radio")
-        
-        # ИСПРАВЛЕНИЕ: Берем настройку пользователя (10 или 20) для ФИНАЛА
         user_target_top_n = st.session_state.settings_top_n
-        # А скачиваем всегда МАКСИМУМ (30), чтобы было из чего выбирать
-        download_limit = 30 
+        download_limit = 30 # ВСЕГДА КАЧАЕМ 30 для TF-IDF
         
-        if "API" in current_source_val:
-            if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
-            with st.spinner(f"API Arsenkin (Запрос Топ-30)..."):
-                raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
-                
-                if not raw_top: st.stop()
-                
-                excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
-                agg_list = [
-                    "avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex",
-                    "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua",
-                    "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis",
-                    "megamarket.ru", "lamoda.ru", "utkonos.ru", "vprok.ru", "allbiz.ru", "all-companies.ru",
-                    "orgpage.ru", "list-org.com", "rusprofile.ru", "e-katalog.ru", "kufar.by", "wildberries.kz",
-                    "ozon.kz", "kaspi.kz", "pulscen.kz", "allbiz.kz", "wildberries.uz", "olx.uz", "pulscen.uz",
-                    "allbiz.uz", "wildberries.kg", "pulscen.kg", "allbiz.kg", "all.biz", "b2b-center.ru"
-                ]
-                excl.extend(agg_list)
-                for res in raw_top:
-                    dom = urlparse(res['url']).netloc.lower()
-                    if my_domain and (my_domain in dom or dom in my_domain):
-                        if my_serp_pos == 0 or res['pos'] < my_serp_pos: 
-                            my_serp_pos = res['pos']
-                    is_garbage = False
-                    for x in excl:
-                        if x.lower() in dom:
-                            is_garbage = True
-                            break
-                    if is_garbage: continue
-                    candidates_pool.append(res)
-        else:
-            raw_input_urls = st.session_state.get("persistent_urls", "")
-            candidates_pool = [{'url': u.strip(), 'pos': i+1} for i, u in enumerate(raw_input_urls.split('\n')) if u.strip()]
+        cached_data_for_graph = None
+        if "API" in current_source_val and current_input_type == "Без страницы":
+            cached_data_for_graph = get_cached_analysis(st.session_state.query_input)
 
-        if not candidates_pool: st.error("После фильтрации не осталось кандидатов."); st.stop()
-        
-        # 3. СКАЧИВАНИЕ (Всех 30)
-        comp_data_valid = []
-        with st.status(f"🕵️ Сканирование (Всего кандидатов: {len(candidates_pool)})...", expanded=True) as status:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-                futures = {
-                    executor.submit(parse_page, item['url'], settings, st.session_state.query_input): item 
-                    for item in candidates_pool
-                }
-                done_count = 0
-                for f in concurrent.futures.as_completed(futures):
-                    original_item = futures[f]
-                    try:
-                        res = f.result()
-                        if res:
-                            res['pos'] = original_item['pos']
-                            comp_data_valid.append(res)
-                    except: pass
-                    done_count += 1
-                    status.update(label=f"Обработано: {done_count}/{len(candidates_pool)} | Успешно скачано: {len(comp_data_valid)}")
-
-            comp_data_valid.sort(key=lambda x: x['pos'])
-            # Сначала берем ВСЕХ, кто скачался (до 30), для графика
-            data_for_graph = comp_data_valid[:download_limit]
+        if cached_data_for_graph:
+            st.toast(f"⚡ Найдено в базе данных! Парсинг пропущен", icon="🗄️")
+            data_for_graph = cached_data_for_graph
             targets_for_graph = [{'url': d['url'], 'pos': d['pos']} for d in data_for_graph]
+        else:
+            candidates_pool = []
+            if "API" in current_source_val:
+                if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
+                with st.spinner(f"API Arsenkin (Запрос Топ-30)..."):
+                    raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
+                    if not raw_top: st.stop()
+                    
+                    excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
+                    agg_list = [
+                        "avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex",
+                        "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua",
+                        "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis",
+                        "megamarket.ru", "lamoda.ru", "utkonos.ru", "vprok.ru", "allbiz.ru", "all-companies.ru",
+                        "orgpage.ru", "list-org.com", "rusprofile.ru", "e-katalog.ru", "kufar.by", "wildberries.kz",
+                        "ozon.kz", "kaspi.kz", "pulscen.kz", "allbiz.kz", "wildberries.uz", "olx.uz", "pulscen.uz",
+                        "allbiz.uz", "wildberries.kg", "pulscen.kg", "allbiz.kg", "all.biz", "b2b-center.ru"
+                    ]
+                    excl.extend(agg_list)
+                    for res in raw_top:
+                        dom = urlparse(res['url']).netloc.lower()
+                        if my_domain and (my_domain in dom or dom in my_domain):
+                            if my_serp_pos == 0 or res['pos'] < my_serp_pos: 
+                                my_serp_pos = res['pos']
+                        is_garbage = False
+                        for x in excl:
+                            if x.lower() in dom:
+                                is_garbage = True
+                                break
+                        if is_garbage: continue
+                        candidates_pool.append(res)
+            else:
+                raw_input_urls = st.session_state.get("persistent_urls", "")
+                candidates_pool = [{'url': u.strip(), 'pos': i+1} for i, u in enumerate(raw_input_urls.split('\n')) if u.strip()]
+
+            if not candidates_pool: st.error("После фильтрации не осталось кандидатов."); st.stop()
+            
+            # 3. СКАЧИВАНИЕ (Всех 30)
+            comp_data_valid = []
+            with st.status(f"🕵️ Сканирование (Всего кандидатов: {len(candidates_pool)})...", expanded=True) as status:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+                    futures = {
+                        executor.submit(parse_page, item['url'], settings, st.session_state.query_input): item 
+                        for item in candidates_pool
+                    }
+                    done_count = 0
+                    for f in concurrent.futures.as_completed(futures):
+                        original_item = futures[f]
+                        try:
+                            res = f.result()
+                            if res:
+                                res['pos'] = original_item['pos']
+                                comp_data_valid.append(res)
+                        except: pass
+                        done_count += 1
+                        status.update(label=f"Обработано: {done_count}/{len(candidates_pool)} | Успешно скачано: {len(comp_data_valid)}")
+
+                comp_data_valid.sort(key=lambda x: x['pos'])
+                data_for_graph = comp_data_valid[:download_limit]
+                targets_for_graph = [{'url': d['url'], 'pos': d['pos']} for d in data_for_graph]
+                
+                # +++ СОХРАНЯЕМ В БД ТОЛЬКО ЧТО СКАЧАННОЕ +++
+                if "API" in current_source_val and current_input_type == "Без страницы":
+                    save_cached_analysis(st.session_state.query_input, data_for_graph)
+                
+                # +++ СОХРАНЯЕМ В БД ТОЛЬКО ЧТО СКАЧАННОЕ +++
+                if "API" in current_source_val and current_input_type == "Без страницы":
+                    save_cached_analysis(st.session_state.query_input, data_for_graph)
+
+        # 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
+        with st.spinner("Анализ и фильтрация..."):
 
         # 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
         with st.spinner("Анализ и фильтрация..."):
@@ -5836,6 +5949,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
