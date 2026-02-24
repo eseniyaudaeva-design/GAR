@@ -83,6 +83,90 @@ def save_cached_analysis(query, data_for_graph):
     conn.close()
 
 # ==========================================
+# ДВИЖОК ГЕНЕРАЦИИ ОТЗЫВОВ (БЕЗ ИИ)
+# ==========================================
+import pymorphy3
+import random
+import re
+import pandas as pd
+
+@st.cache_resource
+def init_morph():
+    return pymorphy3.MorphAnalyzer()
+
+morph = init_morph()
+
+LSI_BRIDGES = [
+    {"template": "Отдельно хочу отметить **{}**.", "case": "accs"},
+    {"template": "Также порадовало наличие **{}**.", "case": "gent"},
+    {"template": "Обратили внимание на **{}** – всё отлично.", "case": "accs"},
+    {"template": "Кстати, с **{}** тоже никаких проблем не возникло.", "case": "ablt"},
+    {"template": "К слову, **{}** тут на высшем уровне.", "case": "nomn"}
+]
+
+def inflect_lsi_phrase(phrase, target_case):
+    words = str(phrase).split()
+    inflected_words = []
+    for word in words:
+        parsed_word = morph.parse(word)[0]
+        try:
+            inf_word = parsed_word.inflect({target_case})
+            if inf_word:
+                inflected_words.append(inf_word.word)
+            else:
+                inflected_words.append(word)
+        except AttributeError:
+            inflected_words.append(word)
+    return " ".join(inflected_words)
+
+def generate_random_date():
+    start_date = datetime.datetime(2026, 1, 1)
+    end_date = datetime.datetime(2026, 2, 10)
+    random_days = random.randrange((end_date - start_date).days + 1)
+    return (start_date + datetime.timedelta(days=random_days)).strftime("%d.%m.%Y")
+
+def build_review_from_repo(template, variables_dict, fio_list, lsi_words):
+    def replace_var(match):
+        var_name = match.group(1).strip()
+        if var_name == "дата":
+            return generate_random_date()
+        if var_name in variables_dict:
+            return str(random.choice(variables_dict[var_name])).strip()
+        return match.group(0)
+
+    draft = re.sub(r'\{([^}]+)\}', replace_var, str(template))
+    
+    forbidden_roots = [
+        "украин", "ukrain", "ua", "всу", "зсу", "ато", "сво", "войн",
+        "киев", "львов", "харьков", "одесс", "днепр", "мариуполь",
+        "донец", "луганс", "днр", "лнр", "донбасс", "мелитополь",
+        "бердянск", "бахмут", "запорожь", "херсон", "крым",
+        "политик", "спецоперац"
+    ]
+    clean_lsi = [w for w in lsi_words if not any(root in str(w).lower() for root in forbidden_roots) and len(str(w)) > 2]
+    
+    used_lsi = []
+    if clean_lsi:
+        lsi_word = random.choice(clean_lsi)
+        bridge = random.choice(LSI_BRIDGES)
+        inflected_lsi = inflect_lsi_phrase(lsi_word, bridge["case"])
+        lsi_sentence = bridge["template"].format(inflected_lsi)
+        
+        sentences = [s.strip() for s in draft.split('.') if s.strip()]
+        insert_pos = random.randint(1, max(1, len(sentences)))
+        sentences.insert(insert_pos, lsi_sentence)
+        draft = ". ".join(sentences) + "."
+        used_lsi.append(inflected_lsi)
+
+    draft = re.sub(r'\s+', ' ', draft)
+    draft = draft.replace(' .', '.').replace(' ,', ',').replace(' - ', ' – ')
+    sentences = draft.split('. ')
+    draft = '. '.join([s.capitalize() for s in sentences]).strip()
+    
+    random_name = random.choice(fio_list) if fio_list else "Аноним"
+    return random_name, draft, used_lsi
+
+# ==========================================
 # FIX FOR PYTHON 3.11+
 # ==========================================
 if not hasattr(inspect, 'getargspec'):
@@ -2728,7 +2812,7 @@ def global_stop_callback():
     st.session_state.auto_run_active = False
     st.session_state.start_analysis_flag = False
 
-tab_seo_main, tab_wholesale_main, tab_projects, tab_monitoring, tab_lsi_gen, tab_faq_gen = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор", "📁 Проекты", "📉 Мониторинг позиций", "📝 LSI Тексты", "❓ FAQ Генератор"])
+tab_seo_main, tab_wholesale_main, tab_projects, tab_monitoring, tab_lsi_gen, tab_faq_gen, tab_reviews_gen = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор", "📁 Проекты", "📉 Мониторинг позиций", "📝 LSI Тексты", "❓ FAQ Генератор", "💬 Отзывы"])
 
 # ------------------------------------------
 # TAB 1: SEO ANALYSIS (KEPT AS IS)
@@ -5894,6 +5978,81 @@ with tab_faq_gen:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
 
+# ==========================================
+# 7. ВКЛАДКА: ГЕНЕРАТОР ОТЗЫВОВ
+# ==========================================
+with tab_reviews_gen:
+    st.header("💬 Генератор отзывов (Локальный репозиторий)")
+    st.markdown("Загрузите CSV-файлы со справочниками. Скрипт соберет отзывы, просклоняет LSI из кэша и сгенерирует даты.")
+    
+    col_v, col_f, col_t = st.columns(3)
+    with col_v: file_vars = st.file_uploader("Переменные", type="csv")
+    with col_f: file_fio = st.file_uploader("ФИО", type="csv")
+    with col_t: file_tpl = st.file_uploader("Шаблоны", type="csv")
+    
+    rev_queries = st.text_area("Список запросов (H1) для отзывов:", height=150, help="Каждый запрос с новой строки.")
+    reviews_count = st.number_input("Сколько отзывов на 1 запрос?", min_value=1, max_value=20, value=3)
+    
+    if st.button("🚀 Сгенерировать отзывы", type="primary", use_container_width=True):
+        if not (file_vars and file_fio and file_tpl):
+            st.error("Пожалуйста, загрузите все 3 CSV-файла!")
+        elif not rev_queries.strip():
+            st.warning("Введите хотя бы один запрос!")
+        else:
+            with st.spinner("Собираем отзывы..."):
+                try:
+                    df_vars = pd.read_csv(file_vars, sep=None, engine='python')
+                    variables_dict = {}
+                    for _, row in df_vars.iterrows():
+                        try:
+                            variables_dict[str(row.iloc[0]).strip()] = [v.strip() for v in str(row.iloc[1]).split('|')]
+                        except: pass
+                        
+                    df_fio = pd.read_csv(file_fio, header=None, sep=None, engine='python')
+                    fio_list = df_fio[0].dropna().tolist()
+                    
+                    df_tpl = pd.read_csv(file_tpl, header=None, sep=None, engine='python')
+                    templates_list = df_tpl[0].dropna().tolist()
+
+                    queries_list = [q.strip() for q in rev_queries.split('\n') if q.strip()]
+                    final_reviews_data = []
+                    progress_bar = st.progress(0)
+                    
+                    for idx, q in enumerate(queries_list):
+                        cached = get_cached_analysis(q)
+                        lsi_words = []
+                        if cached:
+                            import pandas as pd
+                            df_cache = pd.DataFrame(cached)
+                            if 'tf_idf' in df_cache.columns and 'word' in df_cache.columns:
+                                df_cache = df_cache.sort_values(by='tf_idf', ascending=False)
+                                lsi_words = df_cache['word'].head(15).tolist()
+                        
+                        if not lsi_words:
+                            st.warning(f"⚠️ По запросу '{q}' нет LSI в базе. Пропущен.")
+                            continue
+                        
+                        for _ in range(reviews_count):
+                            tpl = random.choice(templates_list)
+                            name, text, used_lsi = build_review_from_repo(tpl, variables_dict, fio_list, lsi_words)
+                            final_reviews_data.append({
+                                "Запрос": q,
+                                "Имя": name,
+                                "Отзыв": text,
+                                "Вставленные LSI": ", ".join(used_lsi)
+                            })
+                        
+                        progress_bar.progress((idx + 1) / len(queries_list))
+                    
+                    if final_reviews_data:
+                        st.success("✅ Готово!")
+                        df_res = pd.DataFrame(final_reviews_data)
+                        st.dataframe(df_res, use_container_width=True)
+                        csv = df_res.to_csv(index=False).encode('utf-8-sig')
+                        st.download_button("💾 Скачать (CSV)", data=csv, file_name="generated_reviews.csv", mime="text/csv", type="primary")
+                        
+                except Exception as e:
+                    st.error(f"Ошибка чтения файлов: {str(e)}")
 
 
 
