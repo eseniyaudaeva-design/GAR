@@ -673,7 +673,7 @@ st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_i
 # ==========================================
 import sqlite3
 import json
-from datetime import datetime, timedelta
+import datetime # <-- Исправленный безопасный импорт
 
 def init_seo_db():
     conn = sqlite3.connect('seo_cache.db')
@@ -698,15 +698,15 @@ def get_cached_analysis(query):
     conn.close()
     
     if row:
-        cached_date = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
-        if datetime.now() - cached_date < timedelta(days=90):
+        cached_date = datetime.datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+        if datetime.datetime.now() - cached_date < datetime.timedelta(days=90):
             return json.loads(row[1])
     return None
 
 def save_cached_analysis(query, data_for_graph):
     conn = sqlite3.connect('seo_cache.db')
     c = conn.cursor()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     c.execute('''
         INSERT OR REPLACE INTO seo_analysis (query, timestamp, parsed_data)
         VALUES (?, ?, ?)
@@ -5940,6 +5940,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
