@@ -89,6 +89,7 @@ import pymorphy3
 import random
 import re
 import pandas as pd
+import datetime
 
 @st.cache_resource
 def init_morph():
@@ -125,7 +126,7 @@ def generate_random_date():
     random_days = random.randrange((end_date - start_date).days + 1)
     return (start_date + datetime.timedelta(days=random_days)).strftime("%d.%m.%Y")
 
-def build_review_from_repo(template, variables_dict, fio_list, lsi_words):
+def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
     def replace_var(match):
         var_name = match.group(1).strip()
         if var_name == "дата":
@@ -163,8 +164,22 @@ def build_review_from_repo(template, variables_dict, fio_list, lsi_words):
     sentences = draft.split('. ')
     draft = '. '.join([s.capitalize() for s in sentences]).strip()
     
-    random_name = random.choice(fio_list) if fio_list else "Аноним"
+    # Сборка ФИО
+    random_name = "Аноним"
+    available_genders = [g for g in ['MALE', 'FEMALE'] if repo_fio[g]['names'] and repo_fio[g]['surnames']]
+    if available_genders:
+        chosen_gender = random.choice(available_genders)
+        rand_name = random.choice(repo_fio[chosen_gender]['names'])
+        rand_surname = random.choice(repo_fio[chosen_gender]['surnames'])
+        
+        if repo_fio[chosen_gender]['patronymics'] and random.random() > 0.5:
+            rand_patronymic = random.choice(repo_fio[chosen_gender]['patronymics'])
+            random_name = f"{rand_name} {rand_patronymic} {rand_surname}"
+        else:
+            random_name = f"{rand_name} {rand_surname}"
+
     return random_name, draft, used_lsi
+# ==========================================
 
 # ==========================================
 # FIX FOR PYTHON 3.11+
@@ -5979,126 +5994,88 @@ with tab_faq_gen:
                     st.write(faq_items)
 
 # ==========================================
-# 7. ВКЛАДКА: ГЕНЕРАТОР ОТЗЫВОВ (С РЕПОЗИТОРИЕМ)
+# 7. ВКЛАДКА: ГЕНЕРАТОР ОТЗЫВОВ (БАЗА ИЗ ПАПКИ GITHUB)
 # ==========================================
-# Инициализируем наш репозиторий в памяти сессии
-if 'review_repo' not in st.session_state:
-    st.session_state.review_repo = {
-        'vars': {},
-        'fio': [],
-        'templates': []
-    }
-
 with tab_reviews_gen:
-    st.header("💬 Генератор отзывов (Локальный репозиторий)")
-    
-    # БЛОК 1: УПРАВЛЕНИЕ РЕПОЗИТОРИЕМ (Словари)
-    st.subheader("1. Наполнение репозитория")
-    st.markdown("Загрузите справочники один раз. Они сохранятся в памяти как словари.")
-    
-    col_v, col_f, col_t = st.columns(3)
-    with col_v: file_vars = st.file_uploader("Переменные (CSV)", type="csv", key="up_vars")
-    with col_f: file_fio = st.file_uploader("ФИО (CSV)", type="csv", key="up_fio")
-    with col_t: file_tpl = st.file_uploader("Шаблоны (CSV)", type="csv", key="up_tpl")
-    
-    if st.button("📥 Загрузить файлы в Репозиторий", type="secondary"):
-        if not (file_vars and file_fio and file_tpl):
-            st.error("Пожалуйста, прикрепите все 3 файла для обновления базы.")
-        else:
-            with st.spinner("Создаем словари..."):
-                try:
-                    # 1. Парсим переменные в словарь (dict)
-                    df_vars = pd.read_csv(file_vars, sep=None, engine='python')
-                    repo_vars = {}
-                    # Ищем нужные колонки (защита от разных названий)
-                    col_var_name = next((c for c in df_vars.columns if 'переменная' in c.lower() or 'код' in c.lower()), df_vars.columns[0])
-                    col_var_val = next((c for c in df_vars.columns if 'значени' in c.lower()), df_vars.columns[1])
-                    
-                    for _, row in df_vars.iterrows():
-                        key = str(row[col_var_name]).strip()
-                        if key and key != 'nan':
-                            # Разбиваем значения по разделителю |
-                            values = [v.strip() for v in str(row[col_var_val]).split('|') if v.strip()]
-                            repo_vars[key] = values
-                    st.session_state.review_repo['vars'] = repo_vars
-
-                    # 2. Парсим ФИО в список (list)
-                    df_fio = pd.read_csv(file_fio, sep=None, engine='python')
-                    repo_fio = []
-                    # Если есть колонки с именем и фамилией
-                    if 'UF_NAME_CYR' in df_fio.columns and 'UF_SURNAME_CYR' in df_fio.columns:
-                        repo_fio = (df_fio['UF_NAME_CYR'].astype(str) + ' ' + df_fio['UF_SURNAME_CYR'].astype(str)).tolist()
-                    else:
-                        repo_fio = df_fio.iloc[:, 0].dropna().astype(str).tolist()
-                    st.session_state.review_repo['fio'] = [f.strip() for f in repo_fio if f.strip() and f.strip() != 'nan']
-
-                    # 3. Парсим шаблоны в список (list)
-                    df_tpl = pd.read_csv(file_tpl, sep=None, engine='python')
-                    col_tpl = next((c for c in df_tpl.columns if 'шаблон' in c.lower()), df_tpl.columns[0])
-                    repo_tpl = df_tpl[col_tpl].dropna().astype(str).tolist()
-                    st.session_state.review_repo['templates'] = [t.strip() for t in repo_tpl if t.strip() and t.strip() != 'nan']
-
-                    st.success(f"✅ Репозиторий успешно обновлен! Загружено переменных: {len(repo_vars)}, ФИО: {len(repo_fio)}, Шаблонов: {len(repo_tpl)}")
-                except Exception as e:
-                    st.error(f"Ошибка при формировании словарей: {e}")
-
-    st.divider()
-
-    # БЛОК 2: ГЕНЕРАЦИЯ (Использует только готовый репозиторий)
-    st.subheader("2. Генерация")
-    
-    # Показываем статус репозитория
-    is_repo_ready = bool(st.session_state.review_repo['vars'] and st.session_state.review_repo['fio'] and st.session_state.review_repo['templates'])
-    
-    if not is_repo_ready:
-        st.warning("⚠️ Репозиторий пуст. Сначала загрузите справочники в шаге 1.")
+    st.header("💬 Генератор отзывов (Локальная база)")
+    st.markdown("Справочники подтягиваются автоматически из папки `dicts`.")
     
     rev_queries = st.text_area("Список запросов (H1) для отзывов:", height=150, help="Каждый запрос с новой строки.")
     reviews_count = st.number_input("Сколько отзывов на 1 запрос?", min_value=1, max_value=20, value=3)
     
-    if st.button("🚀 Сгенерировать отзывы", type="primary", use_container_width=True, disabled=not is_repo_ready):
+    if st.button("🚀 Сгенерировать отзывы", type="primary", use_container_width=True):
         if not rev_queries.strip():
             st.warning("Введите хотя бы один запрос!")
         else:
-            with st.spinner("Собираем отзывы из словарей..."):
-                queries_list = [q.strip() for q in rev_queries.split('\n') if q.strip()]
-                final_reviews_data = []
-                progress_bar = st.progress(0)
-                
-                # Достаем данные из репозитория
-                repo_vars = st.session_state.review_repo['vars']
-                repo_fio = st.session_state.review_repo['fio']
-                repo_tpl = st.session_state.review_repo['templates']
-                
-                for idx, q in enumerate(queries_list):
-                    # Ищем LSI в SQLite кэше
-                    cached = get_cached_analysis(q)
-                    lsi_words = []
-                    if cached:
-                        df_cache = pd.DataFrame(cached)
-                        if 'tf_idf' in df_cache.columns and 'word' in df_cache.columns:
-                            df_cache = df_cache.sort_values(by='tf_idf', ascending=False)
-                            lsi_words = df_cache['word'].head(15).tolist()
+            with st.spinner("Читаем базу данных и собираем отзывы..."):
+                try:
+                    # 1. Читаем переменные
+                    df_vars = pd.read_csv("dicts/vars.csv", sep=None, engine='python')
+                    repo_vars = {}
+                    col_var_name = next((c for c in df_vars.columns if 'переменная' in c.lower() or 'код' in c.lower()), df_vars.columns[0])
+                    col_var_val = next((c for c in df_vars.columns if 'значени' in c.lower()), df_vars.columns[1])
+                    for _, row in df_vars.iterrows():
+                        key = str(row[col_var_name]).strip()
+                        if key and key != 'nan':
+                            repo_vars[key] = [v.strip() for v in str(row[col_var_val]).split('|') if v.strip()]
+
+                    # 2. Читаем ФИО (Имя, Фамилия, Отчество, Пол)
+                    df_fio = pd.read_csv("dicts/fio.csv", sep=None, engine='python')
+                    repo_fio = {'MALE': {'names': [], 'surnames': [], 'patronymics': []}, 'FEMALE': {'names': [], 'surnames': [], 'patronymics': []}}
+                    for _, row in df_fio.iterrows():
+                        surname = str(row.get('Фамилия', '')).strip()
+                        name = str(row.get('Имя', '')).strip()
+                        patronymic = str(row.get('Отчество', '')).strip()
+                        gender = str(row.get('Пол', '')).strip().upper()
+                        
+                        g_key = 'MALE' if gender in ['MALE', 'М', 'МУЖ'] else ('FEMALE' if gender in ['FEMALE', 'Ж', 'ЖЕН', 'F'] else None)
+                        if g_key:
+                            if name and name != 'nan': repo_fio[g_key]['names'].append(name)
+                            if surname and surname != 'nan': repo_fio[g_key]['surnames'].append(surname)
+                            if patronymic and patronymic != 'nan': repo_fio[g_key]['patronymics'].append(patronymic)
+
+                    # 3. Читаем шаблоны
+                    df_tpl = pd.read_csv("dicts/templates.csv", sep=None, engine='python')
+                    col_tpl = next((c for c in df_tpl.columns if 'шаблон' in c.lower()), df_tpl.columns[0])
+                    repo_tpl = [str(t).strip() for t in df_tpl[col_tpl].dropna().tolist() if str(t).strip() and str(t).strip() != 'nan']
+
+                    # === ГЕНЕРАЦИЯ ===
+                    queries_list = [q.strip() for q in rev_queries.split('\n') if q.strip()]
+                    final_reviews_data = []
+                    progress_bar = st.progress(0)
                     
-                    if not lsi_words:
-                        st.warning(f"⚠️ По запросу '{q}' нет LSI в базе SQLite. Отзывы сгенерированы без ключей.")
+                    for idx, q in enumerate(queries_list):
+                        cached = get_cached_analysis(q)
+                        lsi_words = []
+                        if cached:
+                            df_cache = pd.DataFrame(cached)
+                            if 'tf_idf' in df_cache.columns and 'word' in df_cache.columns:
+                                df_cache = df_cache.sort_values(by='tf_idf', ascending=False)
+                                lsi_words = df_cache['word'].head(15).tolist()
+                        
+                        if not lsi_words:
+                            st.warning(f"⚠️ По запросу '{q}' нет LSI в базе SQLite. Отзывы собраны без ключей. Сначала проанализируй запрос на 1 вкладке!")
+                        
+                        for _ in range(reviews_count):
+                            tpl = random.choice(repo_tpl)
+                            name, text, used_lsi = build_review_from_repo(tpl, repo_vars, repo_fio, lsi_words)
+                            final_reviews_data.append({
+                                "Запрос (H1)": q,
+                                "Имя": name,
+                                "Отзыв": text,
+                                "Вставленные LSI": ", ".join(used_lsi) if used_lsi else "—"
+                            })
+                        
+                        progress_bar.progress((idx + 1) / len(queries_list))
                     
-                    # Генерируем нужное количество отзывов
-                    for _ in range(reviews_count):
-                        tpl = random.choice(repo_tpl)
-                        name, text, used_lsi = build_review_from_repo(tpl, repo_vars, repo_fio, lsi_words)
-                        final_reviews_data.append({
-                            "Запрос (H1)": q,
-                            "Имя": name,
-                            "Отзыв": text,
-                            "Вставленные LSI": ", ".join(used_lsi) if used_lsi else "—"
-                        })
-                    
-                    progress_bar.progress((idx + 1) / len(queries_list))
-                
-                if final_reviews_data:
-                    st.success("✅ Готово!")
-                    df_res = pd.DataFrame(final_reviews_data)
-                    st.dataframe(df_res, use_container_width=True)
-                    csv = df_res.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("💾 Скачать (CSV)", data=csv, file_name="generated_reviews.csv", mime="text/csv", type="primary")
+                    if final_reviews_data:
+                        st.success("✅ Готово!")
+                        df_res = pd.DataFrame(final_reviews_data)
+                        st.dataframe(df_res, use_container_width=True)
+                        csv = df_res.to_csv(index=False).encode('utf-8-sig')
+                        st.download_button("💾 Скачать (CSV)", data=csv, file_name="generated_reviews.csv", mime="text/csv", type="primary")
+
+                except FileNotFoundError as e:
+                    st.error(f"❌ Файл не найден: `{e.filename}`. Проверь папку `dicts` в GitHub.")
+                except Exception as e:
+                    st.error(f"❌ Ошибка при сборке: {e}")
