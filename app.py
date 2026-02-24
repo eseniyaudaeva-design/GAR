@@ -5979,92 +5979,126 @@ with tab_faq_gen:
                     st.write(faq_items)
 
 # ==========================================
-# 7. ВКЛАДКА: ГЕНЕРАТОР ОТЗЫВОВ
+# 7. ВКЛАДКА: ГЕНЕРАТОР ОТЗЫВОВ (С РЕПОЗИТОРИЕМ)
 # ==========================================
+# Инициализируем наш репозиторий в памяти сессии
+if 'review_repo' not in st.session_state:
+    st.session_state.review_repo = {
+        'vars': {},
+        'fio': [],
+        'templates': []
+    }
+
 with tab_reviews_gen:
     st.header("💬 Генератор отзывов (Локальный репозиторий)")
-    st.markdown("Загрузите CSV-файлы со справочниками. Скрипт соберет отзывы, просклоняет LSI из кэша и сгенерирует даты.")
+    
+    # БЛОК 1: УПРАВЛЕНИЕ РЕПОЗИТОРИЕМ (Словари)
+    st.subheader("1. Наполнение репозитория")
+    st.markdown("Загрузите справочники один раз. Они сохранятся в памяти как словари.")
     
     col_v, col_f, col_t = st.columns(3)
-    with col_v: file_vars = st.file_uploader("Переменные", type="csv")
-    with col_f: file_fio = st.file_uploader("ФИО", type="csv")
-    with col_t: file_tpl = st.file_uploader("Шаблоны", type="csv")
+    with col_v: file_vars = st.file_uploader("Переменные (CSV)", type="csv", key="up_vars")
+    with col_f: file_fio = st.file_uploader("ФИО (CSV)", type="csv", key="up_fio")
+    with col_t: file_tpl = st.file_uploader("Шаблоны (CSV)", type="csv", key="up_tpl")
+    
+    if st.button("📥 Загрузить файлы в Репозиторий", type="secondary"):
+        if not (file_vars and file_fio and file_tpl):
+            st.error("Пожалуйста, прикрепите все 3 файла для обновления базы.")
+        else:
+            with st.spinner("Создаем словари..."):
+                try:
+                    # 1. Парсим переменные в словарь (dict)
+                    df_vars = pd.read_csv(file_vars, sep=None, engine='python')
+                    repo_vars = {}
+                    # Ищем нужные колонки (защита от разных названий)
+                    col_var_name = next((c for c in df_vars.columns if 'переменная' in c.lower() or 'код' in c.lower()), df_vars.columns[0])
+                    col_var_val = next((c for c in df_vars.columns if 'значени' in c.lower()), df_vars.columns[1])
+                    
+                    for _, row in df_vars.iterrows():
+                        key = str(row[col_var_name]).strip()
+                        if key and key != 'nan':
+                            # Разбиваем значения по разделителю |
+                            values = [v.strip() for v in str(row[col_var_val]).split('|') if v.strip()]
+                            repo_vars[key] = values
+                    st.session_state.review_repo['vars'] = repo_vars
+
+                    # 2. Парсим ФИО в список (list)
+                    df_fio = pd.read_csv(file_fio, sep=None, engine='python')
+                    repo_fio = []
+                    # Если есть колонки с именем и фамилией
+                    if 'UF_NAME_CYR' in df_fio.columns and 'UF_SURNAME_CYR' in df_fio.columns:
+                        repo_fio = (df_fio['UF_NAME_CYR'].astype(str) + ' ' + df_fio['UF_SURNAME_CYR'].astype(str)).tolist()
+                    else:
+                        repo_fio = df_fio.iloc[:, 0].dropna().astype(str).tolist()
+                    st.session_state.review_repo['fio'] = [f.strip() for f in repo_fio if f.strip() and f.strip() != 'nan']
+
+                    # 3. Парсим шаблоны в список (list)
+                    df_tpl = pd.read_csv(file_tpl, sep=None, engine='python')
+                    col_tpl = next((c for c in df_tpl.columns if 'шаблон' in c.lower()), df_tpl.columns[0])
+                    repo_tpl = df_tpl[col_tpl].dropna().astype(str).tolist()
+                    st.session_state.review_repo['templates'] = [t.strip() for t in repo_tpl if t.strip() and t.strip() != 'nan']
+
+                    st.success(f"✅ Репозиторий успешно обновлен! Загружено переменных: {len(repo_vars)}, ФИО: {len(repo_fio)}, Шаблонов: {len(repo_tpl)}")
+                except Exception as e:
+                    st.error(f"Ошибка при формировании словарей: {e}")
+
+    st.divider()
+
+    # БЛОК 2: ГЕНЕРАЦИЯ (Использует только готовый репозиторий)
+    st.subheader("2. Генерация")
+    
+    # Показываем статус репозитория
+    is_repo_ready = bool(st.session_state.review_repo['vars'] and st.session_state.review_repo['fio'] and st.session_state.review_repo['templates'])
+    
+    if not is_repo_ready:
+        st.warning("⚠️ Репозиторий пуст. Сначала загрузите справочники в шаге 1.")
     
     rev_queries = st.text_area("Список запросов (H1) для отзывов:", height=150, help="Каждый запрос с новой строки.")
     reviews_count = st.number_input("Сколько отзывов на 1 запрос?", min_value=1, max_value=20, value=3)
     
-    if st.button("🚀 Сгенерировать отзывы", type="primary", use_container_width=True):
-        if not (file_vars and file_fio and file_tpl):
-            st.error("Пожалуйста, загрузите все 3 CSV-файла!")
-        elif not rev_queries.strip():
+    if st.button("🚀 Сгенерировать отзывы", type="primary", use_container_width=True, disabled=not is_repo_ready):
+        if not rev_queries.strip():
             st.warning("Введите хотя бы один запрос!")
         else:
-            with st.spinner("Собираем отзывы..."):
-                try:
-                    df_vars = pd.read_csv(file_vars, sep=None, engine='python')
-                    variables_dict = {}
-                    for _, row in df_vars.iterrows():
-                        try:
-                            variables_dict[str(row.iloc[0]).strip()] = [v.strip() for v in str(row.iloc[1]).split('|')]
-                        except: pass
-                        
-                    df_fio = pd.read_csv(file_fio, header=None, sep=None, engine='python')
-                    fio_list = df_fio[0].dropna().tolist()
+            with st.spinner("Собираем отзывы из словарей..."):
+                queries_list = [q.strip() for q in rev_queries.split('\n') if q.strip()]
+                final_reviews_data = []
+                progress_bar = st.progress(0)
+                
+                # Достаем данные из репозитория
+                repo_vars = st.session_state.review_repo['vars']
+                repo_fio = st.session_state.review_repo['fio']
+                repo_tpl = st.session_state.review_repo['templates']
+                
+                for idx, q in enumerate(queries_list):
+                    # Ищем LSI в SQLite кэше
+                    cached = get_cached_analysis(q)
+                    lsi_words = []
+                    if cached:
+                        df_cache = pd.DataFrame(cached)
+                        if 'tf_idf' in df_cache.columns and 'word' in df_cache.columns:
+                            df_cache = df_cache.sort_values(by='tf_idf', ascending=False)
+                            lsi_words = df_cache['word'].head(15).tolist()
                     
-                    df_tpl = pd.read_csv(file_tpl, header=None, sep=None, engine='python')
-                    templates_list = df_tpl[0].dropna().tolist()
-
-                    queries_list = [q.strip() for q in rev_queries.split('\n') if q.strip()]
-                    final_reviews_data = []
-                    progress_bar = st.progress(0)
+                    if not lsi_words:
+                        st.warning(f"⚠️ По запросу '{q}' нет LSI в базе SQLite. Отзывы сгенерированы без ключей.")
                     
-                    for idx, q in enumerate(queries_list):
-                        cached = get_cached_analysis(q)
-                        lsi_words = []
-                        if cached:
-                            import pandas as pd
-                            df_cache = pd.DataFrame(cached)
-                            if 'tf_idf' in df_cache.columns and 'word' in df_cache.columns:
-                                df_cache = df_cache.sort_values(by='tf_idf', ascending=False)
-                                lsi_words = df_cache['word'].head(15).tolist()
-                        
-                        if not lsi_words:
-                            st.warning(f"⚠️ По запросу '{q}' нет LSI в базе. Пропущен.")
-                            continue
-                        
-                        for _ in range(reviews_count):
-                            tpl = random.choice(templates_list)
-                            name, text, used_lsi = build_review_from_repo(tpl, variables_dict, fio_list, lsi_words)
-                            final_reviews_data.append({
-                                "Запрос": q,
-                                "Имя": name,
-                                "Отзыв": text,
-                                "Вставленные LSI": ", ".join(used_lsi)
-                            })
-                        
-                        progress_bar.progress((idx + 1) / len(queries_list))
+                    # Генерируем нужное количество отзывов
+                    for _ in range(reviews_count):
+                        tpl = random.choice(repo_tpl)
+                        name, text, used_lsi = build_review_from_repo(tpl, repo_vars, repo_fio, lsi_words)
+                        final_reviews_data.append({
+                            "Запрос (H1)": q,
+                            "Имя": name,
+                            "Отзыв": text,
+                            "Вставленные LSI": ", ".join(used_lsi) if used_lsi else "—"
+                        })
                     
-                    if final_reviews_data:
-                        st.success("✅ Готово!")
-                        df_res = pd.DataFrame(final_reviews_data)
-                        st.dataframe(df_res, use_container_width=True)
-                        csv = df_res.to_csv(index=False).encode('utf-8-sig')
-                        st.download_button("💾 Скачать (CSV)", data=csv, file_name="generated_reviews.csv", mime="text/csv", type="primary")
-                        
-                except Exception as e:
-                    st.error(f"Ошибка чтения файлов: {str(e)}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                    progress_bar.progress((idx + 1) / len(queries_list))
+                
+                if final_reviews_data:
+                    st.success("✅ Готово!")
+                    df_res = pd.DataFrame(final_reviews_data)
+                    st.dataframe(df_res, use_container_width=True)
+                    csv = df_res.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("💾 Скачать (CSV)", data=csv, file_name="generated_reviews.csv", mime="text/csv", type="primary")
