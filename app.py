@@ -3713,7 +3713,7 @@ with tab_seo_main:
                     st.session_state.reviews_automode_active = False
                     st.rerun()
 
-                # Загрузка справочников
+                # Загрузка справочников из папки dicts
                 df_fio = pd.read_csv("dicts/fio.csv", sep=";")
                 df_templates = pd.read_csv("dicts/templates.csv", sep=";")
                 df_vars = pd.read_csv("dicts/vars.csv", sep=";")
@@ -3729,31 +3729,31 @@ with tab_seo_main:
                         f_row = df_fio.sample(n=1).iloc[0]
                         c_fio = f"{f_row['Фамилия']} {f_row['Имя']}"
                         
-                        template = random.choice(df_templates['Шаблон'].values)
+                        text = random.choice(df_templates['Шаблон'].values)
                         
-                        # Замена переменных (кириллица)
-                        tags = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", template)
+                        # Замена переменных (поддержка кириллицы)
+                        tags = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", text)
                         for t in tags:
                             if t in var_dict:
-                                template = template.replace(t, random.choice(var_dict[t]), 1)
+                                text = text.replace(t, random.choice(var_dict[t]), 1)
                             elif t == "{дата}":
                                 d_off = random.randint(0, 3)
                                 dt = (datetime.datetime.now() - datetime.timedelta(days=d_off)).strftime("%d.%m.%Y")
-                                template = template.replace("{дата}", dt)
+                                text = text.replace("{дата}", dt)
                         
                         if lsi_pool:
                             l_word = random.choice(lsi_pool)
                             try:
                                 inflected = inflect_lsi_phrase(l_word, 'accs')
-                                template += f" Отмечу также {inflected}."
+                                text += f" Отдельно отмечу {inflected}."
                             except:
-                                template += f" Отмечу также {l_word}."
+                                text += f" Отдельно отмечу {l_word}."
 
                         st.session_state.reviews_results.append({
                             "ФИО": c_fio,
                             "Запрос": task.get('q', '-'),
                             "URL": task.get('url', '-'),
-                            "Отзыв": template.strip()
+                            "Отзыв": text.strip()
                         })
 
                 n_idx = curr_idx + 1
@@ -3776,7 +3776,7 @@ with tab_seo_main:
                 st.session_state.reviews_automode_active = False
 
         # ==========================================
-        # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ
+        # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (ИСПРАВЛЕННЫЙ)
         # ==========================================
         words_to_check = [x['word'] for x in results_final.get('missing_semantics_high', [])]
         
@@ -3810,6 +3810,7 @@ with tab_seo_main:
             st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
             st.session_state.orig_general = categorized['general'] + categorized['sensitive']
 
+        # Готовим обновления для виджетов
         if 'pending_widget_updates' not in st.session_state:
             st.session_state['pending_widget_updates'] = {}
         
@@ -3833,80 +3834,82 @@ with tab_seo_main:
         updates['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
         st.session_state['pending_widget_updates'] = updates
 
+        # ПЕРЕХОД К ГРАФИКАМ (выравниваем по левому краю основного блока)
         current_source_val = st.session_state.get('competitor_source_radio', '')
+        if "API" in current_source_val and 'full_graph_data' in st.session_state:
             # ==========================================
             
             
-            # === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
-            
-            # 1. Берем данные для проверки аномалий
-            if "API" in current_source_val and 'full_graph_data' in st.session_state:
-                df_rel_check = st.session_state['full_graph_data']
-            else:
-                df_rel_check = st.session_state.analysis_results['relevance_top']
-            
-            # 2. Анализ аномалий
-            good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
-            st.session_state['serp_trend_info'] = trend
-            
-            # Настройка фильтра
-            is_filter_enabled = st.session_state.get("settings_auto_filter", True)
-            
-            def get_strict_key(u):
-                if not u: return ""
-                return str(u).lower().strip().replace("https://", "").replace("http://", "").replace("www.", "").rstrip('/')
+        # === УМНАЯ ФИЛЬТРАЦИЯ (Smart Filter Logic) ===
+        
+        # 1. Берем данные для проверки аномалий
+        if "API" in current_source_val and 'full_graph_data' in st.session_state:
+            df_rel_check = st.session_state['full_graph_data']
+        else:
+            df_rel_check = st.session_state.analysis_results['relevance_top']
+        
+        # 2. Анализ аномалий
+        good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
+        st.session_state['serp_trend_info'] = trend
+        
+        # Настройка фильтра
+        is_filter_enabled = st.session_state.get("settings_auto_filter", True)
+        
+        def get_strict_key(u):
+            if not u: return ""
+            return str(u).lower().strip().replace("https://", "").replace("http://", "").replace("www.", "").rstrip('/')
 
-            final_clean_text = ""
+        final_clean_text = ""
+        
+        # --- ЛОГИКА РАСПРЕДЕЛЕНИЯ ---
+        if is_filter_enabled and bad_urls_dicts:
+            # 1. Сохраняем плохих
+            st.session_state['detected_anomalies'] = bad_urls_dicts
             
-            # --- ЛОГИКА РАСПРЕДЕЛЕНИЯ ---
-            if is_filter_enabled and bad_urls_dicts:
-                # 1. Сохраняем плохих
-                st.session_state['detected_anomalies'] = bad_urls_dicts
-                
-                blacklist_keys = set()
-                excluded_display_list = []
-                for item in bad_urls_dicts:
-                    raw_u = item.get('url', '')
-                    if raw_u:
-                        blacklist_keys.add(get_strict_key(raw_u))
-                        excluded_display_list.append(str(raw_u).strip())
-                
-                st.session_state['excluded_urls_auto'] = "\n".join(excluded_display_list)
-                
-                # 2. Собираем хороших
-                clean_active_list = []
-                seen_keys = set()
-                for u in good_urls:
-                    key = get_strict_key(u)
-                    if key and key not in blacklist_keys and key not in seen_keys:
-                        clean_active_list.append(str(u).strip())
-                        seen_keys.add(key)
-                
-                final_clean_text = "\n".join(clean_active_list)
-                st.toast(f"Фильтр сработал. Исключено: {len(blacklist_keys)}", icon="✂️")
+            blacklist_keys = set()
+            excluded_display_list = []
+            for item in bad_urls_dicts:
+                raw_u = item.get('url', '')
+                if raw_u:
+                    blacklist_keys.add(get_strict_key(raw_u))
+                    excluded_display_list.append(str(raw_u).strip())
             
-            else:
-                # Фильтр выключен или плохих нет - берем всё
-                clean_all = []
-                seen_all = set()
-                combined_pool = good_urls + [x['url'] for x in (bad_urls_dicts or [])]
-                for u in combined_pool:
-                    key = get_strict_key(u)
-                    if key and key not in seen_all:
-                        clean_all.append(str(u).strip())
-                        seen_all.add(key)
-                
-                final_clean_text = "\n".join(clean_all)
-                # Чистим старые ошибки
-                st.session_state.pop('excluded_urls_auto', None)
-                st.session_state.pop('detected_anomalies', None)
+            st.session_state['excluded_urls_auto'] = "\n".join(excluded_display_list)
+            
+            # 2. Собираем хороших
+            clean_active_list = []
+            seen_keys = set()
+            for u in good_urls:
+                key = get_strict_key(u)
+                if key and key not in blacklist_keys and key not in seen_keys:
+                    clean_active_list.append(str(u).strip())
+                    seen_keys.add(key)
+            
+            final_clean_text = "\n".join(clean_active_list)
+            st.toast(f"Фильтр сработал. Исключено: {len(blacklist_keys)}", icon="✂️")
+        
+        else:
+            # Фильтр выключен или плохих нет - берем всё
+            clean_all = []
+            seen_all = set()
+            combined_pool = good_urls + [x['url'] for x in (bad_urls_dicts or [])]
+            for u in combined_pool:
+                key = get_strict_key(u)
+                if key and key not in seen_all:
+                    clean_all.append(str(u).strip())
+                    seen_all.add(key)
+            
+            final_clean_text = "\n".join(clean_all)
+            # Чистим старые ошибки
+            st.session_state.pop('excluded_urls_auto', None)
+            st.session_state.pop('detected_anomalies', None)
 
-            # === ФИНАЛЬНАЯ ЗАПИСЬ И ПЕРЕЗАГРУЗКА ===
-            # Сохраняем во ВРЕМЕННУЮ переменную
-            st.session_state['temp_update_urls'] = final_clean_text
-            
-            # Ставим флаг переключения радио-кнопки
-            st.session_state['force_radio_switch'] = True
+        # === ФИНАЛЬНАЯ ЗАПИСЬ И ПЕРЕЗАГРУЗКА ===
+        # Сохраняем во ВРЕМЕННУЮ переменную
+        st.session_state['temp_update_urls'] = final_clean_text
+        
+        # Ставим флаг переключения радио-кнопки
+        st.session_state['force_radio_switch'] = True
 
 # ==================================================================
             # 🔥 HOOK ДЛЯ LSI ГЕНЕРАТОРА (ВКЛАДКА 5)
@@ -6172,6 +6175,7 @@ with tab_reviews_gen:
         # Кнопка скачивания
         csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
