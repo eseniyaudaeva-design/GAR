@@ -743,9 +743,15 @@ if 'analysis_done' not in st.session_state: st.session_state.analysis_done = Fal
 if 'ai_generated_df' not in st.session_state: st.session_state.ai_generated_df = None
 if 'ai_excel_bytes' not in st.session_state: st.session_state.ai_excel_bytes = None
 if 'tags_html_result' not in st.session_state: st.session_state.tags_html_result = None
-if 'table_html_result' not in st.session_state: st.session_state.table_html_result = None
+if 'table_html_result' not in st.session_state: st.session_state.table_html_result = None [cite: 73]
 if 'tags_generated_df' not in st.session_state: st.session_state.tags_generated_df = None
 if 'tags_excel_data' not in st.session_state: st.session_state.tags_excel_data = None
+
+# Инициализация переменных для отзывов (исправление AttributeError)
+if 'reviews_results' not in st.session_state: st.session_state.reviews_results = [] [cite: 985]
+if 'reviews_queue' not in st.session_state: st.session_state.reviews_queue = [] [cite: 985]
+if 'reviews_automode_active' not in st.session_state: st.session_state.reviews_automode_active = False [cite: 985]
+if 'reviews_current_index' not in st.session_state: st.session_state.reviews_current_index = 0 [cite: 985]
 
 # Current lists
 if 'categorized_products' not in st.session_state: st.session_state.categorized_products = []
@@ -2935,10 +2941,11 @@ if 'pending_widget_updates' in st.session_state:
 # 7. UI TABS RESTRUCTURED
 # ==========================================
 def global_stop_callback():
-    st.session_state.lsi_automode_active = False
-    st.session_state.faq_automode_active = False
-    st.session_state.auto_run_active = False
-    st.session_state.start_analysis_flag = False
+    st.session_state.lsi_automode_active = False [cite: 393]
+    st.session_state.faq_automode_active = False [cite: 393]
+    st.session_state.reviews_automode_active = False # Добавлено для остановки отзывов
+    st.session_state.auto_run_active = False [cite: 393]
+    st.session_state.start_analysis_flag = False [cite: 393]
 
 tab_seo_main, tab_wholesale_main, tab_projects, tab_monitoring, tab_lsi_gen, tab_faq_gen, tab_reviews_gen = st.tabs(["📊 SEO Анализ", "🏭 Оптовый генератор", "📁 Проекты", "📉 Мониторинг позиций", "📝 LSI Тексты", "❓ FAQ Генератор", "💬 Отзывы"])
 
@@ -6184,10 +6191,14 @@ with tab_reviews_gen:
     with col_r2:
         st.button("⛔ ОСТАНОВИТЬ", type="secondary", use_container_width=True, on_click=global_stop_callback)
 
-    if st.session_state.reviews_results:
+    # Проверка существования ключа и наличия данных
+    if 'reviews_results' in st.session_state and st.session_state.reviews_results: [cite: 1007]
         st.markdown("### Результаты")
-        df_revs = pd.DataFrame(st.session_state.reviews_results)
+        # Создаем DataFrame и сразу удаляем дубликаты по тексту отзыва, чтобы не копить мусор
+        df_revs = pd.DataFrame(st.session_state.reviews_results).drop_duplicates(subset=['Отзыв'], keep='last') [cite: 1007]
+        st.dataframe(df_revs, use_container_width=True)
         st.dataframe(df_revs, use_container_width=True)
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
