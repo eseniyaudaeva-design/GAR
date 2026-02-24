@@ -3699,79 +3699,54 @@ with tab_seo_main:
 # ==========================================
         # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (БЕЗ СОКРАЩЕНИЙ)
         # ==========================================
-        if st.session_state.get('reviews_automode_active'):
-            try:
-                # 1. Данные из анализа
-                res_seo = st.session_state.analysis_results
-                lsi_pool = res_seo['hybrid'].head(15)['Слово'].tolist() if 'hybrid' in res_seo else []
+        # 2. ЗАГРУЗКА ИЗ ПАПКИ dicts С ПРАВИЛЬНЫМИ ПУТЯМИ
+        # Указываем путь к папке dicts, как ты и сказал
+        df_fio = pd.read_csv("dicts/fio.csv", sep=";") 
+        df_templates = pd.read_csv("dicts/templates.csv", sep=";") 
+        df_vars = pd.read_csv("dicts/vars.csv", sep=";")
+        
+        # Собираем словарь переменных
+        var_dict = {}
+        for _, row in df_vars.iterrows():
+            var_name = str(row['Переменная']).strip()
+            var_values = str(row['Значения']).split('|')
+            # Сохраняем сразу со скобками для удобства замены
+            var_dict[f"{{{var_name}}}"] = [v.strip() for v in var_values]
+
+        with st.spinner(f"📦 Сборка отзывов..."):
+            for _ in range(st.session_state.reviews_per_query):
+                # 1. Берем случайный шаблон
+                template = random.choice(df_templates['Шаблон'].values)
                 
-                curr_idx = st.session_state.reviews_current_index
-                queue = st.session_state.reviews_queue
-                task = queue[curr_idx]
+                # 2. ИСПРАВЛЕННЫЙ ПОИСК (теперь понимает кириллицу внутри скобок)
+                found_placeholders = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", template)
                 
-                # 2. ЗАГРУЗКА ИЗ ПАПКИ dicts С ПРАВИЛЬНЫМИ РАЗДЕЛИТЕЛЯМИ
-                df_fio = pd.read_csv("dicts/fio.csv", sep=";")
-                df_templates = pd.read_csv("dicts/templates.csv", sep=";") # Проверь разделитель в файле!
-                df_vars = pd.read_csv("dicts/vars.csv", sep=";")
+                for ph in found_placeholders:
+                    if ph in var_dict:
+                        # Заменяем на случайное значение из vars.csv
+                        template = template.replace(ph, random.choice(var_dict[ph]))
+                    elif ph == "{дата}":
+                        # Ставим дату в твоем диапазоне (01.01.2026 - 10.02.2026)
+                        template = template.replace("{дата}", generate_random_date())
                 
-                # Превращаем vars в словарь
-                var_dict = {}
-                for _, row in df_vars.iterrows():
-                    var_name = str(row['Переменная']).strip()
-                    var_values = str(row['Значения']).split('|')
-                    var_dict[f"{{{var_name}}}"] = [v.strip() for v in var_values]
-        
-                with st.spinner(f"📦 Сборка отзывов для: {task['q']}..."):
-                    for _ in range(st.session_state.reviews_per_query):
-                        # Рандом ФИО
-                        fio_row = df_fio.sample(n=1).iloc[0]
-                        current_fio = f"{fio_row['Фамилия']} {fio_row['Имя']}"
-                        
-                        # Выбор шаблона
-                        template = random.choice(df_templates['Шаблон'].values)
-                        
-                        # Замена переменных
-                        found_placeholders = re.findall(r"\{[a-zA-Z0-9_]+\}", template)
-                        for ph in found_placeholders:
-                            if ph in var_dict:
-                                template = template.replace(ph, random.choice(var_dict[ph]))
-                        
-                        # Вставка даты (если есть {дата})
-                        if "{дата}" in template:
-                            template = template.replace("{дата}", generate_random_date())
-        
-                        # Вставка LSI
-                        if lsi_pool:
-                            chosen_lsi = random.sample(lsi_pool, min(3, len(lsi_pool)))
-                            lsi_str = ", ".join(chosen_lsi)
-                            template += f" (Ключи: {lsi_str})"
-        
-                        st.session_state.reviews_results.append({
-                            "ФИО": current_fio,
-                            "Запрос": task['q'],
-                            "URL": task['url'],
-                            "Отзыв": template
-                        })
-        
-                # 3. Переход к следующему или финиш
-                next_idx = curr_idx + 1
-                if next_idx < len(queue):
-                    st.session_state.reviews_current_index = next_idx
-                    st.session_state['pending_widget_updates'] = {
-                        'query_input': queue[next_idx]['q'],
-                        'my_url_input': queue[next_idx]['url'],
-                        'my_page_source_radio': "Релевантная страница на вашем сайте" if queue[next_idx]['url'] != 'manual' else "Без страницы"
-                    }
-                    st.session_state.start_analysis_flag = True
-                    st.rerun() 
-                else:
-                    st.session_state.reviews_automode_active = False
-                    st.success("✅ Все отзывы успешно сгенерированы!")
-                    st.rerun() # Чтобы обновить таблицу на экране
-                    
-            except Exception as e:
-                st.error(f"❌ Ошибка в движке отзывов: {e}")
-                st.session_state.reviews_automode_active = False
+                # 3. РАНДОМ ФИО (из твоего fio.csv)
+                fio_row = df_fio.sample(n=1).iloc[0]
+                # Собираем имя (проверь названия колонок в своем файле, я поставил стандартные)
+                current_fio = f"{fio_row['Имя']} {fio_row['Фамилия']}"
+
+                # 4. ВСТАВКА LSI (человеческая добавка в конец)
+                if lsi_pool:
+                    lsi_word = random.choice(lsi_pool)
+                    # Склоняем для естественности
+                    inflected = inflect_lsi_phrase(lsi_word, 'accs')
+                    template += f" Также порадовало наличие {inflected}."
+
+                st.session_state.reviews_results.append({
+                    "ФИО": current_fio,
+                    "Запрос": task['q'],
+                    "URL": task['url'],
+                    "Отзыв": template
+                })
             
 # ==========================================
             # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (ИСПРАВЛЕННЫЙ)
@@ -6169,4 +6144,5 @@ with tab_reviews_gen:
         # Кнопка скачивания
         csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
