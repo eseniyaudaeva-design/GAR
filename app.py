@@ -3741,8 +3741,8 @@ with tab_seo_main:
                 st.error(f"❌ Ошибка в автомате отзывов: {e}")
                 st.session_state.reviews_automode_active = False
             
-            # ==========================================
-            # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (СТРОГО ЗДЕСЬ)
+ # ==========================================
+            # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (ИСПРАВЛЕННЫЙ)
             # ==========================================
             words_to_check = [x['word'] for x in results_final.get('missing_semantics_high', [])]
             
@@ -3751,12 +3751,18 @@ with tab_seo_main:
                 words_to_check.extend([x['word'] for x in results_final.get('missing_semantics_low', [])[:20]])
 
             if not words_to_check:
-                st.session_state.categorized_products = []; st.session_state.categorized_services = []
-                st.session_state.categorized_commercial = []; st.session_state.categorized_dimensions = []
+                st.session_state.categorized_products = []
+                st.session_state.categorized_services = []
+                st.session_state.categorized_commercial = []
+                st.session_state.categorized_dimensions = []
+                st.session_state.categorized_geo = []
+                st.session_state.categorized_general = []
+                st.session_state.categorized_sensitive = []
             else:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 
+                # Внутренние списки (не привязаны к виджетам напрямую) можно обновлять так
                 st.session_state.categorized_products = categorized['products']
                 st.session_state.categorized_services = categorized['services']
                 st.session_state.categorized_commercial = categorized['commercial']
@@ -3773,21 +3779,42 @@ with tab_seo_main:
                 st.session_state.orig_dimensions = categorized['dimensions'] + categorized['sensitive']
                 st.session_state.orig_general = categorized['general'] + categorized['sensitive']
                 
-                st.session_state['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
+            # --- ПОДГОТОВКА ОБНОВЛЕНИЙ ДЛЯ ВИДЖЕТОВ (ЧЕРЕЗ UPDATES) ---
+            # Создаем или берем существующий словарь обновлений
+            if 'pending_widget_updates' not in st.session_state:
+                st.session_state['pending_widget_updates'] = {}
+            
+            updates = st.session_state['pending_widget_updates']
 
-            # Обновление списков для генератора
-            all_found_products = st.session_state.categorized_products
+            # 1. Записываем Sensitive слова (вызывали ошибку 3776)
+            if not words_to_check:
+                updates['sensitive_words_input_final'] = ""
+            else:
+                updates['sensitive_words_input_final'] = "\n".join(categorized['sensitive'])
+
+            # 2. Обновление списков для генератора (теги и промо)
+            all_found_products = st.session_state.get('categorized_products', [])
             count_prods = len(all_found_products)
+            
             if count_prods < 20:
-                st.session_state.auto_tags_words = all_found_products
-                st.session_state.auto_promo_words = []
+                auto_tags = all_found_products
+                auto_promo = []
             else:
                 half_count = int(math.ceil(count_prods / 2))
-                st.session_state.auto_tags_words = all_found_products[:half_count]
-                st.session_state.auto_promo_words = all_found_products[half_count:]
+                auto_tags = all_found_products[:half_count]
+                auto_promo = all_found_products[half_count:]
             
-            st.session_state['tags_products_edit_final'] = "\n".join(st.session_state.auto_tags_words)
-            st.session_state['promo_keywords_area_final'] = "\n".join(st.session_state.auto_promo_words)
+            # Сохраняем в session_state для логики
+            st.session_state.auto_tags_words = auto_tags
+            st.session_state.auto_promo_words = auto_promo
+
+            # 3. Записываем в updates значения для текстовых полей (чтобы не было StreamlitAPIException)
+            updates['tags_products_edit_final'] = "\n".join(auto_tags)
+            updates['promo_keywords_area_final'] = "\n".join(auto_promo)
+            
+            # Сохраняем обновленный словарь в память
+            st.session_state['pending_widget_updates'] = updates
+
             # ==========================================
             # КОНЕЦ БЛОКА КЛАССИФИКАЦИИ
             # ==========================================
@@ -6129,6 +6156,7 @@ with tab_reviews_gen:
         # Кнопка скачивания
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
