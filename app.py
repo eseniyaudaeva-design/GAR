@@ -263,6 +263,21 @@ def transliterate_text(text):
             result.append(char)
     return "".join(result)
 
+def get_h1_from_url(url):
+    """Парсит H1 со страницы для использования в качестве поискового запроса."""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        # Используем прокси, если они настроены глобально в вашем скрипте
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, 'html.parser')
+            h1 = soup.find('h1')
+            if h1:
+                return h1.get_text(strip=True)
+    except Exception as e:
+        print(f"Ошибка парсинга H1: {e}")
+    return ""
+
 def force_cyrillic_name_global(slug_text):
     raw = unquote(slug_text).lower()
     raw = raw.replace('.html', '').replace('.php', '')
@@ -6041,16 +6056,14 @@ with tab_reviews_gen:
             lines = [l.strip() for l in rev_input.split('\n') if l.strip()]
             if lines:
                 queue = []
-                if rev_mode == "URL":
+                if rev_mode == "Список URL":
                     for u in lines:
-                        try:
-                            resp = requests.get(u, timeout=5, headers={'User-Agent': 'Mozilla/5.0'}, verify=False)
-                            soup = BeautifulSoup(resp.content, 'html.parser')
-                            h1_text = soup.find('h1').text.strip() if soup.find('h1') else u
-                            queue.append({'q': h1_text, 'url': u})
-                        except: queue.append({'q': u, 'url': u})
+                        h1_text = get_h1_from_url(u) # Используем твою функцию парсинга
+                        if not h1_text: h1_text = u
+                        queue.append({'q': h1_text, 'url': u})
                 else:
-                    for q in lines: queue.append({'q': q, 'url': 'manual'})
+                    for q in lines: 
+                        queue.append({'q': q, 'url': 'manual'})
                 
                 st.session_state.reviews_queue = queue
                 st.session_state.reviews_results = []
@@ -6086,6 +6099,7 @@ with tab_reviews_gen:
         
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
