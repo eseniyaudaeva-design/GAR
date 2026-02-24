@@ -3785,7 +3785,7 @@ if st.session_state.get('reviews_automode_active'):
             words_to_check = [x['word'] for x in results_final.get('missing_semantics_high', [])]
             
             if len(words_to_check) < 5:
-                words_to_check.extend([x['word'] for x in results_final.get('missing_semantics_low', [])[:20]])
+            words_to_check.extend([x['word'] for x in results_final.get('missing_semantics_low', [])[:20]])
 
             if not words_to_check:
                 st.session_state.categorized_products = []
@@ -6175,6 +6175,7 @@ with tab_reviews_gen:
         # Кнопка скачивания
         csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
