@@ -3699,6 +3699,27 @@ with tab_seo_main:
             st.session_state.naming_table_df = naming_df 
             st.session_state.ideal_h1_result = analyze_ideal_name(final_clean_data)
             st.session_state.analysis_done = True
+
+# === ПЕРЕХВАТ ДЛЯ ОТЗЫВОВ ===
+        if st.session_state.get('reviews_automode_active'):
+            try:
+                # Берем LSI из гибридной таблицы текущего анализа
+                current_lsi = results_final['hybrid'].head(15)['Слово'].tolist()
+                
+                # ... (тут идет ваш код загрузки vars, генерации отзывов и т.д.) ...
+                
+                if 'reviews_results' in st.session_state and st.session_state.reviews_results:
+                    st.markdown("### Результаты")
+                    # Удаление дублей по тексту отзыва перед выводом
+                    df_revs = pd.DataFrame(st.session_state.reviews_results).drop_duplicates(subset=['Отзыв'], keep='last')
+                    st.dataframe(df_revs, use_container_width=True)
+                    
+                    csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+                    
+            # 👇 ИСПРАВЛЕНИЕ ЗДЕСЬ: блок except сдвинут влево на один уровень с try
+            except Exception as e:
+                st.error(f"❌ Ошибка в модуле отзывов: {e}")
             
             # ==========================================
             # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (СТРОГО ЗДЕСЬ)
@@ -5888,26 +5909,6 @@ with tab_faq_gen:
             st.session_state.faq_automode_active = False
             st.rerun()
 
-# === ПЕРЕХВАТ ДЛЯ ОТЗЫВОВ ===
-        if st.session_state.get('reviews_automode_active'):
-            try:
-                # Берем LSI из гибридной таблицы текущего анализа
-                current_lsi = results_final['hybrid'].head(15)['Слово'].tolist()
-                
-                # ... (тут идет ваш код загрузки vars, генерации отзывов и т.д.) ...
-                
-                if 'reviews_results' in st.session_state and st.session_state.reviews_results:
-                    st.markdown("### Результаты")
-                    # Удаление дублей по тексту отзыва перед выводом
-                    df_revs = pd.DataFrame(st.session_state.reviews_results).drop_duplicates(subset=['Отзыв'], keep='last')
-                    st.dataframe(df_revs, use_container_width=True)
-                    
-                    csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
-                    
-            # 👇 ИСПРАВЛЕНИЕ ЗДЕСЬ: блок except сдвинут влево на один уровень с try
-            except Exception as e:
-                st.error(f"❌ Ошибка в модуле отзывов: {e}")
 # ==================================================================
     # 🔥 HOOK ДЛЯ FAQ ГЕНЕРАТОРА (СРАБАТЫВАЕТ ПОСЛЕ ПЕРВОЙ ВКЛАДКИ)
     # ==================================================================
@@ -6099,6 +6100,7 @@ with tab_reviews_gen:
         
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
