@@ -41,10 +41,10 @@ import datetime
 # ==========================================
 import sqlite3
 import json
-import datetime # <-- Исправленный безопасный импорт
+import datetime
 
 def init_seo_db():
-    conn = sqlite3.connect('seo_cache.db')
+    conn = sqlite3.connect('seo_cache.db', timeout=10)
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS seo_analysis (
@@ -59,31 +59,38 @@ def init_seo_db():
 init_seo_db()
 
 def get_cached_analysis(query):
-    conn = sqlite3.connect('seo_cache.db')
-    c = conn.cursor()
-    # Сначала удаляем всё, что старше 90 дней (автоматическая чистка)
-    expiry_date = (datetime.datetime.now() - datetime.timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
-    c.execute('DELETE FROM seo_analysis WHERE timestamp < ?', (expiry_date,))
-    conn.commit()
-    
-    c.execute('SELECT timestamp, parsed_data FROM seo_analysis WHERE query = ?', (query.lower().strip(),))
-    row = c.fetchone()
-    conn.close()
-    
-    if row:
-        return json.loads(row[1]) # Возвращаем данные, если они есть и свежие
+    if not query: return None
+    try:
+        conn = sqlite3.connect('seo_cache.db', timeout=10)
+        c = conn.cursor()
+        
+        # Авто-чистка старья (90 дней)
+        expiry_date = (datetime.datetime.now() - datetime.timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
+        c.execute('DELETE FROM seo_analysis WHERE timestamp < ?', (expiry_date,))
+        conn.commit()
+        
+        c.execute('SELECT timestamp, parsed_data FROM seo_analysis WHERE query = ?', (query.lower().strip(),))
+        row = c.fetchone()
+        conn.close()
+        
+        if row:
+            return json.loads(row[1])
+    except sqlite3.OperationalError:
+        return None 
     return None
 
 def save_cached_analysis(query, data_for_graph):
-    conn = sqlite3.connect('seo_cache.db')
-    c = conn.cursor()
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute('''
-        INSERT OR REPLACE INTO seo_analysis (query, timestamp, parsed_data)
-        VALUES (?, ?, ?)
-    ''', (query.lower().strip(), timestamp, json.dumps(data_for_graph)))
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('seo_cache.db', timeout=10)
+        c = conn.cursor()
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute('''
+            INSERT OR REPLACE INTO seo_analysis (query, timestamp, parsed_data)
+            VALUES (?, ?, ?)
+        ''', (query.lower().strip(), timestamp, json.dumps(data_for_graph)))
+        conn.commit()
+        conn.close()
+    except: pass
 
 # ==========================================
 # ДВИЖОК ГЕНЕРАЦИИ ОТЗЫВОВ (БЕЗ ИИ)
@@ -771,7 +778,7 @@ if 'orig_dimensions' not in st.session_state: st.session_state.orig_dimensions =
 if 'orig_geo' not in st.session_state: st.session_state.orig_geo = []
 if 'orig_general' not in st.session_state: st.session_state.orig_general = []
 
-# Инициализация для отзывов
+# Инициализация переменных для отзывов
 if 'reviews_results' not in st.session_state: st.session_state.reviews_results = []
 if 'reviews_queue' not in st.session_state: st.session_state.reviews_queue = []
 if 'reviews_automode_active' not in st.session_state: st.session_state.reviews_automode_active = False
@@ -6079,15 +6086,17 @@ with tab_reviews_gen:
     with col_r2:
         st.button("⛔ ОСТАНОВИТЬ", type="secondary", use_container_width=True, on_click=global_stop_callback)
 
-# === Финальный блок (замена строк 1007-1009) ===
+# Проверка и очистка дублей (чтобы не занимать место)
     if 'reviews_results' in st.session_state and st.session_state.reviews_results:
         st.markdown("### Результаты")
-        # Чистим дубликаты отзывов перед показом
+        # Удаляем дубликаты отзывов по тексту, чтобы экономить память
         df_revs = pd.DataFrame(st.session_state.reviews_results).drop_duplicates(subset=['Отзыв'], keep='last')
         st.dataframe(df_revs, use_container_width=True)
         
+        # Кнопка скачивания
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
