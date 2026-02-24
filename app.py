@@ -5879,22 +5879,8 @@ with tab_faq_gen:
                 # Берем LSI из гибридной таблицы текущего анализа
                 current_lsi = results_final['hybrid'].head(15)['Слово'].tolist()
                 
-                # Загружаем справочники из папки dicts
-                df_vars = pd.read_csv("dicts/vars.csv", sep=None, engine='python')
-                repo_vars = {}
-                # ... (тут код парсинга vars, который я давал выше) ...
+                # ... (тут идет ваш код загрузки vars, генерации отзывов и т.д.) ...
                 
-                # Генерируем отзывы
-                for _ in range(st.session_state.reviews_per_query):
-                    tpl = random.choice(repo_tpl)
-                    name, text, used_lsi = build_review_from_repo(tpl, repo_vars, repo_fio, current_lsi)
-                    st.session_state.reviews_results.append({
-                        "Запрос (H1)": st.session_state.query_input,
-                        "Имя": name, "Отзыв": text, "LSI": ", ".join(used_lsi)
-                    })
-
-                # Двигаем очередь
-                st.session_state.reviews_current_index += 1
                 if 'reviews_results' in st.session_state and st.session_state.reviews_results:
                     st.markdown("### Результаты")
                     # Удаление дублей по тексту отзыва перед выводом
@@ -5903,8 +5889,10 @@ with tab_faq_gen:
                     
                     csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
                     st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
-                    except Exception as e:
-                        st.error(f"❌ Ошибка в модуле отзывов: {e}")
+                    
+            # 👇 ИСПРАВЛЕНИЕ ЗДЕСЬ: блок except сдвинут влево на один уровень с try
+            except Exception as e:
+                st.error(f"❌ Ошибка в модуле отзывов: {e}")
 # ==================================================================
     # 🔥 HOOK ДЛЯ FAQ ГЕНЕРАТОРА (СРАБАТЫВАЕТ ПОСЛЕ ПЕРВОЙ ВКЛАДКИ)
     # ==================================================================
@@ -6098,6 +6086,7 @@ with tab_reviews_gen:
         
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
