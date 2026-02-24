@@ -777,13 +777,6 @@ if 'orig_dimensions' not in st.session_state: st.session_state.orig_dimensions =
 if 'orig_geo' not in st.session_state: st.session_state.orig_geo = []
 if 'orig_general' not in st.session_state: st.session_state.orig_general = []
 
-# Инициализация переменных для отзывов
-if 'reviews_results' not in st.session_state: st.session_state.reviews_results = []
-if 'reviews_queue' not in st.session_state: st.session_state.reviews_queue = []
-if 'reviews_automode_active' not in st.session_state: st.session_state.reviews_automode_active = False
-if 'reviews_current_index' not in st.session_state: st.session_state.reviews_current_index = 0
-if 'reviews_per_query' not in st.session_state: st.session_state.reviews_per_query = 3
-
 if 'auto_tags_words' not in st.session_state: st.session_state.auto_tags_words = []
 if 'auto_promo_words' not in st.session_state: st.session_state.auto_promo_words = []
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
@@ -5910,6 +5903,8 @@ with tab_faq_gen:
                     
                     csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
                     st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+                    except Exception as e:
+                        st.error(f"❌ Ошибка в модуле отзывов: {e}")
 # ==================================================================
     # 🔥 HOOK ДЛЯ FAQ ГЕНЕРАТОРА (СРАБАТЫВАЕТ ПОСЛЕ ПЕРВОЙ ВКЛАДКИ)
     # ==================================================================
@@ -6103,6 +6098,7 @@ with tab_reviews_gen:
         
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
