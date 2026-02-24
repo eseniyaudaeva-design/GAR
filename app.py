@@ -771,6 +771,13 @@ if 'orig_dimensions' not in st.session_state: st.session_state.orig_dimensions =
 if 'orig_geo' not in st.session_state: st.session_state.orig_geo = []
 if 'orig_general' not in st.session_state: st.session_state.orig_general = []
 
+# Инициализация для отзывов
+if 'reviews_results' not in st.session_state: st.session_state.reviews_results = []
+if 'reviews_queue' not in st.session_state: st.session_state.reviews_queue = []
+if 'reviews_automode_active' not in st.session_state: st.session_state.reviews_automode_active = False
+if 'reviews_current_index' not in st.session_state: st.session_state.reviews_current_index = 0
+if 'reviews_per_query' not in st.session_state: st.session_state.reviews_per_query = 3
+
 if 'auto_tags_words' not in st.session_state: st.session_state.auto_tags_words = []
 if 'auto_promo_words' not in st.session_state: st.session_state.auto_promo_words = []
 if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
@@ -2424,130 +2431,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 # ==========================================
 # НОВЫЕ ФУНКЦИИ ДЛЯ LSI ГЕНЕРАТОРА (ВСТАВИТЬ СЮДА)
 # ==========================================
-
-def run_seo_analysis_background(query, api_token):
-    """
-    Фоновый запуск SEO-анализа для получения TF-IDF слов.
-    """
-    # Настройки
-    settings = {
-        'noindex': True, 
-        'alt_title': False, 
-        'numbers': False, 
-        'norm': True, 
-        'ua': "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", 
-        'custom_stops': []
-    }
-    
-    # Фейковая страница "Ваш сайт"
-    my_data = {'url': 'Local', 'domain': 'local', 'body_text': '', 'anchor_text': ''}
-    
-    if not api_token: 
-        return []
-    
-    try:
-        # Запрос к Арсенкину (Топ-10)
-        raw_top = get_arsenkin_urls(query, "Яндекс", "Москва", api_token, depth_val=10)
-        if not raw_top: return []
-        
-        # Фильтр мусора
-        candidates = []
-        excludes = ["avito", "ozon", "wildberries", "market", "tiu", "youtube", "vk.com", "dzen", "wiki"]
-        for item in raw_top:
-            if not any(x in item['url'] for x in excludes):
-                candidates.append(item)
-        
-        candidates = candidates[:10]
-        if not candidates: return []
-
-        # Парсинг
-        comp_data = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(parse_page, item['url'], settings, query): item for item in candidates}
-            for f in concurrent.futures.as_completed(futures):
-                try:
-                    res = f.result()
-                    if res:
-                        res['pos'] = futures[f]['pos']
-                        comp_data.append(res)
-                except: pass
-        
-        if not comp_data: return []
-
-        # Расчет
-        targets = [{'url': d['url'], 'pos': d['pos']} for d in comp_data]
-        results = calculate_metrics(comp_data, my_data, settings, 0, targets)
-        
-        # Извлечение TF-IDF
-        df_hybrid = results.get('hybrid')
-        if df_hybrid is not None and not df_hybrid.empty:
-            return df_hybrid.head(15)['Слово'].tolist()
-            
-    except Exception as e:
-        print(f"Background SEO Error: {e}")
-        return []
-    
-    return []
-
-def inflect_lsi_phrase(phrase, target_case):
-    # Используем твой импортированный pymorphy2
-    morph = pymorphy2.MorphAnalyzer()
-    words = str(phrase).split()
-    inflected_words = []
-    for word in words:
-        parsed_word = morph.parse(word)[0]
-        try:
-            inf_word = parsed_word.inflect({target_case})
-            inflected_words.append(inf_word.word if inf_word else word)
-        except: inflected_words.append(word)
-    return " ".join(inflected_words)
-
-def generate_random_date():
-    # Строгий диапазон: 01.01.2026 - 10.02.2026
-    start = datetime.datetime(2026, 1, 1)
-    end = datetime.datetime(2026, 2, 10)
-    delta = end - start
-    return (start + datetime.timedelta(days=random.randrange(delta.days + 1))).strftime("%d.%m.%Y")
-
-def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
-    def replace_var(match):
-        v = match.group(1).strip()
-        if v == "дата": return generate_random_date()
-        if v in variables_dict: return str(random.choice(variables_dict[v])).strip()
-        return match.group(0)
-
-    draft = re.sub(r'\{([^}]+)\}', replace_var, str(template))
-    
-    # СТРОГИЙ ФИЛЬТР: Никакой Украины, войны и политики. Россию - можно.
-    forbidden = ["украин", "ukrain", "ua", "всу", "зсу", "ато", "сво", "войн", "киев", "политик", "спецоперац"]
-    clean_lsi = [w for w in lsi_words if not any(r in str(w).lower() for r in forbidden)]
-    
-    used_lsi = []
-    if clean_lsi:
-        lsi = random.choice(clean_lsi)
-        # Склоняем в винительный падеж для естественности вставки
-        inflected = inflect_lsi_phrase(lsi, 'accs')
-        bridge = random.choice([
-            f"Отдельно отмечу **{inflected}**.",
-            f"Порадовало наличие **{inflected}**.",
-            f"Качество **{inflected}** на высоте."
-        ])
-        draft += " " + bridge
-        used_lsi.append(inflected)
-
-    # Сборка ФИО по полу и отчеству
-    name = "Аноним"
-    gens = [g for g in ['MALE', 'FEMALE'] if repo_fio[g]['names']]
-    if gens:
-        g = random.choice(gens)
-        nm = random.choice(repo_fio[g]['names'])
-        sn = random.choice(repo_fio[g]['surnames'])
-        if repo_fio[g]['patronymics'] and random.random() > 0.5:
-            pt = random.choice(repo_fio[g]['patronymics'])
-            name = f"{nm} {pt} {sn}"
-        else: name = f"{nm} {sn}"
-
-    return name, draft, used_lsi
 
 def inflect_lsi_phrase(phrase, target_case):
     morph = pymorphy2.MorphAnalyzer()
@@ -6184,8 +6067,12 @@ with tab_reviews_gen:
                 st.session_state.reviews_current_index = 0
                 st.session_state.reviews_per_query = rev_count_input
                 st.session_state.reviews_automode_active = True
-                
-                st.session_state.query_input = queue[0]['q']
+                # Используем буфер для безопасного обновления виджета query_input
+                st.session_state['pending_widget_updates'] = {
+                    'query_input': queue[0]['q'],
+                    'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                    'my_page_source_radio': "Без страницы"
+                }
                 st.session_state.start_analysis_flag = True
                 st.rerun()
 
@@ -6195,13 +6082,13 @@ with tab_reviews_gen:
 # === Финальный блок (замена строк 1007-1009) ===
     if 'reviews_results' in st.session_state and st.session_state.reviews_results:
         st.markdown("### Результаты")
-        # Удаляем дубли по тексту отзыва, чтобы не плодить одинаковые строки
+        # Чистим дубликаты отзывов перед показом
         df_revs = pd.DataFrame(st.session_state.reviews_results).drop_duplicates(subset=['Отзыв'], keep='last')
         st.dataframe(df_revs, use_container_width=True)
         
-        # Кнопка скачивания
         csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
