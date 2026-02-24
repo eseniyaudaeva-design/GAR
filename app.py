@@ -3697,54 +3697,87 @@ with tab_seo_main:
             st.session_state.analysis_done = True
 
 # ==========================================
-        # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (БЕЗ СОКРАЩЕНИЙ)
-        # ==========================================
+# 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (ИСПРАВЛЕННЫЙ)
+# ==========================================
+if st.session_state.get('reviews_automode_active'):
+    try:
+        # 1. Данные из анализа
+        res_seo = st.session_state.analysis_results
+        lsi_pool = res_seo['hybrid'].head(15)['Слово'].tolist() if 'hybrid' in res_seo else []
+        
+        curr_idx = st.session_state.reviews_current_index
+        queue = st.session_state.reviews_queue
+        
+        # ОПРЕДЕЛЯЕМ TASK (чтобы не было NameError)
+        if curr_idx < len(queue):
+            task = queue[curr_idx]
+        else:
+            st.session_state.reviews_automode_active = False
+            st.rerun()
+
         # 2. ЗАГРУЗКА ИЗ ПАПКИ dicts С ПРАВИЛЬНЫМИ ПУТЯМИ
-        # Указываем путь к папке dicts, как ты и сказал
-        # 1. ЗАГРУЗКА ИЗ ПРАВИЛЬНОЙ ПАПКИ (dicts/)
-        # Учитываем твою структуру и разделитель ";"
         df_fio = pd.read_csv("dicts/fio.csv", sep=";")
         df_templates = pd.read_csv("dicts/templates.csv", sep=";")
         df_vars = pd.read_csv("dicts/vars.csv", sep=";")
-
-        # 2. СОЗДАЕМ СЛОВАРЬ ЗАМЕН (Скриншот 1)
-        # Ключ: {переменная}, Значение: [список, фраз, на, выбор]
+        
+        # Собираем словарь переменных (Скриншот 1)
         var_dict = {}
         for _, row in df_vars.iterrows():
             var_name = str(row['Переменная']).strip()
-            # Разбиваем второй столбец по разделителю "|"
             var_values = str(row['Значения']).split('|')
             var_dict[f"{{{var_name}}}"] = [v.strip() for v in var_values]
 
-        # 3. ГЕНЕРАЦИЯ ОТЗЫВА
-        with st.spinner(f"📦 Сборка отзыва из компонентов..."):
+        with st.spinner(f"📦 Сборка отзывов для: {task['q']}..."):
             for _ in range(st.session_state.reviews_per_query):
-                # Берем случайный шаблон (Скриншот 2)
-                template = random.choice(df_templates['Шаблон'].values)
-                
-                # ИСПРАВЛЕННАЯ РЕГУЛЯРКА (видит русские буквы внутри скобок)
-                # Это то, почему на Скрине 3 у тебя выводились просто {переменные}
-                found_placeholders = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", template)
-                
-                for ph in found_placeholders:
-                    if ph in var_dict:
-                        # РАНДОМИМ: заменяем {переменную} на случайную фразу из vars.csv
-                        template = template.replace(ph, random.choice(var_dict[ph]), 1)
-                    elif ph == "{дата}":
-                        # СВЕЖАЯ ДАТА: сегодня или несколько дней назад
-                        days_ago = random.randint(0, 5)
-                        fresh_date = (datetime.datetime.now() - datetime.timedelta(days=days_ago)).strftime("%d.%m.%Y")
-                        template = template.replace("{дата}", fresh_date)
-
-                # 4. ФИО И АВТОР (из fio.csv)
+                # --- РАНДОМ ФИО ---
                 fio_row = df_fio.sample(n=1).iloc[0]
                 current_fio = f"{fio_row['Фамилия']} {fio_row['Имя']}"
+                
+                # --- ВЫБОР ШАБЛОНА (Скриншот 2) ---
+                template = random.choice(df_templates['Шаблон'].values)
+               
+                # --- ЗАМЕНА ПЕРЕМЕННЫХ (Скриншот 3 - исправление) ---
+                # Регулярка теперь видит кириллицу внутри {скрепок}
+                found_placeholders = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", template)
 
+                for ph in found_placeholders:
+                    if ph in var_dict:
+                        # Рандомим фразу из vars.csv
+                        template = template.replace(ph, random.choice(var_dict[ph]), 1)
+                    elif ph == "{дата}":
+                        # Свежая дата: сегодня или до 3 дней назад
+                        days_ago = random.randint(0, 3)
+                        fresh_date = (datetime.datetime.now() - datetime.timedelta(days=days_ago)).strftime("%d.%m.%Y")
+                        template = template.replace("{дата}", fresh_date)
+                
+                # Сохраняем результат
                 st.session_state.reviews_results.append({
                     "ФИО": current_fio,
                     "Запрос": task['q'],
+                    "URL": task.get('url', '-'),
                     "Отзыв": template.strip()
                 })
+
+        # 3. ЛОГИКА ПЕРЕКЛЮЧЕНИЯ НА СЛЕДУЮЩИЙ URL
+        next_idx = curr_idx + 1
+        if next_idx < len(queue):
+            st.session_state.reviews_current_index = next_idx
+            next_task = queue[next_idx]
+            st.session_state['pending_widget_updates'] = {
+                'query_input': next_task['q'],
+                'my_url_input': next_task['url'],
+                'my_page_source_radio': "Релевантная страница на вашем сайте" if next_task['url'] != 'manual' else "Без страницы"
+            }
+            st.session_state.start_analysis_flag = True
+            st.rerun() 
+        else:
+            st.session_state.reviews_automode_active = False
+            st.success("✅ Все отзывы успешно сгенерированы!")
+            st.rerun()
+            
+    except Exception as e:
+        st.error(f"❌ Ошибка в движке отзывов: {e}")
+        st.session_state.reviews_automode_active = False
             
 # ==========================================
             # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (ИСПРАВЛЕННЫЙ)
@@ -6142,6 +6175,7 @@ with tab_reviews_gen:
         # Кнопка скачивания
         csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
         st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+
 
 
 
