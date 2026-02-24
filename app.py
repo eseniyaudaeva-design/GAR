@@ -668,53 +668,6 @@ if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'
 
 st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
 
-# ==========================================
-# ЯДРО БАЗЫ ДАННЫХ (КЭШИРОВАНИЕ SEO-АНАЛИЗА НА 90 ДНЕЙ)
-# ==========================================
-import sqlite3
-import json
-import datetime # <-- Исправленный безопасный импорт
-
-def init_seo_db():
-    conn = sqlite3.connect('seo_cache.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS seo_analysis (
-            query TEXT PRIMARY KEY,
-            timestamp TEXT,
-            parsed_data TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-init_seo_db()
-
-def get_cached_analysis(query):
-    conn = sqlite3.connect('seo_cache.db')
-    c = conn.cursor()
-    c.execute('SELECT timestamp, parsed_data FROM seo_analysis WHERE query = ?', (query.lower().strip(),))
-    row = c.fetchone()
-    conn.close()
-    
-    if row:
-        cached_date = datetime.datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
-        if datetime.datetime.now() - cached_date < datetime.timedelta(days=90):
-            return json.loads(row[1])
-    return None
-
-def save_cached_analysis(query, data_for_graph):
-    conn = sqlite3.connect('seo_cache.db')
-    c = conn.cursor()
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute('''
-        INSERT OR REPLACE INTO seo_analysis (query, timestamp, parsed_data)
-        VALUES (?, ?, ?)
-    ''', (query.lower().strip(), timestamp, json.dumps(data_for_graph)))
-    conn.commit()
-    conn.close()
-# ==========================================
-
 GARBAGE_LATIN_STOPLIST = {
     'whatsapp', 'viber', 'telegram', 'skype', 'vk', 'instagram', 'facebook', 'youtube', 'twitter',
     'cookie', 'cookies', 'policy', 'privacy', 'agreement', 'terms',
@@ -5940,6 +5893,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
