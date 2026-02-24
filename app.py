@@ -61,14 +61,17 @@ init_seo_db()
 def get_cached_analysis(query):
     conn = sqlite3.connect('seo_cache.db')
     c = conn.cursor()
+    # Сначала удаляем всё, что старше 90 дней (автоматическая чистка)
+    expiry_date = (datetime.datetime.now() - datetime.timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
+    c.execute('DELETE FROM seo_analysis WHERE timestamp < ?', (expiry_date,))
+    conn.commit()
+    
     c.execute('SELECT timestamp, parsed_data FROM seo_analysis WHERE query = ?', (query.lower().strip(),))
     row = c.fetchone()
     conn.close()
     
     if row:
-        cached_date = datetime.datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
-        if datetime.datetime.now() - cached_date < datetime.timedelta(days=90):
-            return json.loads(row[1])
+        return json.loads(row[1]) # Возвращаем данные, если они есть и свежие
     return None
 
 def save_cached_analysis(query, data_for_graph):
@@ -2479,6 +2482,116 @@ def run_seo_analysis_background(query, api_token):
     
     return []
 
+def inflect_lsi_phrase(phrase, target_case):
+    # Используем твой импортированный pymorphy2
+    morph = pymorphy2.MorphAnalyzer()
+    words = str(phrase).split()
+    inflected_words = []
+    for word in words:
+        parsed_word = morph.parse(word)[0]
+        try:
+            inf_word = parsed_word.inflect({target_case})
+            inflected_words.append(inf_word.word if inf_word else word)
+        except: inflected_words.append(word)
+    return " ".join(inflected_words)
+
+def generate_random_date():
+    # Строгий диапазон: 01.01.2026 - 10.02.2026
+    start = datetime.datetime(2026, 1, 1)
+    end = datetime.datetime(2026, 2, 10)
+    delta = end - start
+    return (start + datetime.timedelta(days=random.randrange(delta.days + 1))).strftime("%d.%m.%Y")
+
+def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
+    def replace_var(match):
+        v = match.group(1).strip()
+        if v == "дата": return generate_random_date()
+        if v in variables_dict: return str(random.choice(variables_dict[v])).strip()
+        return match.group(0)
+
+    draft = re.sub(r'\{([^}]+)\}', replace_var, str(template))
+    
+    # СТРОГИЙ ФИЛЬТР: Никакой Украины, войны и политики. Россию - можно.
+    forbidden = ["украин", "ukrain", "ua", "всу", "зсу", "ато", "сво", "войн", "киев", "политик", "спецоперац"]
+    clean_lsi = [w for w in lsi_words if not any(r in str(w).lower() for r in forbidden)]
+    
+    used_lsi = []
+    if clean_lsi:
+        lsi = random.choice(clean_lsi)
+        # Склоняем в винительный падеж для естественности вставки
+        inflected = inflect_lsi_phrase(lsi, 'accs')
+        bridge = random.choice([
+            f"Отдельно отмечу **{inflected}**.",
+            f"Порадовало наличие **{inflected}**.",
+            f"Качество **{inflected}** на высоте."
+        ])
+        draft += " " + bridge
+        used_lsi.append(inflected)
+
+    # Сборка ФИО по полу и отчеству
+    name = "Аноним"
+    gens = [g for g in ['MALE', 'FEMALE'] if repo_fio[g]['names']]
+    if gens:
+        g = random.choice(gens)
+        nm = random.choice(repo_fio[g]['names'])
+        sn = random.choice(repo_fio[g]['surnames'])
+        if repo_fio[g]['patronymics'] and random.random() > 0.5:
+            pt = random.choice(repo_fio[g]['patronymics'])
+            name = f"{nm} {pt} {sn}"
+        else: name = f"{nm} {sn}"
+
+    return name, draft, used_lsi
+
+def inflect_lsi_phrase(phrase, target_case):
+    morph = pymorphy2.MorphAnalyzer()
+    words = str(phrase).split()
+    inflected_words = []
+    for word in words:
+        parsed_word = morph.parse(word)[0]
+        try:
+            inf_word = parsed_word.inflect({target_case})
+            inflected_words.append(inf_word.word if inf_word else word)
+        except: inflected_words.append(word)
+    return " ".join(inflected_words)
+
+def generate_random_date():
+    start = datetime.datetime(2026, 1, 1)
+    end = datetime.datetime(2026, 2, 10)
+    delta = end - start
+    return (start + datetime.timedelta(days=random.randrange(delta.days + 1))).strftime("%d.%m.%Y")
+
+def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
+    def replace_var(match):
+        v = match.group(1).strip()
+        if v == "дата": return generate_random_date()
+        if v in variables_dict: return str(random.choice(variables_dict[v])).strip()
+        return match.group(0)
+
+    draft = re.sub(r'\{([^}]+)\}', replace_var, str(template))
+    
+    # Фильтр LSI
+    forbidden = ["украин", "ukrain", "ua", "всу", "зсу", "ато", "сво", "войн", "киев", "политик"]
+    clean_lsi = [w for w in lsi_words if not any(r in str(w).lower() for r in forbidden)]
+    
+    used_lsi = []
+    if clean_lsi:
+        lsi = random.choice(clean_lsi)
+        inflected = inflect_lsi_phrase(lsi, 'accs')
+        bridge = f"Отдельно отмечу **{inflected}**."
+        draft += " " + bridge
+        used_lsi.append(inflected)
+
+    name = "Аноним"
+    gens = [g for g in ['MALE', 'FEMALE'] if repo_fio[g]['names']]
+    if gens:
+        g = random.choice(gens)
+        nm = random.choice(repo_fio[g]['names'])
+        sn = random.choice(repo_fio[g]['surnames'])
+        if repo_fio[g]['patronymics'] and random.random() > 0.5:
+            pt = random.choice(repo_fio[g]['patronymics'])
+            name = f"{nm} {pt} {sn}"
+        else: name = f"{nm} {sn}"
+    return name, draft, used_lsi
 # ==========================================
 # НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (ЖИРНЫЙ ШРИФТ + АВТОТИРЕ)
 # ==========================================
@@ -5868,7 +5981,61 @@ with tab_faq_gen:
             st.session_state.faq_automode_active = False
             st.rerun()
 
-    # ==================================================================
+# === ПЕРЕХВАТ ДЛЯ ОТЗЫВОВ (АВТОМАТИЗАЦИЯ) ===
+        if st.session_state.get('reviews_automode_active'):
+            try:
+                # 1. Берем LSI из результатов
+                current_lsi = results_final['hybrid'].head(15)['Слово'].tolist()
+                
+                # 2. Загружаем базу из GitHub
+                df_vars = pd.read_csv("dicts/vars.csv", sep=None, engine='python')
+                repo_vars = {}
+                c_vn = next((c for c in df_vars.columns if 'переменная' in c.lower() or 'код' in c.lower()), df_vars.columns[0])
+                c_vv = next((c for c in df_vars.columns if 'значени' in c.lower()), df_vars.columns[1])
+                for _, row in df_vars.iterrows():
+                    key = str(row[c_vn]).strip()
+                    if key and key != 'nan':
+                        repo_vars[key] = [v.strip() for v in str(row[c_vv]).split('|') if v.strip()]
+
+                df_fio = pd.read_csv("dicts/fio.csv", sep=None, engine='python')
+                repo_fio = {'MALE': {'names': [], 'surnames': [], 'patronymics': []}, 'FEMALE': {'names': [], 'surnames': [], 'patronymics': []}}
+                for _, row in df_fio.iterrows():
+                    fn, im, ot = str(row.get('Фамилия','')), str(row.get('Имя','')), str(row.get('Отчество',''))
+                    gen = str(row.get('Пол','')).strip().upper()
+                    g_key = 'MALE' if gen in ['MALE', 'М', 'МУЖ'] else ('FEMALE' if gen in ['FEMALE', 'Ж', 'ЖЕН', 'F'] else None)
+                    if g_key:
+                        if im and im != 'nan': repo_fio[g_key]['names'].append(im.strip())
+                        if fn and fn != 'nan': repo_fio[g_key]['surnames'].append(fn.strip())
+                        if ot and ot != 'nan': repo_fio[g_key]['patronymics'].append(ot.strip())
+
+                df_tpl = pd.read_csv("dicts/templates.csv", sep=None, engine='python')
+                c_tpl = next((c for c in df_tpl.columns if 'шаблон' in c.lower()), df_tpl.columns[0])
+                repo_tpl = [str(t).strip() for t in df_tpl[c_tpl].dropna().tolist() if str(t).strip() and str(t).strip() != 'nan']
+
+                # 3. Генерируем пачку отзывов
+                for _ in range(st.session_state.reviews_per_query):
+                    tpl = random.choice(repo_tpl)
+                    name, text, used_lsi = build_review_from_repo(tpl, repo_vars, repo_fio, current_lsi)
+                    st.session_state.reviews_results.append({
+                        "Запрос (H1)": st.session_state.query_input,
+                        "Имя": name,
+                        "Отзыв": text,
+                        "LSI": ", ".join(used_lsi)
+                    })
+
+                # 4. Двигаем очередь
+                st.session_state.reviews_current_index += 1
+                if st.session_state.reviews_current_index < len(st.session_state.reviews_queue):
+                    st.session_state.query_input = st.session_state.reviews_queue[st.session_state.reviews_current_index]['q']
+                    st.session_state.start_analysis_flag = True
+                else:
+                    st.session_state.reviews_automode_active = False
+                    st.success("✅ Отзывы сгенерированы!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Ошибка в автоматизации отзывов: {e}")
+                st.session_state.reviews_automode_active = False
+# ==================================================================
     # 🔥 HOOK ДЛЯ FAQ ГЕНЕРАТОРА (СРАБАТЫВАЕТ ПОСЛЕ ПЕРВОЙ ВКЛАДКИ)
     # ==================================================================
     if st.session_state.get('faq_automode_active'):
@@ -5891,6 +6058,12 @@ with tab_faq_gen:
         faq_json_result = generate_faq_gemini(api_key_gen, task['h1'], lsi_words, target_q_count)
         
         if 'faq_results' not in st.session_state: st.session_state.faq_results = []
+
+        if 'reviews_results' not in st.session_state: st.session_state.reviews_results = []
+        if 'reviews_queue' not in st.session_state: st.session_state.reviews_queue = []
+        if 'reviews_automode_active' not in st.session_state: st.session_state.reviews_automode_active = False
+        if 'reviews_current_index' not in st.session_state: st.session_state.reviews_current_index = 0
+        if 'reviews_per_query' not in st.session_state: st.session_state.reviews_per_query = 3
         
         st.session_state.faq_results.append({
             "h1": task['h1'],
@@ -5997,122 +6170,45 @@ with tab_faq_gen:
 # 7. ВКЛАДКА: ГЕНЕРАТОР ОТЗЫВОВ (БАЗА ИЗ ПАПКИ GITHUB + ПАРСЕР URL)
 # ==========================================
 with tab_reviews_gen:
-    st.header("💬 Генератор отзывов (Локальная база)")
-    st.markdown("Справочники подтягиваются автоматически из папки `dicts`.")
+    st.header("💬 Генератор отзывов (Автомат)")
     
-    # === ВЫБОР РЕЖИМА ВВОДА ===
-    input_mode = st.radio("Откуда брать названия товаров (запросы)?", ["Список H1 (ручной ввод)", "Список URL (скрипт сам спарсит H1 с сайта)"], horizontal=True)
-    rev_input = st.text_area("Введите данные (каждый с новой строки):", height=150)
-    
-    reviews_count = st.number_input("Сколько отзывов на 1 товар?", min_value=1, max_value=20, value=3)
-    
-    if st.button("🚀 Сгенерировать отзывы", type="primary", use_container_width=True):
-        if not rev_input.strip():
-            st.warning("Введите хотя бы одну строчку!")
-        else:
-            with st.spinner("Подготавливаем данные и собираем отзывы..."):
-                try:
-                    import requests
-                    from bs4 import BeautifulSoup
-                    import os
-                    
-                    # === 1. ПОЛУЧАЕМ ЗАПРОСЫ (ПАРСИМ URL, ЕСЛИ НУЖНО) ===
-                    queries_list = []
-                    raw_lines = [line.strip() for line in rev_input.split('\n') if line.strip()]
-                    
-                    if "URL" in input_mode:
-                        st.toast("🕵️ Заходим на сайты и собираем H1...", icon="⏳")
-                        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                        for url in raw_lines:
-                            try:
-                                # Используем verify=False на случай проблем с SSL
-                                resp = requests.get(url, headers=headers, timeout=10, verify=False)
-                                soup = BeautifulSoup(resp.content, 'html.parser')
-                                h1_tag = soup.find('h1')
-                                if h1_tag and h1_tag.text:
-                                    queries_list.append(h1_tag.text.strip())
-                                else:
-                                    queries_list.append("Товар без названия")
-                            except Exception as e:
-                                queries_list.append("Ошибка парсинга URL")
-                    else:
-                        queries_list = raw_lines
+    rev_mode = st.radio("Источник запросов:", ["Список H1", "Список URL"], horizontal=True)
+    rev_input = st.text_area("Ввод данных (по одному на строку):", height=150)
+    rev_count_input = st.number_input("Сколько отзывов на один товар?", 1, 10, 3)
 
-                    # === 2. ЧИТАЕМ БАЗУ ДАННЫХ ИЗ GITHUB ===
-                    df_vars = pd.read_csv("dicts/vars.csv", sep=None, engine='python')
-                    repo_vars = {}
-                    col_var_name = next((c for c in df_vars.columns if 'переменная' in c.lower() or 'код' in c.lower()), df_vars.columns[0])
-                    col_var_val = next((c for c in df_vars.columns if 'значени' in c.lower()), df_vars.columns[1])
-                    for _, row in df_vars.iterrows():
-                        key = str(row[col_var_name]).strip()
-                        if key and key != 'nan':
-                            repo_vars[key] = [v.strip() for v in str(row[col_var_val]).split('|') if v.strip()]
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
+            lines = [l.strip() for l in rev_input.split('\n') if l.strip()]
+            if lines:
+                queue = []
+                if rev_mode == "URL":
+                    for u in lines:
+                        try:
+                            resp = requests.get(u, timeout=5, headers={'User-Agent': 'Mozilla/5.0'}, verify=False)
+                            soup = BeautifulSoup(resp.content, 'html.parser')
+                            h1_text = soup.find('h1').text.strip() if soup.find('h1') else u
+                            queue.append({'q': h1_text, 'url': u})
+                        except: queue.append({'q': u, 'url': u})
+                else:
+                    for q in lines: queue.append({'q': q, 'url': 'manual'})
+                
+                st.session_state.reviews_queue = queue
+                st.session_state.reviews_results = []
+                st.session_state.reviews_current_index = 0
+                st.session_state.reviews_per_query = rev_count_input
+                st.session_state.reviews_automode_active = True
+                
+                st.session_state.query_input = queue[0]['q']
+                st.session_state.start_analysis_flag = True
+                st.rerun()
 
-                    df_fio = pd.read_csv("dicts/fio.csv", sep=None, engine='python')
-                    repo_fio = {'MALE': {'names': [], 'surnames': [], 'patronymics': []}, 'FEMALE': {'names': [], 'surnames': [], 'patronymics': []}}
-                    for _, row in df_fio.iterrows():
-                        surname = str(row.get('Фамилия', '')).strip()
-                        name = str(row.get('Имя', '')).strip()
-                        patronymic = str(row.get('Отчество', '')).strip()
-                        gender = str(row.get('Пол', '')).strip().upper()
-                        
-                        g_key = 'MALE' if gender in ['MALE', 'М', 'МУЖ'] else ('FEMALE' if gender in ['FEMALE', 'Ж', 'ЖЕН', 'F'] else None)
-                        if g_key:
-                            if name and name != 'nan': repo_fio[g_key]['names'].append(name)
-                            if surname and surname != 'nan': repo_fio[g_key]['surnames'].append(surname)
-                            if patronymic and patronymic != 'nan': repo_fio[g_key]['patronymics'].append(patronymic)
+    with col_r2:
+        st.button("⛔ ОСТАНОВИТЬ", type="secondary", use_container_width=True, on_click=global_stop_callback)
 
-                    df_tpl = pd.read_csv("dicts/templates.csv", sep=None, engine='python')
-                    col_tpl = next((c for c in df_tpl.columns if 'шаблон' in c.lower()), df_tpl.columns[0])
-                    repo_tpl = [str(t).strip() for t in df_tpl[col_tpl].dropna().tolist() if str(t).strip() and str(t).strip() != 'nan']
-
-                    # === 3. ГЕНЕРАЦИЯ ОТЗЫВОВ ===
-                    final_reviews_data = []
-                    progress_bar = st.progress(0)
-                    
-                    for idx, q in enumerate(queries_list):
-                        # Если H1 не спарсился, пропускаем умную логику
-                        if q in ["Товар без названия", "Ошибка парсинга URL"]:
-                            final_reviews_data.append({
-                                "URL / Запрос": raw_lines[idx],
-                                "Имя": "—",
-                                "Отзыв": f"⚠️ {q}. Проверьте ссылку.",
-                                "Вставленные LSI": "—"
-                            })
-                            continue
-
-                        cached = get_cached_analysis(q)
-                        lsi_words = []
-                        if cached:
-                            df_cache = pd.DataFrame(cached)
-                            if 'tf_idf' in df_cache.columns and 'word' in df_cache.columns:
-                                df_cache = df_cache.sort_values(by='tf_idf', ascending=False)
-                                lsi_words = df_cache['word'].head(15).tolist()
-                        
-                        if not lsi_words:
-                            st.warning(f"⚠️ Для '{q}' нет LSI в базе SQLite (отзывы собраны без ключей). Прогоните его через 1 вкладку для сбора LSI!")
-                        
-                        for _ in range(reviews_count):
-                            tpl = random.choice(repo_tpl)
-                            name, text, used_lsi = build_review_from_repo(tpl, repo_vars, repo_fio, lsi_words)
-                            final_reviews_data.append({
-                                "URL / Запрос": raw_lines[idx] if "URL" in input_mode else q,
-                                "H1 (Товар)": q,
-                                "Имя": name,
-                                "Отзыв": text,
-                                "Вставленные LSI": ", ".join(used_lsi) if used_lsi else "—"
-                            })
-                        
-                        progress_bar.progress((idx + 1) / len(queries_list))
-                    
-                    if final_reviews_data:
-                        st.success("✅ Готово!")
-                        df_res = pd.DataFrame(final_reviews_data)
-                        st.dataframe(df_res, use_container_width=True)
-                        csv = df_res.to_csv(index=False).encode('utf-8-sig')
-                        st.download_button("💾 Скачать отзывы (CSV)", data=csv, file_name="generated_reviews.csv", mime="text/csv", type="primary")
-
-                except FileNotFoundError as e:
-                    st.error(f"❌ Файл не найден: `{e.filename}`. Проверь папку `dicts` в GitHub.")
-                except Exception as e:
-                    st.error(f"❌ Ошибка при сборке: {e}")
+    if st.session_state.reviews_results:
+        st.markdown("### Результаты")
+        df_revs = pd.DataFrame(st.session_state.reviews_results)
+        st.dataframe(df_revs, use_container_width=True)
+        csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
