@@ -3697,73 +3697,75 @@ with tab_seo_main:
             st.session_state.analysis_done = True
 
 # ==========================================
-        # ⚙️ АВТОМАТ ОТЗЫВОВ (РАНДОМ ПО СЛОВАРЯМ)
+        # ⚙️ ПОЛНЫЙ ДВИЖОК СБОРКИ ОТЗЫВОВ (БЕЗ СОКРАЩЕНИЙ)
         # ==========================================
         if st.session_state.get('reviews_automode_active'):
             try:
                 # 1. Берем LSI из только что сделанного анализа
-                res_final = st.session_state.analysis_results
-                lsi_words = res_final['hybrid'].head(15)['Слово'].tolist() if 'hybrid' in res_final else []
+                res_seo = st.session_state.analysis_results
+                lsi_pool = res_seo['hybrid'].head(15)['Слово'].tolist() if 'hybrid' in res_seo else []
                 
                 curr_idx = st.session_state.reviews_current_index
-                task = st.session_state.reviews_queue[curr_idx]
+                queue = st.session_state.reviews_queue
+                task = queue[curr_idx]
                 
-                # 2. ЗАГРУЗКА СЛОВАРЕЙ И ГЕНЕРАЦИЯ (РАНДОМ)
-                with st.spinner(f"🎲 Сборка отзывов для: {task['q']}..."):
-                    generated_for_this_url = []
-                    
-                    # Пути к твоим файлам
-                    base_dict_path = "dicts/fio"
-                    
-                    # Загружаем шаблоны и варианты (упрощенная загрузка)
-                    df_templates = pd.read_csv("templates.csv")
-                    df_vars = pd.read_csv("vars.csv")
-                    
+                # 2. ЗАГРУЗКА ТВОИХ ФАЙЛОВ
+                df_templates = pd.read_csv("templates.csv")
+                df_vars = pd.read_csv("vars.csv")
+                
+                with st.spinner(f"🎲 Собираю отзывы для: {task['q']}..."):
                     for _ in range(st.session_state.reviews_per_query):
-                        # Рандомим ФИО (пример логики загрузки из твоих папок)
+                        # --- РАНДОМ ФИО ИЗ ПАПКИ dicts/fio ---
                         gender = random.choice(['m', 'f'])
-                        first_names = open(f"{base_dict_path}/first_names_{gender}.txt", encoding='utf-8').read().splitlines()
-                        last_names = open(f"{base_dict_path}/last_names_{gender}.txt", encoding='utf-8').read().splitlines()
+                        try:
+                            names = open(f"dicts/fio/first_names_{gender}.txt", encoding='utf-8').read().splitlines()
+                            surnames = open(f"dicts/fio/last_names_{gender}.txt", encoding='utf-8').read().splitlines()
+                            fio = f"{random.choice(surnames)} {random.choice(names)}"
+                        except:
+                            fio = "Анонимный пользователь"
                         
-                        fio = f"{random.choice(last_names)} {random.choice(first_names)}"
-                        
-                        # Собираем тело отзыва из шаблона
+                        # --- СБОРКА ТЕКСТА ---
+                        # Берем случайный шаблон (колонка 'text')
                         template = random.choice(df_templates['text'].values)
                         
-                        # Вставляем LSI слова в случайные места или по меткам
-                        review_body = template
-                        if "{lsi}" in review_body:
-                            selected_lsi = random.sample(lsi_words, min(3, len(lsi_words)))
-                            review_body = review_body.replace("{lsi}", ", ".join(selected_lsi))
+                        # Вставляем LSI (если в шаблоне есть {lsi})
+                        if "{lsi}" in template and lsi_pool:
+                            chosen = random.sample(lsi_pool, min(3, len(lsi_pool)))
+                            template = template.replace("{lsi}", ", ".join(chosen))
                         
-                        # Добавляем в общую базу результатов
+                        # Вставляем варианты из vars.csv (если есть {var})
+                        if "{var}" in template:
+                            variant = random.choice(df_vars['text'].values)
+                            template = template.replace("{var}", variant)
+                        
+                        # Сохраняем в таблицу
                         st.session_state.reviews_results.append({
-                            "ФИО": fio,
-                            "Запрос": task['q'],
+                            "Автор": fio,
+                            "Объект": task['q'],
                             "URL": task['url'],
-                            "Отзыв": review_body
+                            "Отзыв": template
                         })
 
-                # 3. ПЕРЕХОД К СЛЕДУЮЩЕЙ ССЫЛКЕ
+                # 3. ПЕРЕКЛЮЧЕНИЕ НА СЛЕДУЮЩИЙ КРУГ
                 next_idx = curr_idx + 1
-                if next_idx < len(st.session_state.reviews_queue):
+                if next_idx < len(queue):
                     st.session_state.reviews_current_index = next_idx
-                    next_task = st.session_state.reviews_queue[next_idx]
+                    next_task = queue[next_idx]
                     
-                    # Обновляем поля для 1-й вкладки
+                    # Передаем данные для следующего анализа на 1-ю вкладку
                     st.session_state['pending_widget_updates'] = {
                         'query_input': next_task['q'],
                         'my_url_input': next_task['url'],
                         'my_page_source_radio': "Релевантная страница на вашем сайте" if next_task['url'] != 'manual' else "Без страницы"
                     }
                     st.session_state.start_analysis_flag = True
-                    st.rerun()
+                    st.rerun() 
                 else:
                     st.session_state.reviews_automode_active = False
-                    st.success("✅ Все отзывы успешно собраны!")
+                    st.success("🎉 Генерация по всему списку завершена!")
                     
             except Exception as e:
-                st.error(f"❌ Ошибка загрузки словарей или генерации: {e}")
+                st.error(f"❌ Ошибка в движке отзывов: {e}")
                 st.session_state.reviews_automode_active = False
             
 # ==========================================
@@ -6101,29 +6103,61 @@ with tab_faq_gen:
 with tab_reviews_gen:
     st.header("💬 Генератор отзывов (Автомат)")
     
-    # Ввод данных
-    rev_mode = st.radio("Источник:", ["Список H1", "Список URL"], horizontal=True)
-    rev_input = st.text_area("Данные (по одному на строку):", height=150)
-    rev_count_input = st.number_input("Количество на товар:", 1, 10, 3)
+    rev_mode = st.radio("Источник запросов:", ["Список H1", "Список URL"], horizontal=True)
+    rev_input = st.text_area("Ввод данных (по одному на строку):", height=150)
+    rev_count_input = st.number_input("Сколько отзывов на один товар?", 1, 10, 3)
 
-    col_1, col_2 = st.columns(2)
-    with col_1:
-        if st.button("🚀 ЗАПУСТИТЬ", type="primary", use_container_width=True):
-            # Тут код формирования очереди (я его давал выше, он нормальный)
-            ... 
-    with col_2:
-        st.button("⛔ СТОП", use_container_width=True, on_click=global_stop_callback)
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
+            lines = [l.strip() for l in rev_input.split('\n') if l.strip()]
+            if lines:
+                queue = []
+                if rev_mode == "Список URL":
+                    for u in lines:
+                        # Используем твою функцию парсинга
+                        h1_text = get_h1_from_url(u) 
+                        if not h1_text:
+                            # Если H1 не нашли, берем кусок из ссылки
+                            h1_text = u.split('/')[-1].replace('-', ' ').replace('_', ' ').capitalize()
+                        queue.append({'q': h1_text, 'url': u})
+                else:
+                    for q in lines: 
+                        queue.append({'q': q, 'url': 'manual'})
+                
+                # Сохраняем всё в session_state
+                st.session_state.reviews_queue = queue
+                st.session_state.reviews_results = []
+                st.session_state.reviews_current_index = 0
+                st.session_state.reviews_per_query = rev_count_input
+                st.session_state.reviews_automode_active = True
 
-    # --- ВОТ ТУТ ПРОИСХОДИТ ОТРРИСОВКА ---
+                # Настройка первой вкладки для СТАРТА
+                updates = {
+                    'query_input': queue[0]['q'],
+                    'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)"
+                }
+                
+                if rev_mode == "Список URL":
+                    updates['my_page_source_radio'] = "Релевантная страница на вашем сайте"
+                    updates['my_url_input'] = queue[0]['url']
+                else:
+                    updates['my_page_source_radio'] = "Без страницы"
+                    updates['my_url_input'] = ""
+                
+                st.session_state['pending_widget_updates'] = updates
+                st.session_state.start_analysis_flag = True
+                st.rerun() # Прыжок на анализ
+
+    with col_r2:
+        st.button("⛔ ОСТАНОВИТЬ", type="secondary", use_container_width=True, on_click=global_stop_callback)
+
+    # Отрисовка таблицы результатов
     if 'reviews_results' in st.session_state and st.session_state.reviews_results:
         st.markdown("---")
-        st.subheader("📊 Сгенерированные отзывы")
+        st.subheader("📊 Результаты генерации")
+        df_revs = pd.DataFrame(st.session_state.reviews_results)
+        st.dataframe(df_revs, use_container_width=True)
         
-        # Создаем таблицу
-        df_res = pd.DataFrame(st.session_state.reviews_results)
-        # Показываем таблицу пользователю
-        st.dataframe(df_res, use_container_width=True)
-        
-        # Кнопка скачивания
-        csv = df_res.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("💾 Скачать CSV", csv, "reviews.csv", "text/csv")
+        csv_data = df_revs.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
