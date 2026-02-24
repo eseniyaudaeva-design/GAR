@@ -5704,8 +5704,6 @@ with tab_faq_gen:
         else:
             # === ИЗМЕНИТЬ ВОТ ЭТОТ БЛОК ===
             st.button("⛔ ОСТАНОВИТЬ ГЕНЕРАЦИЮ", type="secondary", use_container_width=True, on_click=global_stop_callback)
-                st.session_state.faq_automode_active = False
-                st.rerun()
 
     with c_fstart2:
         if st.button("🗑️ Сбросить очередь FAQ", disabled=st.session_state.get('faq_automode_active', False), use_container_width=True):
@@ -5838,6 +5836,7 @@ with tab_faq_gen:
                 else:
                     st.error("Ошибка формата ответа нейросети:")
                     st.write(faq_items)
+
 
 
 
