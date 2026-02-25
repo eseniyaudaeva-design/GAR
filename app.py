@@ -6250,17 +6250,18 @@ with tab_faq_gen:
     with c_faq2:
         st.info("Скрипт по очереди проведет SEO-анализ каждого запроса/ссылки, возьмет 15 топовых слов и сгенерирует JSON-массив с вопросами и ответами.")
         
+        # Функция для безопасной синхронизации ключа между вкладками
+        def sync_faq_api_key():
+            st.session_state['SUPER_GLOBAL_KEY'] = st.session_state['faq_api_key_input_unique']
+
         # === ПОЛЕ ДЛЯ API КЛЮЧА НА 6 ВКЛАДКЕ ===
-        faq_api_val = st.text_input(
+        st.text_input(
             "🔑 Gemini API Key:", 
             value=st.session_state.get('SUPER_GLOBAL_KEY', ''), 
             type="password", 
-            key="faq_api_key_input_unique"
+            key="faq_api_key_input_unique",
+            on_change=sync_faq_api_key
         )
-        # Если ключ ввели или изменили — сохраняем в глобальную память
-        if faq_api_val != st.session_state.get('SUPER_GLOBAL_KEY', ''):
-            st.session_state['SUPER_GLOBAL_KEY'] = faq_api_val
-            st.rerun()
         
     faq_input = st.text_area("Введите H1 или URL (каждый с новой строки):", height=150)
     
@@ -6542,6 +6543,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
