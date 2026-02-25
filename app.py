@@ -3787,13 +3787,18 @@ with tab_seo_main:
                             is_noun = 'NOUN' in parsed.tag
                             
                             # === УМНЫЙ ФИЛЬТР PYMORPHY ===
-                            # Geox - топонимы (города, реки), Name - имена, Surn - фамилии
                             is_name_or_geo = any(tag in parsed.tag for tag in ['Name', 'Surn', 'Patr', 'Geox'])
+                            
+                            # НОВАЯ ПРОВЕРКА: Отсекаем прилагательные, причастия, наречия, если они идут по одному
+                            is_orphan_modifier = any(tag in parsed.tag for tag in ['ADJF', 'ADJS', 'PRTF', 'PRTS', 'ADVB', 'GRND'])
                             
                             is_known_product = w_clean in known_products
                             
-                            # Берем, если это товар, ЛИБО если это существительное, но НЕ город/имя
-                            if is_known_product or (is_noun and not is_name_or_geo):
+                            # Условие:
+                            # 1. Если это точный товар из списка - берем.
+                            # 2. Иначе: должно быть существительным, НЕ городом/именем, и НЕ одиночным прилагательным/причастием
+                            if is_known_product or (is_noun and not is_name_or_geo and not is_orphan_modifier):
+                                priority = 1 if is_known_product else 0
                                 # Приоритет: Если это известный товар - ставим флаг priority
                                 priority = 1 if is_known_product else 0
                                 
@@ -3928,6 +3933,14 @@ with tab_seo_main:
                         # Финальная чистка
                         final_text = re.sub(r"\{[^}]+\}", "", final_text)
                         final_text = final_text.replace("..", ".").replace(" .", ".").replace(" ,", ",")
+                        
+                        # === ОЧИСТКА АРТЕФАКТОВ ПУНКТУАЦИИ ===
+                        # Убираем точку после восклицательных и вопросительных знаков
+                        final_text = re.sub(r'([!?]+)\s*\.', r'\1', final_text) 
+                        # Убираем пробелы перед знаками препинания
+                        final_text = re.sub(r'\s+([.,!?])', r'\1', final_text)
+                        # =====================================
+
                         final_text = re.sub(r'\s+', ' ', final_text).strip()
                         
                         if final_text:
@@ -6397,6 +6410,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
