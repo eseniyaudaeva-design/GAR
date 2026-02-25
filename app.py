@@ -6080,24 +6080,22 @@ with tab_lsi_gen:
                 st.error(html_out)
             else:
                 try:
-                    # === ЖЕСТКАЯ ОЧИСТКА LSI ОТ МУСОРА И КОНКУРЕНТОВ ===
-            # Список разрешенной латиницы (можно дополнять)
-            allowed_latin = ('aisi', 'din', 'en', 'ral', 'iso', 'pvc', 'led', 'sus', 'mm')
-            
-            ultra_clean_lsi = []
-            if combined_lsi:
-                for word in combined_lsi:
-                    word_lower = str(word).lower().strip()
-                    # Если в слове есть английские буквы
-                    if re.search(r'[a-z]', word_lower):
-                        # Проверяем, есть ли среди них разрешенные марки/аббревиатуры
-                        if any(ok_val in word_lower for ok_val in allowed_latin):
-                            ultra_clean_lsi.append(word)
-                    else:
-                        # Если латиницы нет (русские слова, цифры) — берем
-                        ultra_clean_lsi.append(word)
-            
-            combined_lsi = ultra_clean_lsi
+                    allowed_latin = ('aisi', 'din', 'en', 'ral', 'iso', 'pvc', 'led')
+                    
+                    ultra_clean_lsi = []
+                    if combined_lsi:
+                        for word in combined_lsi:
+                            word_lower = str(word).lower().strip()
+                            # Если в слове есть английские буквы
+                            if re.search(r'[a-z]', word_lower):
+                                # Проверяем, есть ли среди них разрешенные марки/аббревиатуры
+                                if any(ok_val in word_lower for ok_val in allowed_latin):
+                                    ultra_clean_lsi.append(word)
+                            else:
+                                # Если латиницы нет (русские слова, цифры) — берем
+                                ultra_clean_lsi.append(word)
+                    
+                    combined_lsi = ultra_clean_lsi
             # ===================================================
                     html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
                     status_code = "OK"
@@ -6596,6 +6594,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
