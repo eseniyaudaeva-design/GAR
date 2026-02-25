@@ -3847,46 +3847,28 @@ with tab_seo_main:
                     var_dict["{товар}"] = ["заказ", "товар", "продукцию"]
 
                 # Фразы-конструкторы (для вставки, если шаблон не подошел)
-                LSI_SENTENCES = [
-                    {"tpl": "Отдельно отмечу качество {}.", "case": "gent"}, 
-                    {"tpl": "Порадовала цена на {}.", "case": "accs"},       
-                    {"tpl": "Приобрели {}.", "case": "accs"},         
-                    {"tpl": "Проблем с {} не возникло.", "case": "ablt"},    
-                    {"tpl": "Сейчас {} в наличии.", "case": "nomn"}          
-                ]
-
-                with st.spinner(f"📦 Сборка отзывов для: {task.get('q', 'запроса')}..."):
-                    for _ in range(st.session_state.get('reviews_per_query', 3)):
-                        # ФИО
-                        f_row = df_fio.sample(n=1).iloc[0]
-                        c_fio = f"{f_row.get('Имя', '')} {f_row.get('Фамилия', '')}".strip()
-                        if not c_fio: c_fio = "Клиент"
-
-                        # Шаблон
-                        final_text = random.choice(df_templates['Шаблон'].values)
-                        used_lsi_word = None
+                # Умные фразы-конструкторы по категориям
+                        LSI_SENTENCES_PROD = [
+                            {"tpl": "Отдельно отмечу качество {}.", "case": "gent"}, 
+                            {"tpl": "Заказывали {} оптом.", "case": "accs"},       
+                            {"tpl": "Партия {} пришла без брака.", "case": "gent"},        
+                            {"tpl": "Проблем с {} не возникло.", "case": "ablt"},    
+                            {"tpl": "Сейчас {} в наличии.", "case": "nomn"}          
+                        ]
                         
-                        # --- ВНЕДРЕНИЕ LSI (С ПРИОРИТЕТОМ ТОВАРОВ) ---
+                        LSI_SENTENCES_SERV = [
+                            {"tpl": "Также потребовалась {}.", "case": "nomn"},
+                            {"tpl": "Отдельное спасибо за {}.", "case": "accs"},
+                            {"tpl": "С {} справились на отлично.", "case": "ablt"},
+                            {"tpl": "Кстати, {} здесь на хорошем уровне.", "case": "nomn"}
+                        ]
                         
-                        # 1. Пытаемся найти слово для замены тега {товар}
-                        # Берем слово из lsi_nouns (они уже отсортированы: Товары вверху, потом просто Упущенное)
-                        if "{товар}" in final_text and lsi_nouns:
-                            # Берем случайное из топ-5 доступных слов, чтобы было разнообразие
-                            top_n = min(len(lsi_nouns), 10)
-                            lsi_obj = lsi_nouns[random.randint(0, top_n - 1)] 
-                            
-                            replacement = f"**{lsi_obj['word']}**"
-                            final_text = final_text.replace("{товар}", replacement, 1)
-                            used_lsi_word = True
-                        
-                        # Заполнение остальных переменных
-                        tags = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", final_text)
-                        for t in tags:
-                            if t in var_dict:
-                                final_text = final_text.replace(t, random.choice(var_dict[t]), 1)
-                            elif t == "{дата}":
-                                dt = (datetime.datetime.now() - datetime.timedelta(days=random.randint(1, 60))).strftime("%d.%m.%Y")
-                                final_text = final_text.replace("{дата}", dt)
+                        LSI_SENTENCES_GEN = [
+                            {"tpl": "Обратили внимание на {}.", "case": "accs"},
+                            {"tpl": "Порадовало наличие {}.", "case": "gent"},
+                            {"tpl": "К слову, с {} проблем не возникло.", "case": "ablt"},
+                            {"tpl": "Хорошо продумали {}.", "case": "accs"}
+                        ]
 
                         # 2. Если {товар} не был заменен (нет тега или слов), вставляем отдельное предложение
                         if not used_lsi_word and lsi_nouns:
@@ -3894,7 +3876,17 @@ with tab_seo_main:
                             lsi_obj = lsi_nouns[random.randint(0, top_n - 1)]
                             
                             parsed_word = lsi_obj['parse']
-                            tpl_obj = random.choice(LSI_SENTENCES)
+                            w_type = lsi_obj.get('type', 'general')
+                            
+                            # Выбираем правильный набор шаблонов в зависимости от типа слова
+                            if w_type == 'product':
+                                tpl_list = LSI_SENTENCES_PROD
+                            elif w_type == 'service':
+                                tpl_list = LSI_SENTENCES_SERV
+                            else:
+                                tpl_list = LSI_SENTENCES_GEN
+                                
+                            tpl_obj = random.choice(tpl_list)
                             
                             try:
                                 inflected = parsed_word.inflect({tpl_obj['case']})
@@ -6402,6 +6394,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
