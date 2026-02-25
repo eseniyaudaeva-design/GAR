@@ -5816,25 +5816,13 @@ with tab_lsi_gen:
 
         c1, c2 = st.columns([1, 2])
         with c1:
-            # Читаем текущее значение
-            current_val = st.session_state.SUPER_GLOBAL_KEY
-            
-            # Создаем инпут БЕЗ параметра key (это важно!)
-            new_val = st.text_input(
-                "Gemini API Key", 
-                value=current_val, 
-                type="password"
-            )
-            
-            # Если ввели что-то новое — сохраняем в глобалку
-            if new_val != current_val:
-                st.session_state.SUPER_GLOBAL_KEY = new_val
-                st.rerun() # Обновляем, чтобы зафиксировать
-
-# Если ввели что-то новое — сохраняем в глобалку
-            if new_val != current_val:
-                st.session_state.SUPER_GLOBAL_KEY = new_val
-                st.rerun() # Обновляем, чтобы зафиксировать
+                # Используем встроенный механизм Streamlit (параметр key), 
+                # который автоматически и надежно сохраняет значение при любых кликах!
+                st.text_input(
+                    "🔑 Введите API-ключ Gemini:", 
+                    type="password",
+                    key="SUPER_GLOBAL_KEY"
+                )
 
         with c2:
             # === ПОЛЕ ДЛЯ ОБЩИХ LSI ===
@@ -6554,6 +6542,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
