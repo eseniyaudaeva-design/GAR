@@ -2916,6 +2916,41 @@ def check_textru_status_sync(uid, key):
             return f"Ошибка: {res.get('error_desc', res.get('error_code', 'Unknown'))}"
     except:
         return "error"
+
+def validate_topic_deepseek(api_key, h1, h2, text):
+    """Проверяет соответствие текста теме через DeepSeek-v3.2"""
+    if not api_key or not text: return True
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
+        prompt = f"""
+        Ты - строгий SEO-асессор.
+        Тебе передан сгенерированный текст.
+        Проверь, действительно ли этот текст написан на заданную тему:
+        H1: {h1}
+        H2: {h2}
+
+        Бывает, что нейросеть ошибается и пишет про смежные категории или вообще о другом товаре/услуге.
+        Если текст точно раскрывает заявленную тему, ответь строго одним словом: YES
+        Если текст написан про другое или тема не раскрыта, ответь строго одним словом: NO
+        """
+        # Обрезаем текст для экономии токенов (суть ясна по первым 3000 символам)
+        user_msg = f"Текст для проверки:\n{text[:3000]}"
+
+        response = client.chat.completions.create(
+            model="deepseek/deepseek-v3.2",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": user_msg}
+            ],
+            temperature=0.1,
+            max_tokens=10
+        )
+        ans = response.choices[0].message.content.strip().upper()
+        if "NO" in ans: return False
+        return True
+    except Exception as e:
+        return True # При ошибке API пропускаем, чтобы не блочить весь процесс
 # ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
@@ -5846,15 +5881,17 @@ with tab_lsi_gen:
             )
         # --- НОВЫЕ ЧЕК-БОКСЫ ---
         st.markdown("### Дополнительные проверки (после генерации)")
-        c_chk1, c_chk2 = st.columns(2)
+        c_chk1, c_chk2, c_chk3 = st.columns(3)
         with c_chk1:
-            st.session_state['use_turgenev'] = st.checkbox("📚 Проверка по Тургеневу (Риск)", value=st.session_state.get('use_turgenev', False))
+            st.session_state['use_turgenev'] = st.checkbox("📚 Проверка по Тургеневу", value=st.session_state.get('use_turgenev', False))
             if st.session_state['use_turgenev']:
                 st.session_state['turgenev_api_key'] = st.text_input("🔑 API-ключ Тургенева", value=st.session_state.get('turgenev_api_key', ''), type="password")
         with c_chk2:
-            st.session_state['use_textru'] = st.checkbox("🚀 Проверка уникальности по Text.ru", value=st.session_state.get('use_textru', False))
+            st.session_state['use_textru'] = st.checkbox("🚀 Проверка Text.ru", value=st.session_state.get('use_textru', False))
             if st.session_state['use_textru']:
                 st.session_state['textru_api_key'] = st.text_input("🔑 API-ключ Text.ru", value=st.session_state.get('textru_api_key', ''), type="password")
+        with c_chk3:
+            st.session_state['use_deepseek_check'] = st.checkbox("🧠 Проверка темы (DeepSeek)", value=st.session_state.get('use_deepseek_check', True), help="Использует ваш текущий API-ключ от Gemini")
 
     # --- 2. ЗАГРУЗКА ЗАДАЧ ---
     st.subheader("1. Загрузка задач")
@@ -6075,29 +6112,13 @@ with tab_lsi_gen:
             turgenev_res = "-"
             textru_res = "-"
             textru_uid = None
+            ai_match_res = True # По умолчанию True
 
             if not api_key_gen:
                 html_out = "ОШИБКА: Ключ не найден. Введите ключ на Вкладке 5!"
                 st.error(html_out)
             else:
                 try:
-                    allowed_latin = ('aisi', 'din', 'en', 'ral', 'iso', 'pvc', 'led')
-                    
-                    ultra_clean_lsi = []
-                    if combined_lsi:
-                        for word in combined_lsi:
-                            word_lower = str(word).lower().strip()
-                            # Если в слове есть английские буквы
-                            if re.search(r'[a-z]', word_lower):
-                                # Проверяем, есть ли среди них разрешенные марки/аббревиатуры
-                                if any(ok_val in word_lower for ok_val in allowed_latin):
-                                    ultra_clean_lsi.append(word)
-                            else:
-                                # Если латиницы нет (русские слова, цифры) — берем
-                                ultra_clean_lsi.append(word)
-                    
-                    combined_lsi = ultra_clean_lsi
-            # ===================================================
                     html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
                     status_code = "OK"
                     
@@ -6105,6 +6126,11 @@ with tab_lsi_gen:
                     if html_out and "Error" not in status_code:
                         plain_text = BeautifulSoup(html_out, "html.parser").get_text(separator=" ")
                         
+                        # Проверка на соответствие темы через DeepSeek
+                        if st.session_state.get('use_deepseek_check'):
+                            ai_match_res = validate_topic_deepseek(api_key_gen, task['h1'], task['h2'], plain_text)
+
+                        # Проверка Тургенев
                         if st.session_state.get('use_turgenev'):
                             turgenev_key = st.session_state.get('turgenev_api_key', '')
                             if turgenev_key:
@@ -6112,6 +6138,7 @@ with tab_lsi_gen:
                             else:
                                 turgenev_res = "Нет ключа API Тургенева"
                         
+                        # Проверка Text.ru
                         if st.session_state.get('use_textru'):
                             textru_key = st.session_state.get('textru_api_key', '')
                             if textru_key:
@@ -6128,7 +6155,7 @@ with tab_lsi_gen:
                     html_out = f"Error generating: {e}"
                     status_code = "Gen Error"
 
-            # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ
+            # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
             if 'bg_results' not in st.session_state:
                 st.session_state.bg_results = []
                 
@@ -6141,6 +6168,7 @@ with tab_lsi_gen:
                     existing_res['turgenev'] = turgenev_res
                     existing_res['textru'] = textru_res
                     existing_res['textru_uid'] = textru_uid
+                    existing_res['ai_match'] = ai_match_res # <-- Сохраняем флаг
                     found_existing = True
                     break
             
@@ -6154,7 +6182,8 @@ with tab_lsi_gen:
                     "status": status_code,
                     "turgenev": turgenev_res,
                     "textru": textru_res,
-                    "textru_uid": textru_uid
+                    "textru_uid": textru_uid,
+                    "ai_match": ai_match_res # <-- Сохраняем флаг
                 })
             # 6. ПЕРЕХОД К СЛЕДУЮЩЕЙ ЗАДАЧЕ
             next_task_idx = current_idx + 1
@@ -6198,30 +6227,89 @@ with tab_lsi_gen:
 
             df_res = pd.DataFrame(st.session_state.bg_results)
             
-            # Преобразуем списки LSI
             if 'lsi_added' in df_res.columns:
                 df_res['lsi_added'] = df_res['lsi_added'].apply(lambda x: ", ".join(x) if isinstance(x, list) else x)
             
-            if 'textru_uid' in df_res.columns:
-                df_res_display = df_res.drop(columns=['textru_uid'])
-            else:
-                df_res_display = df_res.copy()
-            
-            # Показываем саму таблицу (она будет сама обновляться)
-            st.dataframe(df_res_display, use_container_width=True)
+            # === 1. ГЕНЕРИРУЕМ СТОЛБЕЦ "КОММЕНТАРИЙ" ===
+            comments = []
+            for _, row in df_res.iterrows():
+                row_comments = []
+                
+                # Проверка темы DeepSeek
+                if row.get('ai_match') is False:
+                    row_comments.append("Текст не соответствует заданной теме.")
+                
+                # Проверка Тургенева (> 5)
+                turg_val = str(row.get('turgenev', ''))
+                try:
+                    turg_match = re.search(r'\d+\.?\d*', turg_val)
+                    if turg_match:
+                        risk_val = float(turg_match.group())
+                        if risk_val > 5:
+                            row_comments.append("Риск по Тургеневу больше 5.")
+                except: pass
+                
+                # Проверка Text.ru (< 95%)
+                txtru_val = str(row.get('textru', ''))
+                if '%' in txtru_val:
+                    try:
+                        txtru_match = re.search(r'\d+\.?\d*', txtru_val)
+                        if txtru_match:
+                            uniq_val = float(txtru_match.group())
+                            if uniq_val < 95:
+                                row_comments.append("Уникальность от 95%, нужно перегенерировать.")
+                    except: pass
+                
+                comments.append(" | ".join(row_comments) if row_comments else "ОК")
+
+            df_res['Комментарий'] = comments
+
+            # Подготовка к отображению (убираем системные колонки)
+            drop_cols = ['textru_uid', 'ai_match']
+            df_res_display = df_res.drop(columns=[c for c in drop_cols if c in df_res.columns])
+
+            # === 2. ФУНКЦИЯ ЗАЛИВКИ КРАСНЫМ ЦВЕТОМ ===
+            def style_failed_cells(row):
+                # Инициализируем пустые стили для всех ячеек строки
+                styles = [''] * len(row)
+                col_idx = {name: i for i, name in enumerate(row.index)}
+                err_style = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold;'
+                
+                comment = str(row.get('Комментарий', ''))
+                
+                if "не соответствует заданной теме" in comment:
+                    if 'h1' in col_idx: styles[col_idx['h1']] = err_style
+                    if 'h2' in col_idx: styles[col_idx['h2']] = err_style
+                
+                if "Риск по Тургеневу больше 5" in comment:
+                    if 'turgenev' in col_idx: styles[col_idx['turgenev']] = err_style
+                    
+                if "нужно перегенерировать" in comment: # Это маркер уникальности Text.ru
+                    if 'textru' in col_idx: styles[col_idx['textru']] = err_style
+                    
+                # Делаем колонку комментария тоже слегка заметной, если есть ошибка
+                if comment != "ОК":
+                    if 'Комментарий' in col_idx: styles[col_idx['Комментарий']] = 'color: #cc0000; font-weight: bold;'
+                else:
+                    if 'Комментарий' in col_idx: styles[col_idx['Комментарий']] = 'color: #008000; font-weight: bold;'
+                    
+                return styles
+
+            # Применяем стили к таблице
+            styled_df = df_res_display.style.apply(style_failed_cells, axis=1)
+
+            # Показываем саму таблицу (со стилями)
+            st.dataframe(styled_df, use_container_width=True)
             
             # === АВТОМАТИЧЕСКАЯ ФОНОВАЯ ПРОВЕРКА (БЕЗ КНОПОК) ===
             is_processing = any("⏳" in str(row.get('textru', '')) for row in st.session_state.bg_results)
             
             if is_processing:
                 st.warning("⚠️ **Генерация завершена, но идет проверка уникальности (Text.ru).** Файл будет доступен после проверки всех текстов.")
-                
-                # Создаем визуальный индикатор загрузки, чтобы вы видели, что скрипт не завис
                 with st.spinner("🔄 Автоматический опрос Text.ru... (обновление каждые 10 секунд)"):
                     import time
-                    time.sleep(10) # Ждем 10 секунд, чтобы не спамить API Text.ru
+                    time.sleep(10)
                     
-                    # Делаем проверку
                     tk = st.session_state.get('textru_api_key')
                     if tk:
                         for r in st.session_state.bg_results:
@@ -6234,10 +6322,8 @@ with tab_lsi_gen:
                                     r['textru'] = stts
                                     r['textru_uid'] = None
                                     
-                    # Перезагружаем страницу для обновления таблицы
                     st.rerun()
             else:
-                # Если всё готово — показываем кнопку скачивания
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
                     df_res_display.to_excel(writer, index=False, sheet_name='Generated_Articles')
@@ -6595,6 +6681,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
