@@ -5816,19 +5816,20 @@ with tab_lsi_gen:
 
         c1, c2 = st.columns([1, 2])
         with c1:
-                # 1. Функция для безопасного сохранения ключа в "вечную" память
-                def sync_tab5_api_key():
-                    st.session_state['SUPER_GLOBAL_KEY'] = st.session_state['gemini_key_widget_tab5']
+            # 1. Достаем сохраненный ключ из глобальной памяти
+            saved_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
 
-                # 2. Безопасное поле ввода: берет значение из глобальной памяти, 
-                # но имеет свой уникальный системный ключ
-                st.text_input(
-                    "🔑 Введите API-ключ Gemini:", 
-                    value=st.session_state.get('SUPER_GLOBAL_KEY', ''), 
-                    type="password",
-                    key="gemini_key_widget_tab5", # <-- Уникальный ID виджета (не глобальный!)
-                    on_change=sync_tab5_api_key   # <-- Сохраняем в глобальную память при изменении
-                )
+            # 2. Отрисовываем поле ввода со своим уникальным системным ключом
+            current_input = st.text_input(
+                "🔑 Введите API-ключ Gemini:", 
+                value=saved_key, 
+                type="password",
+                key="tab5_api_key_widget" # Уникальный ID, не пересекается с вкладкой 6
+            )
+
+            # 3. СРАЗУ ЖЕ (сверху вниз, до кнопки старта!) пересохраняем в глобалку
+            if current_input:
+                st.session_state['SUPER_GLOBAL_KEY'] = current_input
 
         with c2:
             # === ПОЛЕ ДЛЯ ОБЩИХ LSI ===
@@ -6549,6 +6550,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
