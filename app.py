@@ -2763,6 +2763,11 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     [V] СТОП-СЛОВА: ({stop_words_list}).
     
     ВЫВОД: ТОЛЬКО HTML КОД.
+    СТРОГИЕ ПРАВИЛА ОФОРМЛЕНИЯ И ФИЛЬТРАЦИИ (КРИТИЧЕСКИ ВАЖНО):
+1. Оформление списков: Каждый пункт любого маркированного списка должен строго заканчиваться точкой с запятой (;), а самый последний пункт списка — точкой (.). Без исключений.
+2. Написание диапазонов: Числовые диапазоны (длина, вес, размер) пиши через тире и с сокращением единиц измерения. Пример: "4-9 м", "10-20 мм". КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ писать "от 4 до 9 метров". 
+   - Исключение: для температурных диапазонов с минусовыми значениями используй слова (например, "от -10 до +50 °C").
+3. Игнорирование конкурентов: Если в списке переданных ключевых слов тебе попадется странный мусор на латинице или названия чужих магазинов/компаний, полностью ИГНОРИРУЙ ИХ. Из латиницы разрешается писать только марки сталей и стандарты (AISI 304, DIN и т.д.).
     """
     
     try:
@@ -6075,6 +6080,25 @@ with tab_lsi_gen:
                 st.error(html_out)
             else:
                 try:
+                    # === ЖЕСТКАЯ ОЧИСТКА LSI ОТ МУСОРА И КОНКУРЕНТОВ ===
+            # Список разрешенной латиницы (можно дополнять)
+            allowed_latin = ('aisi', 'din', 'en', 'ral', 'iso', 'pvc', 'led', 'sus', 'mm')
+            
+            ultra_clean_lsi = []
+            if combined_lsi:
+                for word in combined_lsi:
+                    word_lower = str(word).lower().strip()
+                    # Если в слове есть английские буквы
+                    if re.search(r'[a-z]', word_lower):
+                        # Проверяем, есть ли среди них разрешенные марки/аббревиатуры
+                        if any(ok_val in word_lower for ok_val in allowed_latin):
+                            ultra_clean_lsi.append(word)
+                    else:
+                        # Если латиницы нет (русские слова, цифры) — берем
+                        ultra_clean_lsi.append(word)
+            
+            combined_lsi = ultra_clean_lsi
+            # ===================================================
                     html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
                     status_code = "OK"
                     
@@ -6572,6 +6596,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
