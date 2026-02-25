@@ -3724,18 +3724,38 @@ with tab_seo_main:
             st.session_state.analysis_done = True
             
 # ==========================================
-        # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (ИСПРАВЛЕННЫЙ)
+        # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (УМНАЯ МОРФОЛОГИЯ v4)
         # ==========================================
         if st.session_state.get('reviews_automode_active'):
             try:
-                # 1. Данные из анализа (Безопасное извлечение)
+                # 1. Извлекаем LSI и чистим от мусора + определяем Грамматику
                 res_seo = st.session_state.get('analysis_results', {})
-                lsi_pool =[]
-                if res_seo and 'hybrid' in res_seo and not res_seo['hybrid'].empty:
-                    lsi_pool = res_seo['hybrid'].head(15)['Слово'].tolist()
+                lsi_nouns = [] # Сюда положим только существительные
                 
+                if res_seo and 'hybrid' in res_seo and not res_seo['hybrid'].empty:
+                    # Берем топ-50, чтобы было из чего выбрать
+                    raw_lsi = res_seo['hybrid'].head(50)['Слово'].tolist()
+                    
+                    for w in raw_lsi:
+                        w_clean = str(w).lower().strip()
+                        
+                        # 1. Фильтр: длина > 2 и НЕТ латиницы (убираем and, from, css)
+                        if len(w_clean) > 2 and not re.search(r'[a-zA-Z]', w_clean):
+                            # 2. Морфология: проверяем часть речи
+                            parsed = morph.parse(w_clean)[0]
+                            if 'NOUN' in parsed.tag: # Только существительные
+                                lsi_nouns.append({
+                                    'word': w_clean,
+                                    'gender': parsed.tag.gender, # masc, femn, neut
+                                    'number': parsed.tag.number, # sing, plur
+                                    'parse': parsed
+                                })
+                
+                # Перемешиваем, чтобы не шли подряд одни и те же
+                random.shuffle(lsi_nouns)
+
                 curr_idx = st.session_state.get('reviews_current_index', 0)
-                queue = st.session_state.get('reviews_queue',[])
+                queue = st.session_state.get('reviews_queue', [])
                 
                 if curr_idx < len(queue):
                     task = queue[curr_idx]
@@ -3743,72 +3763,143 @@ with tab_seo_main:
                     st.session_state.reviews_automode_active = False
                     st.rerun()
 
-                # 2. Загрузка справочников из папки dicts
-                df_fio = pd.read_csv("dicts/fio.csv", sep=";")
-                df_templates = pd.read_csv("dicts/templates.csv", sep=";")
-                df_vars = pd.read_csv("dicts/vars.csv", sep=";")
+                # 2. Загрузка справочников (с безопасным фоллбэком)
+                import os
+                # ФИО
+                if os.path.exists("dicts/fio.csv"):
+                    df_fio = pd.read_csv("dicts/fio.csv", sep=";")
+                else:
+                    df_fio = pd.DataFrame([{"Фамилия": "Аноним", "Имя": ""}])
+
+                # Шаблоны
+                if os.path.exists("dicts/templates.csv"):
+                    df_templates = pd.read_csv("dicts/templates.csv", sep=";")
+                else:
+                    # Дефолтные шаблоны, если файла нет
+                    df_templates = pd.DataFrame([
+                        {"Шаблон": "Заказывали {товар} в этой компании. Все устроило."},
+                        {"Шаблон": "Качественная продукция. {товар} пришел вовремя."},
+                        {"Шаблон": "Давно сотрудничаем. Нравится их {товар} и подход к делу."}
+                    ])
                 
+                # Переменные
                 var_dict = {}
-                for _, row in df_vars.iterrows():
-                    v_name = str(row['Переменная']).strip()
-                    # Защита от пустых ячеек в CSV
-                    if pd.notna(row['Значения']):
-                        v_vals = str(row['Значения']).split('|')
-                        var_dict[f"{{{v_name}}}"] =[v.strip() for v in v_vals]
+                if os.path.exists("dicts/vars.csv"):
+                    df_vars = pd.read_csv("dicts/vars.csv", sep=";")
+                    for _, row in df_vars.iterrows():
+                        v_name = str(row['Переменная']).strip()
+                        if pd.notna(row['Значения']):
+                            var_dict[f"{{{v_name}}}"] = [v.strip() for v in str(row['Значения']).split('|')]
+                
+                # Резервный словарь переменных
+                if "{товар}" not in var_dict:
+                    var_dict["{товар}"] = ["прокат", "материал", "товар", "заказ"]
+
+                # 3. Фразы-конструкторы (для тех случаев, когда слово не влезло в шаблон)
+                # Здесь мы указываем падеж, в который нужно поставить слово
+                LSI_SENTENCES = [
+                    {"tpl": "Отдельно отмечу качество {}.", "case": "gent"}, # (чего?) трубы
+                    {"tpl": "Порадовала цена на {}.", "case": "accs"},       # (на что?) трубу
+                    {"tpl": "Заказывали здесь {}.", "case": "accs"},         # (что?) трубу
+                    {"tpl": "Проблем с {} не возникло.", "case": "ablt"},    # (с чем?) трубой
+                    {"tpl": "Сейчас {} в наличии.", "case": "nomn"}          # (что?) труба
+                ]
 
                 with st.spinner(f"📦 Сборка отзывов для: {task.get('q', 'запроса')}..."):
                     for _ in range(st.session_state.get('reviews_per_query', 3)):
                         # Рандом ФИО
                         f_row = df_fio.sample(n=1).iloc[0]
-                        c_fio = f"{f_row['Фамилия']} {f_row['Имя']}"
-                        
+                        c_fio = f"{f_row.get('Имя', '')} {f_row.get('Фамилия', '')}".strip()
+                        if not c_fio: c_fio = "Клиент"
+
                         # Выбор шаблона
-                        text = random.choice(df_templates['Шаблон'].values)
+                        template_raw = random.choice(df_templates['Шаблон'].values)
+                        final_text = template_raw
                         
-                        # Замена переменных
-                        tags = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", text)
+                        # --- ЛОГИКА ВНЕДРЕНИЯ LSI ---
+                        used_lsi_word = None
+                        
+                        # Попытка 1: Найти в шаблоне переменную {товар} и заменить её на LSI-существительное
+                        if "{товар}" in final_text and lsi_nouns:
+                            # Берем случайное существительное
+                            lsi_obj = random.choice(lsi_nouns)
+                            word_obj = lsi_obj['parse']
+                            
+                            # Пытаемся согласовать. Обычно в шаблоне "{товар}" стоит в Именительном или Винительном.
+                            # Для простоты попробуем поставить в ту форму, которая чаще подходит (Им.п или Вин.п)
+                            # Но лучше просто вставить как есть (обычно LSI в именительном),
+                            # либо попытаться склонить, если понимаем контекст.
+                            # В простом варианте: ставим в Именительный (как в словаре)
+                            
+                            replacement = lsi_obj['word']
+                            final_text = final_text.replace("{товар}", replacement, 1)
+                            used_lsi_word = replacement
+                        
+                        # Заполняем остальные переменные из словаря vars.csv
+                        tags = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", final_text)
                         for t in tags:
                             if t in var_dict:
-                                text = text.replace(t, random.choice(var_dict[t]), 1)
+                                final_text = final_text.replace(t, random.choice(var_dict[t]), 1)
                             elif t == "{дата}":
-                                d_off = random.randint(0, 3)
-                                dt = (datetime.datetime.now() - datetime.timedelta(days=d_off)).strftime("%d.%m.%Y")
-                                text = text.replace("{дата}", dt)
-                        
-                        # Очистка тегов, для которых не нашлось значений в CSV
-                        text = re.sub(r"\{[^}]+\}", "", text).replace("  ", " ")
-                        
-                        # Добавление LSI
-                        if lsi_pool:
-                            l_word = random.choice(lsi_pool)
+                                dt = (datetime.datetime.now() - datetime.timedelta(days=random.randint(1, 60))).strftime("%d.%m.%Y")
+                                final_text = final_text.replace("{дата}", dt)
+
+                        # Попытка 2: Если LSI не был использован внутри (не было тега {товар}), добавляем предложение
+                        if not used_lsi_word and lsi_nouns:
+                            lsi_obj = random.choice(lsi_nouns)
+                            parsed_word = lsi_obj['parse']
+                            
+                            # Выбираем фразу-конструктор
+                            sentence_tpl = random.choice(LSI_SENTENCES)
+                            target_case = sentence_tpl['case'] # nomn, gent, accs, ablt
+                            
+                            # СКЛОНЯЕМ СЛОВО (Pymorphy)
                             try:
-                                inflected = inflect_lsi_phrase(l_word, 'accs')
-                                text += f" Отмечу также {inflected}."
+                                inflected_form = parsed_word.inflect({target_case})
+                                word_to_insert = inflected_form.word if inflected_form else lsi_obj['word']
                             except:
-                                text += f" Отмечу также {l_word}."
+                                word_to_insert = lsi_obj['word']
+                                
+                            add_sentence = sentence_tpl['tpl'].format(word_to_insert)
+                            
+                            # Вставляем это предложение внутрь текста (чтобы не всегда в конце)
+                            sentences = [s.strip() for s in final_text.split('.') if len(s) > 3]
+                            if len(sentences) >= 1:
+                                insert_idx = random.randint(0, len(sentences))
+                                sentences.insert(insert_idx, add_sentence)
+                                final_text = ". ".join(sentences) + "."
+                            else:
+                                final_text += " " + add_sentence
+
+                        # Финальная чистка
+                        final_text = re.sub(r"\{[^}]+\}", "", final_text) # Удаляем ненайденные теги
+                        final_text = final_text.replace("..", ".").replace(" .", ".").replace(" ,", ",")
+                        final_text = re.sub(r'\s+', ' ', final_text).strip()
+                        # Делаем первую букву заглавной
+                        if final_text:
+                            final_text = final_text[0].upper() + final_text[1:]
 
                         st.session_state.reviews_results.append({
                             "ФИО": c_fio,
                             "Запрос": task.get('q', '-'),
                             "URL": task.get('url', '-'),
-                            "Отзыв": text.strip()
+                            "Отзыв": final_text
                         })
 
-                # 3. Переход к следующему шагу
+                # Переход к следующему
                 n_idx = curr_idx + 1
                 if n_idx < len(queue):
                     st.session_state.reviews_current_index = n_idx
                     nxt = queue[n_idx]
                     
-                    # === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ОЧИСТКА СТАРОГО АНАЛИЗА ===
-                    keys_to_clear =[
+                    # Очистка кэша анализа
+                    keys_to_clear = [
                         'analysis_results', 'analysis_done', 'naming_table_df', 
                         'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
                         'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
                     ]
                     for k in keys_to_clear:
                         st.session_state.pop(k, None)
-                    # ========================================================
                     
                     st.session_state['pending_widget_updates'] = {
                         'query_input': nxt.get('q'),
@@ -3816,18 +3907,18 @@ with tab_seo_main:
                         'my_page_source_radio': "Релевантная страница на вашем сайте" if nxt.get('url') != 'manual' else "Без страницы"
                     }
                     st.session_state.start_analysis_flag = True
-                    st.toast(f"🔄 Анализирую: {nxt.get('q')}")
+                    st.toast(f"🔄 Обработка: {nxt.get('q')}")
                     import time
-                    time.sleep(1)
+                    time.sleep(0.5)
                     st.rerun()
                 else:
                     st.session_state.reviews_automode_active = False
-                    st.success("✅ Все отзывы сгенерированы! Перейдите на вкладку 'Отзывы'.")
+                    st.success("✅ Генерация завершена!")
                     st.balloons()
+            
             except Exception as e:
-                st.error(f"❌ Ошибка в блоке отзывов: {e}")
+                st.error(f"❌ Ошибка генерации: {e}")
                 st.session_state.reviews_automode_active = False
-
         # ==========================================
         # 🔥 БЛОК: КЛАССИФИКАЦИЯ СЕМАНТИКИ (ИСПРАВЛЕННЫЙ)
         # ==========================================
@@ -6236,4 +6327,5 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
