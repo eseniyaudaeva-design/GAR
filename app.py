@@ -3728,12 +3728,14 @@ with tab_seo_main:
         # ==========================================
         if st.session_state.get('reviews_automode_active'):
             try:
-                # 1. Данные из анализа
-                res_seo = st.session_state.analysis_results
-                lsi_pool = res_seo['hybrid'].head(15)['Слово'].tolist() if (res_seo and 'hybrid' in res_seo) else []
+                # 1. Данные из анализа (Безопасное извлечение)
+                res_seo = st.session_state.get('analysis_results', {})
+                lsi_pool =[]
+                if res_seo and 'hybrid' in res_seo and not res_seo['hybrid'].empty:
+                    lsi_pool = res_seo['hybrid'].head(15)['Слово'].tolist()
                 
-                curr_idx = st.session_state.reviews_current_index
-                queue = st.session_state.reviews_queue
+                curr_idx = st.session_state.get('reviews_current_index', 0)
+                queue = st.session_state.get('reviews_queue',[])
                 
                 if curr_idx < len(queue):
                     task = queue[curr_idx]
@@ -3749,11 +3751,13 @@ with tab_seo_main:
                 var_dict = {}
                 for _, row in df_vars.iterrows():
                     v_name = str(row['Переменная']).strip()
-                    v_vals = str(row['Значения']).split('|')
-                    var_dict[f"{{{v_name}}}"] = [v.strip() for v in v_vals]
+                    # Защита от пустых ячеек в CSV
+                    if pd.notna(row['Значения']):
+                        v_vals = str(row['Значения']).split('|')
+                        var_dict[f"{{{v_name}}}"] =[v.strip() for v in v_vals]
 
                 with st.spinner(f"📦 Сборка отзывов для: {task.get('q', 'запроса')}..."):
-                    for _ in range(st.session_state.reviews_per_query):
+                    for _ in range(st.session_state.get('reviews_per_query', 3)):
                         # Рандом ФИО
                         f_row = df_fio.sample(n=1).iloc[0]
                         c_fio = f"{f_row['Фамилия']} {f_row['Имя']}"
@@ -3761,7 +3765,7 @@ with tab_seo_main:
                         # Выбор шаблона
                         text = random.choice(df_templates['Шаблон'].values)
                         
-                        # Замена переменных (поддержка кириллицы)
+                        # Замена переменных
                         tags = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", text)
                         for t in tags:
                             if t in var_dict:
@@ -3770,6 +3774,9 @@ with tab_seo_main:
                                 d_off = random.randint(0, 3)
                                 dt = (datetime.datetime.now() - datetime.timedelta(days=d_off)).strftime("%d.%m.%Y")
                                 text = text.replace("{дата}", dt)
+                        
+                        # Очистка тегов, для которых не нашлось значений в CSV
+                        text = re.sub(r"\{[^}]+\}", "", text).replace("  ", " ")
                         
                         # Добавление LSI
                         if lsi_pool:
@@ -3787,23 +3794,36 @@ with tab_seo_main:
                             "Отзыв": text.strip()
                         })
 
-                # Переход к следующему шагу
+                # 3. Переход к следующему шагу
                 n_idx = curr_idx + 1
                 if n_idx < len(queue):
                     st.session_state.reviews_current_index = n_idx
                     nxt = queue[n_idx]
+                    
+                    # === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ОЧИСТКА СТАРОГО АНАЛИЗА ===
+                    keys_to_clear =[
+                        'analysis_results', 'analysis_done', 'naming_table_df', 
+                        'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
+                        'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                    ]
+                    for k in keys_to_clear:
+                        st.session_state.pop(k, None)
+                    # ========================================================
+                    
                     st.session_state['pending_widget_updates'] = {
                         'query_input': nxt.get('q'),
                         'my_url_input': nxt.get('url', ''),
                         'my_page_source_radio': "Релевантная страница на вашем сайте" if nxt.get('url') != 'manual' else "Без страницы"
                     }
                     st.session_state.start_analysis_flag = True
+                    st.toast(f"🔄 Анализирую: {nxt.get('q')}")
+                    import time
+                    time.sleep(1)
                     st.rerun()
                 else:
                     st.session_state.reviews_automode_active = False
-                    st.success("✅ Генерация завершена!")
-                    st.rerun()
-
+                    st.success("✅ Все отзывы сгенерированы! Перейдите на вкладку 'Отзывы'.")
+                    st.balloons()
             except Exception as e:
                 st.error(f"❌ Ошибка в блоке отзывов: {e}")
                 st.session_state.reviews_automode_active = False
@@ -6151,9 +6171,9 @@ with tab_reviews_gen:
     col_r1, col_r2 = st.columns(2)
     with col_r1:
         if st.button("🚀 ЗАПУСТИТЬ ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
-            lines = [l.strip() for l in rev_input.split('\n') if l.strip()]
+            lines =[l.strip() for l in rev_input.split('\n') if l.strip()]
             if lines:
-                queue = []
+                queue =[]
                 if rev_mode == "Список URL":
                     for u in lines:
                         h1_text = get_h1_from_url(u) 
@@ -6165,9 +6185,13 @@ with tab_reviews_gen:
                         queue.append({'q': q, 'url': 'manual'})
                 
                 st.session_state.reviews_queue = queue
-                st.session_state.reviews_results = []
+                st.session_state.reviews_results =[]
                 st.session_state.reviews_current_index = 0
                 st.session_state.reviews_per_query = rev_count_input
+                
+                # Принудительно отключаем другие генераторы на всякий случай
+                st.session_state.lsi_automode_active = False
+                st.session_state.faq_automode_active = False
                 st.session_state.reviews_automode_active = True
 
                 updates = {
@@ -6184,34 +6208,32 @@ with tab_reviews_gen:
                 
                 st.session_state['pending_widget_updates'] = updates
                 st.session_state.start_analysis_flag = True
+                
+                # === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: СБРОС СТАРОГО АНАЛИЗА ПРИ СТАРТЕ ===
+                st.session_state.pop('analysis_done', None)
+                st.session_state.pop('analysis_results', None)
+                # =================================================================
+                
                 st.rerun()
-
-    with col_r2:
-        if st.button("⛔ ОСТАНОВИТЬ", type="secondary", use_container_width=True):
-            st.session_state.reviews_automode_active = False
-            st.rerun()
 
     # --- ОТРРИСОВКА РЕЗУЛЬТАТОВ ---
     if 'reviews_results' in st.session_state and st.session_state.reviews_results:
-        st.markdown("---")  # <--- Проверь, чтобы здесь было 8 пробелов (или 2 таба) от края
-        st.subheader("📊 Результаты (обновляются в реальном времени)")
+        st.markdown("---")
+        st.subheader("📊 Результаты")
         
-        # Создаем датафрейм из накопленного списка
         df_display = pd.DataFrame(st.session_state.reviews_results)
-        
-        # Выводим таблицу
         st.dataframe(df_display, use_container_width=True)
         
-        # Блок генерации Excel
+        # Кнопка Excel тоже тут
         import io
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df_display.to_excel(writer, index=False, sheet_name='Отзывы')
+            df_display.to_excel(writer, index=False)
         
-        # Кнопка скачивания тоже должна быть с отступом внутри IF
         st.download_button(
             label="📥 СКАЧАТЬ В EXCEL",
             data=buffer.getvalue(),
-            file_name=f"reviews_{datetime.datetime.now().strftime('%d_%m_%Y')}.xlsx",
+            file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
