@@ -3746,6 +3746,17 @@ with tab_seo_main:
                 # Подтягиваем категории (если они были определены на вкладке 1)
                 known_products = set(st.session_state.get('categorized_products', []))
                 
+                # === БЛОКИРОВКА ГЕО И МУСОРА ===
+                known_geo = set(st.session_state.get('categorized_geo', []))
+                known_geo.update(st.session_state.get('orig_geo', []))
+                
+                try:
+                    # На всякий случай подтягиваем глобальный словарь городов, если он есть
+                    _, _, _, dict_geo, _, _ = load_lemmatized_dictionaries()
+                    known_geo.update(dict_geo)
+                except:
+                    pass
+                
                 lsi_nouns = []
                 
                 # ЧЕРНЫЙ СПИСОК (Слова, которые глупо звучат в отзывах)
@@ -3754,17 +3765,19 @@ with tab_seo_main:
                     'версия', 'ошибка', 'руб', 'грн', 'шт', 'раз', 'два', 'три', 'номер', 
                     'телефон', 'адрес', 'email', 'фильтр', 'сортировка', 'артикул', 'наличие',
                     'акция', 'скидка', 'хит', 'новинка', 'клик', 'вход', 'регистрация', 'главная',
-                    'карта', 'новость', 'статья', 'отзыв', 'вакансия', 'оплата', 'доставка'
+                    'карта', 'новость', 'статья', 'отзыв', 'вакансия', 'оплата', 'доставка',
+                    'город', 'регион', 'россия', 'москва', 'спб', 'доставка', 'производство', 'завод'
                 }
 
                 if raw_candidates:
                     for w in raw_candidates:
                         w_clean = str(w).lower().strip()
                         
-                        # БАЗОВЫЙ ФИЛЬТР: длина > 2, нет латиницы/цифр, нет в стоп-листе
+                        # БАЗОВЫЙ ФИЛЬТР: длина > 2, нет латиницы/цифр, нет в стоп-листе, НЕТ В ГЕО
                         if (len(w_clean) > 2 
                             and not re.search(r'[a-zA-Z0-9]', w_clean) 
-                            and w_clean not in STOP_NOUNS):
+                            and w_clean not in STOP_NOUNS
+                            and w_clean not in known_geo):
                             
                             parsed = morph.parse(w_clean)[0]
                             
@@ -3772,9 +3785,15 @@ with tab_seo_main:
                             # 1. Либо это Существительное (NOUN)
                             # 2. Либо это слово уже лежит в категории "Товары" (categorized_products)
                             is_noun = 'NOUN' in parsed.tag
+                            
+                            # === УМНЫЙ ФИЛЬТР PYMORPHY ===
+                            # Geox - топонимы (города, реки), Name - имена, Surn - фамилии
+                            is_name_or_geo = any(tag in parsed.tag for tag in ['Name', 'Surn', 'Patr', 'Geox'])
+                            
                             is_known_product = w_clean in known_products
                             
-                            if is_noun or is_known_product:
+                            # Берем, если это товар, ЛИБО если это существительное, но НЕ город/имя
+                            if is_known_product or (is_noun and not is_name_or_geo):
                                 # Приоритет: Если это известный товар - ставим флаг priority
                                 priority = 1 if is_known_product else 0
                                 
@@ -6378,6 +6397,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
