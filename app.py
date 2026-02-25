@@ -5816,12 +5816,18 @@ with tab_lsi_gen:
 
         c1, c2 = st.columns([1, 2])
         with c1:
-                # Используем встроенный механизм Streamlit (параметр key), 
-                # который автоматически и надежно сохраняет значение при любых кликах!
+                # 1. Функция для безопасного сохранения ключа в "вечную" память
+                def sync_tab5_api_key():
+                    st.session_state['SUPER_GLOBAL_KEY'] = st.session_state['gemini_key_widget_tab5']
+
+                # 2. Безопасное поле ввода: берет значение из глобальной памяти, 
+                # но имеет свой уникальный системный ключ
                 st.text_input(
                     "🔑 Введите API-ключ Gemini:", 
+                    value=st.session_state.get('SUPER_GLOBAL_KEY', ''), 
                     type="password",
-                    key="SUPER_GLOBAL_KEY"
+                    key="gemini_key_widget_tab5", # <-- Уникальный ID виджета (не глобальный!)
+                    on_change=sync_tab5_api_key   # <-- Сохраняем в глобальную память при изменении
                 )
 
         with c2:
@@ -6543,6 +6549,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
