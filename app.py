@@ -999,7 +999,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
 
     payload = {"tools_name": "check-top", "data": {"queries": [query], "is_snippet": False, "noreask": True, "se": se_params, "depth": depth_val}}
     try:
-        r = requests.post(url_set, headers=headers, json=payload, timeout=20)
+        r = requests.post(url_set, headers=headers, json=payload, timeout=60)
         resp_json = r.json()
         if "error" in resp_json or "task_id" not in resp_json: st.error(f"❌ Ошибка API: {resp_json}"); return []
         task_id = resp_json["task_id"]
@@ -6410,6 +6410,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
