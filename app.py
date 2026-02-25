@@ -2862,11 +2862,11 @@ if 'pending_widget_updates' in st.session_state:
 # ==========================================
 # ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ (ТУРГЕНЕВ И TEXT.RU)
 # ==========================================
-def check_turgenev_sync(text):
+def check_turgenev_sync(text, key): # <-- добавили key
     url = 'https://turgenev.ashmanov.com/'
     params = {
         'api': 'risk',
-        'key': '91713e320211ca8e99a1d4cf4773c649',
+        'key': key, # <-- теперь ключ берется из переменной
         'text': text,
         'more': '1'
     }
@@ -5843,6 +5843,8 @@ with tab_lsi_gen:
         c_chk1, c_chk2 = st.columns(2)
         with c_chk1:
             st.session_state['use_turgenev'] = st.checkbox("📚 Проверка по Тургеневу (Риск)", value=st.session_state.get('use_turgenev', False))
+            if st.session_state['use_turgenev']:
+                st.session_state['turgenev_api_key'] = st.text_input("🔑 API-ключ Тургенева", value=st.session_state.get('turgenev_api_key', ''), type="password")
         with c_chk2:
             st.session_state['use_textru'] = st.checkbox("🚀 Проверка уникальности по Text.ru", value=st.session_state.get('use_textru', False))
             if st.session_state['use_textru']:
@@ -6081,7 +6083,11 @@ with tab_lsi_gen:
                         plain_text = BeautifulSoup(html_out, "html.parser").get_text(separator=" ")
                         
                         if st.session_state.get('use_turgenev'):
-                            turgenev_res = check_turgenev_sync(plain_text)
+                            turgenev_key = st.session_state.get('turgenev_api_key', '')
+                            if turgenev_key:
+                                turgenev_res = check_turgenev_sync(plain_text, turgenev_key)
+                            else:
+                                turgenev_res = "Нет ключа API Тургенева"
                         
                         if st.session_state.get('use_textru'):
                             textru_key = st.session_state.get('textru_api_key', '')
@@ -6170,7 +6176,7 @@ with tab_lsi_gen:
             with c_res1:
                 st.subheader("3. Результаты")
             with c_res2:
-                # Кнопка для ручного обновления Text.ru после завершения всех генераций
+                # Кнопка для ручного обновления Text.ru
                 if st.button("🔄 Обновить статусы Text.ru", use_container_width=True):
                     if st.session_state.get('textru_api_key'):
                         tk = st.session_state.get('textru_api_key')
@@ -6187,24 +6193,38 @@ with tab_lsi_gen:
 
             df_res = pd.DataFrame(st.session_state.bg_results)
             
-            # Преобразуем списки LSI в строки для красивого вывода
+            # Преобразуем списки LSI
             if 'lsi_added' in df_res.columns:
                 df_res['lsi_added'] = df_res['lsi_added'].apply(lambda x: ", ".join(x) if isinstance(x, list) else x)
             
-            # Убираем системное поле textru_uid из отображения и Excel
             if 'textru_uid' in df_res.columns:
                 df_res_display = df_res.drop(columns=['textru_uid'])
             else:
                 df_res_display = df_res.copy()
             
+            # Показываем саму таблицу всегда, чтобы видеть процесс
             st.dataframe(df_res_display, use_container_width=True)
             
-            # Кнопка для скачивания в Excel
-            buf = io.BytesIO()
-            with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                df_res_display.to_excel(writer, index=False, sheet_name='Generated_Articles')
+            # === ЛОГИКА БЛОКИРОВКИ СКАЧИВАНИЯ ===
+            # Проверяем, есть ли незаконченные проверки Text.ru
+            is_processing = any("⏳" in str(row.get('textru', '')) for row in st.session_state.bg_results)
             
-            st.download_button(label="💾 СКАЧАТЬ РЕЗУЛЬТАТЫ (Excel)", data=buf.getvalue(), file_name="SEO_Content_Result.xlsx", mime="application/vnd.ms-excel", type="primary")
+            if is_processing:
+                st.warning("⚠️ **Внимание:** Идет проверка уникальности текстов (Text.ru). Пожалуйста, нажимайте кнопку **«🔄 Обновить статусы Text.ru»**, пока все тексты не получат финальный результат. Скачивание файла будет недоступно до окончания всех проверок.")
+            else:
+                # Если всё готово — показываем кнопку скачивания
+                buf = io.BytesIO()
+                with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+                    df_res_display.to_excel(writer, index=False, sheet_name='Generated_Articles')
+                
+                st.success("✅ Все проверки завершены! Файл готов к скачиванию.")
+                st.download_button(
+                    label="💾 СКАЧАТЬ РЕЗУЛЬТАТЫ (Excel)", 
+                    data=buf.getvalue(), 
+                    file_name="SEO_Content_Result.xlsx", 
+                    mime="application/vnd.ms-excel", 
+                    type="primary"
+                )
         
         st.markdown("---")
         st.markdown("#### 👁️ Просмотр статьи")
@@ -6550,6 +6570,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
