@@ -2461,37 +2461,64 @@ def generate_random_date():
     return (start + datetime.timedelta(days=random.randrange(delta.days + 1))).strftime("%d.%m.%Y")
 
 def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
+    # Выбираем случайное LSI слово
+    lsi_word = random.choice(lsi_words) if lsi_words else ""
+    
+    # Пытаемся вставить LSI слово ВНУТРИ шаблона вместо подходящей переменной
+    if lsi_word:
+        parsed = morph.parse(lsi_word)[0]
+        lsi_gender = parsed.tag.gender
+        lsi_number = parsed.tag.number
+        
+        # Ищем подходящие плейсхолдеры (например, {товар_сущ_муж})
+        placeholders = re.findall(r'\{([^}]+)\}', template)
+        found_slot = None
+        for p in placeholders:
+            is_product = any(x in p for x in ['товар', 'сущ', 'вид_проката'])
+            # Проверяем род и число, чтобы не было "купили труба (муж.род слот)"
+            gender_ok = True
+            if '_муж' in p and lsi_gender != 'masc': gender_ok = False
+            if '_жен' in p and lsi_gender != 'femn': gender_ok = False
+            if '_мнч' in p and lsi_number != 'plur': gender_ok = False
+            
+            if is_product and gender_ok:
+                found_slot = p
+                break
+        
+        if found_slot:
+            # Склоняем LSI под падеж слота
+            target_case = 'nomn'
+            case_map = {'_вин': 'accs', '_ВП': 'accs', '_род': 'gent', '_творит': 'ablt', '_им': 'nomn'}
+            for sfx, c in case_map.items():
+                if sfx in found_slot:
+                    target_case = c
+                    break
+            inflected = inflect_lsi_phrase(lsi_word, target_case)
+            template = template.replace(f"{{{found_slot}}}", f"**{inflected}**", 1)
+        else:
+            # Если слота нет, делаем рандомную вставку через твои же переменные
+            v_intro = random.choice(variables_dict.get('вводное_слово', ['Кстати']))
+            v_eval = random.choice(variables_dict.get('оценка1_хар_товар_ед_им', ['на высоте']))
+            template += f" {v_intro}, **{lsi_word}** {v_eval}."
+
+    # Заполняем остальные переменные
     def replace_var(match):
         v = match.group(1).strip()
-        if v == "дата": return generate_random_date()
-        if v in variables_dict: return str(random.choice(variables_dict[v])).strip()
+        if v == "дата":
+            # Твои даты 2026 года
+            start = datetime.date(2026, 1, 1)
+            return (start + datetime.timedelta(days=random.randint(0, 40))).strftime("%d.%m.%Y")
+        if v in variables_dict:
+            return str(random.choice(variables_dict[v])).strip()
         return match.group(0)
 
-    draft = re.sub(r'\{([^}]+)\}', replace_var, str(template))
+    final_draft = re.sub(r'\{([^}]+)\}', replace_var, template)
     
-    # Фильтр LSI
-    forbidden = ["украин", "ukrain", "ua", "всу", "зсу", "ато", "сво", "войн", "киев", "политик"]
-    clean_lsi = [w for w in lsi_words if not any(r in str(w).lower() for r in forbidden)]
+    # ФИО из твоего файла
+    fio_row = repo_fio.sample(1).iloc[0]
+    author = f"{fio_row['Имя']} {fio_row['Фамилия']}"
     
-    used_lsi = []
-    if clean_lsi:
-        lsi = random.choice(clean_lsi)
-        inflected = inflect_lsi_phrase(lsi, 'accs')
-        bridge = f"Отдельно отмечу **{inflected}**."
-        draft += " " + bridge
-        used_lsi.append(inflected)
-
-    name = "Аноним"
-    gens = [g for g in ['MALE', 'FEMALE'] if repo_fio[g]['names']]
-    if gens:
-        g = random.choice(gens)
-        nm = random.choice(repo_fio[g]['names'])
-        sn = random.choice(repo_fio[g]['surnames'])
-        if repo_fio[g]['patronymics'] and random.random() > 0.5:
-            pt = random.choice(repo_fio[g]['patronymics'])
-            name = f"{nm} {pt} {sn}"
-        else: name = f"{nm} {sn}"
-    return name, draft, used_lsi
+    return author, final_draft
 # ==========================================
 # НОВАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ FAQ (ЖИРНЫЙ ШРИФТ + АВТОТИРЕ)
 # ==========================================
@@ -6176,8 +6203,24 @@ with tab_reviews_gen:
         st.dataframe(df_display, use_container_width=True)
         
         # Кнопка скачивания
-        csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("💾 СКАЧАТЬ CSV", csv_data, "generated_reviews.csv", "text/csv")
+        if 'reviews_results' in st.session_state and st.session_state.reviews_results:
+        st.markdown("---")
+        df_display = pd.DataFrame(st.session_state.reviews_results)
+        st.dataframe(df_display, use_container_width=True)
+        
+        # Генерируем Excel
+        import io
+        buffer = io.BytesIO()
+        # Используем xlsxwriter, который у тебя есть в системе
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_display.to_excel(writer, index=False, sheet_name='Отзывы')
+        
+        st.download_button(
+            label="📥 СКАЧАТЬ В EXCEL",
+            data=buffer.getvalue(),
+            file_name=f"reviews_{datetime.datetime.now().strftime('%d_%m_%Y')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 
 
