@@ -6171,25 +6171,7 @@ with tab_lsi_gen:
 # --- 4. ЭКСПОРТ И ПРОСМОТР ---
         if st.session_state.bg_results:
             st.divider()
-            
-            c_res1, c_res2 = st.columns([3, 1])
-            with c_res1:
-                st.subheader("3. Результаты")
-            with c_res2:
-                # Кнопка для ручного обновления Text.ru
-                if st.button("🔄 Обновить статусы Text.ru", use_container_width=True):
-                    if st.session_state.get('textru_api_key'):
-                        tk = st.session_state.get('textru_api_key')
-                        for r in st.session_state.bg_results:
-                            if r.get('textru_uid') and "⏳" in str(r.get('textru')):
-                                stts = check_textru_status_sync(r['textru_uid'], tk)
-                                if stts not in ["processing", "error"] and "Ошибка" not in stts:
-                                    r['textru'] = stts
-                                    r['textru_uid'] = None
-                                elif "Ошибка" in stts or stts == "error":
-                                    r['textru'] = stts
-                                    r['textru_uid'] = None
-                        st.rerun()
+            st.subheader("3. Результаты")
 
             df_res = pd.DataFrame(st.session_state.bg_results)
             
@@ -6202,15 +6184,35 @@ with tab_lsi_gen:
             else:
                 df_res_display = df_res.copy()
             
-            # Показываем саму таблицу всегда, чтобы видеть процесс
+            # Показываем саму таблицу (она будет сама обновляться)
             st.dataframe(df_res_display, use_container_width=True)
             
-            # === ЛОГИКА БЛОКИРОВКИ СКАЧИВАНИЯ ===
-            # Проверяем, есть ли незаконченные проверки Text.ru
+            # === АВТОМАТИЧЕСКАЯ ФОНОВАЯ ПРОВЕРКА (БЕЗ КНОПОК) ===
             is_processing = any("⏳" in str(row.get('textru', '')) for row in st.session_state.bg_results)
             
             if is_processing:
-                st.warning("⚠️ **Внимание:** Идет проверка уникальности текстов (Text.ru). Пожалуйста, нажимайте кнопку **«🔄 Обновить статусы Text.ru»**, пока все тексты не получат финальный результат. Скачивание файла будет недоступно до окончания всех проверок.")
+                st.warning("⚠️ **Генерация завершена, но идет проверка уникальности (Text.ru).** Файл будет доступен после проверки всех текстов.")
+                
+                # Создаем визуальный индикатор загрузки, чтобы вы видели, что скрипт не завис
+                with st.spinner("🔄 Автоматический опрос Text.ru... (обновление каждые 10 секунд)"):
+                    import time
+                    time.sleep(10) # Ждем 10 секунд, чтобы не спамить API Text.ru
+                    
+                    # Делаем проверку
+                    tk = st.session_state.get('textru_api_key')
+                    if tk:
+                        for r in st.session_state.bg_results:
+                            if r.get('textru_uid') and "⏳" in str(r.get('textru')):
+                                stts = check_textru_status_sync(r['textru_uid'], tk)
+                                if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                                    r['textru'] = stts
+                                    r['textru_uid'] = None
+                                elif "Ошибка" in stts or stts == "error":
+                                    r['textru'] = stts
+                                    r['textru_uid'] = None
+                                    
+                    # Перезагружаем страницу для обновления таблицы
+                    st.rerun()
             else:
                 # Если всё готово — показываем кнопку скачивания
                 buf = io.BytesIO()
@@ -6570,6 +6572,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
