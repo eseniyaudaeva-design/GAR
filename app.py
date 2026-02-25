@@ -3745,13 +3745,13 @@ with tab_seo_main:
                 
                 # Подтягиваем категории (если они были определены на вкладке 1)
                 known_products = set(st.session_state.get('categorized_products', []))
+                known_services = set(st.session_state.get('categorized_services', [])) # <-- Добавили услуги
                 
                 # === БЛОКИРОВКА ГЕО И МУСОРА ===
                 known_geo = set(st.session_state.get('categorized_geo', []))
                 known_geo.update(st.session_state.get('orig_geo', []))
                 
                 try:
-                    # На всякий случай подтягиваем глобальный словарь городов, если он есть
                     _, _, _, dict_geo, _, _ = load_lemmatized_dictionaries()
                     known_geo.update(dict_geo)
                 except:
@@ -3759,7 +3759,6 @@ with tab_seo_main:
                 
                 lsi_nouns = []
                 
-                # ЧЕРНЫЙ СПИСОК (Слова, которые глупо звучат в отзывах)
                 STOP_NOUNS = {
                     'код', 'сайт', 'каталог', 'меню', 'корзина', 'поиск', 'ссылка', 'страница', 
                     'версия', 'ошибка', 'руб', 'грн', 'шт', 'раз', 'два', 'три', 'номер', 
@@ -3773,39 +3772,32 @@ with tab_seo_main:
                     for w in raw_candidates:
                         w_clean = str(w).lower().strip()
                         
-                        # БАЗОВЫЙ ФИЛЬТР: длина > 2, нет латиницы/цифр, нет в стоп-листе, НЕТ В ГЕО
                         if (len(w_clean) > 2 
                             and not re.search(r'[a-zA-Z0-9]', w_clean) 
                             and w_clean not in STOP_NOUNS
                             and w_clean not in known_geo):
                             
                             parsed = morph.parse(w_clean)[0]
-                            
-                            # УСЛОВИЕ ОТБОРА:
-                            # 1. Либо это Существительное (NOUN)
-                            # 2. Либо это слово уже лежит в категории "Товары" (categorized_products)
-                            is_noun = 'NOUN' in parsed.tag
-                            
-                            # === УМНЫЙ ФИЛЬТР PYMORPHY ===
                             is_name_or_geo = any(tag in parsed.tag for tag in ['Name', 'Surn', 'Patr', 'Geox'])
-                            
-                            # НОВАЯ ПРОВЕРКА: Отсекаем прилагательные, причастия, наречия, если они идут по одному
                             is_orphan_modifier = any(tag in parsed.tag for tag in ['ADJF', 'ADJS', 'PRTF', 'PRTS', 'ADVB', 'GRND'])
                             
+                            is_noun = 'NOUN' in parsed.tag
                             is_known_product = w_clean in known_products
+                            is_known_service = w_clean in known_services
                             
-                            # Условие:
-                            # 1. Если это точный товар из списка - берем.
-                            # 2. Иначе: должно быть существительным, НЕ городом/именем, и НЕ одиночным прилагательным/причастием
                             if is_known_product or (is_noun and not is_name_or_geo and not is_orphan_modifier):
                                 priority = 1 if is_known_product else 0
-                                # Приоритет: Если это известный товар - ставим флаг priority
-                                priority = 1 if is_known_product else 0
+                                
+                                # === ОПРЕДЕЛЯЕМ ТИП СЛОВА ДЛЯ ШАБЛОНА ===
+                                if is_known_product: w_type = 'product'
+                                elif is_known_service: w_type = 'service'
+                                else: w_type = 'general'
                                 
                                 lsi_nouns.append({
                                     'word': w_clean,
                                     'parse': parsed,
-                                    'priority': priority
+                                    'priority': priority,
+                                    'type': w_type # <-- Сохраняем тип
                                 })
                 
                 # СОРТИРОВКА: Сначала слова из категории "Товары", потом просто существительные из упущенного
@@ -6410,6 +6402,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
