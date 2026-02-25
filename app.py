@@ -3724,35 +3724,75 @@ with tab_seo_main:
             st.session_state.analysis_done = True
             
 # ==========================================
-        # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (УМНАЯ МОРФОЛОГИЯ v4)
+        # 🔥 ПОЛНЫЙ ДВИЖОК ОТЗЫВОВ (ВЕРСИЯ 6: УПУЩЕННАЯ СЕМАНТИКА + ТОВАРЫ)
         # ==========================================
         if st.session_state.get('reviews_automode_active'):
             try:
-                # 1. Извлекаем LSI и чистим от мусора + определяем Грамматику
+               # === НОВЫЙ СБОР СЛОВ ДЛЯ ОТЗЫВОВ ===
+                # 1. Берем ТОЛЬКО "основные важные" (high) из первой вкладки
                 res_seo = st.session_state.get('analysis_results', {})
-                lsi_nouns = [] # Сюда положим только существительные
+                missing_high = [x['word'] for x in res_seo.get('missing_semantics_high', [])]
                 
-                if res_seo and 'hybrid' in res_seo and not res_seo['hybrid'].empty:
-                    # Берем топ-50, чтобы было из чего выбрать
-                    raw_lsi = res_seo['hybrid'].head(50)['Слово'].tolist()
-                    
-                    for w in raw_lsi:
+                # 2. Берем слова, которые вылетели при генерации на 2-й вкладке (теги, промо, текст)
+                unused_from_gen = list(st.session_state.get('global_unused_for_reviews', set()))
+                
+                # 3. Объединяем их в единый список кандидатов (убираем дубликаты)
+                raw_candidates = list(set(missing_high + unused_from_gen))
+                
+                # 4. (Опционально) Очищаем буфер неиспользованных слов, чтобы они не переносились на следующие проекты
+                # st.session_state['global_unused_for_reviews'] = set()
+                # ===================================
+                
+                # Подтягиваем категории (если они были определены на вкладке 1)
+                known_products = set(st.session_state.get('categorized_products', []))
+                
+                lsi_nouns = []
+                
+                # ЧЕРНЫЙ СПИСОК (Слова, которые глупо звучат в отзывах)
+                STOP_NOUNS = {
+                    'код', 'сайт', 'каталог', 'меню', 'корзина', 'поиск', 'ссылка', 'страница', 
+                    'версия', 'ошибка', 'руб', 'грн', 'шт', 'раз', 'два', 'три', 'номер', 
+                    'телефон', 'адрес', 'email', 'фильтр', 'сортировка', 'артикул', 'наличие',
+                    'акция', 'скидка', 'хит', 'новинка', 'клик', 'вход', 'регистрация', 'главная',
+                    'карта', 'новость', 'статья', 'отзыв', 'вакансия', 'оплата', 'доставка'
+                }
+
+                if raw_candidates:
+                    for w in raw_candidates:
                         w_clean = str(w).lower().strip()
                         
-                        # 1. Фильтр: длина > 2 и НЕТ латиницы (убираем and, from, css)
-                        if len(w_clean) > 2 and not re.search(r'[a-zA-Z]', w_clean):
-                            # 2. Морфология: проверяем часть речи
+                        # БАЗОВЫЙ ФИЛЬТР: длина > 2, нет латиницы/цифр, нет в стоп-листе
+                        if (len(w_clean) > 2 
+                            and not re.search(r'[a-zA-Z0-9]', w_clean) 
+                            and w_clean not in STOP_NOUNS):
+                            
                             parsed = morph.parse(w_clean)[0]
-                            if 'NOUN' in parsed.tag: # Только существительные
+                            
+                            # УСЛОВИЕ ОТБОРА:
+                            # 1. Либо это Существительное (NOUN)
+                            # 2. Либо это слово уже лежит в категории "Товары" (categorized_products)
+                            is_noun = 'NOUN' in parsed.tag
+                            is_known_product = w_clean in known_products
+                            
+                            if is_noun or is_known_product:
+                                # Приоритет: Если это известный товар - ставим флаг priority
+                                priority = 1 if is_known_product else 0
+                                
                                 lsi_nouns.append({
                                     'word': w_clean,
-                                    'gender': parsed.tag.gender, # masc, femn, neut
-                                    'number': parsed.tag.number, # sing, plur
-                                    'parse': parsed
+                                    'parse': parsed,
+                                    'priority': priority
                                 })
                 
-                # Перемешиваем, чтобы не шли подряд одни и те же
-                random.shuffle(lsi_nouns)
+                # СОРТИРОВКА: Сначала слова из категории "Товары", потом просто существительные из упущенного
+                # Shuffle делаем внутри групп, чтобы сохранять рандом, но соблюдать приоритет
+                lsi_nouns.sort(key=lambda x: x['priority'], reverse=True)
+                
+                # Если слов мало, можно перемешать топ-20, чтобы не шли всегда одни и те же товары
+                if len(lsi_nouns) > 5:
+                    top_slice = lsi_nouns[:10]
+                    random.shuffle(top_slice)
+                    lsi_nouns[:10] = top_slice
 
                 curr_idx = st.session_state.get('reviews_current_index', 0)
                 queue = st.session_state.get('reviews_queue', [])
@@ -3763,26 +3803,22 @@ with tab_seo_main:
                     st.session_state.reviews_automode_active = False
                     st.rerun()
 
-                # 2. Загрузка справочников (с безопасным фоллбэком)
+                # 2. Загрузка справочников
                 import os
-                # ФИО
                 if os.path.exists("dicts/fio.csv"):
                     df_fio = pd.read_csv("dicts/fio.csv", sep=";")
                 else:
-                    df_fio = pd.DataFrame([{"Фамилия": "Аноним", "Имя": ""}])
+                    df_fio = pd.DataFrame([{"Фамилия": "Покупатель", "Имя": ""}])
 
-                # Шаблоны
                 if os.path.exists("dicts/templates.csv"):
                     df_templates = pd.read_csv("dicts/templates.csv", sep=";")
                 else:
-                    # Дефолтные шаблоны, если файла нет
                     df_templates = pd.DataFrame([
-                        {"Шаблон": "Заказывали {товар} в этой компании. Все устроило."},
-                        {"Шаблон": "Качественная продукция. {товар} пришел вовремя."},
-                        {"Шаблон": "Давно сотрудничаем. Нравится их {товар} и подход к делу."}
+                        {"Шаблон": "Заказывали {товар}. Все хорошо."}, 
+                        {"Шаблон": "Качество на уровне, {товар} пришел вовремя."},
+                        {"Шаблон": "Нормальная компания. Был нужен {товар}, помогли подобрать."}
                     ])
                 
-                # Переменные
                 var_dict = {}
                 if os.path.exists("dicts/vars.csv"):
                     df_vars = pd.read_csv("dicts/vars.csv", sep=";")
@@ -3791,51 +3827,43 @@ with tab_seo_main:
                         if pd.notna(row['Значения']):
                             var_dict[f"{{{v_name}}}"] = [v.strip() for v in str(row['Значения']).split('|')]
                 
-                # Резервный словарь переменных
                 if "{товар}" not in var_dict:
-                    var_dict["{товар}"] = ["прокат", "материал", "товар", "заказ"]
+                    var_dict["{товар}"] = ["заказ", "товар", "продукцию"]
 
-                # 3. Фразы-конструкторы (для тех случаев, когда слово не влезло в шаблон)
-                # Здесь мы указываем падеж, в который нужно поставить слово
+                # Фразы-конструкторы (для вставки, если шаблон не подошел)
                 LSI_SENTENCES = [
-                    {"tpl": "Отдельно отмечу качество {}.", "case": "gent"}, # (чего?) трубы
-                    {"tpl": "Порадовала цена на {}.", "case": "accs"},       # (на что?) трубу
-                    {"tpl": "Заказывали здесь {}.", "case": "accs"},         # (что?) трубу
-                    {"tpl": "Проблем с {} не возникло.", "case": "ablt"},    # (с чем?) трубой
-                    {"tpl": "Сейчас {} в наличии.", "case": "nomn"}          # (что?) труба
+                    {"tpl": "Отдельно отмечу качество {}.", "case": "gent"}, 
+                    {"tpl": "Порадовала цена на {}.", "case": "accs"},       
+                    {"tpl": "Приобрели {}.", "case": "accs"},         
+                    {"tpl": "Проблем с {} не возникло.", "case": "ablt"},    
+                    {"tpl": "Сейчас {} в наличии.", "case": "nomn"}          
                 ]
 
                 with st.spinner(f"📦 Сборка отзывов для: {task.get('q', 'запроса')}..."):
                     for _ in range(st.session_state.get('reviews_per_query', 3)):
-                        # Рандом ФИО
+                        # ФИО
                         f_row = df_fio.sample(n=1).iloc[0]
                         c_fio = f"{f_row.get('Имя', '')} {f_row.get('Фамилия', '')}".strip()
                         if not c_fio: c_fio = "Клиент"
 
-                        # Выбор шаблона
-                        template_raw = random.choice(df_templates['Шаблон'].values)
-                        final_text = template_raw
-                        
-                        # --- ЛОГИКА ВНЕДРЕНИЯ LSI ---
+                        # Шаблон
+                        final_text = random.choice(df_templates['Шаблон'].values)
                         used_lsi_word = None
                         
-                        # Попытка 1: Найти в шаблоне переменную {товар} и заменить её на LSI-существительное
-                        if "{товар}" in final_text and lsi_nouns:
-                            # Берем случайное существительное
-                            lsi_obj = random.choice(lsi_nouns)
-                            word_obj = lsi_obj['parse']
-                            
-                            # Пытаемся согласовать. Обычно в шаблоне "{товар}" стоит в Именительном или Винительном.
-                            # Для простоты попробуем поставить в ту форму, которая чаще подходит (Им.п или Вин.п)
-                            # Но лучше просто вставить как есть (обычно LSI в именительном),
-                            # либо попытаться склонить, если понимаем контекст.
-                            # В простом варианте: ставим в Именительный (как в словаре)
-                            
-                            replacement = lsi_obj['word']
-                            final_text = final_text.replace("{товар}", replacement, 1)
-                            used_lsi_word = replacement
+                        # --- ВНЕДРЕНИЕ LSI (С ПРИОРИТЕТОМ ТОВАРОВ) ---
                         
-                        # Заполняем остальные переменные из словаря vars.csv
+                        # 1. Пытаемся найти слово для замены тега {товар}
+                        # Берем слово из lsi_nouns (они уже отсортированы: Товары вверху, потом просто Упущенное)
+                        if "{товар}" in final_text and lsi_nouns:
+                            # Берем случайное из топ-5 доступных слов, чтобы было разнообразие
+                            top_n = min(len(lsi_nouns), 10)
+                            lsi_obj = lsi_nouns[random.randint(0, top_n - 1)] 
+                            
+                            replacement = f"**{lsi_obj['word']}**"
+                            final_text = final_text.replace("{товар}", replacement, 1)
+                            used_lsi_word = True
+                        
+                        # Заполнение остальных переменных
                         tags = re.findall(r"\{[а-яА-ЯёЁa-zA-Z0-9_]+\}", final_text)
                         for t in tags:
                             if t in var_dict:
@@ -3844,38 +3872,45 @@ with tab_seo_main:
                                 dt = (datetime.datetime.now() - datetime.timedelta(days=random.randint(1, 60))).strftime("%d.%m.%Y")
                                 final_text = final_text.replace("{дата}", dt)
 
-                        # Попытка 2: Если LSI не был использован внутри (не было тега {товар}), добавляем предложение
+                        # 2. Если {товар} не был заменен (нет тега или слов), вставляем отдельное предложение
                         if not used_lsi_word and lsi_nouns:
-                            lsi_obj = random.choice(lsi_nouns)
+                            top_n = min(len(lsi_nouns), 10)
+                            lsi_obj = lsi_nouns[random.randint(0, top_n - 1)]
+                            
                             parsed_word = lsi_obj['parse']
+                            tpl_obj = random.choice(LSI_SENTENCES)
                             
-                            # Выбираем фразу-конструктор
-                            sentence_tpl = random.choice(LSI_SENTENCES)
-                            target_case = sentence_tpl['case'] # nomn, gent, accs, ablt
-                            
-                            # СКЛОНЯЕМ СЛОВО (Pymorphy)
                             try:
-                                inflected_form = parsed_word.inflect({target_case})
-                                word_to_insert = inflected_form.word if inflected_form else lsi_obj['word']
+                                inflected = parsed_word.inflect({tpl_obj['case']})
+                                w_res = inflected.word if inflected else lsi_obj['word']
                             except:
-                                word_to_insert = lsi_obj['word']
-                                
-                            add_sentence = sentence_tpl['tpl'].format(word_to_insert)
+                                w_res = lsi_obj['word']
                             
-                            # Вставляем это предложение внутрь текста (чтобы не всегда в конце)
-                            sentences = [s.strip() for s in final_text.split('.') if len(s) > 3]
-                            if len(sentences) >= 1:
-                                insert_idx = random.randint(0, len(sentences))
-                                sentences.insert(insert_idx, add_sentence)
-                                final_text = ". ".join(sentences) + "."
+                            w_res_bold = f"**{w_res}**"
+                            add_sentence = tpl_obj['tpl'].format(w_res_bold)
+                            
+                            sentences = [s.strip() for s in final_text.split('.') if len(s) > 1]
+                            if sentences:
+                                idx = random.randint(0, len(sentences))
+                                sentences.insert(idx, add_sentence)
                             else:
-                                final_text += " " + add_sentence
+                                sentences = [final_text, add_sentence]
+                                
+                            # Исправление регистра (Capitalization)
+                            capitalized_sentences = []
+                            for s in sentences:
+                                clean_s = s.strip()
+                                if clean_s:
+                                    cap_s = clean_s[0].upper() + clean_s[1:]
+                                    capitalized_sentences.append(cap_s)
+                            
+                            final_text = ". ".join(capitalized_sentences) + "."
 
                         # Финальная чистка
-                        final_text = re.sub(r"\{[^}]+\}", "", final_text) # Удаляем ненайденные теги
+                        final_text = re.sub(r"\{[^}]+\}", "", final_text)
                         final_text = final_text.replace("..", ".").replace(" .", ".").replace(" ,", ",")
                         final_text = re.sub(r'\s+', ' ', final_text).strip()
-                        # Делаем первую букву заглавной
+                        
                         if final_text:
                             final_text = final_text[0].upper() + final_text[1:]
 
@@ -3886,13 +3921,12 @@ with tab_seo_main:
                             "Отзыв": final_text
                         })
 
-                # Переход к следующему
+                # Переход дальше
                 n_idx = curr_idx + 1
                 if n_idx < len(queue):
                     st.session_state.reviews_current_index = n_idx
                     nxt = queue[n_idx]
                     
-                    # Очистка кэша анализа
                     keys_to_clear = [
                         'analysis_results', 'analysis_done', 'naming_table_df', 
                         'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
@@ -3913,7 +3947,7 @@ with tab_seo_main:
                     st.rerun()
                 else:
                     st.session_state.reviews_automode_active = False
-                    st.success("✅ Генерация завершена!")
+                    st.success("✅ Готово!")
                     st.balloons()
             
             except Exception as e:
@@ -5169,10 +5203,27 @@ with tab_wholesale_main:
                 st.session_state.unified_excel_data = buffer.getvalue()
                 
                 live_table_placeholder.dataframe(st.session_state.gen_result_df.tail(3), use_container_width=True)
+                
                 full_row_html = "".join([str(val) for val in row_data.values()])
                 bolds_fact = full_row_html.count("<b>")
+                
+                # === НОВЫЙ КОД: ЛОВИМ СЛОВА, КОТОРЫЕ НИКУДА НЕ РАСПРЕДЕЛИЛИСЬ ===
+                if 'global_unused_for_reviews' not in st.session_state:
+                    st.session_state['global_unused_for_reviews'] = set()
+                
+                full_html_lower = full_row_html.lower()
+                for kw in unique_seo_goals:
+                    w_lower = str(kw).lower().strip()
+                    if not w_lower: continue
+                    # Отсекаем окончания для гибкого поиска корня
+                    root = w_lower[:-2] if len(w_lower) > 5 else w_lower[:-1] if len(w_lower) > 3 else w_lower
+                    
+                    if root not in full_html_lower:
+                        st.session_state['global_unused_for_reviews'].add(kw)
+                # ================================================================
+
                 with live_download_placeholder.container():
-                     st.info(f"✅ Обработано: {page['name']} (SEO-тегов: {bolds_fact}/{total_seo_goal})")
+                    st.info(f"✅ Обработано: {page['name']} (SEO-тегов: {bolds_fact}/{total_seo_goal})")
 
             except Exception as e:
                 log_container.error(f"Сбой на товаре {page['name']}: {e}")
@@ -6327,5 +6378,6 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
