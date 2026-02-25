@@ -3842,7 +3842,8 @@ with tab_seo_main:
                         v_name = str(row['Переменная']).strip()
                         if pd.notna(row['Значения']):
                             var_dict[f"{{{v_name}}}"] = [v.strip() for v in str(row['Значения']).split('|')]
-if "{товар}" not in var_dict:
+                            
+                if "{товар}" not in var_dict:
                     var_dict["{товар}"] = ["заказ", "товар", "продукцию"]
 
                 # Умные фразы-конструкторы по категориям
@@ -3916,7 +3917,7 @@ if "{товар}" not in var_dict:
                             
                             try:
                                 inflected = parsed_word.inflect({tpl_obj['case']})
-                                w_res = inflected.word if inflected else lsi_obj['word']                
+                                w_res = inflected.word if inflected else lsi_obj['word']
                             except:
                                 w_res = lsi_obj['word']
                             
@@ -3945,9 +3946,7 @@ if "{товар}" not in var_dict:
                         final_text = final_text.replace("..", ".").replace(" .", ".").replace(" ,", ",")
                         
                         # === ОЧИСТКА АРТЕФАКТОВ ПУНКТУАЦИИ ===
-                        # Убираем точку после восклицательных и вопросительных знаков
                         final_text = re.sub(r'([!?]+)\s*\.', r'\1', final_text) 
-                        # Убираем пробелы перед знаками препинания
                         final_text = re.sub(r'\s+([.,!?])', r'\1', final_text)
                         # =====================================
 
@@ -6420,6 +6419,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
