@@ -2858,6 +2858,58 @@ if 'pending_widget_updates' in st.session_state:
     for k, v in st.session_state['pending_widget_updates'].items():
         st.session_state[k] = v
     del st.session_state['pending_widget_updates']
+
+# ==========================================
+# ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ (ТУРГЕНЕВ И TEXT.RU)
+# ==========================================
+def check_turgenev_sync(text):
+    url = 'https://turgenev.ashmanov.com/'
+    params = {
+        'api': 'risk',
+        'key': '91713e320211ca8e99a1d4cf4773c649',
+        'text': text,
+        'more': '1'
+    }
+    try:
+        r = requests.post(url, data=params, timeout=20)
+        res = r.json()
+        if 'error' in res:
+            return f"Ошибка: {res['error']}"
+        return f"{res.get('risk', '-')} ({res.get('level', '-')})"
+    except Exception as e:
+        return "Ошибка соединения"
+
+def send_textru_sync(text, key):
+    url = 'https://api.text.ru/post'
+    payload = {
+        'userkey': key,
+        'text': text
+    }
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        res = r.json()
+        return res.get('text_uid')
+    except:
+        return None
+
+def check_textru_status_sync(uid, key):
+    url = 'https://api.text.ru/post'
+    payload = {
+        'userkey': key,
+        'uid': uid,
+        'jsonvisible': 'detail'
+    }
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        res = r.json()
+        if 'text_unique' in res:
+            return f"{res['text_unique']}%"
+        elif res.get('error_code') == 181:
+            return "processing"
+        else:
+            return f"Ошибка: {res.get('error_desc', res.get('error_code', 'Unknown'))}"
+    except:
+        return "error"
 # ==========================================
 # 7. UI TABS RESTRUCTURED
 # ==========================================
@@ -5791,6 +5843,15 @@ with tab_lsi_gen:
                 value=st.session_state.get('common_lsi_input', default_lsi_text),
                 help="Укажите слова через запятую. Они будут объединены с 15 словами из парсинга."
             )
+        # --- НОВЫЕ ЧЕК-БОКСЫ ---
+        st.markdown("### Дополнительные проверки (после генерации)")
+        c_chk1, c_chk2 = st.columns(2)
+        with c_chk1:
+            st.session_state['use_turgenev'] = st.checkbox("📚 Проверка по Тургеневу (Риск)", value=st.session_state.get('use_turgenev', False))
+        with c_chk2:
+            st.session_state['use_textru'] = st.checkbox("🚀 Проверка уникальности по Text.ru", value=st.session_state.get('use_textru', False))
+            if st.session_state['use_textru']:
+                st.session_state['textru_api_key'] = st.text_input("🔑 API-ключ Text.ru", value=st.session_state.get('textru_api_key', ''), type="password")
 
     # --- 2. ЗАГРУЗКА ЗАДАЧ ---
     st.subheader("1. Загрузка задач")
@@ -5968,6 +6029,21 @@ with tab_lsi_gen:
         # 🔥 HOOK ДЛЯ LSI ГЕНЕРАТОРА (ВКЛАДКА 5) - ЧИСТЫЙ БЛОК
         # ==================================================================
         if st.session_state.get('lsi_automode_active'):
+            # --- ФОНОВАЯ ПРОВЕРКА TEXT.RU (обновление при каждой итерации) ---
+            if st.session_state.get('use_textru') and st.session_state.get('textru_api_key'):
+                textru_key = st.session_state.get('textru_api_key')
+                for rec in st.session_state.get('bg_results', []):
+                    if rec.get('textru_uid') and "⏳" in str(rec.get('textru')):
+                        t_stat = check_textru_status_sync(rec['textru_uid'], textru_key)
+                        if t_stat == "processing":
+                            rec['textru'] = "⏳ Проверяется..."
+                        elif "Ошибка" in t_stat or t_stat == "error":
+                            rec['textru'] = t_stat
+                            rec['textru_uid'] = None
+                        else:
+                            rec['textru'] = t_stat
+                            rec['textru_uid'] = None
+                            
             current_idx = st.session_state.get('lsi_processing_task_id')
             
             if 'bg_tasks_queue' not in st.session_state or current_idx is None or current_idx >= len(st.session_state.bg_tasks_queue):
@@ -5987,11 +6063,16 @@ with tab_lsi_gen:
             common_lsi = [w.strip() for w in raw_common.split(",") if w.strip()]
             combined_lsi = list(set(common_lsi + lsi_words))
 
-            # 4. ГЕНЕРИРУЕМ СТАТЬЮ
+# 4. ГЕНЕРИРУЕМ СТАТЬЮ
             api_key_gen = st.session_state.get('SUPER_GLOBAL_KEY')
             html_out = ""
             status_code = "Error"
             
+            # Переменные для результатов
+            turgenev_res = "-"
+            textru_res = "-"
+            textru_uid = None
+
             if not api_key_gen:
                 html_out = "ОШИБКА: Ключ не найден. Введите ключ на Вкладке 5!"
                 st.error(html_out)
@@ -5999,6 +6080,26 @@ with tab_lsi_gen:
                 try:
                     html_out = generate_full_article_v2(api_key_gen, task['h1'], task['h2'], combined_lsi)
                     status_code = "OK"
+                    
+                    # === ЗАПУСК ПРОВЕРОК ===
+                    if html_out and "Error" not in status_code:
+                        plain_text = BeautifulSoup(html_out, "html.parser").get_text(separator=" ")
+                        
+                        if st.session_state.get('use_turgenev'):
+                            turgenev_res = check_turgenev_sync(plain_text)
+                        
+                        if st.session_state.get('use_textru'):
+                            textru_key = st.session_state.get('textru_api_key', '')
+                            if textru_key:
+                                uid = send_textru_sync(plain_text, textru_key)
+                                if uid:
+                                    textru_uid = uid
+                                    textru_res = "⏳ Отправлено..."
+                                else:
+                                    textru_res = "Ошибка отправки"
+                            else:
+                                textru_res = "Нет ключа API Text.ru"
+
                 except Exception as e:
                     html_out = f"Error generating: {e}"
                     status_code = "Gen Error"
@@ -6013,6 +6114,9 @@ with tab_lsi_gen:
                     existing_res['content'] = html_out
                     existing_res['lsi_added'] = lsi_words
                     existing_res['status'] = status_code
+                    existing_res['turgenev'] = turgenev_res
+                    existing_res['textru'] = textru_res
+                    existing_res['textru_uid'] = textru_uid
                     found_existing = True
                     break
             
@@ -6023,9 +6127,11 @@ with tab_lsi_gen:
                     "source_url": task.get('source_url', '-'),
                     "lsi_added": lsi_words,
                     "content": html_out,
-                    "status": status_code
+                    "status": status_code,
+                    "turgenev": turgenev_res,
+                    "textru": textru_res,
+                    "textru_uid": textru_uid
                 })
-
             # 6. ПЕРЕХОД К СЛЕДУЮЩЕЙ ЗАДАЧЕ
             next_task_idx = current_idx + 1
             
@@ -6061,20 +6167,49 @@ with tab_lsi_gen:
                 st.balloons()
                 st.success("🏁 ВСЕ ЗАДАЧИ В ОЧЕРЕДИ ВЫПОЛНЕНЫ!")
 
-    # --- 4. ЭКСПОРТ И ПРОСМОТР ---
-    if st.session_state.bg_results:
-        st.divider()
-        st.subheader("3. Результаты")
-        
-        df_res = pd.DataFrame(st.session_state.bg_results)
-        # Преобразуем список LSI в строку
-        df_res['lsi_added'] = df_res['lsi_added'].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x))
-        
-        buf = io.BytesIO()
-        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer: 
-            df_res.to_excel(writer, index=False)
+# --- 4. ЭКСПОРТ И ПРОСМОТР ---
+        if st.session_state.bg_results:
+            st.divider()
             
-        st.download_button("📥 Скачать Excel (Full Report)", data=buf.getvalue(), file_name="SEO_Content_Result.xlsx", mime="application/vnd.ms-excel", type="primary")
+            c_res1, c_res2 = st.columns([3, 1])
+            with c_res1:
+                st.subheader("3. Результаты")
+            with c_res2:
+                # Кнопка для ручного обновления Text.ru после завершения всех генераций
+                if st.button("🔄 Обновить статусы Text.ru", use_container_width=True):
+                    if st.session_state.get('textru_api_key'):
+                        tk = st.session_state.get('textru_api_key')
+                        for r in st.session_state.bg_results:
+                            if r.get('textru_uid') and "⏳" in str(r.get('textru')):
+                                stts = check_textru_status_sync(r['textru_uid'], tk)
+                                if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                                    r['textru'] = stts
+                                    r['textru_uid'] = None
+                                elif "Ошибка" in stts or stts == "error":
+                                    r['textru'] = stts
+                                    r['textru_uid'] = None
+                        st.rerun()
+
+            df_res = pd.DataFrame(st.session_state.bg_results)
+            
+            # Преобразуем списки LSI в строки для красивого вывода
+            if 'lsi_added' in df_res.columns:
+                df_res['lsi_added'] = df_res['lsi_added'].apply(lambda x: ", ".join(x) if isinstance(x, list) else x)
+            
+            # Убираем системное поле textru_uid из отображения и Excel
+            if 'textru_uid' in df_res.columns:
+                df_res_display = df_res.drop(columns=['textru_uid'])
+            else:
+                df_res_display = df_res.copy()
+            
+            st.dataframe(df_res_display, use_container_width=True)
+            
+            # Кнопка для скачивания в Excel
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+                df_res_display.to_excel(writer, index=False, sheet_name='Generated_Articles')
+            
+            st.download_button(label="💾 СКАЧАТЬ РЕЗУЛЬТАТЫ (Excel)", data=buf.getvalue(), file_name="SEO_Content_Result.xlsx", mime="application/vnd.ms-excel", type="primary")
         
         st.markdown("---")
         st.markdown("#### 👁️ Просмотр статьи")
@@ -6419,6 +6554,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
