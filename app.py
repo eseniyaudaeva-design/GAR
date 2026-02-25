@@ -6336,7 +6336,8 @@ with tab_lsi_gen:
             else:
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                    df_res_display.to_excel(writer, index=False, sheet_name='Generated_Articles')
+                    # === ИЗМЕНЕНИЕ: сохраняем styled_df (со стилями), а не "голый" df_res_display ===
+                    styled_df.to_excel(writer, index=False, sheet_name='Generated_Articles')
                 
                 st.success("✅ Все проверки завершены! Файл готов к скачиванию.")
                 st.download_button(
@@ -6691,6 +6692,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
