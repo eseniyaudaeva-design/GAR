@@ -6193,7 +6193,7 @@ with tab_reviews_gen:
 
     # --- ОТРРИСОВКА РЕЗУЛЬТАТОВ ---
     if 'reviews_results' in st.session_state and st.session_state.reviews_results:
-        st.markdown("---")
+        st.markdown("---")  # <--- Проверь, чтобы здесь было 8 пробелов (или 2 таба) от края
         st.subheader("📊 Результаты (обновляются в реальном времени)")
         
         # Создаем датафрейм из накопленного списка
@@ -6202,34 +6202,16 @@ with tab_reviews_gen:
         # Выводим таблицу
         st.dataframe(df_display, use_container_width=True)
         
-        # Кнопка скачивания
-        if 'reviews_results' in st.session_state and st.session_state.reviews_results:
-        st.markdown("---")
-        df_display = pd.DataFrame(st.session_state.reviews_results)
-        st.dataframe(df_display, use_container_width=True)
-        
-        # Генерируем Excel
+        # Блок генерации Excel
         import io
         buffer = io.BytesIO()
-        # Используем xlsxwriter, который у тебя есть в системе
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_display.to_excel(writer, index=False, sheet_name='Отзывы')
         
+        # Кнопка скачивания тоже должна быть с отступом внутри IF
         st.download_button(
             label="📥 СКАЧАТЬ В EXCEL",
             data=buffer.getvalue(),
             file_name=f"reviews_{datetime.datetime.now().strftime('%d_%m_%Y')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
-
-
-
-
-
-
-
-
-
-
-
