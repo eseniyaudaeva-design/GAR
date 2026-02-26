@@ -4332,9 +4332,10 @@ with tab_seo_main:
                 st.rerun()
 
 # ==========================================
-# TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V9 - ДИНАМИЧЕСКИЕ БЛОКИ ТЕКСТА)
+# TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V11 - БРОНЕБОЙНЫЙ ТЕКСТ)
 # ==========================================
 with tab_wholesale_main:
+    # 0. Инициализация расширенного датафрейма
     if 'gen_result_df' not in st.session_state or st.session_state.gen_result_df is None:
          st.session_state.gen_result_df = pd.DataFrame(columns=[
             'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
@@ -4347,8 +4348,8 @@ with tab_wholesale_main:
             'Уникальность', 'Text.ru Комментарий', 'Text.ru UID'
         ])
 
-    st.header("🏭 Умный Оптовый Конвейер (V9)")
-    st.info("Скрипт автоматически рассчитывает нужное количество текстовых блоков (от 3 до 5) в зависимости от объема собранной LSI-семантики.")
+    st.header("🏭 Умный Оптовый Конвейер (V11 - Бронебойный текст)")
+    st.info("Исправлена критическая ошибка генерации текста. Теперь текст пишется всегда, а доп. блоки (таблицы, теги) встраиваются ПОД текстом.")
 
     # --- НЕВИДИМЫЙ ХУК АВТО-КОНВЕЙЕРА ---
     if st.session_state.get('ws_automode_active') and st.session_state.get('ws_waiting_for_analysis') and st.session_state.get('analysis_done'):
@@ -4445,7 +4446,16 @@ with tab_wholesale_main:
                     
                     status_logger.write(f"📊 Итог: В текст ушло {len(final_text_seo_list)} слов, в теги {len(target_tag_urls)} ссылок, в промо {len(target_promo_urls)} карточек.")
                     
+                    # === ЗАЩИТА БАЗОВОГО ТЕКСТА (ИСПРАВЛЕНИЕ БАГА С NONE) ===
                     base_text_raw = current_task.get('base_text', '')
+                    b_text_str = str(base_text_raw).strip() if base_text_raw is not None else ""
+                    
+                    if not b_text_str or b_text_str == "None":
+                        safe_base_text = "Техническая информация о товаре. Основные параметры и характеристики для профессионалов."
+                    else:
+                        safe_base_text = base_text_raw
+                    # ==================================================
+
                     injections = []
                     blocks = [""] * 5
                     generated_full_text = ""
@@ -4457,25 +4467,31 @@ with tab_wholesale_main:
                     from openai import OpenAI
                     client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1") if gemini_api_key else None
                     
+                    auto_num_blocks = st.session_state.get('ws_num_blocks_val', 5)
+                    
                     if curr_use_text and client:
-                        # ДИНАМИЧЕСКИЙ РАСЧЕТ БЛОКОВ
                         words_count = len(final_text_seo_list)
-                        if words_count <= 15: auto_num_blocks = 3
-                        elif words_count <= 25: auto_num_blocks = 4
-                        else: auto_num_blocks = 5
                         
-                        status_logger.write(f"🤖 Пишем SEO-текст (Слов: {words_count} ➔ Выделено блоков: {auto_num_blocks})...")
+                        # Если галочка стоит - считаем умно. Если снята - слушаем то, что ты выбрал в менюшке
+                        if st.session_state.get('ws_auto_blocks', True):
+                            if words_count <= 15: auto_num_blocks = 3
+                            elif words_count <= 25: auto_num_blocks = 4
+                            else: auto_num_blocks = 5
+                        else:
+                            auto_num_blocks = st.session_state.get('ws_num_blocks_val', 5)
                         
-                        blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
+                        status_logger.write(f"🤖 Пишем SEO-текст (Слов: {words_count} ➔ Запрошено текстовых блоков: {auto_num_blocks})...")
                         
-                        if not blocks_raw:
-                            status_logger.error("❌ ВНИМАНИЕ: Нейросеть вернула ПУСТОЙ текст!")
+                        blocks_raw = generate_ai_content_blocks(gemini_api_key, safe_base_text, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
+                        
+                        if not blocks_raw or "Error" in str(blocks_raw[0]):
+                            status_logger.error(f"❌ Нейросеть вернула ошибку: {blocks_raw[0]}")
                         else:
                             cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
                             for i_b in range(len(cleaned_blocks)):
                                 if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
                             generated_full_text = " ".join(blocks)
-                            status_logger.write(f"✅ Текст сгенерирован (Получено блоков: {len(cleaned_blocks)})")
+                            status_logger.write(f"✅ Текст сгенерирован (Получено текстовых блоков: {len(cleaned_blocks)})")
                         
                     if curr_use_tables and client:
                         status_logger.write("🧩 Верстаем таблицу размеров...")
@@ -4527,12 +4543,22 @@ with tab_wholesale_main:
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.5)
                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
 
-                    for i_inj, inj in enumerate(injections): blocks[i_inj % 5] += "\n\n" + inj
+                    # --- ИСПРАВЛЕННАЯ СБОРКА КОНТЕНТА ---
+                    effective_blocks_count = max(1, auto_num_blocks)
+                    
+                    for i_inj, inj in enumerate(injections):
+                        target_idx = i_inj % effective_blocks_count
+                        # ВАЖНО: Если текстовый блок сгенерировался, приклеиваем доп. блок вниз. Если нет - просто вставляем
+                        if blocks[target_idx]:
+                            blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
+                        else:
+                            blocks[target_idx] = inj
                         
                     TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
-                    for i_c, c_name in enumerate(TEXT_CONTAINERS): row_data[c_name] = blocks[i_c]
+                    for i_c, c_name in enumerate(TEXT_CONTAINERS):
+                        row_data[c_name] = blocks[i_c]
 
-                    # --- 6. СКЛЕЙКА И НЕЗАВИСИМЫЕ ПРОВЕРКИ ---
+                    # --- СКЛЕЙКА И НЕЗАВИСИМЫЕ ПРОВЕРКИ ---
                     merged_html = "".join(blocks)
                     row_data['Весь текст целиком'] = merged_html
                     plain_text_merged = BeautifulSoup(merged_html, "html.parser").get_text(separator=" ").strip()
@@ -4636,6 +4662,13 @@ with tab_wholesale_main:
         with c_i2:
             st.markdown("**Глобальные рубильники** (Что скрипту *разрешено* генерировать):")
             st.checkbox("🤖 AI Тексты", value=True, key="ws_global_text")
+            
+            c_b1, c_b2 = st.columns(2)
+            with c_b1:
+                st.selectbox("Кол-во блоков текста", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val")
+            with c_b2:
+                st.checkbox("Авто-расчет (3-5 шт)", value=True, key="ws_auto_blocks", help="Если включено, скрипт сам решит, сколько блоков нужно для распределения LSI. Если выключено - будет сгенерировано столько блоков, сколько выбрано слева.")
+                
             st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
             st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
             st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
@@ -5989,6 +6022,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
