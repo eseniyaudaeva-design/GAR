@@ -4652,7 +4652,11 @@ with tab_wholesale_main:
         st.subheader("2. Данные и Глобальные Разрешения")
         try: key_from_secrets = st.secrets["GEMINI_KEY"]
         except: key_from_secrets = ""
-        st.text_input("🔑 Google Gemini API Key:", value=st.session_state.get('SUPER_GLOBAL_KEY', key_from_secrets), type="password", key="ws_gem_key", on_change=lambda: st.session_state.update({'SUPER_GLOBAL_KEY': st.session_state.ws_gem_key}))
+        
+        # Железобетонное сохранение ключа в сессию
+        ws_gem_key_input = st.text_input("🔑 Google Gemini API Key:", value=st.session_state.get('SUPER_GLOBAL_KEY', key_from_secrets), type="password", key="ws_gem_key_fixed")
+        if ws_gem_key_input:
+            st.session_state['SUPER_GLOBAL_KEY'] = ws_gem_key_input
         
         c_i1, c_i2 = st.columns(2)
         with c_i1:
@@ -6022,6 +6026,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
