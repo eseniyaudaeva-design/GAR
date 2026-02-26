@@ -4332,10 +4332,9 @@ with tab_seo_main:
                 st.rerun()
 
 # ==========================================
-# TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V7 - СТАТУСЫ И ПРЕДПРОСМОТР)
+# TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V8 - ОРИГИНАЛЬНАЯ ЛОГИКА РАСПРЕДЕЛЕНИЯ СЛОВ)
 # ==========================================
 with tab_wholesale_main:
-    # 0. Инициализация расширенного датафрейма
     if 'gen_result_df' not in st.session_state or st.session_state.gen_result_df is None:
          st.session_state.gen_result_df = pd.DataFrame(columns=[
             'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
@@ -4348,10 +4347,10 @@ with tab_wholesale_main:
             'Уникальность', 'Text.ru Комментарий', 'Text.ru UID'
         ])
 
-    st.header("🏭 Умный Оптовый Конвейер (V7)")
-    st.info("Скрипт сам решает, какие блоки генерировать, склеивает текст и прогоняет по API. Внизу доступен живой предпросмотр верстки.")
+    st.header("🏭 Умный Оптовый Конвейер (V8)")
+    st.info("Скрипт использует оригинальную логику: распределяет слова по блокам, а если не находит картинку/ссылку в базе — возвращает слово в основной текст.")
 
-    # --- НЕВИДИМЫЙ ХУК АВТО-КОНВЕЙЕРА (ТЕПЕРЬ С ВИДИМЫМ СТАТУСОМ) ---
+    # --- НЕВИДИМЫЙ ХУК АВТО-КОНВЕЙЕРА ---
     if st.session_state.get('ws_automode_active') and st.session_state.get('ws_waiting_for_analysis') and st.session_state.get('analysis_done'):
         task_idx = st.session_state.auto_current_index
         queue = st.session_state.ws_bg_tasks_queue
@@ -4361,9 +4360,8 @@ with tab_wholesale_main:
             h1_marker = current_task.get('h1', current_task['name'])
             h2_header = current_task.get('h2', current_task['name'])
             
-            # --- ВИЗУАЛЬНЫЙ СТАТУС ТЕКУЩЕЙ ОПЕРАЦИИ ---
             with st.status(f"⚙️ Обработка: {h2_header} (Товар {task_idx + 1} из {len(queue)})", expanded=True) as status_logger:
-                status_logger.write("✅ Семантика получена с 1-й вкладки")
+                status_logger.write("✅ Семантика получена. Начинаем распределение слов...")
                 
                 row_data = {col: "" for col in st.session_state.gen_result_df.columns}
                 row_data['Page URL'] = current_task['url']
@@ -4374,38 +4372,94 @@ with tab_wholesale_main:
                 except NameError: pass 
                 
                 try:
+                    # 1. ЗАБИРАЕМ ДАННЫЕ С 1-Й ВКЛАДКИ
                     cat_dimensions = st.session_state.get('categorized_dimensions', [])
                     cat_commercial = st.session_state.get('categorized_commercial', [])
                     cat_general = st.session_state.get('categorized_general', [])
                     cat_geo = st.session_state.get('categorized_geo', [])
                     structure_keywords = st.session_state.get('categorized_products', []) + st.session_state.get('categorized_services', [])
                     
+                    # 2. ГЛОБАЛЬНЫЕ РУБИЛЬНИКИ
                     global_text = st.session_state.get('ws_global_text', True)
                     global_tables = st.session_state.get('ws_global_tables', True)
                     global_tags = st.session_state.get('ws_global_tags', True)
                     global_promo = st.session_state.get('ws_global_promo', True)
                     global_geo = st.session_state.get('ws_global_geo', True)
                     
-                    curr_use_text = global_text
+                    # 3. ПОДГРУЖАЕМ БАЗЫ ДАННЫХ ДЛЯ ПРОВЕРКИ
+                    all_tags_links = []
+                    if global_tags and os.path.exists("data/links_base.txt"):
+                        with open("data/links_base.txt", "r", encoding="utf-8") as f: 
+                            all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
+
+                    p_img_map = {}
+                    if global_promo and os.path.exists("data/images_db.xlsx"):
+                        try:
+                            df_db = pd.read_excel("data/images_db.xlsx")
+                            for _, row in df_db.iterrows():
+                                u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
+                                if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
+                        except: pass
+
+                    # 4. ОРИГИНАЛЬНОЕ УМНОЕ РАСПРЕДЕЛЕНИЕ СЛОВ
+                    final_text_seo_list = cat_commercial + cat_general
+                    
+                    tags_cands = []
+                    promo_cands = []
+                    if len(structure_keywords) > 0:
+                        if len(structure_keywords) < 10:
+                            tags_cands = structure_keywords
+                        else:
+                            mid = math.ceil(len(structure_keywords) / 2)
+                            tags_cands = structure_keywords[:mid]
+                            promo_cands = structure_keywords[mid:]
+
+                    # Проверка тегов по базе
+                    target_tag_urls = []
+                    if global_tags and all_tags_links:
+                        tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
+                        for kw in tags_cands:
+                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                            found = False
+                            for url in tags_cands_all:
+                                if tr_kw in url.lower() and url not in target_tag_urls:
+                                    target_tag_urls.append(url)
+                                    found = True
+                                    break
+                            # Если ссылку не нашли - перекидываем слово в SEO Текст!
+                            if not found:
+                                if kw not in final_text_seo_list: final_text_seo_list.append(kw)
+                    else:
+                        for kw in tags_cands:
+                            if kw not in final_text_seo_list: final_text_seo_list.append(kw)
+
+                    # Проверка промо по базе
+                    target_promo_urls = []
+                    if global_promo and p_img_map:
+                        p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
+                        for kw in promo_cands:
+                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                            found = False
+                            for u in p_cands_all:
+                                if tr_kw in u.lower() and u not in target_promo_urls:
+                                    target_promo_urls.append(u)
+                                    found = True
+                                    break
+                            # Если картинку не нашли - перекидываем слово в SEO Текст!
+                            if not found:
+                                if kw not in final_text_seo_list: final_text_seo_list.append(kw)
+                    else:
+                        for kw in promo_cands:
+                            if kw not in final_text_seo_list: final_text_seo_list.append(kw)
+
+                    # 5. ОПРЕДЕЛЯЕМ, ЧТО ГЕНЕРИРУЕМ В ИТОГЕ
+                    curr_use_text = global_text  # Текст генерится всегда, если стоит галочка!
                     curr_use_tables = global_tables and (len(cat_dimensions) > 0)
                     curr_use_geo = global_geo and (len(cat_geo) > 0)
-                    curr_use_tags = False; curr_use_promo = False
+                    curr_use_tags = (len(target_tag_urls) > 0)
+                    curr_use_promo = (len(target_promo_urls) > 0)
                     
-                    tags_list_source = []; promo_list_source = []
-                    count_struct = len(structure_keywords)
-                    
-                    if count_struct > 0:
-                        if count_struct < 10:
-                            if global_tags:
-                                curr_use_tags = True
-                                tags_list_source = structure_keywords
-                        else:
-                            mid = math.ceil(count_struct / 2)
-                            if global_tags: curr_use_tags = True; tags_list_source = structure_keywords[:mid]
-                            if global_promo: curr_use_promo = True; promo_list_source = structure_keywords[mid:]
-                                
-                    text_context_final_list = cat_commercial + cat_general
-                    geo_final_list = cat_geo
+                    status_logger.write(f"📊 Итог распределения: В текст ушло {len(final_text_seo_list)} слов, в теги {len(target_tag_urls)} ссылок, в промо {len(target_promo_urls)} карточек.")
                     
                     base_text_raw = current_task.get('base_text', '')
                     injections = []
@@ -4419,14 +4473,14 @@ with tab_wholesale_main:
                     if curr_use_text and client:
                         status_logger.write("🤖 Пишем SEO-текст (Gemini)...")
                         num_blocks = st.session_state.get('ws_num_blocks_val', 5)
-                        blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw, h1_marker, h2_header, num_blocks, text_context_final_list)
+                        blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw, h1_marker, h2_header, num_blocks, final_text_seo_list)
                         cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
                         for i_b in range(len(cleaned_blocks)):
                             if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
                         generated_full_text = " ".join(blocks)
                         
                     if curr_use_tables and client:
-                        status_logger.write("🧩 Верстаем умную таблицу...")
+                        status_logger.write("🧩 Верстаем таблицу размеров...")
                         dims_str = ", ".join(cat_dimensions)
                         prompt_tbl = f"""
                         ТЫ — СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
@@ -4449,19 +4503,28 @@ with tab_wholesale_main:
                             if "brand-accent-table" not in cl_tab: cl_tab = cl_tab.replace("<table", "<table class='brand-accent-table'", 1)
                             injections.append(f'<div class="table-scroll-wrapper">\n{cl_tab}\n</div>')
                             
-                    if curr_use_tags and st.session_state.get('ws_tags_links_db'):
-                        status_logger.write("🏷️ Собираем теги...")
-                        html_t = [f'<a href="#" class="tag-item">{kw.capitalize()}</a>' for kw in tags_list_source[:15]]
+                    if curr_use_tags:
+                        status_logger.write("🏷️ Внедряем теги...")
+                        html_t = []
+                        for u in target_tag_urls[:15]:
+                            try: nm = force_cyrillic_name_global(u.split("/")[-1])
+                            except: nm = u.split("/")[-1]
+                            html_t.append(f'<a href="{u}" class="tag-item">{nm}</a>')
                         injections.append(f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>''')
                         
-                    if curr_use_promo and st.session_state.get('ws_promo_img_db'):
+                    if curr_use_promo:
                         status_logger.write("🔥 Формируем промо-галерею...")
-                        gallery_items = [f'''<div class="gallery-item"><h3><a href="#">{kw.capitalize()}</a></h3><figure><a href="#"><picture><img src="https://via.placeholder.com/260" loading="lazy"></picture></a></figure></div>''' for kw in promo_list_source[:5]]
+                        gallery_items = []
+                        for u in target_promo_urls[:5]:
+                            try: nm = force_cyrillic_name_global(u.split("/")[-1])
+                            except: nm = u.split("/")[-1]
+                            img_src = p_img_map.get(u, "https://via.placeholder.com/260")
+                            gallery_items.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>''')
                         injections.append(f'''<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>''')
 
                     if curr_use_geo and client:
                         status_logger.write("🌍 Добавляем гео-доставку...")
-                        cities = ", ".join(geo_final_list[:15])
+                        cities = ", ".join(cat_geo[:15])
                         prompt_geo = f"Напиши один HTML параграф (<p>) о доставке товара '{h2_header}' в города: {cities}. Выдай только HTML."
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.5)
                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
@@ -4471,7 +4534,7 @@ with tab_wholesale_main:
                     TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
                     for i_c, c_name in enumerate(TEXT_CONTAINERS): row_data[c_name] = blocks[i_c]
 
-                    # --- 4. СКЛЕЙКА И НЕЗАВИСИМЫЕ ПРОВЕРКИ ---
+                    # --- 6. СКЛЕЙКА И НЕЗАВИСИМЫЕ ПРОВЕРКИ ---
                     merged_html = "".join(blocks)
                     row_data['Весь текст целиком'] = merged_html
                     plain_text_merged = BeautifulSoup(merged_html, "html.parser").get_text(separator=" ").strip()
@@ -4581,9 +4644,6 @@ with tab_wholesale_main:
             st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
             st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo")
             
-            if os.path.exists("data/links_base.txt"): st.session_state['ws_tags_links_db'] = True
-            if os.path.exists("data/images_db.xlsx"): st.session_state['ws_promo_img_db'] = True
-
     c_start, c_stop = st.columns([2, 1])
     with c_start:
         is_running = st.session_state.get('ws_automode_active', False)
@@ -4718,12 +4778,12 @@ with tab_wholesale_main:
             st.dataframe(df_export.style.apply(highlight_bad_results, axis=1), use_container_width=True)
 
         st.markdown("---")
-        st.markdown("### 🖥️ Визуальный предпросмотр верстки")
+        st.markdown("### 🖥️ Визуальный предпросмотр (Сплошная лента)")
         
         if 'Product Name' in df_export.columns:
             all_products = df_export['Product Name'].tolist()
             safe_index = len(all_products) - 1 if len(all_products) > 0 else 0
-            sel_p = st.selectbox("Выберите сгенерированный товар для просмотра:", all_products, index=safe_index, key="ws_visual_preview_sel")
+            sel_p = st.selectbox("Выберите сгенерированный товар:", all_products, index=safe_index, key="ws_visual_preview_sel")
             
             if sel_p:
                 row_p = df_export[df_export['Product Name'] == sel_p].iloc[0]
@@ -5932,6 +5992,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
