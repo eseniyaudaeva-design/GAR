@@ -4386,7 +4386,7 @@ with tab_wholesale_main:
                     global_promo = st.session_state.get('ws_global_promo', True)
                     global_geo = st.session_state.get('ws_global_geo', True)
                     
-                    curr_use_text = global_text and (len(cat_commercial) > 0 or len(cat_general) > 0)
+                    curr_use_text = global_text
                     curr_use_tables = global_tables and (len(cat_dimensions) > 0)
                     curr_use_geo = global_geo and (len(cat_geo) > 0)
                     curr_use_tags = False; curr_use_promo = False
@@ -4731,11 +4731,10 @@ with tab_wholesale_main:
                 active_cols = [c for c in cols_to_show if str(row_p.get(c, "")).strip() != ""]
                 
                 if active_cols:
-                    tabs = st.tabs([c.replace("IP_PROP", "БЛОК ") for c in active_cols])
-                    
                     st.markdown("""
                     <style>
-                        .preview-box { border: 1px solid #e2e8f0; background-color: #ffffff; padding: 20px; border-radius: 8px; max-height: 700px; overflow-y: auto; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); }
+                        .preview-box { border: 1px solid #e2e8f0; background-color: #ffffff; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); }
+                        .block-title { color: #277EFF; margin-top: 30px; margin-bottom: 10px; font-size: 1.2em; font-weight: 600; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }
                         .table-scroll-wrapper { width: 100%; overflow-x: auto; margin: 20px 0; }
                         .brand-accent-table { width: 100%; border-collapse: collapse; text-align: left; font-family: sans-serif; }
                         .brand-accent-table th { background-color: #277EFF; color: white; padding: 12px; font-weight: 500; border: none; }
@@ -4751,9 +4750,14 @@ with tab_wholesale_main:
                     </style>
                     """, unsafe_allow_html=True)
                     
-                    for i, col in enumerate(active_cols):
-                        with tabs[i]:
-                            st.markdown(f"<div class='preview-box'>{str(row_p[col])}</div>", unsafe_allow_html=True)
+                    st.markdown(f"### 📄 Итоговый контент для: {sel_p}")
+                    
+                    for col in active_cols:
+                        block_name = col.replace("IP_PROP", "БЛОК ")
+                        if col == "IP_PROP4819": block_name = "ГЕО БЛОК (Доставка)"
+                        
+                        st.markdown(f"<div class='block-title'>{block_name}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='preview-box'>{str(row_p[col])}</div>", unsafe_allow_html=True)
 # ==========================================
 # ==========================================
 # TAB 3: PROJECT MANAGER (SAVE/LOAD)
@@ -5928,6 +5932,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
