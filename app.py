@@ -4332,7 +4332,7 @@ with tab_seo_main:
                 st.rerun()
 
 # ==========================================
-# TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V8 - ОРИГИНАЛЬНАЯ ЛОГИКА РАСПРЕДЕЛЕНИЯ СЛОВ)
+# TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V9 - ДИНАМИЧЕСКИЕ БЛОКИ ТЕКСТА)
 # ==========================================
 with tab_wholesale_main:
     if 'gen_result_df' not in st.session_state or st.session_state.gen_result_df is None:
@@ -4347,8 +4347,8 @@ with tab_wholesale_main:
             'Уникальность', 'Text.ru Комментарий', 'Text.ru UID'
         ])
 
-    st.header("🏭 Умный Оптовый Конвейер (V8)")
-    st.info("Скрипт использует оригинальную логику: распределяет слова по блокам, а если не находит картинку/ссылку в базе — возвращает слово в основной текст.")
+    st.header("🏭 Умный Оптовый Конвейер (V9)")
+    st.info("Скрипт автоматически рассчитывает нужное количество текстовых блоков (от 3 до 5) в зависимости от объема собранной LSI-семантики.")
 
     # --- НЕВИДИМЫЙ ХУК АВТО-КОНВЕЙЕРА ---
     if st.session_state.get('ws_automode_active') and st.session_state.get('ws_waiting_for_analysis') and st.session_state.get('analysis_done'):
@@ -4372,21 +4372,18 @@ with tab_wholesale_main:
                 except NameError: pass 
                 
                 try:
-                    # 1. ЗАБИРАЕМ ДАННЫЕ С 1-Й ВКЛАДКИ
                     cat_dimensions = st.session_state.get('categorized_dimensions', [])
                     cat_commercial = st.session_state.get('categorized_commercial', [])
                     cat_general = st.session_state.get('categorized_general', [])
                     cat_geo = st.session_state.get('categorized_geo', [])
                     structure_keywords = st.session_state.get('categorized_products', []) + st.session_state.get('categorized_services', [])
                     
-                    # 2. ГЛОБАЛЬНЫЕ РУБИЛЬНИКИ
                     global_text = st.session_state.get('ws_global_text', True)
                     global_tables = st.session_state.get('ws_global_tables', True)
                     global_tags = st.session_state.get('ws_global_tags', True)
                     global_promo = st.session_state.get('ws_global_promo', True)
                     global_geo = st.session_state.get('ws_global_geo', True)
                     
-                    # 3. ПОДГРУЖАЕМ БАЗЫ ДАННЫХ ДЛЯ ПРОВЕРКИ
                     all_tags_links = []
                     if global_tags and os.path.exists("data/links_base.txt"):
                         with open("data/links_base.txt", "r", encoding="utf-8") as f: 
@@ -4401,20 +4398,17 @@ with tab_wholesale_main:
                                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
                         except: pass
 
-                    # 4. ОРИГИНАЛЬНОЕ УМНОЕ РАСПРЕДЕЛЕНИЕ СЛОВ
                     final_text_seo_list = cat_commercial + cat_general
                     
                     tags_cands = []
                     promo_cands = []
                     if len(structure_keywords) > 0:
-                        if len(structure_keywords) < 10:
-                            tags_cands = structure_keywords
+                        if len(structure_keywords) < 10: tags_cands = structure_keywords
                         else:
                             mid = math.ceil(len(structure_keywords) / 2)
                             tags_cands = structure_keywords[:mid]
                             promo_cands = structure_keywords[mid:]
 
-                    # Проверка тегов по базе
                     target_tag_urls = []
                     if global_tags and all_tags_links:
                         tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
@@ -4423,17 +4417,12 @@ with tab_wholesale_main:
                             found = False
                             for url in tags_cands_all:
                                 if tr_kw in url.lower() and url not in target_tag_urls:
-                                    target_tag_urls.append(url)
-                                    found = True
-                                    break
-                            # Если ссылку не нашли - перекидываем слово в SEO Текст!
-                            if not found:
-                                if kw not in final_text_seo_list: final_text_seo_list.append(kw)
+                                    target_tag_urls.append(url); found = True; break
+                            if not found and kw not in final_text_seo_list: final_text_seo_list.append(kw)
                     else:
                         for kw in tags_cands:
                             if kw not in final_text_seo_list: final_text_seo_list.append(kw)
 
-                    # Проверка промо по базе
                     target_promo_urls = []
                     if global_promo and p_img_map:
                         p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
@@ -4442,24 +4431,19 @@ with tab_wholesale_main:
                             found = False
                             for u in p_cands_all:
                                 if tr_kw in u.lower() and u not in target_promo_urls:
-                                    target_promo_urls.append(u)
-                                    found = True
-                                    break
-                            # Если картинку не нашли - перекидываем слово в SEO Текст!
-                            if not found:
-                                if kw not in final_text_seo_list: final_text_seo_list.append(kw)
+                                    target_promo_urls.append(u); found = True; break
+                            if not found and kw not in final_text_seo_list: final_text_seo_list.append(kw)
                     else:
                         for kw in promo_cands:
                             if kw not in final_text_seo_list: final_text_seo_list.append(kw)
 
-                    # 5. ОПРЕДЕЛЯЕМ, ЧТО ГЕНЕРИРУЕМ В ИТОГЕ
-                    curr_use_text = global_text  # Текст генерится всегда, если стоит галочка!
+                    curr_use_text = global_text
                     curr_use_tables = global_tables and (len(cat_dimensions) > 0)
                     curr_use_geo = global_geo and (len(cat_geo) > 0)
                     curr_use_tags = (len(target_tag_urls) > 0)
                     curr_use_promo = (len(target_promo_urls) > 0)
                     
-                    status_logger.write(f"📊 Итог распределения: В текст ушло {len(final_text_seo_list)} слов, в теги {len(target_tag_urls)} ссылок, в промо {len(target_promo_urls)} карточек.")
+                    status_logger.write(f"📊 Итог: В текст ушло {len(final_text_seo_list)} слов, в теги {len(target_tag_urls)} ссылок, в промо {len(target_promo_urls)} карточек.")
                     
                     base_text_raw = current_task.get('base_text', '')
                     injections = []
@@ -4467,17 +4451,31 @@ with tab_wholesale_main:
                     generated_full_text = ""
                     gemini_api_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
                     
+                    if not gemini_api_key:
+                        status_logger.error("❌ ОШИБКА: Отсутствует API-ключ Gemini!")
+                    
                     from openai import OpenAI
                     client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1") if gemini_api_key else None
                     
                     if curr_use_text and client:
-                        status_logger.write("🤖 Пишем SEO-текст (Gemini)...")
-                        num_blocks = st.session_state.get('ws_num_blocks_val', 5)
-                        blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw, h1_marker, h2_header, num_blocks, final_text_seo_list)
-                        cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
-                        for i_b in range(len(cleaned_blocks)):
-                            if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
-                        generated_full_text = " ".join(blocks)
+                        # ДИНАМИЧЕСКИЙ РАСЧЕТ БЛОКОВ
+                        words_count = len(final_text_seo_list)
+                        if words_count <= 15: auto_num_blocks = 3
+                        elif words_count <= 25: auto_num_blocks = 4
+                        else: auto_num_blocks = 5
+                        
+                        status_logger.write(f"🤖 Пишем SEO-текст (Слов: {words_count} ➔ Выделено блоков: {auto_num_blocks})...")
+                        
+                        blocks_raw = generate_ai_content_blocks(gemini_api_key, base_text_raw, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
+                        
+                        if not blocks_raw:
+                            status_logger.error("❌ ВНИМАНИЕ: Нейросеть вернула ПУСТОЙ текст!")
+                        else:
+                            cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
+                            for i_b in range(len(cleaned_blocks)):
+                                if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
+                            generated_full_text = " ".join(blocks)
+                            status_logger.write(f"✅ Текст сгенерирован (Получено блоков: {len(cleaned_blocks)})")
                         
                     if curr_use_tables and client:
                         status_logger.write("🧩 Верстаем таблицу размеров...")
@@ -4545,14 +4543,14 @@ with tab_wholesale_main:
                     
                     status_logger.write("🔍 Отправляем на проверки (Антиспам и Уникальность)...")
                     
-                    if st.session_state.get('use_ds_bulk') and gemini_api_key:
+                    if st.session_state.get('use_ds_bulk') and gemini_api_key and plain_text_merged:
                         try:
                             is_valid = validate_topic_deepseek(gemini_api_key, h1_marker, h2_header, plain_text_merged)
                             row_data['DeepSeek Контекст'] = "YES" if is_valid else "NO"
                             row_data['DeepSeek Комментарий'] = "Ок" if is_valid else "Ошибка: не по теме"
                         except Exception: row_data['DeepSeek Комментарий'] = "Сбой API"
 
-                    if st.session_state.get('use_turgenev_bulk') and st.session_state.get('turg_key_bulk'):
+                    if st.session_state.get('use_turgenev_bulk') and st.session_state.get('turg_key_bulk') and plain_text_merged:
                         try:
                             turg_val = check_turgenev_sync(plain_text_merged, st.session_state['turg_key_bulk'])
                             row_data['Риск Тургенев'] = turg_val
@@ -4562,7 +4560,7 @@ with tab_wholesale_main:
                             except: row_data['Тургенев Комментарий'] = "Ошибка ответа"
                         except Exception: row_data['Тургенев Комментарий'] = "Сбой API"
 
-                    if st.session_state.get('use_textru_bulk') and st.session_state.get('textru_key_bulk'):
+                    if st.session_state.get('use_textru_bulk') and st.session_state.get('textru_key_bulk') and plain_text_merged:
                         try:
                             uid = send_textru_sync(plain_text_merged, st.session_state['textru_key_bulk'])
                             if uid:
@@ -4638,7 +4636,6 @@ with tab_wholesale_main:
         with c_i2:
             st.markdown("**Глобальные рубильники** (Что скрипту *разрешено* генерировать):")
             st.checkbox("🤖 AI Тексты", value=True, key="ws_global_text")
-            st.selectbox("Кол-во блоков текста", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val")
             st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
             st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
             st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
@@ -5992,6 +5989,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
