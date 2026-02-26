@@ -4332,340 +4332,201 @@ with tab_seo_main:
                 st.rerun()
 
 # ==========================================
-# TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V18 - FULL & STYLED)
+# TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V20 - TOTAL FIX)
 # ==========================================
 with tab_wholesale_main:
-    # --- 0. ИНИЦИАЛИЗАЦИЯ ДАТАФРЕЙМА (ВСЕ КОЛОНКИ) ---
+    # 0. Инициализация расширенного датафрейма
     if 'gen_result_df' not in st.session_state or st.session_state.gen_result_df is None:
          st.session_state.gen_result_df = pd.DataFrame(columns=[
             'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
             'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
             'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 
             'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831',
-            'Весь текст целиком', 
-            'DeepSeek Контекст', 'DeepSeek Комментарий',
-            'Риск Тургенев', 'Тургенев Комментарий',
-            'Уникальность', 'Text.ru Комментарий', 'Text.ru UID'
+            'Весь текст целиком', 'DeepSeek Контекст', 'DeepSeek Комментарий',
+            'Риск Тургенев', 'Тургенев Комментарий', 'Уникальность', 'Text.ru Комментарий', 'Text.ru UID'
         ])
 
-    st.header("🏭 Умный Оптовый Конвейер (V18)")
-    st.info("Автоматический цикл: Анализ ➔ Синхронизация с Excel ➔ Генерация SEO-контента ➔ Валидация.")
+    st.header("🏭 Умный Оптовый Конвейер (V20)")
 
-    # --- 1. НЕВИДИМЫЙ ХУК АВТО-КОНВЕЙЕРА (ЛОГИКА ГЕНЕРАЦИИ) ---
+    # --- КНОПКА СКАЧИВАНИЯ (ВСЕГДА ТУТ) ---
+    c_top1, c_top2 = st.columns([3, 1])
+    with c_top2:
+        import io
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            st.session_state.gen_result_df.to_excel(writer, index=False)
+        st.download_button("💾 СКАЧАТЬ РЕЗУЛЬТАТ", data=buffer.getvalue(), file_name=f"gen_export_{int(time.time())}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
+
+    # --- НЕВИДИМЫЙ ХУК АВТО-КОНВЕЙЕРА ---
     if st.session_state.get('ws_automode_active') and st.session_state.get('ws_waiting_for_analysis') and st.session_state.get('analysis_done'):
         task_idx = st.session_state.auto_current_index
         queue = st.session_state.ws_bg_tasks_queue
         
         if task_idx < len(queue):
             current_task = queue[task_idx]
-            h1_marker = current_task.get('h1', current_task['name'])
-            h2_header = current_task.get('h2', current_task['name'])
+            h1_m, h2_h = current_task.get('h1', ''), current_task.get('h2', '')
             
-            with st.status(f"⚙️ Обработка: {h2_header} ({task_idx + 1}/{len(queue)})", expanded=True) as status_logger:
-                status_logger.write("✅ Данные анализа получены. Синхронизируем базы...")
-                
+            with st.status(f"⚙️ Обработка: {h2_h}", expanded=True) as status_logger:
                 row_data = {col: "" for col in st.session_state.gen_result_df.columns}
                 row_data['Page URL'] = current_task['url']
-                row_data['Product Name'] = h2_header
+                row_data['Product Name'] = h2_h
                 
                 try:
-                    # --- ЗАГРУЗКА БАЗ (EXCEL) ---
-                    url_to_name_map = {}
-                    p_img_dict = {}
-
+                    # 1. ЗАГРУЗКА ИТАЛОННОЙ БАЗЫ (URL + Русское название)
+                    excel_data_rows = []
                     if os.path.exists("data/links_base.xlsx"):
-                        df_l = pd.read_excel("data/links_base.xlsx")
-                        for _, r in df_l.iterrows():
-                            u = str(r.iloc[0]).strip().rstrip('/')
-                            n = str(r.iloc[1]).strip()
-                            if u and n and u != 'nan': url_to_name_map[u] = n
+                        df_lb = pd.read_excel("data/links_base.xlsx")
+                        for _, r in df_lb.iterrows():
+                            u, n = str(r.iloc[0]).strip(), str(r.iloc[1]).strip()
+                            if u != 'nan' and n != 'nan': excel_data_rows.append({'url': u, 'name': n})
 
+                    p_img_map = {}
                     if os.path.exists("data/images_db.xlsx"):
-                        df_i = pd.read_excel("data/images_db.xlsx")
-                        for _, r in df_i.iterrows():
-                            u = str(r.iloc[0]).strip().rstrip('/')
-                            img = str(r.iloc[1]).strip()
-                            if u and u != 'nan' and img and img != 'nan': p_img_dict[u] = img
-                            if u in p_img_dict and u not in url_to_name_map and len(r) > 2:
-                                n_ex = str(r.iloc[2]).strip()
-                                if n_ex and n_ex != 'nan': url_to_name_map[u] = n_ex
+                        df_idb = pd.read_excel("data/images_db.xlsx")
+                        for _, r in df_idb.iterrows():
+                            u, img = str(r.iloc[0]).strip().rstrip('/'), str(r.iloc[1]).strip()
+                            if u != 'nan' and img != 'nan': p_img_map[u] = img
 
-                    # --- РАСПРЕДЕЛЕНИЕ СЛОВ ---
-                    cat_dimensions = st.session_state.get('categorized_dimensions', [])
-                    cat_commercial = st.session_state.get('categorized_commercial', [])
-                    cat_general = st.session_state.get('categorized_general', [])
-                    cat_geo = st.session_state.get('categorized_geo', [])
-                    structure_keywords = st.session_state.get('categorized_products', []) + st.session_state.get('categorized_services', [])
+                    # 2. ЖЕСТКОЕ РАСПРЕДЕЛЕНИЕ (ПОИСК ТОЛЬКО В ИМЕНАХ)
+                    struct_kws = st.session_state.get('categorized_products', []) + st.session_state.get('categorized_services', [])
+                    cat_comm = st.session_state.get('categorized_commercial', [])
+                    cat_gen = st.session_state.get('categorized_general', [])
+                    extra_lsi = [x.strip() for x in st.session_state.get('ws_comm_lsi_input', "").split(',') if x.strip()]
                     
-                    ws_comm_extra = st.session_state.get('ws_comm_lsi_input', "")
-                    extra_comm_list = [x.strip() for x in ws_comm_extra.split(',') if x.strip()]
-                    final_text_seo_list = list(set(cat_commercial + cat_general + extra_comm_list))
+                    final_text_seo_list = list(set(cat_comm + cat_gen + extra_lsi))
+                    
+                    tags_cands = struct_kws[:10] if len(struct_kws) < 10 else struct_kws[:len(struct_kws)//2]
+                    promo_cands = struct_kws[len(tags_cands):]
 
-                    tags_cands = structure_keywords[:10] if len(structure_keywords) < 10 else structure_keywords[:len(structure_keywords)//2]
-                    promo_cands = [] if len(structure_keywords) < 10 else structure_keywords[len(structure_keywords)//2:]
-
-                    # Сбор Тегов
-                    final_tags_html = []
-                    all_known_urls = list(url_to_name_map.keys())
+                    # Собираем Теги
+                    tags_html_list = []
                     for kw in tags_cands:
-                        tr = transliterate_text(kw).replace(' ', '-').lower()
-                        found = False
-                        for u in all_known_urls:
-                            if tr in u.lower() and u != current_task['url'].rstrip('/'):
-                                n = url_to_name_map.get(u, "Подробнее")
-                                final_tags_html.append(f'<a href="{u}" class="tag-item">{n}</a>')
-                                found = True; break
-                        if not found: final_text_seo_list.append(kw)
-
-                    # Сбор Промо
-                    final_promo_html = []
-                    for kw in promo_cands:
-                        tr = transliterate_text(kw).replace(' ', '-').lower()
-                        found = False
-                        for u, img in p_img_dict.items():
-                            if tr in u.lower() and u != current_task['url'].rstrip('/'):
-                                n = url_to_name_map.get(u, force_cyrillic_name_global(u.split('/')[-1]))
-                                final_promo_html.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{n}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img}" loading="lazy"></picture></a></figure></div>''')
-                                found = True; break
-                        if not found: final_text_seo_list.append(kw)
-
-                    # --- ГЕНЕРАЦИЯ ТЕКСТА ---
-                    status_logger.write("🤖 Пишем SEO-текст (Gemini)...")
-                    gemini_api_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
-                    from openai import OpenAI
-                    client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1") if gemini_api_key else None
-                    
-                    blocks = [""] * 5
-                    auto_num_blocks = 5
-                    
-                    if st.session_state.get('ws_global_text') and client:
-                        words_count = len(final_text_seo_list)
-                        if st.session_state.get('ws_auto_blocks', True):
-                            auto_num_blocks = 3 if words_count <= 15 else 4 if words_count <= 25 else 5
+                        # Ищем совпадение ключевика в СТОЛБЦЕ С НАЗВАНИЯМИ (Column 2)
+                        match = next((item for item in excel_data_rows if kw.lower() in item['name'].lower()), None)
+                        if match:
+                            tags_html_list.append(f'<a href="{match["url"]}" class="tag-item">{match["name"]}</a>')
                         else:
-                            auto_num_blocks = st.session_state.get('ws_num_blocks_val', 5)
-                        
-                        raw_b = current_task.get('base_text', '')
-                        safe_base = raw_b if (raw_b and str(raw_b).strip() != "None") else "Обзор технических параметров."
-                        
-                        # Вызов генерации
-                        blocks_raw = generate_ai_content_blocks(gemini_api_key, safe_base, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
-                        
-                        for i_b, b_txt in enumerate(blocks_raw):
-                            if i_b < 5:
-                                # SEO Форматирование
-                                b_txt = b_txt.replace(" - ", " — ").replace(" ,", ",")
-                                # Вырезаем "воду"
-                                b_txt = re.sub(r'Как заказать|Условия оплаты|Доставка и оплата|Наши преимущества', '', b_txt, flags=re.IGNORECASE)
-                                blocks[i_b] = b_txt.strip()
+                            final_text_seo_list.append(kw) # Не нашли в именах - в текст
 
-                    # --- СБОРКА МОДУЛЕЙ (ИНЪЕКЦИИ) ---
-                    injections = []
-                    if st.session_state.get('ws_global_tables') and len(cat_dimensions) > 0 and client:
-                        status_logger.write("🧩 Верстаем таблицу...")
-                        prompt_tbl = f"HTML таблица для {h2_header}. Колонки: Параметр, Описание, Назначение. Данные: {', '.join(cat_dimensions)}. Только <table> с классом brand-accent-table."
-                        res_t = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role":"user","content":prompt_tbl}], temperature=0.2)
-                        injections.append(f'<div class="table-scroll-wrapper">{res_t.choices[0].message.content}</div>')
+                    # Собираем Промо
+                    promo_html_list = []
+                    for kw in promo_cands:
+                        match = next((item for item in excel_data_rows if kw.lower() in item['name'].lower()), None)
+                        if match and match['url'].rstrip('/') in p_img_map:
+                            img = p_img_map[match['url'].rstrip('/')]
+                            promo_html_list.append(f'<div class="gallery-item"><h3><a href="{match["url"]}">{match["name"]}</a></h3><img src="{img}"></div>')
+                        else:
+                            final_text_seo_list.append(kw)
 
-                    if final_tags_html:
-                        injections.append(f'<div class="popular-tags-text"><div class="tag-items">{" ".join(final_tags_html)}</div></div>')
+                    # 3. ГЕНЕРАЦИЯ (GEMINI)
+                    gem_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
+                    blocks = [""] * 5
+                    if gem_key and st.session_state.get('ws_global_text'):
+                        status_logger.write("🤖 Генерация SEO контента...")
+                        w_cnt = len(final_text_seo_list)
+                        n_bl = 3 if w_cnt <= 15 else 4 if w_cnt <= 25 else 5
+                        safe_b = current_task.get('base_text', '') or "Техническое описание."
+                        res_raw = generate_ai_content_blocks(gem_key, safe_b, h1_m, h2_h, n_bl, final_text_seo_list)
+                        for i, txt in enumerate(res_raw):
+                            if i < 5:
+                                txt = txt.replace(" - ", " — ")
+                                txt = re.sub(r'Как заказать|Условия оплаты|Доставка и оплата', '', txt, flags=re.IGNORECASE)
+                                blocks[i] = txt.strip()
+
+                    # 4. СКЛЕЙКА (ТВОЯ ВЕРСТКА)
+                    if tags_html_list:
+                        tag_block = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{" ".join(tags_html_list)}</div></div></div>'
+                        blocks[1] += "\n\n" + tag_block
                     
-                    if final_promo_html:
-                        injections.append(f'<div class="gallery-content-wrapper"><div class="five-col-gallery">{" ".join(final_promo_html)}</div></div>')
+                    if promo_html_list:
+                        promo_block = f'<div class="gallery-content-wrapper"><div class="five-col-gallery">{" ".join(promo_html_list)}</div></div>'
+                        blocks[2] += "\n\n" + promo_block
 
-                    # Приклеиваем доп. блоки к текстовым блокам
-                    eff_count = max(1, auto_num_blocks)
-                    for i_inj, inj in enumerate(injections):
-                        t_idx = i_inj % eff_count
-                        blocks[t_idx] = blocks[t_idx] + "\n\n" + inj
-
-                    # ГЕО Блок (PROP4819)
-                    if st.session_state.get('ws_global_geo') and len(cat_geo) > 0 and client:
-                        prompt_geo = f"Один HTML параграф о доставке {h2_header} в города: {', '.join(cat_geo[:10])}. Без заголовков."
-                        res_g = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role":"user","content":prompt_geo}])
-                        row_data['IP_PROP4819'] = res_g.choices[0].message.content.strip()
-
-                    for i, c in enumerate(['IP_PROP4839','IP_PROP4816','IP_PROP4838','IP_PROP4829','IP_PROP4831']):
-                        row_data[c] = blocks[i]
-
-                    # --- ПРОВЕРКИ ---
-                    merged_html = "".join(blocks)
-                    row_data['Весь текст целиком'] = merged_html
-                    plain_text = BeautifulSoup(merged_html, "html.parser").get_text()
+                    for i, c in enumerate(['IP_PROP4839','IP_PROP4816','IP_PROP4838','IP_PROP4829','IP_PROP4831']): row_data[c] = blocks[i]
+                    full_text = "".join(blocks)
+                    row_data['Весь текст целиком'] = full_text
                     
-                    if st.session_state.get('use_ds_bulk') and gemini_api_key and plain_text:
-                        is_v = validate_topic_deepseek(gemini_api_key, h1_marker, h2_header, plain_text)
-                        row_data['DeepSeek Контекст'] = "YES" if is_v else "NO"
-                        row_data['DeepSeek Комментарий'] = "Ок" if is_v else "Не в контексте"
-                    
-                    if st.session_state.get('use_turgenev_bulk') and plain_text:
-                        res_turg = check_turgenev_sync(plain_text, st.session_state.get('turg_key_bulk'))
-                        row_data['Риск Тургенев'] = res_turg
-                        try:
-                            t_val = float(str(res_turg).replace(',','.'))
-                            row_data['Тургенев Комментарий'] = "Ок" if t_val <= 5 else "Риск > 5"
-                        except: row_data['Тургенев Комментарий'] = "Ошибка"
-
-                    if st.session_state.get('use_textru_bulk') and plain_text:
-                        uid = send_textru_sync(plain_text, st.session_state.get('textru_key_bulk'))
+                    # 5. ПРОВЕРКИ (ПЕРЕД ПЕРЕХОДОМ)
+                    status_logger.write("🔍 Запуск проверок API...")
+                    clean_p = BeautifulSoup(full_text, "html.parser").get_text()
+                    if st.session_state.get('use_ds_bulk'): row_data['DeepSeek Контекст'] = "YES" if validate_topic_deepseek(gem_key, h1_m, h2_h, clean_p) else "NO"
+                    if st.session_state.get('use_turgenev_bulk'): row_data['Риск Тургенев'] = check_turgenev_sync(clean_p, st.session_state.get('turg_key_bulk'))
+                    if st.session_state.get('use_textru_bulk'):
+                        uid = send_textru_sync(clean_p, st.session_state.get('textru_key_bulk'))
                         row_data['Text.ru UID'] = uid
-                        row_data['Уникальность'] = "⏳ Проверяется..."
+                        row_data['Уникальность'] = "⏳ Ожидание..."
 
-                    status_logger.update(label=f"✅ Готово: {h2_header}", state="complete", expanded=False)
-
-                except Exception as e:
-                    st.error(f"Ошибка: {e}")
-                    row_data['Весь текст целиком'] = f"ОШИБКА: {e}"
-                
-                finally:
                     st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, pd.DataFrame([row_data])], ignore_index=True)
+                    status_logger.update(label=f"✅ {h2_h} завершен", state="complete")
+
+                except Exception as e: st.error(f"Критический сбой: {e}")
+                finally:
                     st.session_state.auto_current_index += 1
-                    
                     if st.session_state.auto_current_index < len(queue):
-                        nt = queue[st.session_state.auto_current_index]
-                        ps = "Релевантная страница на вашем сайте" if nt['url'] != 'manual' else "Без страницы"
-                        st.session_state['pending_widget_updates'] = {'query_input': nt['h1'], 'my_page_source_radio': ps, 'my_url_input': nt.get('url','')}
                         st.session_state.ws_waiting_for_analysis = True
                         st.session_state.start_analysis_flag = True
                         st.rerun()
-                    else:
-                        st.session_state.ws_automode_active = False
-                        st.rerun()
+                    else: st.session_state.ws_automode_active = False; st.rerun()
 
-    # --- 2. ИНТЕРФЕЙС И НАСТРОЙКИ (ПОЛНЫЙ UI) ---
+    # --- ИНТЕРФЕЙС И НАСТРОЙКИ (СТИЛЬ СОХРАНЕН) ---
     with st.container(border=True):
-        st.subheader("1. Настройки Конвейера и Ключи")
+        st.subheader("⚙️ Конфигурация и Базы")
         c1, c2 = st.columns(2)
         with c1:
-            st.radio("Режим работы:", ["Подфильтровые (ссылки)", "Родительские (URL)", "Родительские (Вручную)"], key="ws_mode", horizontal=True)
-            
-            # Железобетонное сохранение ключа
-            try: def_k = st.secrets["GEMINI_KEY"]
-            except: def_k = ""
-            ws_key_input = st.text_input("🔑 API Key Gemini (общий):", value=st.session_state.get('SUPER_GLOBAL_KEY', def_k), type="password", key="ws_gem_fixed")
-            if ws_key_input: st.session_state['SUPER_GLOBAL_KEY'] = ws_key_input
-            
+            st.radio("Режим:", ["Подфильтровые", "Родительские (URL)", "Вручную"], key="ws_mode_select", horizontal=True)
+            ws_key = st.text_input("🔑 Gemini API Key:", value=st.session_state.get('SUPER_GLOBAL_KEY', ''), type="password", key="ws_k_main")
+            if ws_key: st.session_state['SUPER_GLOBAL_KEY'] = ws_key
         with c2:
-            st.markdown("**Валидация (API):**")
-            cv1, cv2 = st.columns(2)
-            with cv1:
-                if st.checkbox("📚 Риск Тургенев", key="use_turgenev_bulk"): st.text_input("Ключ Тургенева", type="password", key="turg_key_bulk")
-            with cv2:
-                if st.checkbox("🚀 Text.ru Уникальность", key="use_textru_bulk"): st.text_input("Ключ Text.ru", type="password", key="textru_key_bulk")
-            st.checkbox("🧠 DeepSeek Валидация темы", key="use_ds_bulk", value=True)
+            st.text_area("Общие коммерческие LSI (через запятую):", value="купить, цена, наличие, гост", key="ws_comm_lsi_input", height=68)
 
     with st.container(border=True):
-        st.subheader("2. Семантика и Модули")
-        st.text_area("Общие коммерческие LSI (через запятую):", value="купить, цена, в наличии, доставка, гост, производитель, оптом, со склада, прайс-лист", key="ws_comm_lsi_input", height=70)
+        st.markdown("**Валидация и Модули:**")
+        cols = st.columns(5)
+        with cols[0]: st.checkbox("🤖 Тексты", value=True, key="ws_global_text")
+        with cols[1]: st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
+        with cols[2]: st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
+        with cols[3]: st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
+        with cols[4]: st.checkbox("🌍 Гео", value=True, key="ws_global_geo")
         
-        m_cols = st.columns(5)
-        with m_cols[0]: st.checkbox("🤖 SEO Тексты", value=True, key="ws_global_text")
-        with m_cols[1]: st.checkbox("🧩 Таблицы размеров", value=True, key="ws_global_tables")
-        with m_cols[2]: st.checkbox("🏷️ Теги (links_base)", value=True, key="ws_global_tags")
-        with m_cols[3]: st.checkbox("🔥 Промо (images_db)", value=True, key="ws_global_promo")
-        with m_cols[4]: st.checkbox("🌍 Гео-доставка", value=True, key="ws_global_geo")
-        
-        cb1, cb2 = st.columns([1, 2])
-        with cb1: st.selectbox("Кол-во блоков текста (фиксировано):", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val")
-        with cb2: st.checkbox("Авто-расчет кол-ва блоков (3-5 шт) на основе семантики", value=True, key="ws_auto_blocks")
+        cv = st.columns(3)
+        with cv[0]: st.checkbox("📚 Тургенев", key="use_turgenev_bulk")
+        with cv[1]: st.checkbox("🚀 Text.ru", key="use_textru_bulk")
+        with cv[2]: st.checkbox("🧠 DeepSeek", key="use_ds_bulk", value=True)
 
-    raw_input = st.text_area("Список объектов для генерации (URL или H1 через новую строку):", height=150)
-    
-    btn_start, btn_stop = st.columns([2, 1])
-    with btn_start:
-        if st.button("🚀 ЗАПУСТИТЬ ОПТОВУЮ ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
-            items = [x.strip() for x in raw_input.split('\n') if x.strip()]
-            q = []
-            for it in items:
-                if it.startswith('http'):
-                    h1, h2, _ = scrape_h1_h2_from_url(it)
-                    q.append({'url': it, 'h1': h1 or it.split('/')[-1], 'h2': h2 or h1, 'name': h1 or it})
-                else: q.append({'url': 'manual', 'h1': it, 'h2': it, 'name': it})
-            if q:
-                st.session_state.ws_bg_tasks_queue = q
-                st.session_state.auto_current_index = 0
-                st.session_state.ws_automode_active = True
-                st.session_state.ws_waiting_for_analysis = True
-                # Запуск первого шага
-                st.session_state['pending_widget_updates'] = {'query_input': q[0]['h1'], 'my_page_source_radio': "Релевантная страница на вашем сайте" if q[0]['url']!='manual' else "Без страницы", 'my_url_input': q[0]['url']}
-                st.session_state.start_analysis_flag = True
-                st.rerun()
+    raw_input = st.text_area("Список ссылок/H1 (одна на строку):", height=150)
+    if st.button("🚀 ЗАПУСТИТЬ КОНВЕЙЕР", type="primary", use_container_width=True):
+        items = [x.strip() for x in raw_input.split('\n') if x.strip()]
+        q = []
+        for it in items:
+            if it.startswith('http'):
+                h1, h2, _ = scrape_h1_h2_from_url(it)
+                q.append({'url': it, 'h1': h1 or it.split('/')[-1], 'h2': h2 or h1})
+            else: q.append({'url': 'manual', 'h1': it, 'h2': it})
+        st.session_state.ws_bg_tasks_queue = q
+        st.session_state.auto_current_index = 0
+        st.session_state.ws_automode_active = True
+        st.session_state.ws_waiting_for_analysis = True
+        st.rerun()
 
-    with btn_stop:
-        if st.button("⛔ ОСТАНОВИТЬ КОНВЕЙЕР", use_container_width=True):
-            st.session_state.ws_automode_active = False
-            st.rerun()
-
-    # --- 3. РЕЗУЛЬТАТЫ И ВИЗУАЛЬНЫЙ ПРЕДПРОСМОТР (ЛЕНТА) ---
+    # --- ПРЕДПРОСМОТР (СТИЛЬНАЯ ЛЕНТА) ---
     if not st.session_state.gen_result_df.empty:
         st.markdown("---")
+        st.dataframe(st.session_state.gen_result_df, use_container_width=True)
         
-        # Кнопка обновления статусов Text.ru
-        has_pending = any("⏳" in str(r.get('Уникальность', '')) for _, r in st.session_state.gen_result_df.iterrows())
-        if has_pending:
-            if st.button("🔄 ОБНОВИТЬ СТАТУСЫ TEXT.RU", type="primary"):
-                k_tr = st.session_state.get('textru_key_bulk')
-                for idx, row in st.session_state.gen_result_df.iterrows():
-                    if row['Text.ru UID']:
-                        res = check_textru_status_sync(row['Text.ru UID'], k_tr)
-                        st.session_state.gen_result_df.at[idx, 'Уникальность'] = res
-                st.rerun()
-
-        st.subheader("📊 Таблица результатов")
-        
-        # Функция подсветки ошибок
-        def highlight_errors(row):
-            styles = [''] * len(row)
-            err = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold;'
-            c = {n: i for i, n in enumerate(row.index)}
-            if row.get('DeepSeek Контекст') == "NO": styles[c['DeepSeek Контекст']] = err
-            if "Риск > 5" in str(row.get('Тургенев Комментарий', '')): styles[c['Риск Тургенев']] = err
-            return styles
-
-        st.dataframe(st.session_state.gen_result_df.drop(columns=['Text.ru UID']).style.apply(highlight_errors, axis=1), use_container_width=True)
-        
-        # --- ЛЕНТА ПРЕДПРОСМОТРА ---
-        st.markdown("### 🖥️ Визуальная лента предпросмотра блоков")
-        sel_prod = st.selectbox("Выберите товар для просмотра контента:", st.session_state.gen_result_df['Product Name'].tolist(), index=len(st.session_state.gen_result_df)-1)
-        
-        if sel_prod:
-            rp = st.session_state.gen_result_df[st.session_state.gen_result_df['Product Name'] == sel_prod].iloc[0]
+        sel_name = st.selectbox("Выбор категории для ленты:", st.session_state.gen_result_df['Product Name'].tolist(), index=len(st.session_state.gen_result_df)-1)
+        if sel_name:
+            curr_row = st.session_state.gen_result_df[st.session_state.gen_result_df['Product Name'] == sel_name].iloc[0]
+            st.markdown(f"### 🖥️ Предпросмотр: {sel_name}")
+            st.markdown("""<style>
+                .preview-box { border: 1px solid #e2e8f0; background: #fff; padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+                .block-title { color: #277EFF; font-weight: bold; margin: 15px 0 5px 0; border-bottom: 1px solid #eee; }
+                .tag-item { display: inline-block; padding: 6px 12px; margin: 4px; background: #f0f4f8; border-radius: 4px; text-decoration: none; color: #277EFF; font-size: 14px; }
+                .gallery-item img { width: 100%; max-width: 200px; border-radius: 8px; }
+            </style>""", unsafe_allow_html=True)
             
-            # CSS Стили для ленты
-            st.markdown("""
-            <style>
-                .preview-box { border: 1px solid #e2e8f0; background-color: #ffffff; padding: 25px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-                .block-title { color: #277EFF; margin-top: 40px; margin-bottom: 15px; font-size: 1.3em; font-weight: 700; border-bottom: 3px solid #f0f4f8; padding-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-                .table-scroll-wrapper { width: 100%; overflow-x: auto; margin: 20px 0; border-radius: 8px; border: 1px solid #eee; }
-                .brand-accent-table { width: 100%; border-collapse: collapse; text-align: left; font-family: 'Inter', sans-serif; }
-                .brand-accent-table th { background-color: #277EFF; color: white; padding: 14px; font-weight: 600; }
-                .brand-accent-table td { padding: 12px; border-bottom: 1px solid #f0f0f0; color: #444; }
-                .tag-item { display: inline-block; padding: 8px 16px; margin: 5px; background: #eef4ff; border-radius: 6px; text-decoration: none; color: #277EFF; font-size: 14px; font-weight: 500; border: 1px solid #d0e2ff; }
-                .gallery-content-wrapper { background: #F8FAFC; padding: 25px; border-radius: 15px; border: 1px solid #e2e8f0; margin: 25px 0; }
-                .five-col-gallery { display: flex; gap: 20px; overflow-x: auto; padding-bottom: 15px; }
-                .gallery-item { min-width: 220px; background: white; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #eee; transition: transform 0.2s; }
-                .gallery-item:hover { transform: translateY(-5px); }
-                .gallery-item img { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; }
-                .gallery-item h3 { font-size: 15px; margin: 0; color: #1e293b; line-height: 1.4; }
-                .gallery-item a { text-decoration: none; }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            st.markdown(f"#### 📄 Итоговый результат для: `{sel_prod}`")
-            
-            # Вывод всех активных блоков в ленту
-            display_cols = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819']
-            for col in display_cols:
-                content = str(rp.get(col, "")).strip()
-                if content and content != "" and content != "nan":
-                    friendly_name = col.replace("IP_PROP", "БЛОК ")
-                    if col == "IP_PROP4819": friendly_name = "🌍 ГЕО-БЛОК (ДОСТАВКА)"
-                    
-                    st.markdown(f"<div class='block-title'>{friendly_name}</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='preview-box'>{content}</div>", unsafe_allow_html=True)
-
-# ==========================================
-# ==========================================
+            for c in ['IP_PROP4839','IP_PROP4816','IP_PROP4838','IP_PROP4829','IP_PROP4831','IP_PROP4819']:
+                if curr_row[c] and str(curr_row[c]) != 'nan':
+                    st.markdown(f"<div class='block-title'>{c}</div><div class='preview-box'>{curr_row[c]}</div>", unsafe_allow_html=True)
 # ==========================================
 # TAB 3: PROJECT MANAGER (SAVE/LOAD)
 # ==========================================
@@ -5839,6 +5700,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
