@@ -4070,13 +4070,10 @@ with tab_seo_main:
                     for k in keys_to_clear:
                         st.session_state.pop(k, None)
                     
-                    # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
                     st.session_state['pending_widget_updates'] = {
-                        'query_input': next_task['h1'],
-                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                        'my_page_source_radio': "Без страницы",
-                        'my_url_input': "",
-                        'settings_region': st.session_state.get('lsi_settings_region', 'Москва') # <--- ПЕРЕДАЕМ РЕГИОН
+                        'query_input': nxt.get('q'),
+                        'my_url_input': nxt.get('url', ''),
+                        'my_page_source_radio': "Релевантная страница на вашем сайте" if nxt.get('url') != 'manual' else "Без страницы"
                     }
                     st.session_state.start_analysis_flag = True
                     st.toast(f"🔄 Обработка: {nxt.get('q')}")
@@ -4308,14 +4305,14 @@ with tab_seo_main:
                 for k in keys_to_clear:
                     st.session_state.pop(k, None)
                     
-            # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
-                st.session_state['pending_widget_updates'] = {
-                    'query_input': next_task['h1'],
-                    'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                    'my_page_source_radio': "Без страницы",
-                    'my_url_input': "",
-                    'settings_region': st.session_state.get('lsi_settings_region', 'Москва') # <--- ПЕРЕДАЕМ РЕГИОН
-                }
+                # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
+                    st.session_state['pending_widget_updates'] = {
+                        'query_input': next_task['h1'],
+                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                        'my_page_source_radio': "Без страницы",
+                        'my_url_input': "",
+                        'settings_region': st.session_state.get('lsi_settings_region', 'Москва') # <--- ПЕРЕДАЕМ РЕГИОН
+                    }
                 
                 # Включаем "автопилот"
                 st.session_state['start_analysis_flag'] = True
@@ -6024,12 +6021,12 @@ with tab_lsi_gen:
         if indices_list:
             idx = indices_list[0]
             task = st.session_state.bg_tasks_queue[idx]
-    # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
+            # Для LSI текстов всегда режим "Без страницы"
             st.session_state['pending_widget_updates'] = {
-                'query_input': next_task['h1'],
-                'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                'query_input': task['h1'],
                 'my_page_source_radio': "Без страницы",
                 'my_url_input': "",
+                'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                 'settings_region': st.session_state.get('lsi_settings_region', 'Москва') # <--- ПЕРЕДАЕМ РЕГИОН
             }
                 
@@ -6211,8 +6208,7 @@ with tab_lsi_gen:
                     'query_input': next_task['h1'],
                     'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                     'my_page_source_radio': "Без страницы",
-                    'my_url_input': "",
-                    'settings_region': st.session_state.get('lsi_settings_region', 'Москва') # <--- ПЕРЕДАЕМ РЕГИОН
+                    'my_url_input': ""
                 }
                 st.session_state['lsi_processing_task_id'] = next_task_idx
                 st.session_state['start_analysis_flag'] = True 
@@ -6458,11 +6454,10 @@ with tab_faq_gen:
                     first_t = st.session_state.faq_tasks_queue[0]
                     
                     st.session_state['pending_widget_updates'] = {
-                        'query_input': next_task['h1'],
+                        'query_input': first_t['h1'],
                         'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                         'my_page_source_radio': "Без страницы",
-                        'my_url_input': "",
-                        'settings_region': st.session_state.get('lsi_settings_region', 'Москва') # <--- ПЕРЕДАЕМ РЕГИОН
+                        'my_url_input': ""
                     }
                     st.session_state['start_analysis_flag'] = True 
                     st.session_state['analysis_done'] = False
@@ -6527,13 +6522,12 @@ with tab_faq_gen:
             keys_to_clear = ['analysis_results', 'analysis_done', 'naming_table_df', 'ideal_h1_result', 'raw_comp_data', 'full_graph_data', 'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto']
             for k in keys_to_clear: st.session_state.pop(k, None)
             
-    # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
+            # Буфер виджетов
             st.session_state['pending_widget_updates'] = {
-                'query_input': next_task['h1'],
+                'query_input': next_t['h1'],
                 'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                 'my_page_source_radio': "Без страницы",
-                'my_url_input': "",
-                'settings_region': st.session_state.get('lsi_settings_region', 'Москва') # <--- ПЕРЕДАЕМ РЕГИОН
+                'my_url_input': ""
             }
             st.session_state['faq_processing_task_id'] = next_idx
             st.session_state['start_analysis_flag'] = True 
@@ -6690,30 +6684,3 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
