@@ -6017,18 +6017,19 @@ with tab_lsi_gen:
 # --- ФУНКЦИЯ-ОБРАБОТЧИК (CALLBACK) ---
         # Она выполнится ДО перезагрузки страницы, поэтому ошибки не будет
         def start_automode_callback(indices_list):
-        st.session_state.lsi_automode_active = True
-        if indices_list:
-            idx = indices_list[0]
-            task = st.session_state.bg_tasks_queue[idx]
-            # Для LSI текстов всегда режим "Без страницы"
-            st.session_state['pending_widget_updates'] = {
-                'query_input': task['h1'],
-                'my_page_source_radio': "Без страницы",
-                'my_url_input': "",
-                'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                'settings_region': st.session_state.get('lsi_settings_region', 'Москва') # <--- ПЕРЕДАЕМ РЕГИОН
-            }
+            st.session_state.lsi_automode_active = True
+            if indices_list:
+                idx = indices_list[0]
+                task = st.session_state.bg_tasks_queue[idx]
+                
+                # Для LSI текстов всегда режим "Без страницы"
+                st.session_state['pending_widget_updates'] = {
+                    'query_input': task['h1'],
+                    'my_page_source_radio': "Без страницы",
+                    'my_url_input': "",
+                    'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                    'settings_region': st.session_state.get('lsi_settings_region', 'Москва') # <--- ПЕРЕДАЕМ РЕГИОН
+                }
                 
                 st.session_state.lsi_processing_task_id = idx
                 st.session_state.start_analysis_flag = True
@@ -6684,3 +6685,4 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
