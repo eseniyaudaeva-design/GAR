@@ -4487,10 +4487,19 @@ if st.session_state.get('ws_automode_active') and st.session_state.get('ws_waiti
             # Если очередь не закончена - триггерим следующий анализ!
             if st.session_state.auto_current_index < len(queue):
                 next_task = queue[st.session_state.auto_current_index]
+                
+                # Проверяем, есть ли реальный URL
+                if next_task.get('url') and next_task['url'] != 'manual':
+                    page_source_val = "Релевантная страница на вашем сайте"
+                    url_val = next_task['url']
+                else:
+                    page_source_val = "Без страницы"
+                    url_val = ""
+
                 st.session_state['pending_widget_updates'] = {
                     'query_input': next_task.get('h1', next_task['name']),
-                    'my_page_source_radio': "Без страницы",
-                    'my_url_input': "",
+                    'my_page_source_radio': page_source_val,
+                    'my_url_input': url_val,
                     'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                     'settings_region': st.session_state.get('ws_settings_region', 'Москва')
                 }
@@ -4596,10 +4605,18 @@ with tab_wholesale_main:
                     st.session_state.ws_waiting_for_analysis = True
                     
                     # Прокидываем ПЕРВЫЙ элемент на вкладку 1
+                    first_task = queue[0]
+                    if first_task.get('url') and first_task['url'] != 'manual':
+                        first_page_source = "Релевантная страница на вашем сайте"
+                        first_url_val = first_task['url']
+                    else:
+                        first_page_source = "Без страницы"
+                        first_url_val = ""
+
                     st.session_state['pending_widget_updates'] = {
-                        'query_input': queue[0].get('h1', queue[0]['name']),
-                        'my_page_source_radio': "Без страницы",
-                        'my_url_input': "",
+                        'query_input': first_task.get('h1', first_task['name']),
+                        'my_page_source_radio': first_page_source,
+                        'my_url_input': first_url_val,
                         'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                         'settings_region': st.session_state.get('ws_settings_region', 'Москва')
                     }
@@ -4621,7 +4638,29 @@ with tab_wholesale_main:
     # --- ФОНОВЫЙ ОПРОС TEXT.RU И ПРЕДПРОСМОТР ---
     if not st.session_state.gen_result_df.empty:
         has_pending = any("⏳" in str(row.get('Уникальность', '')) for _, row in st.session_state.gen_result_df.iterrows())
-        if has_pending:
+        
+        st.markdown("---")
+        
+        # 1. Если конвейер остановлен, но есть проверки -> даем кнопку ручного пинга
+        if has_pending and not is_running:
+            st.warning("⚠️ Есть тексты, отправленные в Text.ru. Нажмите кнопку ниже, чтобы запросить их статус.")
+            if st.button("🔄 ОБНОВИТЬ СТАТУСЫ TEXT.RU", type="primary", use_container_width=True):
+                txtru_key_active = st.session_state.get('textru_key_bulk', '')
+                if txtru_key_active:
+                    with st.spinner("Стучимся в Text.ru..."):
+                        for idx, row in st.session_state.gen_result_df.iterrows():
+                            if "⏳" in str(row.get('Уникальность', '')):
+                                uid = row.get('Text.ru UID')
+                                if uid:
+                                    stts = check_textru_status_sync(uid, txtru_key_active)
+                                    # Если статус изменился (получили цифры или ошибку) - записываем
+                                    if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                                        st.session_state.gen_result_df.at[idx, 'Уникальность'] = stts
+                                        st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
+                        st.rerun()
+
+        # 2. Фоновый опрос во время работы конвейера (тихо обновляет сам)
+        elif has_pending and is_running:
             txtru_key_active = st.session_state.get('textru_key_bulk', '')
             if txtru_key_active:
                 updated_any = False
@@ -4634,14 +4673,15 @@ with tab_wholesale_main:
                                 st.session_state.gen_result_df.at[idx, 'Уникальность'] = stts
                                 st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
                                 updated_any = True
-                if updated_any and not is_running: st.rerun()
+                if updated_any: st.rerun()
 
-        st.markdown("---")
+        # Подготовка Excel файла (вырезаем системные колонки)
         df_export = st.session_state.gen_result_df.drop(columns=['Full_Text_Merged', 'Text.ru UID'], errors='ignore')
         
         import io
         buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_export.to_excel(writer, index=False)
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: 
+            df_export.to_excel(writer, index=False)
         
         col_dl, col_cl = st.columns([2, 1])
         with col_dl:
@@ -4650,7 +4690,8 @@ with tab_wholesale_main:
                 data=buffer.getvalue(),
                 file_name=f"wholesale_SMART_{int(time.time())}.xlsx",
                 mime="application/vnd.ms-excel",
-                disabled=(is_running or has_pending),
+                # ЗАБЛОКИРОВАНА ТОЛЬКО ЕСЛИ КОНВЕЙЕР РАБОТАЕТ (чтобы не мешать процессам)
+                disabled=is_running, 
                 use_container_width=True
             )
         with col_cl:
@@ -5834,6 +5875,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
