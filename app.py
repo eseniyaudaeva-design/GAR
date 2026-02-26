@@ -58,7 +58,7 @@ def init_seo_db():
 
 init_seo_db()
 
-def get_cached_analysis(query):
+def get_cached_analysis(query, region="Москва"):
     if not query: return None
     try:
         conn = sqlite3.connect('seo_cache.db', timeout=10)
@@ -69,7 +69,10 @@ def get_cached_analysis(query):
         c.execute('DELETE FROM seo_analysis WHERE timestamp < ?', (expiry_date,))
         conn.commit()
         
-        c.execute('SELECT timestamp, parsed_data FROM seo_analysis WHERE query = ?', (query.lower().strip(),))
+        # Составляем уникальный ключ: запрос + регион
+        db_key = f"{query.lower().strip()}_{region.lower().strip()}"
+        
+        c.execute('SELECT timestamp, parsed_data FROM seo_analysis WHERE query = ?', (db_key,))
         row = c.fetchone()
         conn.close()
         
@@ -79,15 +82,19 @@ def get_cached_analysis(query):
         return None 
     return None
 
-def save_cached_analysis(query, data_for_graph):
+def save_cached_analysis(query, region, data_for_graph):
     try:
         conn = sqlite3.connect('seo_cache.db', timeout=10)
         c = conn.cursor()
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Составляем уникальный ключ: запрос + регион
+        db_key = f"{query.lower().strip()}_{region.lower().strip()}"
+        
         c.execute('''
             INSERT OR REPLACE INTO seo_analysis (query, timestamp, parsed_data)
             VALUES (?, ?, ?)
-        ''', (query.lower().strip(), timestamp, json.dumps(data_for_graph)))
+        ''', (db_key, timestamp, json.dumps(data_for_graph)))
         conn.commit()
         conn.close()
     except: pass
@@ -3691,12 +3698,16 @@ with tab_seo_main:
         user_target_top_n = st.session_state.settings_top_n
         download_limit = 30 # ВСЕГДА КАЧАЕМ 30 для TF-IDF
         
+        # Получаем текущий регион
+        current_region = st.session_state.get('settings_region', 'Москва')
+        
         cached_data_for_graph = None
         if "API" in current_source_val and current_input_type == "Без страницы":
-            cached_data_for_graph = get_cached_analysis(st.session_state.query_input)
+            # Передаем регион в функцию
+            cached_data_for_graph = get_cached_analysis(st.session_state.query_input, current_region)
 
         if cached_data_for_graph:
-            st.toast(f"⚡ Найдено в базе данных! Парсинг пропущен", icon="🗄️")
+            st.toast(f"⚡ Найдено в кэше ({current_region})! Парсинг пропущен", icon="🗄️")
             data_for_graph = cached_data_for_graph
             targets_for_graph = [{'url': d['url'], 'pos': d['pos']} for d in data_for_graph]
         else:
@@ -3760,13 +3771,9 @@ with tab_seo_main:
                 data_for_graph = comp_data_valid[:download_limit]
                 targets_for_graph = [{'url': d['url'], 'pos': d['pos']} for d in data_for_graph]
                 
-                # +++ СОХРАНЯЕМ В БД ТОЛЬКО ЧТО СКАЧАННОЕ +++
+                # +++ СОХРАНЯЕМ В БД ТОЛЬКО ЧТО СКАЧАННОЕ (С УЧЕТОМ РЕГИОНА) +++
                 if "API" in current_source_val and current_input_type == "Без страницы":
-                    save_cached_analysis(st.session_state.query_input, data_for_graph)
-                
-                # +++ СОХРАНЯЕМ В БД ТОЛЬКО ЧТО СКАЧАННОЕ +++
-                if "API" in current_source_val and current_input_type == "Без страницы":
-                    save_cached_analysis(st.session_state.query_input, data_for_graph)
+                    save_cached_analysis(st.session_state.query_input, current_region, data_for_graph)
 
         # 5. РАСЧЕТ МЕТРИК (ДВОЙНОЙ ПРОГОН)
         with st.spinner("Анализ и фильтрация..."):
@@ -6685,4 +6692,5 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
