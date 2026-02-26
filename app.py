@@ -4332,7 +4332,7 @@ with tab_seo_main:
                 st.rerun()
 
 # ==========================================
-# TAB 2: WHOLESALE GENERATOR (V22 - NO COMPRESSION - ORIGINAL STYLE)
+# TAB 2: WHOLESALE GENERATOR (V24 - RESTORED & FIXED)
 # ==========================================
 with tab_wholesale_main:
     # --- 0. Инициализация (Твой оригинальный список колонок) ---
@@ -4346,9 +4346,9 @@ with tab_wholesale_main:
             'Риск Тургенев', 'Тургенев Комментарий', 'Уникальность', 'Text.ru Комментарий', 'Text.ru UID'
         ])
 
-    st.header("🏭 Умный Оптовый Конвейер (V22)")
+    st.header("🏭 Умный Оптовый Конвейер (V24)")
 
-    # --- 1. КРЮЧОК АВТО-КОНВЕЙЕРА (ОСНОВНАЯ ЛОГИКА) ---
+    # --- 1. НЕВИДИМЫЙ ХУК АВТО-КОНВЕЙЕРА ---
     if st.session_state.get('ws_automode_active') and st.session_state.get('ws_waiting_for_analysis') and st.session_state.get('analysis_done'):
         task_idx = st.session_state.auto_current_index
         queue = st.session_state.ws_bg_tasks_queue
@@ -4363,22 +4363,22 @@ with tab_wholesale_main:
                 row_data['Product Name'] = h2_h
                 
                 try:
-                    # --- ЗАГРУЗКА БАЗ (EXCEL) ---
-                    lb_rows = []
+                    # ЗАГРУЗКА БАЗЫ ССЫЛОК (links_base.xlsx: Col 1 - URL, Col 2 - Название)
+                    excel_data_rows = []
                     if os.path.exists("data/links_base.xlsx"):
                         df_lb = pd.read_excel("data/links_base.xlsx")
                         for _, r in df_lb.iterrows():
                             u, n = str(r.iloc[0]).strip(), str(r.iloc[1]).strip()
-                            if u != 'nan' and n != 'nan': lb_rows.append({'u': u, 'n': n})
+                            if u != 'nan' and n != 'nan': excel_data_rows.append({'url': u, 'name': n})
 
-                    img_map = {}
+                    p_img_map = {}
                     if os.path.exists("data/images_db.xlsx"):
                         df_idb = pd.read_excel("data/images_db.xlsx")
                         for _, r in df_idb.iterrows():
                             u, img = str(r.iloc[0]).strip().rstrip('/'), str(r.iloc[1]).strip()
-                            if u != 'nan' and img != 'nan': img_map[u] = img
+                            if u != 'nan' and img != 'nan': p_img_map[u] = img
 
-                    # --- РАСПРЕДЕЛЕНИЕ СЛОВ ---
+                    # --- РАСПРЕДЕЛЕНИЕ СЛОВ (ПОИСК СТРОГО В ИМЕНАХ) ---
                     struct_kws = st.session_state.get('categorized_products', []) + st.session_state.get('categorized_services', [])
                     cat_comm = st.session_state.get('categorized_commercial', [])
                     cat_gen = st.session_state.get('categorized_general', [])
@@ -4389,59 +4389,65 @@ with tab_wholesale_main:
                     tags_c = struct_kws[:10] if len(struct_kws) < 10 else struct_kws[:len(struct_kws)//2]
                     promo_c = struct_kws[len(tags_c):]
 
-                    # ТЕГИ (Верстка с вложенностью + Поиск по именам)
-                    tags_html_final = []
+                    # Собираем Теги (Твоя 3-слойная верстка)
+                    tags_html_list = []
                     for kw in tags_c:
-                        match = next((x for x in lb_rows if kw.lower() in x['n'].lower()), None)
+                        # Ищем ключевик во втором столбце (Название)
+                        match = next((x for x in excel_data_rows if kw.lower() in x['name'].lower()), None)
                         if match:
-                            tags_html_final.append(f'<a href="{match["u"]}" class="tag-item">{match["n"]}</a>')
+                            tags_html_list.append(f'<a href="{match["url"]}" class="tag-item">{match["name"]}</a>')
                         else: final_text_seo_list.append(kw)
 
-                    # ПРОМО
-                    promo_html_final = []
+                    # Собираем Промо
+                    promo_html_list = []
                     for kw in promo_c:
-                        match = next((x for x in lb_rows if kw.lower() in x['n'].lower()), None)
-                        if match and match['u'].rstrip('/') in img_map:
-                            promo_html_final.append(f'<div class="gallery-item"><h3><a href="{match["u"]}">{match["n"]}</a></h3><img src="{img_map[match["u"].rstrip("/")]}"></div>')
+                        match = next((x for x in excel_data_rows if kw.lower() in x['name'].lower()), None)
+                        if match and match['url'].rstrip('/') in p_img_map:
+                            img = p_img_map[match['url'].rstrip('/')]
+                            promo_html_list.append(f'<div class="gallery-item"><h3><a href="{match["url"]}">{match["name"]}</a></h3><img src="{img}"></div>')
                         else: final_text_seo_list.append(kw)
 
                     # --- ГЕНЕРАЦИЯ GEMINI ---
                     gem_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
                     blocks = [""] * 5
                     if gem_key and st.session_state.get('ws_global_text'):
-                        status_logger.write("🤖 Генерация SEO...")
+                        status_logger.write("🤖 Генерация SEO текста...")
                         w_c = len(final_text_seo_list)
                         n_b = 3 if w_c <= 15 else 4 if w_c <= 25 else 5
-                        safe_b = current_task.get('base_text', '') or "Сведения о товаре."
+                        safe_b = current_task.get('base_text', '') or "Характеристики и описание товара."
                         res_raw = generate_ai_content_blocks(gem_key, safe_b, h1_m, h2_h, n_b, final_text_seo_list)
-                        for i, t in enumerate(res_raw):
-                            if i < 5:
-                                t = t.replace(" - ", " — ") # SEO тире
-                                t = re.sub(r'Как заказать|Условия оплаты|Доставка и оплата', '', t, flags=re.IGNORECASE)
-                                blocks[i] = t.strip()
+                        if res_raw:
+                            for i, t in enumerate(res_raw):
+                                if i < 5:
+                                    t = t.replace(" - ", " — ")
+                                    t = re.sub(r'Как заказать|Условия оплаты|Доставка и оплата', '', t, flags=re.IGNORECASE)
+                                    blocks[i] = t.strip()
 
-                    # --- СКЛЕЙКА (ТВОИ ДИВЫ) ---
-                    if tags_html_final:
-                        blocks[1] += f'\n\n<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{" ".join(tags_html_final)}</div></div></div>'
+                    # --- СКЛЕЙКА (ТВОЯ ВЕРСТКА) ---
+                    if tags_html_list:
+                        tag_block = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{" ".join(tags_html_list)}</div></div></div>'
+                        blocks[1] += "\n\n" + tag_block
                     
-                    if promo_html_final:
-                        blocks[2] += f'\n\n<div class="gallery-content-wrapper"><div class="five-col-gallery">{" ".join(promo_html_final)}</div></div>'
+                    if promo_html_list:
+                        promo_block = f'<div class="gallery-content-wrapper"><div class="five-col-gallery">{" ".join(promo_html_list)}</div></div>'
+                        blocks[2] += "\n\n" + promo_block
 
-                    # Раскидываем по PROP-колонками
                     for i, c in enumerate(['IP_PROP4839','IP_PROP4816','IP_PROP4838','IP_PROP4829','IP_PROP4831']): row_data[c] = blocks[i]
-                    full_h = "".join(blocks); row_data['Весь текст целиком'] = full_h
+                    f_text = "".join(blocks); row_data['Весь текст целиком'] = f_text
                     
-                    # --- ПРОВЕРКИ (ПЕРЕД ПЕРЕХОДОМ) ---
-                    status_logger.write("🔍 Валидация API...")
-                    clean_t = BeautifulSoup(full_h, "html.parser").get_text()
-                    if st.session_state.get('use_ds_bulk'): row_data['DeepSeek Контекст'] = "YES" if validate_topic_deepseek(gem_key, h1_m, h2_h, clean_t) else "NO"
-                    if st.session_state.get('use_turgenev_bulk'): row_data['Риск Тургенев'] = check_turgenev_sync(clean_t, st.session_state.get('turg_key_bulk'))
+                    # --- ПРОВЕРКИ API (ПЕРЕД RERUN) ---
+                    status_logger.write("🔍 Запуск проверок API...")
+                    clean_t = BeautifulSoup(f_text, "html.parser").get_text()
+                    if st.session_state.get('use_ds_bulk'): 
+                        row_data['DeepSeek Контекст'] = "YES" if validate_topic_deepseek(gem_key, h1_m, h2_h, clean_t) else "NO"
+                    if st.session_state.get('use_turgenev_bulk'): 
+                        row_data['Риск Тургенев'] = check_turgenev_sync(clean_t, st.session_state.get('turg_key_bulk'))
                     if st.session_state.get('use_textru_bulk'):
                         uid = send_textru_sync(clean_t, st.session_state.get('textru_key_bulk'))
                         row_data['Text.ru UID'] = uid; row_data['Уникальность'] = "⏳ В очереди"
 
                     st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, pd.DataFrame([row_data])], ignore_index=True)
-                    status_logger.update(label=f"✅ {h2_h} завершен", state="complete")
+                    status_logger.update(label=f"✅ {h2_h} готов", state="complete")
 
                 except Exception as e: st.error(f"Сбой: {e}")
                 finally:
@@ -4450,17 +4456,17 @@ with tab_wholesale_main:
                         st.session_state.ws_waiting_for_analysis = True
                         st.session_state.start_analysis_flag = True
                         st.rerun()
-                    else: st.session_state.ws_automode_active = False; st.rerun()
+                    else: 
+                        st.session_state.ws_automode_active = False; st.rerun()
 
-    # --- 2. ОРИГИНАЛЬНЫЙ UI (ИЗ ЕФИ 2.TXT) ---
+    # --- 2. ИНТЕРФЕЙС И НАСТРОЙКИ (ОРИГИНАЛЬНЫЙ СТИЛЬ) ---
     with st.container(border=True):
         st.subheader("⚙️ Конфигурация Конвейера")
-        
-        # Секция API Ключей (Восстановлено!)
-        st.markdown("**API Ключи (обязательно):**")
         c_k1, c_k2, c_k3 = st.columns(3)
         with c_k1:
-            ws_gem_in = st.text_input("🔑 Gemini API Key:", value=st.session_state.get('SUPER_GLOBAL_KEY', ''), type="password", key="ws_gem_fix")
+            try: dk = st.secrets["GEMINI_KEY"]
+            except: dk = ""
+            ws_gem_in = st.text_input("🔑 Gemini API Key:", value=st.session_state.get('SUPER_GLOBAL_KEY', dk), type="password")
             if ws_gem_in: st.session_state['SUPER_GLOBAL_KEY'] = ws_gem_in
         with c_k2:
             st.checkbox("📚 Риск Тургенева", key="use_turgenev_bulk")
@@ -4480,18 +4486,17 @@ with tab_wholesale_main:
     with st.container(border=True):
         st.subheader("📝 Данные и Семантика")
         
-        # Динамические поля ввода
         if ws_mode == "Подфильтровые (ссылки)":
             raw_input = st.text_area("Вставьте ссылку на родительскую категорию (откуда брать подфильтры):", height=100)
         elif ws_mode == "Родительские (URL)":
             raw_input = st.text_area("Ссылки на категории (каждая с новой строки):", height=150)
         else:
-            col_man1, col_man2 = st.columns(2)
-            with col_man1: raw_h1 = st.text_area("Списки H1 (через новую строку):", height=150)
-            with col_man2: raw_h2 = st.text_area("Списки H2 (соответствующие H1):", height=150)
+            col_m1, col_m2 = st.columns(2)
+            with col_m1: raw_h1 = st.text_area("Списки H1 (через новую строку):", height=150)
+            with col_m2: raw_h2 = st.text_area("Списки H2 (через новую строку):", height=150)
             raw_input = ""
 
-        st.text_area("Общие коммерческие LSI (через запятую):", value="купить, цена, в наличии, гост, производитель, со склада", key="ws_comm_lsi_input", height=70)
+        st.text_area("Общие коммерческие LSI (через запятую):", value="купить, цена, в наличии, гост, производитель", key="ws_comm_lsi_input", height=70)
         
         st.markdown("**Активные модули:**")
         m_cols = st.columns(5)
@@ -4500,8 +4505,12 @@ with tab_wholesale_main:
         with m_cols[2]: st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
         with m_cols[3]: st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
         with m_cols[4]: st.checkbox("🌍 Гео", value=True, key="ws_global_geo")
+        
+        cb1, cb2 = st.columns([1, 2])
+        with cb1: st.selectbox("Кол-во блоков текста (если не авто):", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val")
+        with cb2: st.checkbox("Авто-расчет кол-ва блоков (3-5 шт)", value=True, key="ws_auto_blocks")
 
-    # Кнопки управления (Скачивание всегда доступно)
+    # Кнопки управления
     c_btns = st.columns([2, 1, 1])
     with c_btns[0]:
         if st.button("🚀 ЗАПУСТИТЬ ОПТОВУЮ ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
@@ -4528,13 +4537,11 @@ with tab_wholesale_main:
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='xlsxwriter') as wr:
             st.session_state.gen_result_df.to_excel(wr, index=False)
-        st.download_button("💾 СКАЧАТЬ EXCEL", data=buf.getvalue(), file_name="results.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
+        st.download_button("💾 СКАЧАТЬ EXCEL", data=buf.getvalue(), file_name="gen_results.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
 
     # --- 3. ТАБЛИЦА И ЛЕНТА ПРЕДПРОСМОТРА ---
     if not st.session_state.gen_result_df.empty:
         st.markdown("---")
-        
-        # Кнопка обновления Text.ru
         if st.button("🔄 ОБНОВИТЬ СТАТУСЫ TEXT.RU"):
             k_tr = st.session_state.get('textru_key_bulk')
             for i, r in st.session_state.gen_result_df.iterrows():
@@ -4544,26 +4551,17 @@ with tab_wholesale_main:
             st.rerun()
 
         st.subheader("📊 Лог генерации")
-        def style_df(row):
-            styles = [''] * len(row)
-            bad = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold;'
-            cols = {n: i for i, n in enumerate(row.index)}
-            if row.get('DeepSeek Контекст') == "NO": styles[cols['DeepSeek Контекст']] = bad
-            if "Риск > 5" in str(row.get('Тургенев Комментарий', '')): styles[cols['Риск Тургенев']] = bad
-            return styles
-        st.dataframe(st.session_state.gen_result_df.drop(columns=['Text.ru UID']).style.apply(style_df, axis=1), use_container_width=True)
+        st.dataframe(st.session_state.gen_result_df.drop(columns=['Text.ru UID']), use_container_width=True)
         
-        # Визуальная лента предпросмотра
-        sel_p = st.selectbox("Детальный просмотр:", st.session_state.gen_result_df['Product Name'].tolist(), index=len(st.session_state.gen_result_df)-1)
+        sel_p = st.selectbox("Выбрать категорию для просмотра:", st.session_state.gen_result_df['Product Name'].tolist(), index=len(st.session_state.gen_result_df)-1)
         if sel_p:
             rd = st.session_state.gen_result_df[st.session_state.gen_result_df['Product Name'] == sel_p].iloc[0]
             st.markdown(f"#### 🖥️ Предпросмотр верстки: {sel_p}")
             st.markdown("""<style>
                 .preview-box { border: 1px solid #e2e8f0; background: #fff; padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-                .block-title { color: #277EFF; font-weight: bold; margin: 15px 0 5px 0; border-bottom: 2px solid #f0f4f8; padding-bottom: 5px; text-transform: uppercase; font-size: 0.9em; }
+                .block-title { color: #277EFF; font-weight: bold; margin: 15px 0 5px 0; border-bottom: 1px solid #eee; }
                 .tag-item { display: inline-block; padding: 8px 14px; margin: 5px; background: #eef4ff; border-radius: 6px; text-decoration: none; color: #277EFF; font-size: 14px; border: 1px solid #d0e2ff; }
             </style>""", unsafe_allow_html=True)
-            
             for c in ['IP_PROP4839','IP_PROP4816','IP_PROP4838','IP_PROP4829','IP_PROP4831','IP_PROP4819']:
                 if rd[c] and str(rd[c]) != 'nan':
                     st.markdown(f"<div class='block-title'>{c}</div><div class='preview-box'>{rd[c]}</div>", unsafe_allow_html=True)
@@ -5741,6 +5739,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
