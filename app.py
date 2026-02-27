@@ -4511,20 +4511,18 @@ with tab_wholesale_main:
                                 if u != 'nan' and img != 'nan': img_db[u] = img
                         except: pass
 
-                    # 1. Сначала базовые SEO слова
+                   # 1. Формируем список для текста
                     final_text_seo_list = cat_commercial + cat_general
-                    
+
                     # 2. Распределяем 'Товары'
                     tags_cands = []
                     if len(structure_keywords) > 0:
-                        # Первые 10 слов — в кандидаты на теги
-                        tags_cands = structure_keywords[:10]
-                        # Все, что после 10-го — СРАЗУ в текст
+                        tags_cands = structure_keywords[:10] # Первые 10 — в теги
                         if len(structure_keywords) > 10:
-                            for extra_kw in structure_keywords[10:]:
-                                if extra_kw not in final_text_seo_list:
-                                    final_text_seo_list.append(extra_kw)
-                    
+                            for kw in structure_keywords[10:]: # Всё что больше 10 — в текст
+                                if kw not in final_text_seo_list:
+                                    final_text_seo_list.append(kw)
+
                     # 3. Проверяем ссылки для тегов
                     target_tag_urls = []
                     if global_tags and all_tags_links:
@@ -4538,9 +4536,14 @@ with tab_wholesale_main:
                                     found = True
                                     break
                             
-                            # ЕСЛИ ССЫЛКА НЕ НАШЛАСЬ — отправляем слово в ТЗ для текста
+                            # ЕСЛИ ССЫЛКА НЕ НАЙДЕНА — отправляем слово в текст (вылетает)
                             if not found and kw not in final_text_seo_list:
                                 final_text_seo_list.append(kw)
+                    
+                    # Если теги не нашли ссылок, они ТОЖЕ должны упасть в final_text_seo_list
+                    # (Добавь это ниже в проверку ссылок)
+                    if not found and kw not in final_text_seo_list:
+                        final_text_seo_list.append(kw)
                     
                     # 3. Проверяем ссылки. Если ссылки нет — слово тоже уходит в текст
                     target_tag_urls = []
@@ -4571,6 +4574,8 @@ with tab_wholesale_main:
                         elif not found_data and kw not in final_text_seo_list:
                             final_text_seo_list.append(kw)
 
+                    promo_cands = st.session_state.get('auto_promo_words', [])
+                    
                     target_promo_data =[]
                     for kw in promo_cands:
                         kw_lower = kw.lower()
@@ -5978,6 +5983,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
