@@ -2512,12 +2512,10 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     from openai import OpenAI
     
     try:
-        # Инициализируем клиент через ваш сторонний сервис
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     except Exception as e:
-        return [{"Вопрос": "Ошибка инициализации API", "Ответ": str(e)}]
+        return [{"Тип": "Ошибка", "Вопрос": "Ошибка инициализации API", "Ответ": str(e)}]
     
-    # === ЭТАП 1: ЖЕСТКАЯ ФИЛЬТРАЦИЯ LSI СЛОВ + МУСОР ===
     forbidden_roots = [
         "украин", "ukrain", "ua", "всу", "зсу", "ато", "сво", "войн",
         "киев", "львов", "харьков", "одесс", "днепр", "мариуполь",
@@ -2529,16 +2527,13 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     clean_lsi = []
     for w in lsi_words:
         w_lower = str(w).lower()
-        # Добавляем слово только если в нём НЕТ запрещенных корней
         if not any(root in w_lower for root in forbidden_roots):
-            # Пропускаем короткий латинский мусор, кроме известных стандартов
             if re.match(r'^[a-z]{2,4}$', w_lower) and w_lower not in ['aisi', 'din', 'iso', 'en']:
                 continue
             clean_lsi.append(w)
             
     lsi_text = ", ".join(clean_lsi)
     
-    # --- ЭТАП 2: ЧЕРНОВИК (С РАЗДЕЛЕНИЕМ ИНТЕНТОВ И ТЕХ. КОНТРОЛЕМ) ---
     prompt_1 = f"""
     Ты технический эксперт в металлопрокате и B2B продажах.
     Составь FAQ для страницы "{h1}".
@@ -2559,7 +2554,7 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     1. Список LSI-слов: {lsi_text}.
     2. ВЫДЕЛИ ЖИРНЫМ ШРИФТОМ (**слово**) все использованные LSI-слова!
     3. Напиши ровно {target_count} вопросов и ответов.
-    4. ВЕРНИ СТРОГО В JSON! [{{"Вопрос": "...", "Ответ": "..."}}]
+    4. ВЕРНИ СТРОГО В JSON, добавив поле "Тип": [{{"Тип": "Коммерческий" или "Информационный", "Вопрос": "...", "Ответ": "..."}}]
     """
     
     try:
@@ -2570,13 +2565,11 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         )
         draft_text = res_1.choices[0].message.content.strip()
         
-        # Очистка Markdown
         if draft_text.startswith("```json"): draft_text = draft_text[7:]
         if draft_text.startswith("```"): draft_text = draft_text[3:]
         if draft_text.endswith("```"): draft_text = draft_text[:-3]
         draft_text = draft_text.strip()
         
-        # --- ЭТАП 3: РЕДАКТУРА И ФАКТЧЕКИНГ ---
         prompt_2 = f"""
         Я сгенерировал черновик FAQ для страницы "{h1}". Вот он (JSON):
         {draft_text}
@@ -2589,7 +2582,8 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         4. Ответы должны быть короткими и полезными.
         5. Сохрани заданное количество вопросов ({target_count}).
         6. ОБЯЗАТЕЛЬНО СОХРАНИ выделение жирным шрифтом (**слово**) для LSI!
-        7. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ!
+        7. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ строго в таком формате:
+        [{{"Тип": "Коммерческий" или "Информационный", "Вопрос": "...", "Ответ": "..."}}]
         """
         
         res_2 = client.chat.completions.create(
@@ -2599,7 +2593,6 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         )
         final_text = res_2.choices[0].message.content.strip()
         
-        # Очистка Markdown
         if final_text.startswith("```json"): final_text = final_text[7:]
         if final_text.startswith("```"): final_text = final_text[3:]
         if final_text.endswith("```"): final_text = final_text[:-3]
@@ -2607,7 +2600,6 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         
         parsed_data = json.loads(final_text)
         
-        # --- ЭТАП 4: СКРИПТОВАЯ АВТОЗАМЕНА ТИРЕ ---
         for item in parsed_data:
             if "Вопрос" in item:
                 item["Вопрос"] = item["Вопрос"].replace("—", "–").replace(" - ", " – ")
@@ -2617,7 +2609,7 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         return parsed_data
         
     except Exception as e:
-        return [{"Вопрос": "Ошибка генерации", "Ответ": str(e)}]
+        return [{"Тип": "Ошибка", "Вопрос": "Ошибка генерации", "Ответ": str(e)}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
@@ -5890,71 +5882,66 @@ with tab_faq_gen:
             st.success("🏁 ВСЕ FAQ СГЕНЕРИРОВАНЫ!")
 
 # 3. ВЫВОД РЕЗУЛЬТАТОВ И ЭКСПОРТ В EXCEL
-    if st.session_state.get('faq_results'):
-        st.markdown("### 📋 Результаты генерации")
-        
-        # --- ПОДГОТОВКА ДАННЫХ ДЛЯ EXCEL ---
-        all_faq_rows = []
-        for res in st.session_state.faq_results:
-            h1_val = res['h1']
-            url_val = res['url']
-            lsi_val = ", ".join(res['lsi'])
+        if st.session_state.get('faq_results'):
+            st.markdown("### 📋 Результаты генерации")
             
-            faq_items = res['faq_data']
-            if isinstance(faq_items, list):
-                for item in faq_items:
-                    if isinstance(item, dict):
-                        all_faq_rows.append({
-                            "H1 / Заголовок": h1_val,
-                            "URL источника": url_val,
-                            "Использованные LSI": lsi_val,
-                            "Вопрос": item.get("Вопрос", ""),
-                            "Ответ": item.get("Ответ", "")
-                        })
-        
-        # --- КНОПКА СКАЧИВАНИЯ EXCEL ---
-        if all_faq_rows:
-            import pandas as pd
-            import io
-            
-            df_export = pd.DataFrame(all_faq_rows)
-            
-            # Создаем Excel-файл в оперативной памяти
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df_export.to_excel(writer, index=False, sheet_name='FAQ_Результаты')
+            # --- ПОДГОТОВКА ДАННЫХ ДЛЯ EXCEL ---
+            all_faq_rows = []
+            for res in st.session_state.faq_results:
+                h1_val = res['h1']
+                url_val = res['url']
+                lsi_val = ", ".join(res['lsi'])
                 
-                # Делаем колонки шире для удобства чтения
-                worksheet = writer.sheets['FAQ_Результаты']
-                worksheet.set_column('A:B', 30)
-                worksheet.set_column('C:C', 40)
-                worksheet.set_column('D:E', 70)
-
-            excel_data = output.getvalue()
-            
-            st.download_button(
-                label="💾 СКАЧАТЬ ВСЕ FAQ В EXCEL",
-                data=excel_data,
-                file_name="Сгенерированные_FAQ.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-                use_container_width=True
-            )
-            
-            st.markdown("---")
-            
-        # --- ПРЕДПРОСМОТР НА ЭКРАНЕ ---
-        for res in st.session_state.faq_results:
-            with st.expander(f"📌 {res['h1']} ({res['url']})"):
-                st.caption(f"**Использованы слова:** {', '.join(res['lsi'])}")
                 faq_items = res['faq_data']
-                if isinstance(faq_items, list) and len(faq_items) > 0 and isinstance(faq_items[0], dict):
-                    import pandas as pd
-                    st.table(pd.DataFrame(faq_items))
-                else:
-                    st.error("Ошибка формата ответа нейросети:")
-                    st.write(faq_items)
-
+                if isinstance(faq_items, list):
+                    for item in faq_items:
+                        if isinstance(item, dict):
+                            all_faq_rows.append({
+                                "H1 / Маркер": h1_val,
+                                "URL": url_val,
+                                "Тип": item.get("Тип", "Информационный"), # <--- НОВАЯ КОЛОНКА
+                                "Вопрос": item.get("Вопрос", ""),
+                                "Ответ": item.get("Ответ", ""),
+                                "LSI Слова": lsi_val
+                            })
+                            
+            if all_faq_rows:
+                df_export = pd.DataFrame(all_faq_rows)
+                
+                import io
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df_export.to_excel(writer, index=False, sheet_name='FAQ_Результаты')
+                    # Делаем колонки шире для удобства чтения
+                    worksheet = writer.sheets['FAQ_Результаты']
+                    worksheet.set_column('A:B', 30)
+                    worksheet.set_column('C:C', 20)  # Ширина для "Тип"
+                    worksheet.set_column('D:E', 70)  # Ширина для Вопросов/Ответов
+                    worksheet.set_column('F:F', 40)  # Ширина для LSI
+                    
+                excel_data = output.getvalue()
+                st.download_button(
+                    label="💾 СКАЧАТЬ ВСЕ FAQ В EXCEL",
+                    data=excel_data,
+                    file_name="Сгенерированные_FAQ.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True
+                )
+                
+            st.markdown("---")
+            # --- ПРЕДПРОСМОТР НА ЭКРАНЕ ---
+            for res in st.session_state.faq_results:
+                with st.expander(f"📌 {res['h1']} ({res['url']})"):
+                    st.caption(f"**Использованы слова:** {', '.join(res['lsi'])}")
+                    
+                    faq_items = res['faq_data']
+                    if isinstance(faq_items, list) and len(faq_items) > 0 and isinstance(faq_items[0], dict):
+                        import pandas as pd
+                        st.table(pd.DataFrame(faq_items))
+                    else:
+                        st.error("Ошибка формата ответа нейросети:")
+                        st.write(faq_items)
 # ==========================================
 # TAB 7: ГЕНЕРАТОР ОТЗЫВОВ
 # ==========================================
@@ -6033,6 +6020,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
