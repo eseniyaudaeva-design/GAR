@@ -4521,17 +4521,36 @@ with tab_wholesale_main:
                                 if u != 'nan' and img != 'nan': img_db[u] = img
                         except: pass
 
-                    # 2. РАСПРЕДЕЛЕНИЕ СЛОВ (LSI ФИЛЬТР)
+                    # 1. Формируем базовый список слов для текста (Коммерция + Общие)
                     final_text_seo_list = cat_commercial + cat_general
-                    
+                    # 2. Распределяем категорию 'Товары/Услуги'
                     tags_cands = []
-                    promo_cands =[]
                     if len(structure_keywords) > 0:
-                        if len(structure_keywords) < 10: tags_cands = structure_keywords
-                        else:
-                            mid = math.ceil(len(structure_keywords) / 2)
-                            tags_cands = structure_keywords[:mid]
-                            promo_cands = structure_keywords[mid:]
+                        # Забираем строго первые 10 слов для попытки создания тегов
+                        tags_cands = structure_keywords[:10]
+                        
+                        # Все слова, которые не вошли в первую десятку, СРАЗУ отправляем в текст
+                        if len(structure_keywords) > 10:
+                            for extra_kw in structure_keywords[10:]:
+                                if extra_kw not in final_text_seo_list:
+                                    final_text_seo_list.append(extra_kw)
+                    
+                    # 3. Проверяем ссылки. Если ссылки нет — слово тоже уходит в текст
+                    target_tag_urls = []
+                    if global_tags and all_tags_links:
+                        tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
+                        for kw in tags_cands:
+                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                            found = False
+                            for url in tags_cands_all:
+                                if tr_kw in url.lower() and url not in target_tag_urls:
+                                    target_tag_urls.append(url)
+                                    found = True
+                                    break
+                            
+                            # ВОТ ЭТО ВАЖНО: Если ссылку не нашли, добавляем слово в финальное ТЗ для нейросети
+                            if not found and kw not in final_text_seo_list:
+                                final_text_seo_list.append(kw)
 
                     target_tag_data =[]
                     for kw in tags_cands:
@@ -5952,6 +5971,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
