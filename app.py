@@ -2986,14 +2986,23 @@ with tab_seo_main:
             st.cache_data.clear()
             st.rerun()
 
-        my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
-        if my_input_type == "Релевантная страница на вашем сайте":
-            st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input")
-        elif my_input_type == "Исходный код страницы или текст":
-            st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML", key="my_content_input")
+        # Группируем основные настройки в колонки
+        st.markdown("### 🛠 Настройки анализа")
+        
+        # Верхний ряд: Запрос и Тип страницы
+        top_col1, top_col2 = st.columns(2)
+        with top_col1:
+            st.text_input("📝 Основной поисковый запрос", placeholder="Например: купить пластиковые окна", key="query_input")
+        with top_col2:
+            my_input_type = st.selectbox("📄 Тип источника страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], key="my_page_source_radio")
 
-        st.markdown("### Поисковой запрос")
-        st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
+        # Нижний ряд: Ссылка или Поле ввода кода
+        if my_input_type == "Релевантная страница на вашем сайте":
+            st.text_input("🔗 URL вашей страницы", placeholder="https://site.ru/catalog/tovar", key="my_url_input")
+        elif my_input_type == "Исходный код страницы или текст":
+            st.text_area("💻 Исходный код или текст", height=150, placeholder="Вставьте HTML код здесь...", key="my_content_input")
+        
+        st.write("---") # Разделительная черта перед выбором конкурентов
         
         st.markdown("### Поиск конкурентов")
         
@@ -4404,11 +4413,20 @@ with tab_wholesale_main:
                     tags_cands = []
                     promo_cands = []
                     if len(structure_keywords) > 0:
-                        if len(structure_keywords) < 10: tags_cands = structure_keywords
+                        if len(structure_keywords) > 10:
+                            # Распределяем на 3 части: Текст (40%), Теги (30%), Промо (30%)
+                            idx1 = math.ceil(len(structure_keywords) * 0.4)
+                            idx2 = math.ceil(len(structure_keywords) * 0.7)
+                            
+                            # Слова для текста уходят в основной список
+                            final_text_seo_list.extend(structure_keywords[:idx1])
+                            # Остальное распределяем по блокам
+                            tags_cands = structure_keywords[idx1:idx2]
+                            promo_cands = structure_keywords[idx2:]
                         else:
-                            mid = math.ceil(len(structure_keywords) / 2)
-                            tags_cands = structure_keywords[:mid]
-                            promo_cands = structure_keywords[mid:]
+                            # Если 10 и меньше — всё в теги (или в текст, по желанию)
+                            tags_cands = structure_keywords
+                            promo_cands = []
 
                     target_tag_urls = []
                     if global_tags and all_tags_links:
@@ -6027,6 +6045,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
