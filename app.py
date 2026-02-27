@@ -2997,23 +2997,11 @@ with tab_seo_main:
             st.cache_data.clear()
             st.rerun()
 
-        # Группируем основные настройки в колонки
-        st.markdown("### 🛠 Настройки анализа")
-        
-        # Верхний ряд: Запрос и Тип страницы
-        top_col1, top_col2 = st.columns(2)
-        with top_col1:
-            st.text_input("📝 Основной поисковый запрос", placeholder="Например: купить пластиковые окна", key="query_input")
-        with top_col2:
-# === ЛЕВАЯ КОЛОНКА (ОСНОВНАЯ) ===
-    with col_main:
-        st.title("SEO Анализатор")
-        
         # --- НОВЫЙ КОМПАКТНЫЙ БЛОК ВВОДА ---
         with st.container(border=True):
             st.markdown("#### 🎯 Настройка анализа")
             
-            # Первый ряд: Выбор типа и Запрос
+            # Первый ряд: Выбор типа и Запрос (H1 и H2)
             row1_col1, row1_col2 = st.columns([1, 1])
             with row1_col1:
                 my_input_type = st.selectbox(
@@ -3022,18 +3010,21 @@ with tab_seo_main:
                     key="my_page_source_radio"
                 )
             with row1_col2:
+                # ВНИМАНИЕ: Один ключ query_input на всю страницу
                 st.text_input(
                     "📝 Поисковый запрос", 
                     placeholder="Например: купить трубу стальную", 
                     key="query_input"
                 )
 
-            # Второй ряд: Динамическое поле ввода
+            # Второй ряд: Динамическое поле ввода (URL или Код)
             if my_input_type == "Релевантная страница на вашем сайте":
                 st.text_input("🔗 Ссылка (URL)", placeholder="https://site.ru/...", key="my_url_input")
             elif my_input_type == "Исходный код страницы или текст":
                 st.text_area("💻 Исходный код / Текст", height=150, placeholder="Вставьте HTML", key="my_content_input")
         # ----------------------------------
+        
+        st.markdown("### Поиск конкурентов")
 
         source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
         source_type = "API" if "API" in source_type_new else "Ручной список"
@@ -6068,6 +6059,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
