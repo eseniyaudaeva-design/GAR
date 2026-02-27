@@ -4319,11 +4319,16 @@ with tab_wholesale_main:
             'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
             'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 
             'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831',
+            'Блок FAQ', # <--- ДОБАВЛЕНА КОЛОНКА
             'Весь текст целиком', 
             'DeepSeek Контекст', 'DeepSeek Комментарий',
             'Риск Тургенев', 'Тургенев Комментарий',
             'Уникальность', 'Text.ru Комментарий', 'Text.ru UID'
         ])
+    else:
+        # Защита: добавляем колонку в уже существующую сессию
+        if 'Блок FAQ' not in st.session_state.gen_result_df.columns:
+            st.session_state.gen_result_df['Блок FAQ'] = ""
 
     st.header("🏭 Умный Оптовый Конвейер (V11 - Бронебойный текст)")
     st.info("Исправлена критическая ошибка генерации текста. Теперь текст пишется всегда, а доп. блоки (таблицы, теги) встраиваются ПОД текстом.")
@@ -4361,6 +4366,7 @@ with tab_wholesale_main:
                     global_tags = st.session_state.get('ws_global_tags', True)
                     global_promo = st.session_state.get('ws_global_promo', True)
                     global_geo = st.session_state.get('ws_global_geo', True)
+                    global_faq = st.session_state.get('ws_global_faq', True)
                     
                     all_tags_links = []
                     if global_tags and os.path.exists("data/links_base.txt"):
@@ -4379,16 +4385,23 @@ with tab_wholesale_main:
                     final_text_seo_list = cat_commercial + cat_general
                     
                     # Распределяем слова: 40% в текст, 30% в теги, 30% в промо
+                    # Распределяем слова: Текст, Теги, Промо, FAQ
                     tags_cands = []
                     promo_cands = []
+                    faq_cands = []
+                    
                     if len(structure_keywords) > 10:
                         idx1 = math.ceil(len(structure_keywords) * 0.4)
-                        idx2 = math.ceil(len(structure_keywords) * 0.7)
+                        idx2 = math.ceil(len(structure_keywords) * 0.6)
+                        idx3 = math.ceil(len(structure_keywords) * 0.8)
+                        
                         final_text_seo_list.extend(structure_keywords[:idx1])
                         tags_cands = structure_keywords[idx1:idx2]
-                        promo_cands = structure_keywords[idx2:]
+                        promo_cands = structure_keywords[idx2:idx3]
+                        faq_cands = structure_keywords[idx3:]
                     else:
                         tags_cands = structure_keywords
+                        faq_cands = structure_keywords
 
                     target_tag_urls = []
                     if global_tags and all_tags_links:
@@ -4417,6 +4430,11 @@ with tab_wholesale_main:
                     else:
                         for kw in promo_cands:
                             if kw not in final_text_seo_list: final_text_seo_list.append(kw)
+                    # --- ДОБАВЛЯЕМ ПРОВЕРКУ ДЛЯ FAQ ---
+                    if not global_faq:
+                        for kw in faq_cands:
+                            if kw not in final_text_seo_list: final_text_seo_list.append(kw)
+                    # ----------------------------------
 
                     curr_use_text = global_text
                     curr_use_tables = global_tables and (len(cat_dimensions) > 0)
@@ -4522,6 +4540,30 @@ with tab_wholesale_main:
                         prompt_geo = f"Напиши один HTML параграф (<p>) о доставке товара '{h2_header}' в города: {cities}. Выдай только HTML."
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.5)
                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+
+                    if global_faq and client:
+                        status_logger.write("❓ Генерируем FAQ...")
+                        # Генерируем 4 вопроса (2 коммерческих, 2 инфо)
+                        faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=4)
+                        
+                        # Преобразуем JSON в красивый HTML
+                        if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
+                            faq_html_parts = [
+                                '<div class="faq-section">', 
+                                f'<div class="h3"><h3>Частые вопросы по {h2_header}</h3></div>'
+                            ]
+                            for item in faq_json:
+                                q = item.get("Вопрос", "")
+                                a = item.get("Ответ", "")
+                                if q and a:
+                                    faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{q}</h4></div><p>{a}</p></div>')
+                            faq_html_parts.append('</div>')
+                            
+                            faq_html_str = "\n".join(faq_html_parts)
+                            row_data['Блок FAQ'] = faq_html_str
+                            injections.append(faq_html_str) # Вкидываем в общую очередь блоков контента
+                        else:
+                            status_logger.write("⚠️ Сбой генерации FAQ (ИИ вернул неверный формат).")
 
                     # --- ИСПРАВЛЕННАЯ СБОРКА КОНТЕНТА ---
                     effective_blocks_count = max(1, auto_num_blocks)
@@ -4671,6 +4713,7 @@ with tab_wholesale_main:
                 with grid_1:
                     st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
                     st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
+                    st.checkbox("❓ FAQ", value=True, key="ws_global_faq") # <--- НОВАЯ ГАЛОЧКА
                 with grid_2:
                     st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
                     st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo")
@@ -4819,7 +4862,7 @@ with tab_wholesale_main:
             
             if sel_p:
                 row_p = df_export[df_export['Product Name'] == sel_p].iloc[0]
-                cols_to_show = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819']
+                cols_to_show = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819', 'Блок FAQ']
                 active_cols = [c for c in cols_to_show if str(row_p.get(c, "")).strip() != ""]
                 
                 if active_cols:
@@ -4839,6 +4882,10 @@ with tab_wholesale_main:
                         .gallery-item img { width: 100%; height: auto; border-radius: 4px; }
                         .gallery-item h3 { font-size: 14px; margin-top: 10px; font-weight: normal; }
                         .gallery-item a { text-decoration: none; color: #333; }
+                        .faq-section { margin: 20px 0; padding: 20px; background: #F6F7FC; border-radius: 8px; border: 1px solid #e2e8f0; }
+                        .faq-item { margin-bottom: 15px; background: #fff; padding: 15px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);}
+                        .faq-item h4 { margin-bottom: 5px; color: #1e293b; font-weight: 600; margin-top: 0;}
+                        .faq-item p { margin-top: 0; color: #475569; font-size: 14px; margin-bottom: 0;}
                     </style>
                     """, unsafe_allow_html=True)
                     
@@ -6017,6 +6064,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
