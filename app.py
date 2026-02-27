@@ -2322,7 +2322,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     seo_words = seo_words or []
     seo_instruction_block = ""
     
-    # === 1. ИНСТРУКЦИЯ ПО SEO (ЛОГИКА ИЗ ВКЛАДКИ ЛСИ) ===
+    # === 1. ИНСТРУКЦИЯ ПО SEO ===
     if seo_words:
         seo_list_str = ", ".join(seo_words)
         seo_instruction_block = f"""
@@ -2330,14 +2330,14 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 Тебе нужно внедрить в текст следующие LSI-слова: {seo_list_str}
 
 ПРАВИЛА РАБОТЫ СО СЛОВАМИ:
-1. Используй каждое слово из списка РОВНО 1 РАЗ на весь объем текста (распредели их по блокам).
-2. Вписывай слова максимально естественно, меняя падежи, числа и формы под контекст.
+1. Используй каждое слово из списка РОВНО 1 РАЗ на весь объем текста.
+2. Вписывай слова максимально естественно, меняя падежи, числа и формы.
 3. СТРОГО ЗАПРЕЩЕНО: Не выделяй ключевые слова жирным (ни **текст**, ни <b>текст</b>).
 4. Качество: Если ключ выглядит как мусор или название конкурента — игнорируй его.
 -------------------------------------------
 """
 
-    # === 2. СИСТЕМНАЯ РОЛЬ (ГИБРИД ЭКСПЕРТА И ТЕХРЕДА) ===
+    # === 2. СИСТЕМНАЯ РОЛЬ ===
     system_instruction = (
         "Ты — эксперт в SEO-копирайтинге, технический редактор и верстальщик. "
         "Твоя цель — писать глубокий, технически полезный текст для B2B сегмента (снабженцы, инженеры). "
@@ -2364,7 +2364,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 Напиши {num_blocks} HTML-блоков, разделенных разделителем: |||BLOCK_SEP|||
 
 СТРУКТУРА КАЖДОГО БЛОКА:
-1. ОБЯЗАТЕЛЬНЫЙ ЗАГОЛОВОК: Каждый из {num_blocks} блоков должен начинаться с тега (<h2> для 1-го блока, <h3> для всех остальных). Запрещено выдавать блок текста без подзаголовка!
+1. ОБЯЗАТЕЛЬНЫЙ ЗАГОЛОВОК: Каждый из {num_blocks} блоков должен начинаться с тега заголовка (<h2> для 1-го блока, <h3> для всех остальных). Запрещено выдавать абзац без подзаголовка!
 2. Первый абзац (<p>) — развернутая суть.
 3. Подводка к списку (например: "Технические параметры:").
 4. Маркированный список (<ul> c <li>). Каждая строка заканчивается на ";", последняя — на ".".
@@ -2372,7 +2372,8 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 
 ТЕМАТИКА:
 - БЛОК 1: <h2>{forced_header if forced_header else tag_name}</h2>. Назначение и общая информация.
-- БЛОКИ 2-{num_blocks}: Технические особенности, ГОСТы, производство, эксплуатация. Используй данные из фактуры.
+- БЛОКИ 2-{num_blocks}: Технические особенности, ГОСТы, производство, эксплуатация.
+Используй данные из фактуры.
 
 ФИЛЬТРАЦИЯ И ОФОРМЛЕНИЕ (КРИТИЧНО):
 - В списках между характеристикой и значением ставь тире: "Материал – углеродистая сталь".
@@ -2403,7 +2404,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         cleaned_blocks = []
         for b in blocks:
             cb = b.strip()
-            # (Убрано удаление заголовков для всех блоков, чтобы h3 не пропадали)
             
             # Тотальная зачистка жирного шрифта
             cb = cb.replace("**", "")
@@ -2416,7 +2416,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
             cleaned_blocks.append("<p>Данные в процессе обработки...</p>")
             
         # Финальная сборка 1-го блока с принудительным H2
-        # (Обрезаем старый заголовок ТОЛЬКО у первого блока и вставляем наш эталонный)
+        # (Обрезаем старый заголовок ТОЛЬКО у первого блока и вставляем эталонный)
         first_block = cleaned_blocks[0]
         first_block = re.sub(r'^<h[23].*?>.*?</h[23]>', '', first_block, flags=re.DOTALL | re.IGNORECASE).strip()
         final_h2_text = forced_header if forced_header else tag_name
@@ -2425,7 +2425,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         return cleaned_blocks[:num_blocks]
         
     except Exception as e:
-        return [f"API Error: {str(e)}"] * num_blocks
+        return [f"Error: API Error - {str(e)}"] * num_blocks
 
 # ==========================================
 # НОВЫЕ ФУНКЦИИ ДЛЯ LSI ГЕНЕРАТОРА (ВСТАВИТЬ СЮДА)
@@ -6096,6 +6096,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
