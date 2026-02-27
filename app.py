@@ -4545,55 +4545,46 @@ with tab_wholesale_main:
                     if not found and kw not in final_text_seo_list:
                         final_text_seo_list.append(kw)
                     
-                    # 3. Проверяем ссылки. Если ссылки нет — слово тоже уходит в текст
-                    target_tag_urls = []
-                    if global_tags and all_tags_links:
-                        tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
+                    # 3. Проверяем ссылки для тегов (ЧИСТЫЙ КОД)
+                    target_tag_data = []
+                    if global_tags:
                         for kw in tags_cands:
-                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            found = False
-                            for url in tags_cands_all:
-                                if tr_kw in url.lower() and url not in target_tag_urls:
-                                    target_tag_urls.append(url)
-                                    found = True
+                            kw_lower = kw.lower()
+                            found_data = None
+                            for db_name, data in links_db.items():
+                                if kw_lower in db_name or db_name in kw_lower:
+                                    found_data = data
                                     break
                             
-                            # ВОТ ЭТО ВАЖНО: Если ссылку не нашли, добавляем слово в финальное ТЗ для нейросети
-                            if not found and kw not in final_text_seo_list:
+                            if found_data and found_data['url'] != current_task['url'] and found_data not in target_tag_data:
+                                target_tag_data.append(found_data)
+                            elif not found_data and kw not in final_text_seo_list:
                                 final_text_seo_list.append(kw)
 
-                    target_tag_data =[]
-                    for kw in tags_cands:
-                        kw_lower = kw.lower()
-                        found_data = None
-                        for db_name, data in links_db.items():
-                            if kw_lower in db_name or db_name in kw_lower:
-                                found_data = data; break
-                        if found_data and found_data['url'] != current_task['url'] and found_data not in target_tag_data:
-                            target_tag_data.append(found_data)
-                        elif not found_data and kw not in final_text_seo_list:
-                            final_text_seo_list.append(kw)
-
-                    promo_cands = st.session_state.get('auto_promo_words', [])
+                    # 4. Проверяем ссылки для промо-блоков
+                    target_promo_data = []
+                    promo_cands = st.session_state.get('auto_promo_words', []) # <-- ФИКС: Достаем переменную из памяти
                     
-                    target_promo_data =[]
-                    for kw in promo_cands:
-                        kw_lower = kw.lower()
-                        found_data = None
-                        for db_name, data in links_db.items():
-                            if kw_lower in db_name or db_name in kw_lower:
-                                if data['url'] in img_db:
-                                    found_data = {'url': data['url'], 'name': data['name'], 'img': img_db[data['url']]}
-                                    break
-                        if found_data and found_data['url'] != current_task['url'] and found_data not in target_promo_data:
-                            target_promo_data.append(found_data)
-                        elif not found_data and kw not in final_text_seo_list:
-                            final_text_seo_list.append(kw)
+                    if global_promo:
+                        for kw in promo_cands:
+                            kw_lower = kw.lower()
+                            found_data = None
+                            for db_name, data in links_db.items():
+                                if kw_lower in db_name or db_name in kw_lower:
+                                    if data['url'] in img_db:
+                                        found_data = {'url': data['url'], 'name': data['name'], 'img': img_db[data['url']]}
+                                        break
+                                        
+                            if found_data and found_data['url'] != current_task['url'] and found_data not in target_promo_data:
+                                target_promo_data.append(found_data)
+                            elif not found_data and kw not in final_text_seo_list:
+                                final_text_seo_list.append(kw)
 
                     curr_use_text = global_text
                     curr_use_tables = global_tables and (len(cat_dimensions) > 0)
                     curr_use_geo = global_geo and (len(cat_geo) > 0)
                     curr_use_tags = (len(target_tag_data) > 0)
+                    curr_use_promo = (len(target_promo_data) > 0)
                     curr_use_promo = (len(target_promo_data) > 0)
                     
                     status_logger.write(f"📊 Итог: В текст ушло {len(final_text_seo_list)} слов, в теги {len(target_tag_data)} ссылок, в промо {len(target_promo_data)} карточек.")
@@ -5983,6 +5974,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
