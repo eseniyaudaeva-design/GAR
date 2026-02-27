@@ -4522,23 +4522,6 @@ with tab_wholesale_main:
                             for kw in structure_keywords[10:]: # Всё что больше 10 — в текст
                                 if kw not in final_text_seo_list:
                                     final_text_seo_list.append(kw)
-
-                    # 3. Проверяем ссылки для тегов
-                    target_tag_urls = []
-                    if global_tags and all_tags_links:
-                        tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
-                        for kw in tags_cands:
-                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            found = False
-                            for url in tags_cands_all:
-                                if tr_kw in url.lower() and url not in target_tag_urls:
-                                    target_tag_urls.append(url)
-                                    found = True
-                                    break
-                            
-                            # ЕСЛИ ССЫЛКА НЕ НАЙДЕНА — отправляем слово в текст (вылетает)
-                            if not found and kw not in final_text_seo_list:
-                                final_text_seo_list.append(kw)
                     
                     # Если теги не нашли ссылок, они ТОЖЕ должны упасть в final_text_seo_list
                     # (Добавь это ниже в проверку ссылок)
@@ -5974,6 +5957,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
