@@ -4333,16 +4333,18 @@ with tab_wholesale_main:
             'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
             'IP_PROP4824', 'IP_PROP4816', 'IP_PROP4825', 'IP_PROP4826', 'IP_PROP4834', 
             'IP_PROP4835', 'IP_PROP4836', 'IP_PROP4837', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831',
-            'Блок FAQ', # <--- ДОБАВЛЕНА КОЛОНКА
+            'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 
+            'FAQ Информационный вопрос', 'FAQ Информационный ответ',
             'Весь текст целиком', 
             'DeepSeek Контекст', 'DeepSeek Комментарий',
             'Риск Тургенев', 'Тургенев Комментарий',
             'Уникальность', 'Text.ru Комментарий', 'Text.ru UID'
         ])
     else:
-        # Защита: добавляем колонку в уже существующую сессию
-        if 'Блок FAQ' not in st.session_state.gen_result_df.columns:
-            st.session_state.gen_result_df['Блок FAQ'] = ""
+        # Безопасное добавление колонок, если сессия уже запущена
+        for col in ['FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ']:
+            if col not in st.session_state.gen_result_df.columns:
+                st.session_state.gen_result_df[col] = ""
 
     st.header("🏭 Умный Оптовый Конвейер (V11 - Бронебойный текст)")
     st.info("Исправлена критическая ошибка генерации текста. Теперь текст пишется всегда, а доп. блоки (таблицы, теги) встраиваются ПОД текстом.")
@@ -4555,7 +4557,12 @@ with tab_wholesale_main:
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.5)
                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
 
-                    final_faq_html = "" # Создаем пустую переменную для FAQ
+                    final_faq_html = ""
+                    # Обнуляем ячейки для конкретного товара
+                    row_data['FAQ Коммерческий вопрос'] = ""
+                    row_data['FAQ Коммерческий ответ'] = ""
+                    row_data['FAQ Информационный вопрос'] = ""
+                    row_data['FAQ Информационный ответ'] = ""
                     
                     if global_faq and client:
                         current_faq_count = st.session_state.get('ws_faq_count', 4)
@@ -4564,44 +4571,56 @@ with tab_wholesale_main:
                         faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
                         
                         if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
-                            # Фильтруем вопросы по типу
-                            comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
-                            info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
-                            
-                            faq_html_parts = [
-                                '<div class="faq-section">', 
-                                f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>'
-                            ]
-                            
-                            # Блок 1: Коммерческие
-                            if comm_items:
-                                faq_html_parts.append('<div class="faq-category">')
-                                faq_html_parts.append('<div class="h3"><h3>Коммерческие вопросы</h3></div>')
-                                for item in comm_items:
-                                    q = item.get("Вопрос", "")
-                                    a = item.get("Ответ", "")
-                                    faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{q}</h4></div><p>{a}</p></div>')
-                                faq_html_parts.append('</div>')
+                            if faq_json[0].get("Тип") == "Ошибка":
+                                status_logger.write(f"⚠️ Ошибка API при генерации FAQ: {faq_json[0].get('Ответ')}")
+                            else:
+                                # Разделяем на 2 группы
+                                comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
+                                info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
                                 
-                            # Блок 2: Информационные
-                            if info_items:
-                                faq_html_parts.append('<div class="faq-category">')
-                                faq_html_parts.append('<div class="h3"><h3>Информационные вопросы</h3></div>')
-                                for item in info_items:
-                                    q = item.get("Вопрос", "")
-                                    a = item.get("Ответ", "")
-                                    faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{q}</h4></div><p>{a}</p></div>')
-                                faq_html_parts.append('</div>')
+                                # 1. ЗАПИСЫВАЕМ В 4 КОЛОНКИ ДЛЯ EXCEL (склеиваем через \n\n, если вопросов несколько)
+                                row_data['FAQ Коммерческий вопрос'] = "\n\n".join([item.get("Вопрос", "") for item in comm_items])
+                                row_data['FAQ Коммерческий ответ'] = "\n\n".join([item.get("Ответ", "") for item in comm_items])
+                                row_data['FAQ Информационный вопрос'] = "\n\n".join([item.get("Вопрос", "") for item in info_items])
+                                row_data['FAQ Информационный ответ'] = "\n\n".join([item.get("Ответ", "") for item in info_items])
                                 
-                            faq_html_parts.append('</div>')
-                            
-                            faq_html_str = "\n".join(faq_html_parts)
-                            row_data['Блок FAQ'] = faq_html_str
-                            
-                            # ВАЖНО: Мы сохраняем HTML, но НЕ добавляем в injections!
-                            final_faq_html = faq_html_str 
+                                # 2. СОБИРАЕМ ЕДИНЫЙ HTML ДЛЯ ВСТАВКИ В КОНЕЦ ТЕКСТА
+                                faq_html_parts = [
+                                    '<div class="faq-section">', 
+                                    f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>'
+                                ]
+                                
+                                if comm_items:
+                                    faq_html_parts.append('<div class="faq-category">')
+                                    faq_html_parts.append('<div class="h3"><h3>Коммерческие вопросы</h3></div>')
+                                    for item in comm_items:
+                                        faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
+                                    faq_html_parts.append('</div>')
+                                    
+                                if info_items:
+                                    faq_html_parts.append('<div class="faq-category">')
+                                    faq_html_parts.append('<div class="h3"><h3>Информационные вопросы</h3></div>')
+                                    for item in info_items:
+                                        faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
+                                    faq_html_parts.append('</div>')
+                                    
+                                faq_html_parts.append('</div>')
+                                final_faq_html = "\n".join(faq_html_parts)
                         else:
-                            status_logger.write("⚠️ Сбой генерации FAQ.")
+                            status_logger.write("⚠️ Сбой формата ответа FAQ от нейросети.")
+                    # =======================================================
+                    # ФИНАЛЬНАЯ СКЛЕЙКА (БЕЗ НЕЁ КОЛОНКА БУДЕТ ПУСТОЙ!)
+                    # =======================================================
+                    # 1. Берем основной текст (который скрипт собрал из блоков до FAQ)
+                    safe_text = assembled_text if 'assembled_text' in locals() else ""
+                    
+                    # 2. Если FAQ успешно сгенерировался — приклеиваем его в самый низ
+                    if final_faq_html:
+                        safe_text += f"\n\n{final_faq_html}"
+                        
+                    # 3. Жестко записываем всё в итоговую ячейку
+                    row_data['Весь текст целиком'] = safe_text
+                    # =======================================================
 
                     # --- ИСПРАВЛЕННАЯ СБОРКА КОНТЕНТА ---
                     effective_blocks_count = max(1, auto_num_blocks)
@@ -4906,7 +4925,11 @@ with tab_wholesale_main:
             
             if sel_p:
                 row_p = df_export[df_export['Product Name'] == sel_p].iloc[0]
-                cols_to_show = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819', 'Блок FAQ']
+                cols_to_show = [
+                    'IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 
+                    'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 
+                    'FAQ Информационный вопрос', 'FAQ Информационный ответ'
+                ]
                 active_cols = [c for c in cols_to_show if str(row_p.get(c, "")).strip() != ""]
                 
                 if active_cols:
@@ -6108,6 +6131,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
