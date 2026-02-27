@@ -2364,7 +2364,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 Напиши {num_blocks} HTML-блоков, разделенных разделителем: |||BLOCK_SEP|||
 
 СТРУКТУРА КАЖДОГО БЛОКА:
-1. Заголовок (<h2> для 1-го блока, <h3> для остальных).
+1. ОБЯЗАТЕЛЬНЫЙ ЗАГОЛОВОК: Каждый из {num_blocks} блоков должен начинаться с тега (<h2> для 1-го блока, <h3> для всех остальных). Запрещено выдавать блок текста без подзаголовка!
 2. Первый абзац (<p>) — развернутая суть.
 3. Подводка к списку (например: "Технические параметры:").
 4. Маркированный список (<ul> c <li>). Каждая строка заканчивается на ";", последняя — на ".".
@@ -4541,33 +4541,53 @@ with tab_wholesale_main:
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.5)
                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
 
+                    final_faq_html = "" # Создаем пустую переменную для FAQ
+                    
                     if global_faq and client:
-                        # Получаем выбранное количество вопросов (по умолчанию 4)
                         current_faq_count = st.session_state.get('ws_faq_count', 4)
-                        
                         status_logger.write(f"❓ Генерируем FAQ ({current_faq_count} вопросов)...")
                         
-                        # Передаем это число в target_count
                         faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
                         
-                        # Преобразуем JSON в красивый HTML
                         if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
+                            # Фильтруем вопросы по типу
+                            comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
+                            info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
+                            
                             faq_html_parts = [
                                 '<div class="faq-section">', 
-                                f'<div class="h3"><h3>Частые вопросы по {h2_header}</h3></div>'
+                                f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>'
                             ]
-                            for item in faq_json:
-                                q = item.get("Вопрос", "")
-                                a = item.get("Ответ", "")
-                                if q and a:
+                            
+                            # Блок 1: Коммерческие
+                            if comm_items:
+                                faq_html_parts.append('<div class="faq-category">')
+                                faq_html_parts.append('<div class="h3"><h3>Коммерческие вопросы</h3></div>')
+                                for item in comm_items:
+                                    q = item.get("Вопрос", "")
+                                    a = item.get("Ответ", "")
                                     faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{q}</h4></div><p>{a}</p></div>')
+                                faq_html_parts.append('</div>')
+                                
+                            # Блок 2: Информационные
+                            if info_items:
+                                faq_html_parts.append('<div class="faq-category">')
+                                faq_html_parts.append('<div class="h3"><h3>Информационные вопросы</h3></div>')
+                                for item in info_items:
+                                    q = item.get("Вопрос", "")
+                                    a = item.get("Ответ", "")
+                                    faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{q}</h4></div><p>{a}</p></div>')
+                                faq_html_parts.append('</div>')
+                                
                             faq_html_parts.append('</div>')
                             
                             faq_html_str = "\n".join(faq_html_parts)
                             row_data['Блок FAQ'] = faq_html_str
-                            injections.append(faq_html_str) # Вкидываем в общую очередь блоков контента
+                            
+                            # ВАЖНО: Мы сохраняем HTML, но НЕ добавляем в injections!
+                            final_faq_html = faq_html_str 
                         else:
-                            status_logger.write("⚠️ Сбой генерации FAQ (ИИ вернул неверный формат).")
+                            status_logger.write("⚠️ Сбой генерации FAQ.")
 
                     # --- ИСПРАВЛЕННАЯ СБОРКА КОНТЕНТА ---
                     effective_blocks_count = max(1, auto_num_blocks)
@@ -4586,7 +4606,11 @@ with tab_wholesale_main:
 
                     # --- СКЛЕЙКА И НЕЗАВИСИМЫЕ ПРОВЕРКИ ---
                     merged_html = "".join(blocks)
-                    row_data['Весь текст целиком'] = merged_html
+                    # Приклеиваем сгенерированный FAQ строго в самый конец текста
+                    if final_faq_html:
+                        assembled_text += f"\n\n{final_faq_html}"
+                        
+                    row_data['Весь текст целиком'] = assembled_text
                     plain_text_merged = BeautifulSoup(merged_html, "html.parser").get_text(separator=" ").strip()
                     
                     row_data['DeepSeek Контекст'] = "-"; row_data['DeepSeek Комментарий'] = "-"
@@ -6070,6 +6094,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
