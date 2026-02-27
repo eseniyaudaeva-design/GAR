@@ -2426,7 +2426,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
     """
     
-try:
+    try:
         response = client.chat.completions.create(
             model="google/gemini-2.0-flash", 
             messages=[
@@ -5987,6 +5987,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
