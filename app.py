@@ -2512,101 +2512,102 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     import re
     
     try:
-        # Инициализируем клиент через ваш сторонний сервис
+        # Инициализируем клиент через ваш сторонний сервис [cite: 318]
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     except Exception as e:
         return [{"Вопрос": "Ошибка инициализации API", "Ответ": str(e)}]
     
-    # === НОВЫЙ БЛОК: ЖЕСТКАЯ ФИЛЬТРАЦИЯ LSI СЛОВ + МУСОР === [cite: 318, 319]
+    # === ЭТАП 1: ЖЕСТКАЯ ФИЛЬТРАЦИЯ LSI СЛОВ + МУСОР === 
     forbidden_roots = [
         "украин", "ukrain", "ua", "всу", "зсу", "ато", "сво", "войн",
         "киев", "львов", "харьков", "одесс", "днепр", "мариуполь",
         "донец", "луганс", "днр", "лнр", "донбасс", "мелитополь",
         "бердянск", "бахмут", "запорожь", "херсон", "крым",
         "политик", "спецоперац", "msk", "spb", "мск", "спб", "тк ", "ооо ", "ип "
-    ] [cite: 319]
+    ]
     
     clean_lsi = []
     for w in lsi_words:
         w_lower = str(w).lower()
+        # Добавляем слово только если в нём НЕТ запрещенных корней [cite: 319, 320]
         if not any(root in w_lower for root in forbidden_roots):
             # Пропускаем короткий латинский мусор, кроме известных стандартов
             if re.match(r'^[a-z]{2,4}$', w_lower) and w_lower not in ['aisi', 'din', 'iso', 'en']:
                 continue
-            clean_lsi.append(w) [cite: 320]
+            clean_lsi.append(w)
             
-    lsi_text = ", ".join(clean_lsi)
-    # ===============================================
+    lsi_text = ", ".join(clean_lsi) [cite: 320]
     
-    # --- ЭТАП 1: ЧЕРНОВИК (С РАЗДЕЛЕНИЕМ ИНТЕНТОВ И ТЕХ. КОНТРОЛЕМ) --- [cite: 320, 321]
+    # --- ЭТАП 2: ЧЕРНОВИК (С РАЗДЕЛЕНИЕМ ИНТЕНТОВ И ТЕХ. КОНТРОЛЕМ) --- 
     prompt_1 = f"""
-    Ты эксперт в SEO и технической поддержке B2B клиентов.
+    Ты технический эксперт в металлопрокате и B2B продажах.
     Составь FAQ для страницы "{h1}".
     
     СТРУКТУРА ВОПРОСОВ:
-    1. 50% — КОММЕРЧЕСКИЕ: доставка по РФ, способы оплаты, наличие, отгрузка, резка.
-    2. 50% — ИНФОРМАЦИОННЫЕ: технические характеристики, применение по ГОСТ, отличия марок стали.
+    1. 50% — КОММЕРЧЕСКИЕ: доставка по РФ, способы оплаты, наличие, отгрузка, резка в размер. 
+    2. 50% — ИНФОРМАЦИОННЫЕ: технические характеристики, ГОСТы, марки стали и их отличия. 
 
     ТЕХНИЧЕСКАЯ ГРАМОТНОСТЬ:
-    - ГОСТ всегда пиши заглавными буквами (напр. ГОСТ 10704-91).
+    - ГОСТ всегда пиши заглавными буквами (напр. ГОСТ 10704-91). 
     - Исправляй названия марок стали (AISI 304, Ст3сп), даже если в LSI они написаны с ошибками.
     - Диапазоны параметров пиши через тире без пробелов (напр. 10-20 мм).
     
     СТРОЖАЙШИЙ ЗАПРЕТ:
-    Категорически запрещено использовать любые слова, упоминания и темы, связанные с Украиной, политикой, войной, названиями компаний-конкурентов или сокращениями типа 'msk', 'спб'. Упоминать Россию — МОЖНО.
+    Категорически запрещено использовать любые упоминания Украины, политики, войны, конкурентов или сокращений типа 'msk', 'спб'. [cite: 322]
     
     УСЛОВИЯ:
-    1. Список LSI-слов: {lsi_text}. Органично впиши подходящие. [cite: 323, 324]
+    1. Список LSI-слов: {lsi_text}. [cite: 323]
     2. ВЫДЕЛИ ЖИРНЫМ ШРИФТОМ (**слово**) все использованные LSI-слова! [cite: 324]
     3. Напиши ровно {target_count} вопросов и ответов. [cite: 325]
-    4. ВЕРНИ СТРОГО В ФОРМАТЕ JSON! [{{"Вопрос": "...", "Ответ": "..."}}] [cite: 326]
+    4. ВЕРНИ СТРОГО В JSON! [{{"Вопрос": "...", "Ответ": "..."}}] [cite: 326]
     """
+    
     try:
         res_1 = client.chat.completions.create(
             model="google/gemini-2.5-pro",
             messages=[{"role": "user", "content": prompt_1}],
-            temperature=0.3
-        ) [cite: 326, 327]
+            temperature=0.3 [cite: 305]
+        )
         draft_text = res_1.choices[0].message.content.strip()
         
-        # Очистка Markdown для JSON
+        # Очистка Markdown для JSON [cite: 327]
         if draft_text.startswith("```json"): draft_text = draft_text[7:]
         if draft_text.startswith("```"): draft_text = draft_text[3:]
         if draft_text.endswith("```"): draft_text = draft_text[:-3]
-        draft_text = draft_text.strip() [cite: 327]
+        draft_text = draft_text.strip()
         
-        # --- ЭТАП 2: РЕДАКТУРА И ФАКТЧЕКИНГ --- 
+        # --- ЭТАП 3: РЕДАКТУРА И ФАКТЧЕКИНГ --- 
         prompt_2 = f"""
         Я сгенерировал черновик FAQ для страницы "{h1}". Вот он (JSON):
         {draft_text}
 
-        Выступи в роли строгого коммерческого редактора.
+        Выступи в роли строгого коммерческого редактора. [cite: 329]
         ПРАВИЛА:
-        1. СТРОГИЙ ЗАПРЕТ: Вычисти любые следы политики, Украины или мусорных сокращений (msk, спб). [cite: 329]
-        2. ФАКТЧЕКИНГ: Убедись, что все ГОСТы написаны заглавными, а марки стали корректно. [cite: 330]
-        3. Удали фразы ИИ ("Важно отметить", "Конечно"). [cite: 330]
+        1. СТРОГИЙ ЗАПРЕТ: Вычисти любые следы политики, Украины или мусорных сокращений (msk, спб). [cite: 330]
+        2. ФАКТЧЕКИНГ: Убедись, что все ГОСТы написаны заглавными, а марки стали корректно. 
+        3. Удали фразы ИИ ("Важно отметить", "Конечно"). [cite: 331]
         4. Ответы должны быть короткими и полезными. [cite: 332]
-        5. Сохрани заданное количество вопросов ({target_count}). [cite: 332]
-        6. ОБЯЗАТЕЛЬНО СОХРАНИ выделение жирным шрифтом (**слово**) для LSI! [cite: 333]
-        7. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ! [cite: 334]
+        5. Сохрани заданное количество вопросов ({target_count}). [cite: 333]
+        6. ОБЯЗАТЕЛЬНО СОХРАНИ выделение жирным шрифтом (**слово**) для LSI! [cite: 334]
+        7. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ! [cite: 326]
         """
         
         res_2 = client.chat.completions.create(
             model="google/gemini-2.5-pro",
             messages=[{"role": "user", "content": prompt_2}],
-            temperature=0.3
-        ) [cite: 334, 335]
+            temperature=0.3 [cite: 305]
+        )
         final_text = res_2.choices[0].message.content.strip()
         
-        # Очистка Markdown для JSON
+        # Очистка Markdown для JSON [cite: 335]
         if final_text.startswith("```json"): final_text = final_text[7:]
         if final_text.startswith("```"): final_text = final_text[3:]
         if final_text.endswith("```"): final_text = final_text[:-3]
-        final_text = final_text.strip() [cite: 335]
+        final_text = final_text.strip()
         
-        parsed_data = json.loads(final_text) [cite: 336]
+        parsed_data = json.loads(final_text) [cite: 335]
         
-        # --- ЭТАП 3: СКРИПТОВАЯ АВТОЗАМЕНА ТИРЕ --- [cite: 336]
+        # --- ЭТАП 4: СКРИПТОВАЯ АВТОЗАМЕНА ТИРЕ --- [cite: 336]
         for item in parsed_data:
             if "Вопрос" in item:
                 item["Вопрос"] = item["Вопрос"].replace("—", "–").replace(" - ", " – ")
@@ -2616,7 +2617,7 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         return parsed_data
         
     except Exception as e:
-        return [{"Вопрос": "Ошибка генерации", "Ответ": str(e)}] [cite: 337]
+        return [{"Вопрос": "Ошибка генерации", "Ответ": str(e)}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
@@ -6032,6 +6033,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
