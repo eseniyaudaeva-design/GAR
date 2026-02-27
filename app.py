@@ -2403,8 +2403,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         cleaned_blocks = []
         for b in blocks:
             cb = b.strip()
-            # Удаляем дубли заголовка, если ИИ их продублировал внутри блока
-            cb = re.sub(r'^<h[23].*?>.*?</h[23]>', '', cb, flags=re.DOTALL | re.IGNORECASE).strip()
+            # (Убрано удаление заголовков для всех блоков, чтобы h3 не пропадали)
             
             # Тотальная зачистка жирного шрифта
             cb = cb.replace("**", "")
@@ -2417,8 +2416,11 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
             cleaned_blocks.append("<p>Данные в процессе обработки...</p>")
             
         # Финальная сборка 1-го блока с принудительным H2
+        # (Обрезаем старый заголовок ТОЛЬКО у первого блока и вставляем наш эталонный)
+        first_block = cleaned_blocks[0]
+        first_block = re.sub(r'^<h[23].*?>.*?</h[23]>', '', first_block, flags=re.DOTALL | re.IGNORECASE).strip()
         final_h2_text = forced_header if forced_header else tag_name
-        cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{cleaned_blocks[0]}"
+        cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{first_block}"
 
         return cleaned_blocks[:num_blocks]
         
@@ -6094,6 +6096,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
