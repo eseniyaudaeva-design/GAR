@@ -5890,7 +5890,6 @@ with tab_faq_gen:
             for res in st.session_state.faq_results:
                 h1_val = res['h1']
                 url_val = res['url']
-                lsi_val = ", ".join(res['lsi'])
                 
                 faq_items = res['faq_data']
                 if isinstance(faq_items, list):
@@ -5899,10 +5898,9 @@ with tab_faq_gen:
                             all_faq_rows.append({
                                 "H1 / Маркер": h1_val,
                                 "URL": url_val,
-                                "Тип": item.get("Тип", "Информационный"), # <--- НОВАЯ КОЛОНКА
+                                "Тип": item.get("Тип", "Информационный"),
                                 "Вопрос": item.get("Вопрос", ""),
-                                "Ответ": item.get("Ответ", ""),
-                                "LSI Слова": lsi_val
+                                "Ответ": item.get("Ответ", "")
                             })
                             
             if all_faq_rows:
@@ -5917,7 +5915,6 @@ with tab_faq_gen:
                     worksheet.set_column('A:B', 30)
                     worksheet.set_column('C:C', 20)  # Ширина для "Тип"
                     worksheet.set_column('D:E', 70)  # Ширина для Вопросов/Ответов
-                    worksheet.set_column('F:F', 40)  # Ширина для LSI
                     
                 excel_data = output.getvalue()
                 st.download_button(
@@ -6020,6 +6017,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
