@@ -4678,25 +4678,35 @@ with tab_wholesale_main:
         if ws_gem_key_input:
             st.session_state['SUPER_GLOBAL_KEY'] = ws_gem_key_input
         
-        c_i1, c_i2 = st.columns(2)
-        with c_i1:
-            if "Подфильтровые" in gen_mode or "URL" in gen_mode: raw_urls = st.text_area("Список ссылок (с новой строки):", height=120)
-            else: raw_h1 = st.text_area("H1 (Маркер):", height=120); raw_h2 = st.text_area("H2 (Заголовок):", height=120)
+    with st.container(border=True):
+        st.markdown("#### 📥 Настройка данных и конвейера")
+        col_inputs, col_options = st.columns([1, 1])
         
-        with c_i2:
-            st.markdown("**Глобальные рубильники** (Что скрипту *разрешено* генерировать):")
+        with col_inputs:
+            if "Подфильтровые" in gen_mode or "URL" in gen_mode:
+                raw_urls = st.text_area("🔗 Список ссылок:", height=150, placeholder="https://...", key="ws_raw_urls")
+            else:
+                raw_h1 = st.text_area("🅰️ H1 (Маркеры):", height=150, key="ws_raw_h1")
+                raw_h2 = st.text_area("🅱️ H2 (Заголовки):", height=150, key="ws_raw_h2")
+        
+        with col_options:
+            st.markdown("**Разрешения генерации:**")
             st.checkbox("🤖 AI Тексты", value=True, key="ws_global_text")
             
-            c_b1, c_b2 = st.columns(2)
-            with c_b1:
-                st.selectbox("Кол-во блоков текста", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val")
-            with c_b2:
-                st.checkbox("Авто-расчет (3-5 шт)", value=True, key="ws_auto_blocks", help="Если включено, скрипт сам решит, сколько блоков нужно для распределения LSI. Если выключено - будет сгенерировано столько блоков, сколько выбрано слева.")
-                
-            st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
-            st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
-            st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
-            st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo")
+            c_sel1, c_sel2 = st.columns([1, 1])
+            with c_sel1:
+                st.selectbox("Блоков (шт)", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val")
+            with c_sel2:
+                st.checkbox("Авто-расчет", value=True, key="ws_auto_blocks")
+            
+            st.markdown("---")
+            c_row2_1, c_row2_2 = st.columns(2)
+            with c_row2_1:
+                st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
+                st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
+            with c_row2_2:
+                st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
+                st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo")
             
     c_start, c_stop = st.columns([2, 1])
     with c_start:
@@ -6047,6 +6057,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
