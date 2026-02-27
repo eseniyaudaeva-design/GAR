@@ -2390,7 +2390,17 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     4. Качество текста: 
        - Максимально сократи использование союза "и", заменяй его запятыми. [cite: 387, 388]
        - Запрещено создавать пустые или бессмысленные пункты списков (заглушки).
-    
+
+    СТРОГИЕ ПРАВИЛА ОФОРМЛЕНИЯ (ИЗ ВКЛАДКИ ЛСИ):
+    1. Оформление списков: 
+       - Маркированные списки (<ul>): каждый пункт заканчивается точкой с запятой (;), а самый последний в списке — точкой (.). 
+       - Нумерованные списки (<ol>): каждый пункт ВСЕГДА заканчивается точкой (.).
+    2. Числа и Диапазоны:
+       - ЗАПРЕЩЕНО писать "2,0", пиши просто "2". Лишние нули убирай.
+       - Диапазоны пиши без пробелов через тире, запятая для дробей: "1,2-4,0", "10-20 мм". 
+       - ИСКЛЮЧЕНИЕ для "от ... до ...": только для температур (от -10 до +50 °C) или разных ед. измерения.
+    3. Характеристики: В списках вместо двоеточия ставь длинное тире (—).
+    4. Качество текста: Максимально сократи использование союза "и", заменяй его запятыми. Запрещены пустые пункты списков.
     
     ТРЕБОВАНИЯ К СТРУКТУРЕ КАЖДОГО БЛОКА:
     Каждый из {num_blocks} блоков должен строго соблюдать следующий порядок элементов:
@@ -2416,9 +2426,9 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     - Только чистый HTML, разбитый через |||BLOCK_SEP|||.
     """
     
-    try:
+try:
         response = client.chat.completions.create(
-            model="google/gemini-2.5-pro",
+            model="google/gemini-2.0-flash", 
             messages=[
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
@@ -2426,35 +2436,24 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
             temperature=0.3 
         )
         content = response.choices[0].message.content
-        
-        # Чистка
         content = re.sub(r'^```[a-zA-Z]*\s*', '', content.strip())
         content = re.sub(r'\s*```$', '', content.strip())
         
-        blocks =[b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
-        
-        cleaned_blocks =[]
+        blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
+        cleaned_blocks = []
         for b in blocks:
-            cb = re.sub(r'^```[a-zA-Z]*', '', b).strip().lstrip('`.').strip()
-            cb = re.sub(r'^<h2.*?>.*?</h2>', '', cb, flags=re.DOTALL | re.IGNORECASE).strip()
-            cb = cb.replace("**", "")
+            cb = re.sub(r'^<h2.*?>.*?</h2>', '', b, flags=re.DOTALL | re.IGNORECASE).strip()
+            cb = cb.replace("**", "").replace(" - ", " — ")
             cb = re.sub(r'</?(b|strong)>', '', cb, flags=re.IGNORECASE)
-            
-            # АВТОЗАМЕНА дефисов с пробелами на длинное тире
-            cb = cb.replace(" - ", " — ")
-            
             if cb: cleaned_blocks.append(cb)
             
         while len(cleaned_blocks) < num_blocks: cleaned_blocks.append("")
         
         if cleaned_blocks:
-            final_h2_text = forced_header if forced_header else tag_name
-            cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{cleaned_blocks[0]}"
-
+            cleaned_blocks[0] = f"<h2>{forced_header if forced_header else tag_name}</h2>\n{cleaned_blocks[0]}"
         return cleaned_blocks[:num_blocks]
-        
     except Exception as e:
-        return[f"API Error: {str(e)}"] * num_blocks
+        return [f"API Error: {str(e)}"] * num_blocks
 
 # ==========================================
 # НОВЫЕ ФУНКЦИИ ДЛЯ LSI ГЕНЕРАТОРА (ВСТАВИТЬ СЮДА)
@@ -4521,19 +4520,36 @@ with tab_wholesale_main:
                                 if u != 'nan' and img != 'nan': img_db[u] = img
                         except: pass
 
-                    # 1. Формируем базовый список слов для текста (Коммерция + Общие)
+                    # 1. Сначала базовые SEO слова
                     final_text_seo_list = cat_commercial + cat_general
-                    # 2. Распределяем категорию 'Товары/Услуги'
+                    
+                    # 2. Распределяем 'Товары'
                     tags_cands = []
                     if len(structure_keywords) > 0:
-                        # Забираем строго первые 10 слов для попытки создания тегов
+                        # Первые 10 слов — в кандидаты на теги
                         tags_cands = structure_keywords[:10]
-                        
-                        # Все слова, которые не вошли в первую десятку, СРАЗУ отправляем в текст
+                        # Все, что после 10-го — СРАЗУ в текст
                         if len(structure_keywords) > 10:
                             for extra_kw in structure_keywords[10:]:
                                 if extra_kw not in final_text_seo_list:
                                     final_text_seo_list.append(extra_kw)
+                    
+                    # 3. Проверяем ссылки для тегов
+                    target_tag_urls = []
+                    if global_tags and all_tags_links:
+                        tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
+                        for kw in tags_cands:
+                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                            found = False
+                            for url in tags_cands_all:
+                                if tr_kw in url.lower() and url not in target_tag_urls:
+                                    target_tag_urls.append(url)
+                                    found = True
+                                    break
+                            
+                            # ЕСЛИ ССЫЛКА НЕ НАШЛАСЬ — отправляем слово в ТЗ для текста
+                            if not found and kw not in final_text_seo_list:
+                                final_text_seo_list.append(kw)
                     
                     # 3. Проверяем ссылки. Если ссылки нет — слово тоже уходит в текст
                     target_tag_urls = []
@@ -5971,6 +5987,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
