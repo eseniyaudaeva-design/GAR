@@ -2508,17 +2508,16 @@ def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
     return author, final_draft
 def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     import json
-    from openai import OpenAI
     import re
+    from openai import OpenAI
     
     try:
         # Инициализируем клиент через ваш сторонний сервис
-        client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1") [cite: 318]
+        client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     except Exception as e:
         return [{"Вопрос": "Ошибка инициализации API", "Ответ": str(e)}]
     
     # === ЭТАП 1: ЖЕСТКАЯ ФИЛЬТРАЦИЯ LSI СЛОВ + МУСОР ===
-    # Добавлены msk, spb и названия организаций в стоп-лист 
     forbidden_roots = [
         "украин", "ukrain", "ua", "всу", "зсу", "ато", "сво", "войн",
         "киев", "львов", "харьков", "одесс", "днепр", "мариуполь",
@@ -2530,18 +2529,19 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     clean_lsi = []
     for w in lsi_words:
         w_lower = str(w).lower()
-        if not any(root in w_lower for root in forbidden_roots): [cite: 319]
-            # Исключаем короткий латинский мусор, оставляя тех. стандарты
+        # Добавляем слово только если в нём НЕТ запрещенных корней
+        if not any(root in w_lower for root in forbidden_roots):
+            # Пропускаем короткий латинский мусор, кроме известных стандартов
             if re.match(r'^[a-z]{2,4}$', w_lower) and w_lower not in ['aisi', 'din', 'iso', 'en']:
                 continue
-            clean_lsi.append(w) [cite: 320]
+            clean_lsi.append(w)
             
-    lsi_text = ", ".join(clean_lsi) [cite: 320]
+    lsi_text = ", ".join(clean_lsi)
     
-    # --- ЭТАП 2: ЧЕРНОВИК (РАЗДЕЛЕНИЕ ИНТЕНТОВ И ТЕХ. КОНТРОЛЬ) ---
+    # --- ЭТАП 2: ЧЕРНОВИК (С РАЗДЕЛЕНИЕМ ИНТЕНТОВ И ТЕХ. КОНТРОЛЕМ) ---
     prompt_1 = f"""
-    Ты технический эксперт в металлопрокате и B2B продажах. [cite: 321]
-    Составь FAQ для страницы "{h1}". [cite: 321]
+    Ты технический эксперт в металлопрокате и B2B продажах.
+    Составь FAQ для страницы "{h1}".
     
     СТРУКТУРА ВОПРОСОВ (ОБЯЗАТЕЛЬНО):
     1. 50% — КОММЕРЧЕСКИЕ: доставка по РФ, способы оплаты, наличие, отгрузка, резка в размер.
@@ -2553,13 +2553,13 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     - Диапазоны параметров пиши через тире без пробелов (напр. 10-20 мм).
     
     СТРОЖАЙШИЙ ЗАПРЕТ:
-    Категорически запрещено использовать любые упоминания Украины, политики, войны, конкурентов или сокращений типа 'msk', 'спб'. [cite: 322]
+    Категорически запрещено использовать любые упоминания Украины, политики, войны, конкурентов или сокращений типа 'msk', 'спб'.
     
     УСЛОВИЯ:
-    1. Список LSI-слов: {lsi_text}. [cite: 323]
-    2. ВЫДЕЛИ ЖИРНЫМ ШРИФТОМ (**слово**) все использованные LSI-слова! [cite: 324]
-    3. Напиши ровно {target_count} вопросов и ответов. [cite: 325]
-    4. ВЕРНИ СТРОГО В JSON! [{{"Вопрос": "...", "Ответ": "..."}}] [cite: 326]
+    1. Список LSI-слов: {lsi_text}.
+    2. ВЫДЕЛИ ЖИРНЫМ ШРИФТОМ (**слово**) все использованные LSI-слова!
+    3. Напиши ровно {target_count} вопросов и ответов.
+    4. ВЕРНИ СТРОГО В JSON! [{{"Вопрос": "...", "Ответ": "..."}}]
     """
     
     try:
@@ -2570,7 +2570,7 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         )
         draft_text = res_1.choices[0].message.content.strip()
         
-        # Очистка Markdown [cite: 327]
+        # Очистка Markdown
         if draft_text.startswith("```json"): draft_text = draft_text[7:]
         if draft_text.startswith("```"): draft_text = draft_text[3:]
         if draft_text.endswith("```"): draft_text = draft_text[:-3]
@@ -2578,18 +2578,18 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         
         # --- ЭТАП 3: РЕДАКТУРА И ФАКТЧЕКИНГ ---
         prompt_2 = f"""
-        Я сгенерировал черновик FAQ для страницы "{h1}". Вот он (JSON): [cite: 328]
+        Я сгенерировал черновик FAQ для страницы "{h1}". Вот он (JSON):
         {draft_text}
 
-        Выступи в роли строгого коммерческого редактора. [cite: 329]
+        Выступи в роли строгого коммерческого редактора.
         ПРАВИЛА:
-        1. СТРОГИЙ ЗАПРЕТ: Вычисти любые следы политики, Украины или мусорных сокращений (msk, спб). [cite: 330]
+        1. СТРОГИЙ ЗАПРЕТ: Вычисти любые следы политики, Украины или мусорных сокращений (msk, спб).
         2. ФАКТЧЕКИНГ: Убедись, что все ГОСТы написаны заглавными, а марки стали корректно.
-        3. Удали фразы ИИ ("Важно отметить", "Конечно"). [cite: 331]
-        4. Ответы должны быть короткими и полезными. [cite: 332]
-        5. Сохрани заданное количество вопросов ({target_count}). [cite: 333]
-        6. ОБЯЗАТЕЛЬНО СОХРАНИ выделение жирным шрифтом (**слово**) для LSI! [cite: 334]
-        7. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ! [cite: 334]
+        3. Удали фразы ИИ ("Важно отметить", "Конечно").
+        4. Ответы должны быть короткими и полезными.
+        5. Сохрани заданное количество вопросов ({target_count}).
+        6. ОБЯЗАТЕЛЬНО СОХРАНИ выделение жирным шрифтом (**слово**) для LSI!
+        7. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ!
         """
         
         res_2 = client.chat.completions.create(
@@ -2599,7 +2599,7 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         )
         final_text = res_2.choices[0].message.content.strip()
         
-        # Очистка Markdown [cite: 335]
+        # Очистка Markdown
         if final_text.startswith("```json"): final_text = final_text[7:]
         if final_text.startswith("```"): final_text = final_text[3:]
         if final_text.endswith("```"): final_text = final_text[:-3]
@@ -2610,9 +2610,9 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         # --- ЭТАП 4: СКРИПТОВАЯ АВТОЗАМЕНА ТИРЕ ---
         for item in parsed_data:
             if "Вопрос" in item:
-                item["Вопрос"] = item["Вопрос"].replace("—", "–").replace(" - ", " – ") [cite: 336]
+                item["Вопрос"] = item["Вопрос"].replace("—", "–").replace(" - ", " – ")
             if "Ответ" in item:
-                item["Ответ"] = item["Ответ"].replace("—", "–").replace(" - ", " – ") [cite: 337]
+                item["Ответ"] = item["Ответ"].replace("—", "–").replace(" - ", " – ")
                 
         return parsed_data
         
@@ -6033,6 +6033,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
