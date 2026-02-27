@@ -4678,35 +4678,43 @@ with tab_wholesale_main:
         if ws_gem_key_input:
             st.session_state['SUPER_GLOBAL_KEY'] = ws_gem_key_input
         
+    # === ГРУППИРОВКА НАСТРОЕК В КОМПАКТНЫЙ БЛОК ===
     with st.container(border=True):
-        st.markdown("#### 📥 Настройка данных и конвейера")
-        col_inputs, col_options = st.columns([1, 1])
+        st.markdown("#### ⚙️ Параметры конвейера")
         
-        with col_inputs:
+        # Основные колонки: Ввод vs Настройки
+        col_left, col_right = st.columns([1, 1], gap="medium")
+        
+        with col_left:
+            st.markdown("**📥 Данные для обработки**")
             if "Подфильтровые" in gen_mode or "URL" in gen_mode:
-                raw_urls = st.text_area("🔗 Список ссылок:", height=150, placeholder="https://...", key="ws_raw_urls")
+                raw_urls = st.text_area("🔗 Список ссылок", height=185, placeholder="Вставь URL (один на строку)", key="ws_raw_urls")
             else:
-                raw_h1 = st.text_area("🅰️ H1 (Маркеры):", height=150, key="ws_raw_h1")
-                raw_h2 = st.text_area("🅱️ H2 (Заголовки):", height=150, key="ws_raw_h2")
+                raw_h1 = st.text_area("🅰️ H1 (Маркеры)", height=80, key="ws_raw_h1")
+                raw_h2 = st.text_area("🅱️ H2 (Заголовки)", height=80, key="ws_raw_h2")
         
-        with col_options:
-            st.markdown("**Разрешения генерации:**")
-            st.checkbox("🤖 AI Тексты", value=True, key="ws_global_text")
+        with col_right:
+            st.markdown("**🛠️ Конструктор блоков**")
             
-            c_sel1, c_sel2 = st.columns([1, 1])
-            with c_sel1:
-                st.selectbox("Блоков (шт)", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val")
-            with c_sel2:
+            # Ряд 1: Тексты и их количество
+            st.checkbox("📝 Генерировать AI тексты", value=True, key="ws_global_text")
+            c_sub1, c_sub2 = st.columns(2)
+            with c_sub1:
+                st.selectbox("Блоков (шт)", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val", label_visibility="collapsed")
+            with c_sub2:
                 st.checkbox("Авто-расчет", value=True, key="ws_auto_blocks")
             
-            st.markdown("---")
-            c_row2_1, c_row2_2 = st.columns(2)
-            with c_row2_1:
-                st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
-                st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
-            with c_row2_2:
-                st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
-                st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo")
+            st.divider() # Тонкая линия для разделения
+            
+            # Ряд 2: Сетка дополнительных элементов
+            st.markdown("**🧩 Доп. элементы:**")
+            grid_c1, grid_c2 = st.columns(2)
+            with grid_c1:
+                st.checkbox("📊 Таблицы", value=True, key="ws_global_tables")
+                st.checkbox("🏷️ Теги (LSI)", value=True, key="ws_global_tags")
+            with grid_c2:
+                st.checkbox("🔥 Промо-блок", value=True, key="ws_global_promo")
+                st.checkbox("🌍 Гео-доставка", value=True, key="ws_global_geo")
             
     c_start, c_stop = st.columns([2, 1])
     with c_start:
@@ -6057,6 +6065,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
