@@ -2316,9 +2316,10 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     from openai import OpenAI
     client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     
-    seo_words = seo_words or[]
+    seo_words = seo_words or []
     seo_instruction_block = ""
     
+    # === 1. ИНСТРУКЦИЯ ПО SEO (ИСПРАВЛЕНО: УБРАНО ТРЕБОВАНИЕ ВЫДЕЛЕНИЯ) ===
     if seo_words:
         seo_list_str = ", ".join(seo_words)
         seo_instruction_block = f"""
@@ -2358,8 +2359,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         "политические темы, валюту гривну. Контент строго для РФ. "
         "2. НИКОГДА не используй ссылки на источники ни в тексте, ни в списках. Чисти текст от них полностью. "
         "3. Именна собственные, названия городов пиши с заглавной буквы. Марки пиши в соответствии с марочниками. ГОСТ всегда заглавными."
-        "4. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать разделы: «Как заказать», «Доставка», «Оплата», «Наши преимущества». "
-        "Пиши ТОЛЬКО техническое описание, сферы применения, стандарты производства и выгоды характеристик товара."
     )
 
     # === 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ (Ваш вариант + переменные) ===
@@ -2377,30 +2376,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     1. ОБЪЕМ: Каждый блок должен содержать максимум 800 символов. Раскрывай тему подробно.
     2. ЧИСТОТА: Исключи любые ссылки на источники.
     3. ПОЛЬЗА: Текст должен быть технически грамотным и полезным для специалиста по закупкам. Избегай "воды".
-
-    СТРОГИЕ ПРАВИЛА ОФОРМЛЕНИЯ (КРИТИЧЕСКИ ВАЖНО):
-    1. Оформление списков: 
-       - Маркированные списки (<ul>): каждый пункт заканчивается точкой с запятой (;), а самый последний — точкой (.). 
-       - Нумерованные списки (<ol>): каждый пункт ВСЕГДА заканчивается точкой (.).
-    2. Числа и Диапазоны:
-       - ЗАПРЕЩЕНО искусственное увеличение точности: пиши "2", а не "2,0".
-       - Простые диапазоны пиши строго без пробелов через тире, используя запятую для дробей: "1,2-4,0", "10-20 мм". [cite: 382]
-       - ИСКЛЮЧЕНИЕ для "от ... до ...": используй этот формат только для температур (например, "от -10 до +50 °C") или при использовании разных единиц измерения. [cite: 383]
-    3. Характеристики: Если в списке указываешь свойство и значение, ставь между ними длинное тире (—). [cite: 386]
-    4. Качество текста: 
-       - Максимально сократи использование союза "и", заменяй его запятыми. [cite: 387, 388]
-       - Запрещено создавать пустые или бессмысленные пункты списков (заглушки).
-
-    СТРОГИЕ ПРАВИЛА ОФОРМЛЕНИЯ (ИЗ ВКЛАДКИ ЛСИ):
-    1. Оформление списков: 
-       - Маркированные списки (<ul>): каждый пункт заканчивается точкой с запятой (;), а самый последний в списке — точкой (.). 
-       - Нумерованные списки (<ol>): каждый пункт ВСЕГДА заканчивается точкой (.).
-    2. Числа и Диапазоны:
-       - ЗАПРЕЩЕНО писать "2,0", пиши просто "2". Лишние нули убирай.
-       - Диапазоны пиши без пробелов через тире, запятая для дробей: "1,2-4,0", "10-20 мм". 
-       - ИСКЛЮЧЕНИЕ для "от ... до ...": только для температур (от -10 до +50 °C) или разных ед. измерения.
-    3. Характеристики: В списках вместо двоеточия ставь длинное тире (—).
-    4. Качество текста: Максимально сократи использование союза "и", заменяй его запятыми. Запрещены пустые пункты списков.
     
     ТРЕБОВАНИЯ К СТРУКТУРЕ КАЖДОГО БЛОКА:
     Каждый из {num_blocks} блоков должен строго соблюдать следующий порядок элементов:
@@ -2428,7 +2403,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     
     try:
         response = client.chat.completions.create(
-            model="google/gemini-2.0-flash", 
+            model="google/gemini-2.5-pro",
             messages=[
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
@@ -2436,24 +2411,40 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
             temperature=0.3 
         )
         content = response.choices[0].message.content
+        
+        # === ЧИСТКА ОТ MARKDOWN И МУСОРА ===
         content = re.sub(r'^```[a-zA-Z]*\s*', '', content.strip())
         content = re.sub(r'\s*```$', '', content.strip())
         
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
+        
         cleaned_blocks = []
         for b in blocks:
-            cb = re.sub(r'^<h2.*?>.*?</h2>', '', b, flags=re.DOTALL | re.IGNORECASE).strip()
-            cb = cb.replace("**", "").replace(" - ", " — ")
+            cb = re.sub(r'^```[a-zA-Z]*', '', b).strip().lstrip('`.').strip()
+            
+            # Убираем дубль H2, если ИИ его все-таки написал
+            cb = re.sub(r'^<h2.*?>.*?</h2>', '', cb, flags=re.DOTALL | re.IGNORECASE).strip()
+            
+            # === ФИЗИЧЕСКОЕ УДАЛЕНИЕ ЖИРНОГО ТЕКСТА ===
+            # 1. Удаляем Markdown жирный (**текст**)
+            cb = cb.replace("**", "")
+            # 2. Удаляем HTML теги жирного (<b>, </b>, <strong>, </strong>)
             cb = re.sub(r'</?(b|strong)>', '', cb, flags=re.IGNORECASE)
+            
             if cb: cleaned_blocks.append(cb)
             
         while len(cleaned_blocks) < num_blocks: cleaned_blocks.append("")
         
+        # === ПРИНУДИТЕЛЬНАЯ ВСТАВКА ЗАГОЛОВКА ===
         if cleaned_blocks:
-            cleaned_blocks[0] = f"<h2>{forced_header if forced_header else tag_name}</h2>\n{cleaned_blocks[0]}"
+            final_h2_text = forced_header if forced_header else tag_name
+            cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{cleaned_blocks[0]}"
+
         return cleaned_blocks[:num_blocks]
+        
     except Exception as e:
         return [f"API Error: {str(e)}"] * num_blocks
+
 
 # ==========================================
 # НОВЫЕ ФУНКЦИИ ДЛЯ LSI ГЕНЕРАТОРА (ВСТАВИТЬ СЮДА)
@@ -5987,6 +5978,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
