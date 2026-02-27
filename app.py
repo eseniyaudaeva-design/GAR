@@ -4542,9 +4542,13 @@ with tab_wholesale_main:
                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
 
                     if global_faq and client:
-                        status_logger.write("❓ Генерируем FAQ...")
-                        # Генерируем 4 вопроса (2 коммерческих, 2 инфо)
-                        faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=4)
+                        # Получаем выбранное количество вопросов (по умолчанию 4)
+                        current_faq_count = st.session_state.get('ws_faq_count', 4)
+                        
+                        status_logger.write(f"❓ Генерируем FAQ ({current_faq_count} вопросов)...")
+                        
+                        # Передаем это число в target_count
+                        faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
                         
                         # Преобразуем JSON в красивый HTML
                         if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
@@ -4713,7 +4717,9 @@ with tab_wholesale_main:
                 with grid_1:
                     st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
                     st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
-                    st.checkbox("❓ FAQ", value=True, key="ws_global_faq") # <--- НОВАЯ ГАЛОЧКА
+                    st.checkbox("❓ FAQ", value=True, key="ws_global_faq")
+                    # НОВОЕ: Поле для выбора количества вопросов
+                    st.number_input("Количество вопросов FAQ", min_value=2, max_value=12, value=4, step=2, key="ws_faq_count")
                 with grid_2:
                     st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
                     st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo")
@@ -6064,6 +6070,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
