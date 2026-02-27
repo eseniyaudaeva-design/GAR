@@ -4678,43 +4678,43 @@ with tab_wholesale_main:
         if ws_gem_key_input:
             st.session_state['SUPER_GLOBAL_KEY'] = ws_gem_key_input
         
-    # === ГРУППИРОВКА НАСТРОЕК В КОМПАКТНЫЙ БЛОК ===
-    with st.container(border=True):
-        st.markdown("#### ⚙️ Параметры конвейера")
-        
-        # Основные колонки: Ввод vs Настройки
-        col_left, col_right = st.columns([1, 1], gap="medium")
-        
-        with col_left:
-            st.markdown("**📥 Данные для обработки**")
-            if "Подфильтровые" in gen_mode or "URL" in gen_mode:
-                raw_urls = st.text_area("🔗 Список ссылок", height=185, placeholder="Вставь URL (один на строку)", key="ws_raw_urls")
-            else:
-                raw_h1 = st.text_area("🅰️ H1 (Маркеры)", height=80, key="ws_raw_h1")
-                raw_h2 = st.text_area("🅱️ H2 (Заголовки)", height=80, key="ws_raw_h2")
-        
-        with col_right:
-            st.markdown("**🛠️ Конструктор блоков**")
-            
-            # Ряд 1: Тексты и их количество
-            st.checkbox("📝 Генерировать AI тексты", value=True, key="ws_global_text")
-            c_sub1, c_sub2 = st.columns(2)
-            with c_sub1:
-                st.selectbox("Блоков (шт)", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val", label_visibility="collapsed")
-            with c_sub2:
-                st.checkbox("Авто-расчет", value=True, key="ws_auto_blocks")
-            
-            st.divider() # Тонкая линия для разделения
-            
-            # Ряд 2: Сетка дополнительных элементов
-            st.markdown("**🧩 Доп. элементы:**")
-            grid_c1, grid_c2 = st.columns(2)
-            with grid_c1:
-                st.checkbox("📊 Таблицы", value=True, key="ws_global_tables")
-                st.checkbox("🏷️ Теги (LSI)", value=True, key="ws_global_tags")
-            with grid_c2:
-                st.checkbox("🔥 Промо-блок", value=True, key="ws_global_promo")
-                st.checkbox("🌍 Гео-доставка", value=True, key="ws_global_geo")
+    # Упаковываем всё в один контейнер, чтобы настройки не «разлетались»
+        with st.container(border=True):
+            col_left, col_right = st.columns([1.2, 1], gap="medium")
+
+            with col_left:
+                st.write("📝 **Ввод данных**")
+                if "Подфильтровые" in gen_mode or "URL" in gen_mode:
+                    raw_urls = st.text_area("Список ссылок:", height=215, placeholder="https://...", key="ws_area_urls")
+                else:
+                    # H1 и H2 теперь компактно в два столбика
+                    h1_c, h2_c = st.columns(2)
+                    raw_h1 = h1_c.text_area("H1 (Маркеры):", height=215, key="ws_area_h1")
+                    raw_h2 = h2_c.text_area("H2 (Заголовки):", height=215, key="ws_area_h2")
+
+            with col_right:
+                st.write("⚙️ **Настройки генерации**")
+                
+                # Блок текста: чекбокс и количество в одну строку
+                st.checkbox("🤖 AI Тексты", value=True, key="ws_global_text")
+                c_b1, c_b2 = st.columns([1, 1])
+                with c_b1:
+                    st.selectbox("Блоков", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val", label_visibility="collapsed")
+                with c_b2:
+                    st.checkbox("Авто-расчет", value=True, key="ws_auto_blocks")
+                
+                st.write("---") # Разделитель
+                
+                # Остальные настройки в два столбика (ровная сетка)
+                st.write("**Доп. элементы:**")
+                grid_1, grid_2 = st.columns(2)
+                with grid_1:
+                    st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
+                    st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
+                with grid_2:
+                    st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
+                    st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo")
+                
             
     c_start, c_stop = st.columns([2, 1])
     with c_start:
@@ -6065,6 +6065,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
