@@ -2315,8 +2315,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     
     from openai import OpenAI
     import re
-    import math
-
+    
     client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     
     seo_words = seo_words or []
@@ -2328,7 +2327,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         seo_instruction_block = f"""
 --- СТРОГАЯ ИНСТРУКЦИЯ ПО КЛЮЧЕВЫМ СЛОВАМ ---
 Тебе нужно внедрить в текст следующие LSI-слова: {seo_list_str}
-
 ПРАВИЛА РАБОТЫ СО СЛОВАМИ:
 1. Используй каждое слово из списка РОВНО 1 РАЗ на весь объем текста.
 2. Вписывай слова максимально естественно, меняя падежи, числа и формы.
@@ -2384,6 +2382,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 """
 
     try:
+        # === ВЫЗОВ API ===
         response = client.chat.completions.create(
             model="google/gemini-2.5-pro",
             messages=[
@@ -2392,40 +2391,53 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
             ],
             temperature=0.3 
         )
-        content = response.choices[0].message.content
         
-        # Очистка от возможного мусора в ответе
-        content = re.sub(r'^```[a-zA-Z]*\s*', '', content.strip())
-        content = re.sub(r'\s*```$', '', content.strip())
+        raw_content = response.choices[0].message.content
         
-        # Разбивка на блоки
-        blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
-        
-        cleaned_blocks = []
-        for b in blocks:
-            cb = b.strip()
-            
-            # Тотальная зачистка жирного шрифта
-            cb = cb.replace("**", "")
-            cb = re.sub(r'</?(b|strong)>', '', cb, flags=re.IGNORECASE)
-            
-            if cb: cleaned_blocks.append(cb)
-            
-        # Гарантируем нужное количество блоков
-        while len(cleaned_blocks) < num_blocks: 
-            cleaned_blocks.append("<p>Данные в процессе обработки...</p>")
-            
-        # Финальная сборка 1-го блока с принудительным H2
-        # (Обрезаем старый заголовок ТОЛЬКО у первого блока и вставляем эталонный)
-        first_block = cleaned_blocks[0]
-        first_block = re.sub(r'^<h[23].*?>.*?</h[23]>', '', first_block, flags=re.DOTALL | re.IGNORECASE).strip()
-        final_h2_text = forced_header if forced_header else tag_name
-        cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{first_block}"
+        if not raw_content:
+            return ["Error: API вернул пустой ответ (возможно, сработал фильтр безопасности)"] * num_blocks
 
-        return cleaned_blocks[:num_blocks]
-        
+        # === БРОНЕБОЙНАЯ ОБРАБОТКА (ЧТОБЫ НЕ ТЕРЯТЬ ДЕНЬГИ) ===
+        try:
+            # Очистка Markdown
+            content = re.sub(r'^```[a-zA-Z]*\s*', '', raw_content.strip())
+            content = re.sub(r'\s*```$', '', content.strip())
+            
+            # Разбивка
+            blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
+            
+            # Если нейросеть проигнорировала разделитель, отдаем весь текст в первом блоке
+            if not blocks:
+                blocks = [content]
+                
+            cleaned_blocks = []
+            for b in blocks:
+                cb = b.strip()
+                cb = cb.replace("**", "")
+                cb = re.sub(r'</?(b|strong)>', '', cb, flags=re.IGNORECASE)
+                if cb: cleaned_blocks.append(cb)
+                
+            # Гарантируем нужное количество блоков, чтобы скрипт не упал
+            while len(cleaned_blocks) < num_blocks: 
+                cleaned_blocks.append("")
+                
+            # Обработка ТОЛЬКО первого блока (без риска стереть весь текст)
+            first_block = cleaned_blocks[0]
+            first_block = re.sub(r'^<h[23][^>]*>.*?</h[23]>', '', first_block, flags=re.IGNORECASE).strip()
+            final_h2_text = forced_header if forced_header else tag_name
+            cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{first_block}"
+
+            return cleaned_blocks[:num_blocks]
+
+        except Exception as parse_error:
+            # ЕСЛИ СКРИПТ СЛОМАЛСЯ ПРИ НАРЕЗКЕ - МЫ ВОЗВРАЩАЕМ СЫРОЙ ТЕКСТ (ДЕНЬГИ СПАСЕНЫ)
+            safe_blocks = [f"<h2>{forced_header if forced_header else tag_name}</h2>\n{raw_content}"]
+            while len(safe_blocks) < num_blocks:
+                safe_blocks.append("")
+            return safe_blocks[:num_blocks]
+
     except Exception as e:
-        return [f"Error: API Error - {str(e)}"] * num_blocks
+        return [f"Error: Ошибка соединения с API - {str(e)}"] * num_blocks
 
 # ==========================================
 # НОВЫЕ ФУНКЦИИ ДЛЯ LSI ГЕНЕРАТОРА (ВСТАВИТЬ СЮДА)
@@ -6096,6 +6108,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
