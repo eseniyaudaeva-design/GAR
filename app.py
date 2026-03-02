@@ -4399,57 +4399,51 @@ with tab_wholesale_main:
                         except: pass
 
                     final_text_seo_list = cat_commercial + cat_general
-                    
-                    # Распределяем слова: 40% в текст, 30% в теги, 30% в промо
-                    # Распределяем слова: Текст, Теги, Промо, FAQ
-                    tags_cands = []
-                    promo_cands = []
-                    faq_cands = []
-                    
-                    if len(structure_keywords) > 10:
-                        idx1 = math.ceil(len(structure_keywords) * 0.4)
-                        idx2 = math.ceil(len(structure_keywords) * 0.6)
-                        idx3 = math.ceil(len(structure_keywords) * 0.8)
                         
-                        final_text_seo_list.extend(structure_keywords[:idx1])
-                        tags_cands = structure_keywords[idx1:idx2]
-                        promo_cands = structure_keywords[idx2:idx3]
-                        faq_cands = structure_keywords[idx3:]
-                    else:
-                        tags_cands = structure_keywords
-                        faq_cands = structure_keywords
-
-                    target_tag_urls = []
-                    if global_tags and all_tags_links:
-                        tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
-                        for kw in tags_cands:
-                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            found = False
-                            for url in tags_cands_all:
-                                if tr_kw in url.lower() and url not in target_tag_urls:
-                                    target_tag_urls.append(url); found = True; break
-                            if not found and kw not in final_text_seo_list: final_text_seo_list.append(kw)
-                    else:
-                        for kw in tags_cands:
-                            if kw not in final_text_seo_list: final_text_seo_list.append(kw)
-
-                    target_promo_urls = []
-                    if global_promo and p_img_map:
-                        p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
-                        for kw in promo_cands:
-                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            found = False
-                            for u in p_cands_all:
-                                if tr_kw in u.lower() and u not in target_promo_urls:
-                                    target_promo_urls.append(u); found = True; break
-                            if not found and kw not in final_text_seo_list: final_text_seo_list.append(kw)
-                    else:
-                        for kw in promo_cands:
-                            if kw not in final_text_seo_list: final_text_seo_list.append(kw)
-                    # --- ДОБАВЛЯЕМ ПРОВЕРКУ ДЛЯ FAQ ---
-                    if not global_faq:
-                        for kw in faq_cands:
-                            if kw not in final_text_seo_list: final_text_seo_list.append(kw)
+                        # 1. УМНОЕ КВОТИРОВАНИЕ (чтобы текст не пух от 200+ слов)
+                        tags_cands = []
+                        promo_cands = []
+                        faq_cands = []
+                        
+                        total_str_kw = len(structure_keywords)
+                        if total_str_kw > 15:
+                            # Даем тексту максимум 25 дополнительных слов, чтобы не было переспама
+                            idx1 = min(total_str_kw, 25) 
+                            idx2 = idx1 + int((total_str_kw - idx1) * 0.4) # 40% остатка в теги
+                            idx3 = idx2 + int((total_str_kw - idx1) * 0.4) # 40% остатка в промо
+                            
+                            final_text_seo_list.extend(structure_keywords[:idx1])
+                            tags_cands = structure_keywords[idx1:idx2]
+                            promo_cands = structure_keywords[idx2:idx3]
+                            faq_cands = structure_keywords[idx3:]
+                        else:
+                            final_text_seo_list.extend(structure_keywords)
+                            tags_cands = structure_keywords.copy()
+                            faq_cands = structure_keywords.copy()
+                            
+                        # 2. ЖЕСТКОЕ ПРАВИЛО: если слово не нашло тег/промо, оно НЕ ВОЗВРАЩАЕТСЯ в текст!
+                        target_tag_urls = []
+                        if global_tags and all_tags_links:
+                            tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
+                            for kw in tags_cands:
+                                tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                                for url in tags_cands_all:
+                                    if tr_kw in url.lower() and url not in target_tag_urls:
+                                        target_tag_urls.append(url)
+                                        break
+                                
+                        target_promo_urls = []
+                        if global_promo and p_img_map:
+                            p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
+                            for kw in promo_cands:
+                                tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                                for u in p_cands_all:
+                                    if tr_kw in u.lower() and u not in target_promo_urls:
+                                        target_promo_urls.append(u)
+                                        break
+                        
+                        if not global_faq:
+                            pass # FAQ слова тоже просто сгорают, а не летят в текст
                     # ----------------------------------
 
                     curr_use_text = global_text
@@ -4558,11 +4552,6 @@ with tab_wholesale_main:
                         row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
 
                     final_faq_html = ""
-                    # Обнуляем ячейки для конкретного товара
-                    row_data['FAQ Коммерческий вопрос'] = ""
-                    row_data['FAQ Коммерческий ответ'] = ""
-                    row_data['FAQ Информационный вопрос'] = ""
-                    row_data['FAQ Информационный ответ'] = ""
                     
                     if global_faq and client:
                         current_faq_count = st.session_state.get('ws_faq_count', 4)
@@ -4573,6 +4562,48 @@ with tab_wholesale_main:
                         if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
                             if faq_json[0].get("Тип") == "Ошибка":
                                 status_logger.write(f"⚠️ Ошибка API при генерации FAQ: {faq_json[0].get('Ответ')}")
+                            else:
+                                # Разделяем на 2 группы для HTML
+                                comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
+                                info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
+                                
+                                # СОХРАНЯЕМ FAQ ДЛЯ ВТОРОЙ ВКЛАДКИ EXCEL (каждый вопрос - новая строка)
+                                if 'faq_export_data' not in st.session_state:
+                                    st.session_state.faq_export_data = []
+                                
+                                for item in faq_json:
+                                    st.session_state.faq_export_data.append({
+                                        'Page URL': current_task['url'],
+                                        'Product Name': h2_header,
+                                        'Тип вопроса': item.get("Тип", ""),
+                                        'Вопрос': item.get("Вопрос", ""),
+                                        'Ответ': item.get("Ответ", "")
+                                    })
+                                
+                                # СОБИРАЕМ ЕДИНЫЙ HTML ДЛЯ ВСТАВКИ В КОНЕЦ ТЕКСТА
+                                faq_html_parts = [
+                                    '<div class="faq-section">',
+                                    f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>'
+                                ]
+                                
+                                if comm_items:
+                                    faq_html_parts.append('<div class="faq-category">')
+                                    faq_html_parts.append('<div class="h3"><h3>Коммерческие вопросы</h3></div>')
+                                    for item in comm_items:
+                                        faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
+                                    faq_html_parts.append('</div>')
+                                    
+                                if info_items:
+                                    faq_html_parts.append('<div class="faq-category">')
+                                    faq_html_parts.append('<div class="h3"><h3>Информационные вопросы</h3></div>')
+                                    for item in info_items:
+                                        faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
+                                    faq_html_parts.append('</div>')
+                                    
+                                faq_html_parts.append('</div>')
+                                final_faq_html = "\n".join(faq_html_parts)
+                        else:
+                            status_logger.write("⚠️ Сбой формата ответа FAQ от нейросети.")
                             else:
                                 # Разделяем на 2 группы
                                 comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
@@ -4608,56 +4639,69 @@ with tab_wholesale_main:
                                 final_faq_html = "\n".join(faq_html_parts)
                         else:
                             status_logger.write("⚠️ Сбой формата ответа FAQ от нейросети.")
-                    # =======================================================
-                    # ФИНАЛЬНАЯ СКЛЕЙКА (БЕЗ НЕЁ КОЛОНКА БУДЕТ ПУСТОЙ!)
-                    # =======================================================
-                    # 1. Берем основной текст (который скрипт собрал из блоков до FAQ)
-                    safe_text = assembled_text if 'assembled_text' in locals() else ""
-                    
-                    # 2. Если FAQ успешно сгенерировался — приклеиваем его в самый низ
-                    if final_faq_html:
-                        safe_text += f"\n\n{final_faq_html}"
-                        
-                    # 3. Жестко записываем всё в итоговую ячейку
-                    row_data['Весь текст целиком'] = safe_text
-                    # =======================================================
-
-                    # --- ИСПРАВЛЕННАЯ СБОРКА КОНТЕНТА ---
+                    # --- СБОРКА КОНТЕНТА В БЛОКИ ---
                     effective_blocks_count = max(1, auto_num_blocks)
-                    
                     for i_inj, inj in enumerate(injections):
                         target_idx = i_inj % effective_blocks_count
-                        # ВАЖНО: Если текстовый блок сгенерировался, приклеиваем доп. блок вниз. Если нет - просто вставляем
                         if blocks[target_idx]:
                             blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
                         else:
                             blocks[target_idx] = inj
-                        
+                            
                     TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
                     for i_c, c_name in enumerate(TEXT_CONTAINERS):
                         row_data[c_name] = blocks[i_c]
-
-                    # --- СКЛЕЙКА И НЕЗАВИСИМЫЕ ПРОВЕРКИ ---
-                    merged_html = "".join(blocks)
-                    # Приклеиваем сгенерированный FAQ строго в самый конец текста
-                    if final_faq_html:
-                        assembled_text += f"\n\n{final_faq_html}"
                         
-                    row_data['Весь текст целиком'] = assembled_text
-                    plain_text_merged = BeautifulSoup(merged_html, "html.parser").get_text(separator=" ").strip()
+                    # --- ИТОГОВАЯ СКЛЕЙКА ДЛЯ СОХРАНЕНИЯ В EXCEL ---
+                    merged_html = "".join(blocks)
+                    if final_faq_html:
+                        merged_html += f"\n\n{final_faq_html}"
+                    row_data['Весь текст целиком'] = merged_html
                     
-                    row_data['DeepSeek Контекст'] = "-"; row_data['DeepSeek Комментарий'] = "-"
-                    row_data['Риск Тургенев'] = "-"; row_data['Тургенев Комментарий'] = "-"
-                    row_data['Уникальность'] = "-"; row_data['Text.ru Комментарий'] = "-"; row_data['Text.ru UID'] = None
+                    # --- ВЫТАСКИВАЕМ ТОЛЬКО ЧИСТЫЙ ТЕКСТ ДЛЯ ПРОВЕРОК (БЕЗ FAQ, ТАБЛИЦ И ТЕГОВ) ---
+                    # Используем generated_full_text, который был собран ЕЩЕ ДО добавления доп. блоков!
+                    pure_text_for_check = BeautifulSoup(generated_full_text, "html.parser").get_text(separator=" ").strip()
                     
-                    status_logger.write("🔍 Отправляем на проверки (Антиспам и Уникальность)...")
+                    row_data['DeepSeek Контекст'] = "-"
+                    row_data['DeepSeek Комментарий'] = "-"
+                    row_data['Риск Тургенев'] = "-"
+                    row_data['Тургенев Комментарий'] = "-"
+                    row_data['Уникальность'] = "-"
+                    row_data['Text.ru Комментарий'] = "-"
+                    row_data['Text.ru UID'] = None
                     
-                    if st.session_state.get('use_ds_bulk') and gemini_api_key and plain_text_merged:
+                    status_logger.write("🔍 Отправляем ЧИСТЫЕ тексты на проверки (Антиспам и Уникальность)...")
+                    if st.session_state.get('use_ds_bulk') and gemini_api_key and pure_text_for_check:
                         try:
-                            is_valid = validate_topic_deepseek(gemini_api_key, h1_marker, h2_header, plain_text_merged)
+                            is_valid = validate_topic_deepseek(gemini_api_key, h1_marker, h2_header, pure_text_for_check)
                             row_data['DeepSeek Контекст'] = "YES" if is_valid else "NO"
                             row_data['DeepSeek Комментарий'] = "Ок" if is_valid else "Ошибка: не по теме"
-                        except Exception: row_data['DeepSeek Комментарий'] = "Сбой API"
+                        except Exception:
+                            row_data['DeepSeek Комментарий'] = "Сбой API"
+                            
+                    if st.session_state.get('use_turgenev_bulk') and st.session_state.get('turg_key_bulk') and pure_text_for_check:
+                        try:
+                            turg_val = check_turgenev_sync(pure_text_for_check, st.session_state['turg_key_bulk'])
+                            row_data['Риск Тургенев'] = turg_val
+                            try:
+                                t_num = float(re.search(r'\d+\.?\d*', str(turg_val)).group())
+                                row_data['Тургенев Комментарий'] = "Ок" if t_num <= 5 else "Риск > 5 (Нужно править)"
+                            except:
+                                row_data['Тургенев Комментарий'] = "Ошибка ответа"
+                        except Exception:
+                            row_data['Тургенев Комментарий'] = "Сбой API"
+                            
+                    if st.session_state.get('use_textru_bulk') and st.session_state.get('textru_key_bulk') and pure_text_for_check:
+                        try:
+                            uid = send_textru_sync(pure_text_for_check, st.session_state['textru_key_bulk'])
+                            if uid:
+                                row_data['Text.ru UID'] = uid
+                                row_data['Уникальность'] = "⏳ Проверяется..."
+                                row_data['Text.ru Комментарий'] = "В очереди"
+                            else:
+                                row_data['Text.ru Комментарий'] = "Ошибка отправки"
+                        except Exception:
+                            row_data['Text.ru Комментарий'] = "Сбой API"
 
                     if st.session_state.get('use_turgenev_bulk') and st.session_state.get('turg_key_bulk') and plain_text_merged:
                         try:
@@ -4873,10 +4917,20 @@ with tab_wholesale_main:
                                 updated_any = True
                 if updated_any: st.rerun()
 
-        df_export = st.session_state.gen_result_df.drop(columns=['Text.ru UID'], errors='ignore')
-        import io
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: df_export.to_excel(writer, index=False)
+        # Убираем старые колонки FAQ из основной таблицы, чтобы они не мешались
+            cols_to_drop = ['Text.ru UID', 'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ']
+            df_export = st.session_state.gen_result_df.drop(columns=cols_to_drop, errors='ignore')
+            
+            import io
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                # 1. Записываем основной контент
+                df_export.to_excel(writer, sheet_name='Основные тексты', index=False)
+                
+                # 2. Записываем FAQ на второй лист построчно
+                if 'faq_export_data' in st.session_state and st.session_state.faq_export_data:
+                    df_faq = pd.DataFrame(st.session_state.faq_export_data)
+                    df_faq.to_excel(writer, sheet_name='База FAQ', index=False)
         
         col_dl, col_cl = st.columns([2, 1])
         with col_dl:
@@ -6131,6 +6185,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
