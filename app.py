@@ -4399,51 +4399,51 @@ with tab_wholesale_main:
                         except: pass
 
                     final_text_seo_list = cat_commercial + cat_general
+                    
+                    # 1. УМНОЕ КВОТИРОВАНИЕ (чтобы текст не пух от 200+ слов)
+                    tags_cands = []
+                    promo_cands = []
+                    faq_cands = []
+                    
+                    total_str_kw = len(structure_keywords)
+                    if total_str_kw > 15:
+                        # Даем тексту максимум 25 дополнительных слов, чтобы не было переспама
+                        idx1 = min(total_str_kw, 25) 
+                        idx2 = idx1 + int((total_str_kw - idx1) * 0.4) # 40% остатка в теги
+                        idx3 = idx2 + int((total_str_kw - idx1) * 0.4) # 40% остатка в промо
                         
-                        # 1. УМНОЕ КВОТИРОВАНИЕ (чтобы текст не пух от 200+ слов)
-                        tags_cands = []
-                        promo_cands = []
-                        faq_cands = []
+                        final_text_seo_list.extend(structure_keywords[:idx1])
+                        tags_cands = structure_keywords[idx1:idx2]
+                        promo_cands = structure_keywords[idx2:idx3]
+                        faq_cands = structure_keywords[idx3:]
+                    else:
+                        final_text_seo_list.extend(structure_keywords)
+                        tags_cands = structure_keywords.copy()
+                        faq_cands = structure_keywords.copy()
                         
-                        total_str_kw = len(structure_keywords)
-                        if total_str_kw > 15:
-                            # Даем тексту максимум 25 дополнительных слов, чтобы не было переспама
-                            idx1 = min(total_str_kw, 25) 
-                            idx2 = idx1 + int((total_str_kw - idx1) * 0.4) # 40% остатка в теги
-                            idx3 = idx2 + int((total_str_kw - idx1) * 0.4) # 40% остатка в промо
+                    # 2. ЖЕСТКОЕ ПРАВИЛО: если слово не нашло тег/промо, оно НЕ ВОЗВРАЩАЕТСЯ в текст!
+                    target_tag_urls = []
+                    if global_tags and all_tags_links:
+                        tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
+                        for kw in tags_cands:
+                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                            for url in tags_cands_all:
+                                if tr_kw in url.lower() and url not in target_tag_urls:
+                                    target_tag_urls.append(url)
+                                    break
                             
-                            final_text_seo_list.extend(structure_keywords[:idx1])
-                            tags_cands = structure_keywords[idx1:idx2]
-                            promo_cands = structure_keywords[idx2:idx3]
-                            faq_cands = structure_keywords[idx3:]
-                        else:
-                            final_text_seo_list.extend(structure_keywords)
-                            tags_cands = structure_keywords.copy()
-                            faq_cands = structure_keywords.copy()
-                            
-                        # 2. ЖЕСТКОЕ ПРАВИЛО: если слово не нашло тег/промо, оно НЕ ВОЗВРАЩАЕТСЯ в текст!
-                        target_tag_urls = []
-                        if global_tags and all_tags_links:
-                            tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
-                            for kw in tags_cands:
-                                tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                                for url in tags_cands_all:
-                                    if tr_kw in url.lower() and url not in target_tag_urls:
-                                        target_tag_urls.append(url)
-                                        break
-                                
-                        target_promo_urls = []
-                        if global_promo and p_img_map:
-                            p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
-                            for kw in promo_cands:
-                                tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                                for u in p_cands_all:
-                                    if tr_kw in u.lower() and u not in target_promo_urls:
-                                        target_promo_urls.append(u)
-                                        break
-                        
-                        if not global_faq:
-                            pass # FAQ слова тоже просто сгорают, а не летят в текст
+                    target_promo_urls = []
+                    if global_promo and p_img_map:
+                        p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
+                        for kw in promo_cands:
+                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                            for u in p_cands_all:
+                                if tr_kw in u.lower() and u not in target_promo_urls:
+                                    target_promo_urls.append(u)
+                                    break
+                    
+                    if not global_faq:
+                        pass # FAQ слова тоже просто сгорают, а не летят в текст
                     # ----------------------------------
 
                     curr_use_text = global_text
@@ -6185,6 +6185,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
