@@ -4477,17 +4477,16 @@ with tab_wholesale_main:
                     
                     auto_num_blocks = st.session_state.get('ws_num_blocks_val', 5)
                     
-                    if curr_use_text and client:
+if curr_use_text and client:
                         words_count = len(final_text_seo_list)
                         
-                        # Если галочка стоит - считаем умно. Если снята - слушаем то, что ты выбрал в менюшке
                         if st.session_state.get('ws_auto_blocks', True):
                             if words_count <= 15: auto_num_blocks = 3
                             elif words_count <= 25: auto_num_blocks = 4
                             else: auto_num_blocks = 5
                         else:
                             auto_num_blocks = st.session_state.get('ws_num_blocks_val', 5)
-                        
+                            
                         status_logger.write(f"🤖 Пишем SEO-текст (Слов: {words_count} ➔ Запрошено текстовых блоков: {auto_num_blocks})...")
                         
                         blocks_raw = generate_ai_content_blocks(gemini_api_key, safe_base_text, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
@@ -4500,7 +4499,7 @@ with tab_wholesale_main:
                                 if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
                             generated_full_text = " ".join(blocks)
                             status_logger.write(f"✅ Текст сгенерирован (Получено текстовых блоков: {len(cleaned_blocks)})")
-                        
+                            
                     if curr_use_tables and client:
                         status_logger.write("🧩 Верстаем таблицу размеров...")
                         dims_str = ", ".join(cat_dimensions)
@@ -4508,13 +4507,14 @@ with tab_wholesale_main:
                         ТЫ — СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
                         ВВОДНЫЕ: Контекст: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
                         ПРАВИЛА И ШАБЛОН: 
-                        1. Придумай логичные заголовки колонок, подходящие под товар. 
+                        1. Придумай логичные заголовки колонок, подходящие под товар.
                         2. Количество колонок: от 2 до 5 штук максимум!
                         3. Формат HTML строго такой:
                         <table class="brand-accent-table">
                          <thead><tr><th>Колонка 1</th><th>Колонка 2</th><th>...</th></tr></thead>
                          <tbody>
-                           </tbody>
+                            ...
+                         </tbody>
                         </table>
                         Выдай только HTML код таблицы.
                         """
@@ -4532,7 +4532,8 @@ with tab_wholesale_main:
                             try: nm = force_cyrillic_name_global(u.split("/")[-1])
                             except: nm = u.split("/")[-1]
                             html_t.append(f'<a href="{u}" class="tag-item">{nm}</a>')
-                        injections.append(f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>''')
+                        if html_t:
+                            injections.append(f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>''')
                         
                     if curr_use_promo:
                         status_logger.write("🔥 Формируем промо-галерею...")
@@ -4542,7 +4543,8 @@ with tab_wholesale_main:
                             except: nm = u.split("/")[-1]
                             img_src = p_img_map.get(u, "https://via.placeholder.com/260")
                             gallery_items.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>''')
-                        injections.append(f'''<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>''')
+                        if gallery_items:
+                            injections.append(f'''<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>''')
 
                     if curr_use_geo and client:
                         status_logger.write("🌍 Добавляем гео-доставку...")
@@ -4563,11 +4565,9 @@ with tab_wholesale_main:
                             if faq_json[0].get("Тип") == "Ошибка":
                                 status_logger.write(f"⚠️ Ошибка API при генерации FAQ: {faq_json[0].get('Ответ')}")
                             else:
-                                # Разделяем на 2 группы для HTML
                                 comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
                                 info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
                                 
-                                # СОХРАНЯЕМ FAQ ДЛЯ ВТОРОЙ ВКЛАДКИ EXCEL (каждый вопрос - новая строка)
                                 if 'faq_export_data' not in st.session_state:
                                     st.session_state.faq_export_data = []
                                 
@@ -4580,7 +4580,6 @@ with tab_wholesale_main:
                                         'Ответ': item.get("Ответ", "")
                                     })
                                 
-                                # СОБИРАЕМ ЕДИНЫЙ HTML ДЛЯ ВСТАВКИ В КОНЕЦ ТЕКСТА
                                 faq_html_parts = [
                                     '<div class="faq-section">',
                                     f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>'
@@ -4604,41 +4603,7 @@ with tab_wholesale_main:
                                 final_faq_html = "\n".join(faq_html_parts)
                         else:
                             status_logger.write("⚠️ Сбой формата ответа FAQ от нейросети.")
-                            else:
-                                # Разделяем на 2 группы
-                                comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
-                                info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
-                                
-                                # 1. ЗАПИСЫВАЕМ В 4 КОЛОНКИ ДЛЯ EXCEL (склеиваем через \n\n, если вопросов несколько)
-                                row_data['FAQ Коммерческий вопрос'] = "\n\n".join([item.get("Вопрос", "") for item in comm_items])
-                                row_data['FAQ Коммерческий ответ'] = "\n\n".join([item.get("Ответ", "") for item in comm_items])
-                                row_data['FAQ Информационный вопрос'] = "\n\n".join([item.get("Вопрос", "") for item in info_items])
-                                row_data['FAQ Информационный ответ'] = "\n\n".join([item.get("Ответ", "") for item in info_items])
-                                
-                                # 2. СОБИРАЕМ ЕДИНЫЙ HTML ДЛЯ ВСТАВКИ В КОНЕЦ ТЕКСТА
-                                faq_html_parts = [
-                                    '<div class="faq-section">', 
-                                    f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>'
-                                ]
-                                
-                                if comm_items:
-                                    faq_html_parts.append('<div class="faq-category">')
-                                    faq_html_parts.append('<div class="h3"><h3>Коммерческие вопросы</h3></div>')
-                                    for item in comm_items:
-                                        faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
-                                    faq_html_parts.append('</div>')
-                                    
-                                if info_items:
-                                    faq_html_parts.append('<div class="faq-category">')
-                                    faq_html_parts.append('<div class="h3"><h3>Информационные вопросы</h3></div>')
-                                    for item in info_items:
-                                        faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
-                                    faq_html_parts.append('</div>')
-                                    
-                                faq_html_parts.append('</div>')
-                                final_faq_html = "\n".join(faq_html_parts)
-                        else:
-                            status_logger.write("⚠️ Сбой формата ответа FAQ от нейросети.")
+
                     # --- СБОРКА КОНТЕНТА В БЛОКИ ---
                     effective_blocks_count = max(1, auto_num_blocks)
                     for i_inj, inj in enumerate(injections):
@@ -4659,7 +4624,6 @@ with tab_wholesale_main:
                     row_data['Весь текст целиком'] = merged_html
                     
                     # --- ВЫТАСКИВАЕМ ТОЛЬКО ЧИСТЫЙ ТЕКСТ ДЛЯ ПРОВЕРОК (БЕЗ FAQ, ТАБЛИЦ И ТЕГОВ) ---
-                    # Используем generated_full_text, который был собран ЕЩЕ ДО добавления доп. блоков!
                     pure_text_for_check = BeautifulSoup(generated_full_text, "html.parser").get_text(separator=" ").strip()
                     
                     row_data['DeepSeek Контекст'] = "-"
@@ -4702,26 +4666,6 @@ with tab_wholesale_main:
                                 row_data['Text.ru Комментарий'] = "Ошибка отправки"
                         except Exception:
                             row_data['Text.ru Комментарий'] = "Сбой API"
-
-                    if st.session_state.get('use_turgenev_bulk') and st.session_state.get('turg_key_bulk') and plain_text_merged:
-                        try:
-                            turg_val = check_turgenev_sync(plain_text_merged, st.session_state['turg_key_bulk'])
-                            row_data['Риск Тургенев'] = turg_val
-                            try:
-                                t_num = float(re.search(r'\d+\.?\d*', str(turg_val)).group())
-                                row_data['Тургенев Комментарий'] = "Ок" if t_num <= 5 else "Риск > 5 (Нужно править)"
-                            except: row_data['Тургенев Комментарий'] = "Ошибка ответа"
-                        except Exception: row_data['Тургенев Комментарий'] = "Сбой API"
-
-                    if st.session_state.get('use_textru_bulk') and st.session_state.get('textru_key_bulk') and plain_text_merged:
-                        try:
-                            uid = send_textru_sync(plain_text_merged, st.session_state['textru_key_bulk'])
-                            if uid:
-                                row_data['Text.ru UID'] = uid
-                                row_data['Уникальность'] = "⏳ Проверяется..."
-                                row_data['Text.ru Комментарий'] = "В очереди"
-                            else: row_data['Text.ru Комментарий'] = "Ошибка отправки"
-                        except Exception: row_data['Text.ru Комментарий'] = "Сбой API"
 
                     status_logger.update(label=f"✅ {h2_header} успешно сгенерирован!", state="complete", expanded=False)
 
@@ -6185,6 +6129,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
