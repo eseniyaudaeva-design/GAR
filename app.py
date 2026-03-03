@@ -4373,129 +4373,131 @@ with tab_wholesale_main:
                         if k in row_data: row_data[k] = v
                 except NameError: pass 
                 
-                cat_dimensions = st.session_state.get('categorized_dimensions', [])
-                cat_commercial = st.session_state.get('categorized_commercial', [])
-                cat_general = st.session_state.get('categorized_general', [])
-                cat_geo = st.session_state.get('categorized_geo', [])
-                structure_keywords = st.session_state.get('categorized_products', []) + st.session_state.get('categorized_services', [])
-                faq_cands = st.session_state.get('categorized_info', []) # Запас для FAQ
-                
-                global_text = st.session_state.get('ws_global_text', True)
-                global_tables = st.session_state.get('ws_global_tables', True)
-                global_tags = st.session_state.get('ws_global_tags', True)
-                global_promo = st.session_state.get('ws_global_promo', True)
-                global_geo = st.session_state.get('ws_global_geo', True)
-                global_faq = st.session_state.get('ws_global_faq', True)
-                
-                # =================================================================
-                # УМНЫЙ ПОИСК ПО ЕДИНОЙ БАЗЕ И РАСПРЕДЕЛЕНИЕ (ДО ГЕНЕРАЦИИ!)
-                # =================================================================
-                unified_db = {}
-                if (global_promo or global_tags) and os.path.exists("data/images_db.xlsx"):
-                    try:
-                        df_db = pd.read_excel("data/images_db.xlsx")
-                        for _, r_db in df_db.iterrows():
-                            u_link = str(r_db.iloc[0]).strip().rstrip('/')
-                            if not u_link or u_link == 'nan': continue
-                            name_val = str(r_db.iloc[1]).strip() if len(df_db.columns) > 1 else ""
-                            img_val = str(r_db.iloc[2]).strip() if len(df_db.columns) > 2 else "https://via.placeholder.com/260"
-                            unified_db[u_link] = {'name': name_val, 'img': img_val}
-                    except Exception as e:
-                        status_logger.error(f"Ошибка словаря: {e}")
-
-                available_urls = [u for u in unified_db.keys() if u != current_task['url'].rstrip('/')]
-                
-                def find_match_in_db(kw, used_urls):
-                    kw_clean = kw.lower().strip()
-                    kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
-                    for u in available_urls:
-                        if u in used_urls: continue
-                        db_name = unified_db[u]['name'].strip()
-                        db_n_low = db_name.lower()
-                        if (kw_clean == db_n_low or kw_clean in db_n_low or db_n_low in kw_clean or (len(kw_stem) >= 4 and kw_stem in db_n_low)):
-                            img_val = unified_db[u].get('img', "https://via.placeholder.com/260")
-                            if str(img_val) == 'nan' or not img_val: img_val = "https://via.placeholder.com/260"
-                            return u, db_name, img_val
-                    return None, None, None
-
-                matched_items = []
-                unmatched_kws = []
-                used_links = []
-                
-                all_candidates = list(set(structure_keywords))
-                for kw in all_candidates:
-                    f_url, f_name, f_img = find_match_in_db(kw, used_links)
-                    if f_url:
-                        matched_items.append({"url": f_url, "name": f_name, "img": f_img, "kw": kw})
-                        used_links.append(f_url)
-                    else:
-                        unmatched_kws.append(kw)
-
-                # ЖЕСТКИЙ ПРИОРИТЕТ РАСПРЕДЕЛЕНИЯ (Теги -> Промо -> Теги 2)
-                tags_block_1 = matched_items[:15]
-                promo_block = matched_items[15:20]
-                tags_block_2 = matched_items[20:]
-
-                # ОТКАЗНИКИ ИДУТ В ТЕКСТ (ДЛЯ ИДЕАЛЬНЫХ СКЛОНЕНИЙ)
-                final_text_seo_list = list(set(cat_commercial + cat_general + unmatched_kws))
-                
-                with st.expander("📊 ОТЧЕТ: Куда алгоритм распределил слова?", expanded=True):
-                    st.write(f"**В Текст ({len(final_text_seo_list)} шт):** {', '.join(final_text_seo_list) if final_text_seo_list else 'Нет слов'}")
-                    st.write(f"**В Плитку тегов 1 ({len(tags_block_1)} шт)**")
-                    st.write(f"**В Промо-блок ({len(promo_block)} шт)**")
-                    st.write(f"**В Плитку тегов 2 ({len(tags_block_2)} шт)**")
-
-                # =================================================================
-                # ГЕНЕРАЦИЯ ТЕКСТА
-                # =================================================================
-                curr_use_text = global_text
-                curr_use_tables = global_tables and (len(cat_dimensions) > 0)
-                curr_use_geo = global_geo and (len(cat_geo) > 0)
-                
-                base_text_raw = current_task.get('base_text', '')
-                b_text_str = str(base_text_raw).strip() if base_text_raw is not None else ""
-                if not b_text_str or b_text_str == "None":
-                    safe_base_text = "Техническая информация о товаре. Основные параметры и характеристики для профессионалов."
-                else:
-                    safe_base_text = base_text_raw
-
-                blocks = [""] * 5
-                generated_full_text = ""
-                gemini_api_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
-                
-                if not gemini_api_key:
-                    status_logger.error("❌ ОШИБКА: Отсутствует API-ключ Gemini!")
-                
-                from openai import OpenAI
-                client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1") if gemini_api_key else None
-                
-                if curr_use_text and client:
-                    words_count = len(final_text_seo_list)
-                    auto_num_blocks = st.session_state.get('ws_num_blocks_val', 5)
-                    if st.session_state.get('ws_auto_blocks', True):
-                        if words_count <= 15: auto_num_blocks = 3
-                        elif words_count <= 25: auto_num_blocks = 4
-                        else: auto_num_blocks = 5
-                        
-                    status_logger.write(f"🤖 Пишем SEO-текст (Слов: {words_count} ➔ Блоков: {auto_num_blocks})...")
-                    blocks_raw = generate_ai_content_blocks(gemini_api_key, safe_base_text, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
+                # ВОТ ЭТОТ TRY Я СЛУЧАЙНО ПРОПУСТИЛ В ПРОШЛЫЙ РАЗ!
+                try: 
+                    cat_dimensions = st.session_state.get('categorized_dimensions', [])
+                    cat_commercial = st.session_state.get('categorized_commercial', [])
+                    cat_general = st.session_state.get('categorized_general', [])
+                    cat_geo = st.session_state.get('categorized_geo', [])
+                    structure_keywords = st.session_state.get('categorized_products', []) + st.session_state.get('categorized_services', [])
+                    faq_cands = st.session_state.get('categorized_info', []) # Запас для FAQ
                     
-                    if not blocks_raw or "Error" in str(blocks_raw[0]):
-                        status_logger.error(f"❌ Нейросеть вернула ошибку: {blocks_raw[0]}")
-                    else:
-                        cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
-                        for i_b in range(len(cleaned_blocks)):
-                            if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
-                        generated_full_text = " ".join(blocks)
-                        status_logger.write(f"✅ Текст сгенерирован (Получено блоков: {len(cleaned_blocks)})")
+                    global_text = st.session_state.get('ws_global_text', True)
+                    global_tables = st.session_state.get('ws_global_tables', True)
+                    global_tags = st.session_state.get('ws_global_tags', True)
+                    global_promo = st.session_state.get('ws_global_promo', True)
+                    global_geo = st.session_state.get('ws_global_geo', True)
+                    global_faq = st.session_state.get('ws_global_faq', True)
+                    
+                    # =================================================================
+                    # УМНЫЙ ПОИСК ПО ЕДИНОЙ БАЗЕ И РАСПРЕДЕЛЕНИЕ (ДО ГЕНЕРАЦИИ!)
+                    # =================================================================
+                    unified_db = {}
+                    if (global_promo or global_tags) and os.path.exists("data/images_db.xlsx"):
+                        try:
+                            df_db = pd.read_excel("data/images_db.xlsx")
+                            for _, r_db in df_db.iterrows():
+                                u_link = str(r_db.iloc[0]).strip().rstrip('/')
+                                if not u_link or u_link == 'nan': continue
+                                name_val = str(r_db.iloc[1]).strip() if len(df_db.columns) > 1 else ""
+                                img_val = str(r_db.iloc[2]).strip() if len(df_db.columns) > 2 else "https://via.placeholder.com/260"
+                                unified_db[u_link] = {'name': name_val, 'img': img_val}
+                        except Exception as e:
+                            status_logger.error(f"Ошибка словаря: {e}")
 
-                # =================================================================
-                # ГЕНЕРАЦИЯ ТАБЛИЦЫ
-                # =================================================================
-                if curr_use_tables and client:
-                    status_logger.write("🧩 Верстаем таблицу размеров...")
-                    dims_str = ", ".join(cat_dimensions)
-                    prompt_tbl = f"""ТЫ — СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
+                    available_urls = [u for u in unified_db.keys() if u != current_task['url'].rstrip('/')]
+                    
+                    def find_match_in_db(kw, used_urls):
+                        kw_clean = kw.lower().strip()
+                        kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
+                        for u in available_urls:
+                            if u in used_urls: continue
+                            db_name = unified_db[u]['name'].strip()
+                            db_n_low = db_name.lower()
+                            if (kw_clean == db_n_low or kw_clean in db_n_low or db_n_low in kw_clean or (len(kw_stem) >= 4 and kw_stem in db_n_low)):
+                                img_val = unified_db[u].get('img', "https://via.placeholder.com/260")
+                                if str(img_val) == 'nan' or not img_val: img_val = "https://via.placeholder.com/260"
+                                return u, db_name, img_val
+                        return None, None, None
+
+                    matched_items = []
+                    unmatched_kws = []
+                    used_links = []
+                    
+                    all_candidates = list(set(structure_keywords))
+                    for kw in all_candidates:
+                        f_url, f_name, f_img = find_match_in_db(kw, used_links)
+                        if f_url:
+                            matched_items.append({"url": f_url, "name": f_name, "img": f_img, "kw": kw})
+                            used_links.append(f_url)
+                        else:
+                            unmatched_kws.append(kw)
+
+                    # ЖЕСТКИЙ ПРИОРИТЕТ РАСПРЕДЕЛЕНИЯ (Теги -> Промо -> Теги 2)
+                    tags_block_1 = matched_items[:15]
+                    promo_block = matched_items[15:20]
+                    tags_block_2 = matched_items[20:]
+
+                    # ОТКАЗНИКИ ИДУТ В ТЕКСТ (ДЛЯ ИДЕАЛЬНЫХ СКЛОНЕНИЙ)
+                    final_text_seo_list = list(set(cat_commercial + cat_general + unmatched_kws))
+                    
+                    with st.expander("📊 ОТЧЕТ: Куда алгоритм распределил слова?", expanded=True):
+                        st.write(f"**В Текст ({len(final_text_seo_list)} шт):** {', '.join(final_text_seo_list) if final_text_seo_list else 'Нет слов'}")
+                        st.write(f"**В Плитку тегов 1 ({len(tags_block_1)} шт)**")
+                        st.write(f"**В Промо-блок ({len(promo_block)} шт)**")
+                        st.write(f"**В Плитку тегов 2 ({len(tags_block_2)} шт)**")
+
+                    # =================================================================
+                    # ГЕНЕРАЦИЯ ТЕКСТА
+                    # =================================================================
+                    curr_use_text = global_text
+                    curr_use_tables = global_tables and (len(cat_dimensions) > 0)
+                    curr_use_geo = global_geo and (len(cat_geo) > 0)
+                    
+                    base_text_raw = current_task.get('base_text', '')
+                    b_text_str = str(base_text_raw).strip() if base_text_raw is not None else ""
+                    if not b_text_str or b_text_str == "None":
+                        safe_base_text = "Техническая информация о товаре. Основные параметры и характеристики для профессионалов."
+                    else:
+                        safe_base_text = base_text_raw
+
+                    blocks = [""] * 5
+                    generated_full_text = ""
+                    gemini_api_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
+                    
+                    if not gemini_api_key:
+                        status_logger.error("❌ ОШИБКА: Отсутствует API-ключ Gemini!")
+                    
+                    from openai import OpenAI
+                    client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1") if gemini_api_key else None
+                    
+                    if curr_use_text and client:
+                        words_count = len(final_text_seo_list)
+                        auto_num_blocks = st.session_state.get('ws_num_blocks_val', 5)
+                        if st.session_state.get('ws_auto_blocks', True):
+                            if words_count <= 15: auto_num_blocks = 3
+                            elif words_count <= 25: auto_num_blocks = 4
+                            else: auto_num_blocks = 5
+                            
+                        status_logger.write(f"🤖 Пишем SEO-текст (Слов: {words_count} ➔ Блоков: {auto_num_blocks})...")
+                        blocks_raw = generate_ai_content_blocks(gemini_api_key, safe_base_text, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
+                        
+                        if not blocks_raw or "Error" in str(blocks_raw[0]):
+                            status_logger.error(f"❌ Нейросеть вернула ошибку: {blocks_raw[0]}")
+                        else:
+                            cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
+                            for i_b in range(len(cleaned_blocks)):
+                                if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
+                            generated_full_text = " ".join(blocks)
+                            status_logger.write(f"✅ Текст сгенерирован (Получено блоков: {len(cleaned_blocks)})")
+
+                    # =================================================================
+                    # ГЕНЕРАЦИЯ ТАБЛИЦЫ
+                    # =================================================================
+                    if curr_use_tables and client:
+                        status_logger.write("🧩 Верстаем таблицу размеров...")
+                        dims_str = ", ".join(cat_dimensions)
+                        prompt_tbl = f"""ТЫ — СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
 ВВОДНЫЕ: Контекст текста: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
 ПРАВИЛА: 
 1. НЕ дублируй инфу из текста! 
@@ -4503,164 +4505,165 @@ with tab_wholesale_main:
 3. Максимум 5 колонок.
 4. Формат: <table class="brand-accent-table"><thead><tr>...</tr></thead><tbody>...</tbody></table>
 Выдай только HTML код."""
-                    try:
-                        resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.25)
-                        raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                        if "<table" in raw_table:
-                            cl_tab = raw_table[raw_table.find("<table"):raw_table.find("</table>")+8]
-                            if "brand-accent-table" not in cl_tab: cl_tab = cl_tab.replace("<table", "<table class='brand-accent-table'", 1)
-                    except Exception as e:
-                        status_logger.error(f"Ошибка таблицы: {e}")
+                        try:
+                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.25)
+                            raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                            if "<table" in raw_table:
+                                cl_tab = raw_table[raw_table.find("<table"):raw_table.find("</table>")+8]
+                                if "brand-accent-table" not in cl_tab: cl_tab = cl_tab.replace("<table", "<table class='brand-accent-table'", 1)
+                        except Exception as e:
+                            status_logger.error(f"Ошибка таблицы: {e}")
 
-                # =================================================================
-                # ГЕНЕРАЦИЯ FAQ
-                # =================================================================
-                final_faq_html = ""
-                if global_faq and client:
-                    current_faq_count = st.session_state.get('ws_faq_count', 4)
-                    status_logger.write(f"❓ Генерируем FAQ ({current_faq_count} вопросов)...")
-                    try:
-                        faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
-                        if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
-                            comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
-                            info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
-                            
-                            if 'faq_export_data' not in st.session_state: st.session_state.faq_export_data = []
-                            for item in faq_json:
-                                st.session_state.faq_export_data.append({
-                                    'Page URL': current_task['url'], 'Product Name': h2_header,
-                                    'Тип вопроса': item.get("Тип", ""), 'Вопрос': item.get("Вопрос", ""), 'Ответ': item.get("Ответ", "")
-                                })
-                            
-                            faq_html_parts = ['<div class="faq-section">', f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>']
-                            if comm_items:
-                                faq_html_parts.append('<div class="faq-category"><div class="h3"><h3>Коммерческие вопросы</h3></div>')
-                                for item in comm_items: faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
+                    # =================================================================
+                    # ГЕНЕРАЦИЯ FAQ
+                    # =================================================================
+                    final_faq_html = ""
+                    if global_faq and client:
+                        current_faq_count = st.session_state.get('ws_faq_count', 4)
+                        status_logger.write(f"❓ Генерируем FAQ ({current_faq_count} вопросов)...")
+                        try:
+                            faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
+                            if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
+                                comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
+                                info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
+                                
+                                if 'faq_export_data' not in st.session_state: st.session_state.faq_export_data = []
+                                for item in faq_json:
+                                    st.session_state.faq_export_data.append({
+                                        'Page URL': current_task['url'], 'Product Name': h2_header,
+                                        'Тип вопроса': item.get("Тип", ""), 'Вопрос': item.get("Вопрос", ""), 'Ответ': item.get("Ответ", "")
+                                    })
+                                
+                                faq_html_parts = ['<div class="faq-section">', f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>']
+                                if comm_items:
+                                    faq_html_parts.append('<div class="faq-category"><div class="h3"><h3>Коммерческие вопросы</h3></div>')
+                                    for item in comm_items: faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
+                                    faq_html_parts.append('</div>')
+                                if info_items:
+                                    faq_html_parts.append('<div class="faq-category"><div class="h3"><h3>Информационные вопросы</h3></div>')
+                                    for item in info_items: faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
+                                    faq_html_parts.append('</div>')
                                 faq_html_parts.append('</div>')
-                            if info_items:
-                                faq_html_parts.append('<div class="faq-category"><div class="h3"><h3>Информационные вопросы</h3></div>')
-                                for item in info_items: faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
-                                faq_html_parts.append('</div>')
-                            faq_html_parts.append('</div>')
-                            final_faq_html = "\n".join(faq_html_parts)
-                    except Exception as e:
-                        status_logger.error(f"Ошибка FAQ: {e}")
+                                final_faq_html = "\n".join(faq_html_parts)
+                        except Exception as e:
+                            status_logger.error(f"Ошибка FAQ: {e}")
 
-                # =================================================================
-                # ГЕО-ДОСТАВКА
-                # =================================================================
-                if curr_use_geo and client:
-                    status_logger.write("🌍 Добавляем гео-доставку...")
-                    try:
-                        cities = ", ".join(cat_geo[:15])
-                        prompt_geo = f"Напиши один HTML параграф (<p>) о доставке товара '{h2_header}' в города: {cities}. Выдай только HTML."
-                        resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.5)
-                        row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
-                    except: pass
+                    # =================================================================
+                    # ГЕО-ДОСТАВКА
+                    # =================================================================
+                    if curr_use_geo and client:
+                        status_logger.write("🌍 Добавляем гео-доставку...")
+                        try:
+                            cities = ", ".join(cat_geo[:15])
+                            prompt_geo = f"Напиши один HTML параграф (<p>) о доставке товара '{h2_header}' в города: {cities}. Выдай только HTML."
+                            resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.5)
+                            row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
+                        except: pass
 
-                # =================================================================
-                # СБОРКА КОНТЕНТА В БЛОКИ (УМНОЕ РАЗВЕДЕНИЕ HTML-ИНЪЕКЦИЙ)
-                # =================================================================
-                html_injections = {}
-                if curr_use_tables and 'cl_tab' in locals():
-                    html_injections['table'] = f'<div class="table-scroll-wrapper">\n{cl_tab}\n</div>'
-                
-                if global_tags and tags_block_1:
-                    html_t1 = [f'<a href="{i["url"]}" class="tag-item">{i["name"]}</a>' for i in tags_block_1]
-                    html_injections['tags1'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t1)}</div></div></div>'
-                
-                if global_promo and promo_block:
-                    g_items = [f'<div class="gallery-item"><h3><a href="{i["url"]}" target="_blank">{i["name"]}</a></h3><figure><a href="{i["url"]}" target="_blank"><picture><img src="{i["img"]}" loading="lazy"></picture></a></figure></div>' for i in promo_block]
-                    html_injections['promo'] = f'<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(g_items)}</div></div></div>'
-                
-                if global_tags and tags_block_2:
-                    html_t2 = [f'<a href="{i["url"]}" class="tag-item">{i["name"]}</a>' for i in tags_block_2]
-                    html_injections['tags2'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t2)}</div></div></div>'
-
-                # Раскладываем блоки между абзацами
-                target_slots = {'table': 1, 'tags1': 2, 'promo': 3, 'tags2': 4}
-                effective_blocks_count = max(1, len([b for b in blocks if b.strip()]))
-                
-                for inj_type, inj_html in html_injections.items():
-                    slot = target_slots.get(inj_type, 1)
-                    if slot >= effective_blocks_count: slot = effective_blocks_count - 1
-                    if slot < len(blocks):
-                        if blocks[slot]: blocks[slot] += "\n\n" + inj_html
-                        else: blocks[slot] = inj_html
-
-                TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
-                for i_c, c_name in enumerate(TEXT_CONTAINERS):
-                    if i_c < len(blocks): row_data[c_name] = blocks[i_c]
-
-                merged_html = "".join(blocks)
-                if final_faq_html: merged_html += f"\n\n{final_faq_html}"
-                row_data['Весь текст целиком'] = merged_html
-                row_data['FAQ HTML'] = final_faq_html
-                
-                # =================================================================
-                # ПРОВЕРКИ АНТИСПАМ И TEXT.RU
-                # =================================================================
-                pure_text_for_check = BeautifulSoup(generated_full_text, "html.parser").get_text(separator=" ").strip()
-                row_data['DeepSeek Контекст'] = "-"; row_data['DeepSeek Комментарий'] = "-"
-                row_data['Риск Тургенев'] = "-"; row_data['Тургенев Комментарий'] = "-"
-                row_data['Уникальность'] = "-"; row_data['Text.ru Комментарий'] = "-"; row_data['Text.ru UID'] = None
-                
-                status_logger.write("🔍 Отправляем на проверки (Антиспам и Уникальность)...")
-                
-                if st.session_state.get('use_ds_bulk') and gemini_api_key and pure_text_for_check:
-                    try:
-                        is_valid = validate_topic_deepseek(gemini_api_key, h1_marker, h2_header, pure_text_for_check)
-                        row_data['DeepSeek Контекст'] = "YES" if is_valid else "NO"
-                        row_data['DeepSeek Комментарий'] = "Ок" if is_valid else "Ошибка: не по теме"
-                    except: row_data['DeepSeek Комментарий'] = "Сбой API"
+                    # =================================================================
+                    # СБОРКА КОНТЕНТА В БЛОКИ (УМНОЕ РАЗВЕДЕНИЕ HTML-ИНЪЕКЦИЙ)
+                    # =================================================================
+                    html_injections = {}
+                    if curr_use_tables and 'cl_tab' in locals():
+                        html_injections['table'] = f'<div class="table-scroll-wrapper">\n{cl_tab}\n</div>'
                     
-                if st.session_state.get('use_turgenev_bulk') and st.session_state.get('TURGENEV_GLOBAL_KEY') and pure_text_for_check:
-                    try:
-                        turg_val = check_turgenev_sync(pure_text_for_check, st.session_state['TURGENEV_GLOBAL_KEY'])
-                        row_data['Риск Тургенев'] = turg_val
-                        t_num = float(re.search(r'\d+\.?\d*', str(turg_val)).group())
-                        row_data['Тургенев Комментарий'] = "Ок" if t_num <= 5 else "Риск > 5 (Нужно править)"
-                    except: row_data['Тургенев Комментарий'] = "Сбой API"
+                    if global_tags and tags_block_1:
+                        html_t1 = [f'<a href="{i["url"]}" class="tag-item">{i["name"]}</a>' for i in tags_block_1]
+                        html_injections['tags1'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t1)}</div></div></div>'
+                    
+                    if global_promo and promo_block:
+                        g_items = [f'<div class="gallery-item"><h3><a href="{i["url"]}" target="_blank">{i["name"]}</a></h3><figure><a href="{i["url"]}" target="_blank"><picture><img src="{i["img"]}" loading="lazy"></picture></a></figure></div>' for i in promo_block]
+                        html_injections['promo'] = f'<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(g_items)}</div></div></div>'
+                    
+                    if global_tags and tags_block_2:
+                        html_t2 = [f'<a href="{i["url"]}" class="tag-item">{i["name"]}</a>' for i in tags_block_2]
+                        html_injections['tags2'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t2)}</div></div></div>'
+
+                    # Раскладываем блоки между абзацами
+                    target_slots = {'table': 1, 'tags1': 2, 'promo': 3, 'tags2': 4}
+                    effective_blocks_count = max(1, len([b for b in blocks if b.strip()]))
+                    
+                    for inj_type, inj_html in html_injections.items():
+                        slot = target_slots.get(inj_type, 1)
+                        if slot >= effective_blocks_count: slot = effective_blocks_count - 1
+                        if slot < len(blocks):
+                            if blocks[slot]: blocks[slot] += "\n\n" + inj_html
+                            else: blocks[slot] = inj_html
+
+                    TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
+                    for i_c, c_name in enumerate(TEXT_CONTAINERS):
+                        if i_c < len(blocks): row_data[c_name] = blocks[i_c]
+
+                    merged_html = "".join(blocks)
+                    if final_faq_html: merged_html += f"\n\n{final_faq_html}"
+                    row_data['Весь текст целиком'] = merged_html
+                    row_data['FAQ HTML'] = final_faq_html
+                    
+                    # =================================================================
+                    # ПРОВЕРКИ АНТИСПАМ И TEXT.RU
+                    # =================================================================
+                    pure_text_for_check = BeautifulSoup(generated_full_text, "html.parser").get_text(separator=" ").strip()
+                    row_data['DeepSeek Контекст'] = "-"; row_data['DeepSeek Комментарий'] = "-"
+                    row_data['Риск Тургенев'] = "-"; row_data['Тургенев Комментарий'] = "-"
+                    row_data['Уникальность'] = "-"; row_data['Text.ru Комментарий'] = "-"; row_data['Text.ru UID'] = None
+                    
+                    status_logger.write("🔍 Отправляем на проверки (Антиспам и Уникальность)...")
+                    
+                    if st.session_state.get('use_ds_bulk') and gemini_api_key and pure_text_for_check:
+                        try:
+                            is_valid = validate_topic_deepseek(gemini_api_key, h1_marker, h2_header, pure_text_for_check)
+                            row_data['DeepSeek Контекст'] = "YES" if is_valid else "NO"
+                            row_data['DeepSeek Комментарий'] = "Ок" if is_valid else "Ошибка: не по теме"
+                        except: row_data['DeepSeek Комментарий'] = "Сбой API"
                         
-                if st.session_state.get('use_textru_bulk') and st.session_state.get('TEXTRU_GLOBAL_KEY') and pure_text_for_check:
-                    try:
-                        uid = send_textru_sync(pure_text_for_check, st.session_state['TEXTRU_GLOBAL_KEY'])
-                        if uid:
-                            row_data['Text.ru UID'] = uid; row_data['Уникальность'] = "⏳ Проверяется..."; row_data['Text.ru Комментарий'] = "В очереди"
-                        else: row_data['Text.ru Комментарий'] = "Ошибка отправки"
-                    except: row_data['Text.ru Комментарий'] = "Сбой API"
+                    if st.session_state.get('use_turgenev_bulk') and st.session_state.get('TURGENEV_GLOBAL_KEY') and pure_text_for_check:
+                        try:
+                            turg_val = check_turgenev_sync(pure_text_for_check, st.session_state['TURGENEV_GLOBAL_KEY'])
+                            row_data['Риск Тургенев'] = turg_val
+                            t_num = float(re.search(r'\d+\.?\d*', str(turg_val)).group())
+                            row_data['Тургенев Комментарий'] = "Ок" if t_num <= 5 else "Риск > 5 (Нужно править)"
+                        except: row_data['Тургенев Комментарий'] = "Сбой API"
+                            
+                    if st.session_state.get('use_textru_bulk') and st.session_state.get('TEXTRU_GLOBAL_KEY') and pure_text_for_check:
+                        try:
+                            uid = send_textru_sync(pure_text_for_check, st.session_state['TEXTRU_GLOBAL_KEY'])
+                            if uid:
+                                row_data['Text.ru UID'] = uid; row_data['Уникальность'] = "⏳ Проверяется..."; row_data['Text.ru Комментарий'] = "В очереди"
+                            else: row_data['Text.ru Комментарий'] = "Ошибка отправки"
+                        except: row_data['Text.ru Комментарий'] = "Сбой API"
 
-                status_logger.update(label=f"✅ {h2_header} успешно сгенерирован!", state="complete", expanded=False)
+                    status_logger.update(label=f"✅ {h2_header} успешно сгенерирован!", state="complete", expanded=False)
 
-            except Exception as e:
-                row_data['Весь текст целиком'] = f"❌ ОШИБКА ГЕНЕРАЦИИ: {e}"
-                status_logger.update(label=f"❌ Ошибка: {h2_header}", state="error", expanded=True)
-                status_logger.error(f"Сбой: {e}")
-                
-            finally:
-                st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, pd.DataFrame([row_data])], ignore_index=True)
-                st.session_state.auto_current_index += 1
-                st.session_state.last_stopped_index = st.session_state.auto_current_index
-                st.session_state.ws_waiting_for_analysis = False
-                
-                if st.session_state.auto_current_index < len(queue):
-                    next_task = queue[st.session_state.auto_current_index]
-                    p_source = "Релевантная страница на вашем сайте" if next_task.get('url') and next_task['url'] != 'manual' else "Без страницы"
-                    st.session_state['pending_widget_updates'] = {
-                        'query_input': next_task.get('h1', next_task['name']),
-                        'my_page_source_radio': p_source,
-                        'my_url_input': next_task.get('url', ''),
-                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                        'settings_region': st.session_state.get('ws_settings_region', 'Москва')
-                    }
-                    st.session_state.start_analysis_flag = True
-                    st.session_state.pop('analysis_done', None)
-                    st.session_state.pop('analysis_results', None)
-                    st.session_state.ws_waiting_for_analysis = True
-                    st.rerun()
-                else:
-                    st.session_state.ws_automode_active = False
-                    st.rerun()
+                # ТЕПЕРЬ EXCEPT СВЯЗАН С TRY И ВСЕ РАБОТАЕТ!
+                except Exception as e:
+                    row_data['Весь текст целиком'] = f"❌ ОШИБКА ГЕНЕРАЦИИ: {e}"
+                    status_logger.update(label=f"❌ Ошибка: {h2_header}", state="error", expanded=True)
+                    status_logger.error(f"Сбой: {e}")
+                    
+                finally:
+                    st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, pd.DataFrame([row_data])], ignore_index=True)
+                    st.session_state.auto_current_index += 1
+                    st.session_state.last_stopped_index = st.session_state.auto_current_index
+                    st.session_state.ws_waiting_for_analysis = False
+                    
+                    if st.session_state.auto_current_index < len(queue):
+                        next_task = queue[st.session_state.auto_current_index]
+                        p_source = "Релевантная страница на вашем сайте" if next_task.get('url') and next_task['url'] != 'manual' else "Без страницы"
+                        st.session_state['pending_widget_updates'] = {
+                            'query_input': next_task.get('h1', next_task['name']),
+                            'my_page_source_radio': p_source,
+                            'my_url_input': next_task.get('url', ''),
+                            'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                            'settings_region': st.session_state.get('ws_settings_region', 'Москва')
+                        }
+                        st.session_state.start_analysis_flag = True
+                        st.session_state.pop('analysis_done', None)
+                        st.session_state.pop('analysis_results', None)
+                        st.session_state.ws_waiting_for_analysis = True
+                        st.rerun()
+                    else:
+                        st.session_state.ws_automode_active = False
+                        st.rerun()
 
     # ==========================================
     # ИНТЕРФЕЙС И НАСТРОЙКИ
@@ -6191,5 +6194,6 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
