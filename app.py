@@ -4383,19 +4383,36 @@ with tab_wholesale_main:
                     global_geo = st.session_state.get('ws_global_geo', True)
                     global_faq = st.session_state.get('ws_global_faq', True)
                     
-                    all_tags_links = []
-                    if global_tags and os.path.exists("data/links_base.txt"):
-                        with open("data/links_base.txt", "r", encoding="utf-8") as f: 
-                            all_tags_links = [l.strip() for l in f.readlines() if l.strip()]
-
-                    p_img_map = {}
-                    if global_promo and os.path.exists("data/images_db.xlsx"):
+                    # --- ЧТЕНИЕ ЕДИНОЙ БАЗЫ ДЛЯ ТЕГОВ И ПРОМО ---
+                    unified_db = {}
+                    if (global_promo or global_tags) and os.path.exists("data/images_db.xlsx"):
                         try:
                             df_db = pd.read_excel("data/images_db.xlsx")
                             for _, row in df_db.iterrows():
-                                u = str(row.iloc[0]).strip(); img = str(row.iloc[1]).strip()
-                                if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
-                        except: pass
+                                u = str(row.iloc[0]).strip()
+                                if not u or u == 'nan': continue
+                                
+                                # Пытаемся гибко вытащить имя и картинку
+                                val1 = str(row.iloc[1]).strip() if len(df_db.columns) > 1 else ""
+                                val2 = str(row.iloc[2]).strip() if len(df_db.columns) > 2 else ""
+                                
+                                # Эвристика: картинка обычно содержит http, .jpg, .png
+                                if "http" in val1 or ".png" in val1 or ".jpg" in val1:
+                                    img = val1
+                                    name = val2
+                                elif "http" in val2 or ".png" in val2 or ".jpg" in val2:
+                                    name = val1
+                                    img = val2
+                                else:
+                                    name = val1 # Если картинок нет, считаем вторую колонку именем
+                                    img = "https://via.placeholder.com/260"
+                                
+                                if not name or name == 'nan':
+                                    name = ""
+                                    
+                                unified_db[u.rstrip('/')] = {'img': img, 'name': name}
+                        except Exception as e:
+                            status_logger.error(f"Ошибка чтения images_db.xlsx: {e}")
 
                     # 1. Убираем дубликаты из списков (чтобы точно не было повторов)
                     cat_commercial = list(set(cat_commercial))
@@ -4406,10 +4423,9 @@ with tab_wholesale_main:
                     tags_cands = []
                     promo_cands = []
                     faq_cands = []
-                    text_words = cat_commercial + cat_general # Коммерция и общие - всегда в текст
+                    text_words = cat_commercial + cat_general
                     
                     total_str = len(structure_keywords)
-                    
                     if total_str <= 10:
                         tags_cands = structure_keywords.copy()
                     elif total_str <= 20:
@@ -4421,7 +4437,6 @@ with tab_wholesale_main:
                     else:
                         tags_cands = structure_keywords[:20]
                         promo_cands = structure_keywords[20:40]
-                        # Излишки свыше 40 делим пополам: часть в текст, часть в FAQ
                         leftovers = structure_keywords[40:]
                         mid = len(leftovers) // 2
                         text_words.extend(leftovers[:mid])
@@ -4429,39 +4444,56 @@ with tab_wholesale_main:
 
                     final_text_seo_list = text_words.copy()
 
-                    # 3. ВЫВОД ОТЧЕТА НА ЭКРАН (чтобы вы видели глазами)
                     with st.expander("📊 ОТЧЕТ: Куда алгоритм распределил слова?", expanded=True):
                         st.write(f"**В Текст ({len(final_text_seo_list)} шт):** {', '.join(final_text_seo_list) if final_text_seo_list else 'Нет слов'}")
                         st.write(f"**В Плитку тегов ({len(tags_cands)} шт):** {', '.join(tags_cands) if tags_cands else 'Нет слов'}")
                         st.write(f"**В Промо-блок ({len(promo_cands)} шт):** {', '.join(promo_cands) if promo_cands else 'Нет слов'}")
                         st.write(f"**В FAQ ({len(faq_cands)} шт):** {', '.join(faq_cands) if faq_cands else 'Нет слов'}")
-                        st.info("💡 Если ниже теги или промо не сгенерируются, значит эти слова не нашли совпадений в ваших файлах links_base.txt или images_db.xlsx!")
+                        st.info("💡 Если слова для тегов/промо не найдутся в images_db.xlsx, они вернутся в текст!")
                         
-                   # 2. ИЩЕМ СОВПАДЕНИЯ ДЛЯ ТЕГОВ И ПРОМО (С СОХРАНЕНИЕМ ИМЕН И ВОЗВРАТОМ СЛОВ)
+                    # --- УМНЫЙ ПОИСК ПО ЕДИНОЙ БАЗЕ ---
                     target_tag_urls = []
                     matched_tags_kw = []
-                    if global_tags and all_tags_links:
-                        tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
-                        for kw in tags_cands:
-                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            for url in tags_cands_all:
-                                # Проверяем, что url еще не добавлен в итоговый массив
-                                if tr_kw in url.lower() and not any(url == t[0] for t in target_tag_urls):
-                                    target_tag_urls.append((url, kw)) # Сохраняем пару: (Ссылка, Нормальное слово)
-                                    matched_tags_kw.append(kw)
-                                    break
-                            
                     target_promo_urls = []
                     matched_promo_kw = []
-                    if global_promo and p_img_map:
-                        p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
+                    
+                    available_urls = [u for u in unified_db.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
+                    
+                    def find_match_in_db(kw, used_urls):
+                        kw_lower = kw.lower()
+                        kw_translit = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                        
+                        # Шаг 1: Ищем точное совпадение по русской колонке 'Название'
+                        for u in available_urls:
+                            if u in used_urls: continue
+                            db_name = unified_db[u]['name'].lower()
+                            if db_name and (kw_lower == db_name or kw_lower in db_name or db_name in kw_lower):
+                                return u, unified_db[u]['name'].capitalize()
+                                
+                        # Шаг 2: Если русского названия в базе нет, ищем транслитом по ссылке
+                        for u in available_urls:
+                            if u in used_urls: continue
+                            if kw_translit in u.lower():
+                                final_name = unified_db[u]['name'].capitalize() if unified_db[u]['name'] else kw.capitalize()
+                                return u, final_name
+                                
+                        return None, None
+
+                    if global_tags:
+                        for kw in tags_cands:
+                            f_url, f_name = find_match_in_db(kw, [t[0] for t in target_tag_urls])
+                            if f_url:
+                                target_tag_urls.append((f_url, f_name))
+                                matched_tags_kw.append(kw)
+                                
+                    if global_promo:
                         for kw in promo_cands:
-                            tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
-                            for u in p_cands_all:
-                                if tr_kw in u.lower() and not any(u == t[0] for t in target_promo_urls):
-                                    target_promo_urls.append((u, kw)) # Сохраняем пару: (Ссылка, Нормальное слово)
-                                    matched_promo_kw.append(kw)
-                                    break
+                            # Промо не должно пересекаться с тегами
+                            used = [t[0] for t in target_tag_urls] + [p[0] for p in target_promo_urls]
+                            f_url, f_name = find_match_in_db(kw, used)
+                            if f_url:
+                                target_promo_urls.append((f_url, f_name))
+                                matched_promo_kw.append(kw)
                     
                     # ВОЗВРАЩАЕМ ПОТЕРЯННЫЕ СЛОВА ОБРАТНО В ТЕКСТ! (Чтобы всегда было 41)
                     unmatched_tags = [w for w in tags_cands if w not in matched_tags_kw]
@@ -4555,8 +4587,7 @@ with tab_wholesale_main:
                         status_logger.write("🏷️ Внедряем теги...")
                         html_t = []
                         for u, nm in target_tag_urls[:15]:
-                            # Теперь nm - это нормальное русское слово из списка
-                            html_t.append(f'<a href="{u}" class="tag-item">{nm.capitalize()}</a>')
+                            html_t.append(f'<a href="{u}" class="tag-item">{nm}</a>')
                         if html_t:
                             injections.append(f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>''')
                         
@@ -4564,8 +4595,12 @@ with tab_wholesale_main:
                         status_logger.write("🔥 Формируем промо-галерею...")
                         gallery_items = []
                         for u, nm in target_promo_urls[:5]:
-                            img_src = p_img_map.get(u, "https://via.placeholder.com/260")
-                            gallery_items.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm.capitalize()}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>''')
+                            # Берем картинку из единой базы
+                            img_src = unified_db.get(u, {}).get('img', "https://via.placeholder.com/260")
+                            if not img_src or str(img_src) == 'nan': 
+                                img_src = "https://via.placeholder.com/260"
+                                
+                            gallery_items.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>''')
                         if gallery_items:
                             injections.append(f'''<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>''')
 
@@ -6197,6 +6232,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
