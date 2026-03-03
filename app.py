@@ -1575,6 +1575,16 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     # Здесь упростим: считаем IDF по леммам сразу, чтобы не мучиться с объединением пассажей
     lemma_docs_count = Counter()
 
+    # === ДОБАВЛЯЕМ МАССИВ ДЛИН ===
+    doc_lengths = [0] * N_sites
+
+    for idx, p in enumerate(comp_data_full):
+        if not p.get('body_text'): continue
+        doc_tokens, doc_forms, doc_len = analyze_text_structure(p['body_text'])
+        
+        # === СОХРАНЯЕМ ДЛИНУ ===
+        doc_lengths[idx] = doc_len
+
     for idx, p in enumerate(comp_data_full):
         if not p.get('body_text'): continue
         doc_tokens, doc_forms, doc_len = analyze_text_structure(p['body_text'])
@@ -1730,39 +1740,94 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     total_needed = len(words_with_median_gt_0)
     total_found = len(my_found_words)
     my_width_score = int(min(100, (total_found / total_needed) * 105)) if total_needed > 0 else 0
+
+    # ==== НОВЫЙ БЛОК: РАСЧЕТ ГЛУБИНЫ (С УЧЕТОМ НОРМИРОВАНИЯ) ====
+    use_norm = settings.get('norm', True)
     
+    # Функция для пересчета вхождений: сырые штуки ИЛИ плотность на 1000 слов
+    def get_weighted_count(raw_c, d_len):
+        if not use_norm: return raw_c
+        if d_len == 0: return 0
+        return (raw_c / d_len) * 1000
+
+    total_median_sum = 0
+    word_medians = {}
+    
+    # 1. Считаем эталонный объем Топа (справедливый)
+    for lemma in words_with_median_gt_0:
+        data = final_stats.get(lemma)
+        if data:
+            weighted_counts = [
+                get_weighted_count(data['counts_list'][i], doc_lengths[i]) 
+                for i in range(N_sites)
+            ]
+            rec_median = np.median(weighted_counts)
+            word_medians[lemma] = rec_median
+            total_median_sum += rec_median
+
+    # 2. Считаем глубину для Вашего сайта
+    my_depth_sum = 0
+    my_len_val = my_len if 'my_len' in locals() and my_len > 0 else 1000 
+    
+    for lemma in words_with_median_gt_0:
+        my_c = sum(cnt for (m_lemma, m_pos), cnt in my_counts_map_raw.items() if m_lemma == lemma)
+        my_w_count = get_weighted_count(my_c, my_len_val)
+        
+        rec_median = word_medians.get(lemma, 0)
+        # Штраф за переспам (режем по медиане) или недоспам (берем что есть)
+        my_depth_sum += min(my_w_count, max(0.01, rec_median)) 
+
+    my_depth_score = int(min(100, (my_depth_sum / total_median_sum) * 105)) if total_median_sum > 0 else 0
+    # ==============================================================
+
     table_rel = []
     my_site_found = False
     for item in original_results:
         url = item['url']
-        # Находим индекс в comp_data_full
         try:
-            # Ищем индекс по URL
             idx = next(i for i, x in enumerate(comp_data_full) if x['url'] == url)
         except StopIteration:
             continue
 
         doc_data = comp_data_full[idx]
         width_val = 0
+        depth_val = 0
         
         if doc_data and doc_data.get('body_text'):
-             # Считаем ширину по уже слитым данным
-             # Проверяем, какие из words_with_median_gt_0 присутствуют в этом доке
-             # matrix_counts[(lemma, winner_pos)][idx] > 0 ???
-             # Нет, проще взять сырые леммы документа
+             # Считаем Ширину
              toks, _, _ = analyze_text_structure(doc_data['body_text'])
              lemmas_only = set(t[0] for t in toks)
              inter = lemmas_only.intersection(words_with_median_gt_0)
              width_val = int(min(100, (len(inter) / total_needed) * 105)) if total_needed > 0 else 0
+
+             # Считаем Глубину конкурента
+             doc_depth_sum = 0
+             d_len = doc_lengths[idx]
+             for lemma in words_with_median_gt_0:
+                 data = final_stats.get(lemma)
+                 if data:
+                     w_count = get_weighted_count(data['counts_list'][idx], d_len)
+                     rec_median = word_medians.get(lemma, 0)
+                     doc_depth_sum += min(w_count, max(0.01, rec_median))
+             
+             depth_val = int(min(100, (doc_depth_sum / total_median_sum) * 105)) if total_median_sum > 0 else 0
         
         d_name = urlparse(url).netloc
         if my_clean_domain != "local" and my_clean_domain in d_name:
-            d_name += " (Вы)"; my_site_found = True
-        table_rel.append({ "Домен": d_name, "URL": url, "Позиция": item['pos'], "Ширина (балл)": width_val, "Глубина (балл)": width_val })
+            d_name += " (Вы)"
+            my_site_found = True
+            
+        table_rel.append({ 
+            "Домен": d_name, "URL": url, "Позиция": item['pos'], 
+            "Ширина (балл)": width_val, "Глубина (балл)": depth_val 
+        })
 
     if not my_site_found:
         my_u_val = my_data.get('url', '#') if my_data else '#'
-        table_rel.append({ "Домен": "Ваш сайт", "URL": my_u_val, "Позиция": my_serp_pos, "Ширина (балл)": my_width_score, "Глубина (балл)": my_width_score })
+        table_rel.append({ 
+            "Домен": "Ваш сайт", "URL": my_u_val, "Позиция": my_serp_pos, 
+            "Ширина (балл)": my_width_score, "Глубина (балл)": my_depth_score 
+        })
 
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['weight'], reverse=True)
@@ -1773,7 +1838,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "depth": pd.DataFrame(table_depth), 
         "hybrid": df_hybrid, 
         "relevance_top": pd.DataFrame(table_rel).sort_values(by='Позиция'), 
-        "my_score": {"width": my_width_score, "depth": my_width_score}, 
+        "my_score": {"width": my_width_score, "depth": my_depth_score}, 
         "missing_semantics_high": missing_semantics_high, 
         "missing_semantics_low": missing_semantics_low[:500],
         "debug_width": {"found": total_found, "needed": total_needed}
@@ -6313,6 +6378,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
