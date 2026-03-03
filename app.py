@@ -3114,9 +3114,10 @@ with tab_seo_main:
 
         
         # ГРАФИК
-        if st.session_state.get('analysis_done') and st.session_state.get('analysis_results'):
-            results = st.session_state.analysis_results
-            # ==========================================
+        if st.session_state.get('analysis_done'):
+        results = st.session_state.analysis_results
+        
+        # ==========================================
         # БЛОК ЭКСПОРТА РЕЗУЛЬТАТОВ (УМНЫЙ EXCEL)
         # ==========================================
         st.markdown("---")
@@ -3145,16 +3146,13 @@ with tab_seo_main:
                     
                     max_row = len(df_rel)
                     
-                    # Создаем нативный график прямо в Excel
                     chart = workbook.add_chart({'type': 'line'})
-                    # Ширина (Столбец D, индекс 3)
                     chart.add_series({
                         'name':       ['Релевантность', 0, 3],
-                        'categories': ['Релевантность', 1, 0, max_row, 0], # Названия доменов
-                        'values':     ['Релевантность', 1, 3, max_row, 3], # Значения ширины
+                        'categories': ['Релевантность', 1, 0, max_row, 0],
+                        'values':     ['Релевантность', 1, 3, max_row, 3],
                         'line':       {'color': '#1f77b4', 'width': 2.5}
                     })
-                    # Глубина (Столбец E, индекс 4)
                     chart.add_series({
                         'name':       ['Релевантность', 0, 4],
                         'categories': ['Релевантность', 1, 0, max_row, 0],
@@ -3164,20 +3162,16 @@ with tab_seo_main:
                     chart.set_title ({'name': 'Анализ конкурентов ТОПа'})
                     chart.set_size({'width': 750, 'height': 400})
                     
-                    # Вставляем график правее таблицы
                     worksheet.insert_chart('G2', chart)
 
-                    # Добавляем отсеянных конкурентов внизу таблицы
                     if 'bad_urls' in results and results['bad_urls']:
                         start_row_bad = max_row + 3
-                        # Пишем заголовок
                         format_header = workbook.add_format({'bold': True, 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
                         worksheet.write(start_row_bad, 0, "ОТСЕЯННЫЕ КОНКУРЕНТЫ (АНОМАЛИИ)", format_header)
-                        # Вставляем саму таблицу отсеянных
                         df_bad = pd.DataFrame(results['bad_urls'])
                         df_bad.to_excel(writer, sheet_name='Релевантность', startrow=start_row_bad+1, index=False)
 
-                    worksheet.set_column('A:B', 30) # Растягиваем колонки с URL
+                    worksheet.set_column('A:B', 30)
 
                 # --- ФУНКЦИЯ ДЛЯ ГРУППИРОВКИ СЕМАНТИКИ ---
                 def format_semantics(sem_list):
@@ -3198,7 +3192,7 @@ with tab_seo_main:
                         df_high_formatted.to_excel(writer, sheet_name='Упущенная_Важные', index=False)
                         worksheet_high = writer.sheets['Упущенная_Важные']
                         worksheet_high.set_column('A:A', 20)
-                        worksheet_high.set_column('B:B', 120) # Широкая колонка для слов
+                        worksheet_high.set_column('B:B', 120)
 
                 # --- ЛИСТ 3: ДОПОЛНИТЕЛЬНЫЕ ---
                 if 'missing_semantics_low' in results:
@@ -3239,9 +3233,9 @@ with tab_seo_main:
                 use_container_width=True
             )
         st.markdown("---")
-            # ==========================================
-            # КОНЕЦ БЛОКА ВСТАВКИ
-            # ==========================================
+        # ==========================================
+        # НИЖЕ ИДУТ ТВОИ ГРАФИКИ И ТАБЛИЦЫ
+        # ==========================================
             if 'relevance_top' in results and not results['relevance_top'].empty:
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander("📊 График релевантности (Нажмите, чтобы раскрыть)", expanded=False):                    
@@ -6506,6 +6500,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
