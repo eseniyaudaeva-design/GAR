@@ -2697,50 +2697,45 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fi
     import json
     import random
     from datetime import date, timedelta
-    from openai import OpenAI
     
     try:
+        from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     except Exception as e:
-        return [{"Имя": "Ошибка", "Текст": f"Ошибка инициализации API: {str(e)}"}]
+        return[{"Имя": "Ошибка", "Текст": f"Ошибка инициализации API: {str(e)}"}]
         
-    # Генерация случайных дат для отзывов
     start_date = date(2026, 1, 1)
     end_date = date(2026, 2, 10)
     delta = end_date - start_date
     
-    random_dates = []
+    random_dates =[]
     for _ in range(target_count):
         random_days = random.randrange(delta.days + 1)
         rand_date = start_date + timedelta(days=random_days)
         random_dates.append(rand_date.strftime("%d.%m.%Y"))
             
-    # Подготавливаем примеры имен из базы
-    names_sample = []
+    names_sample =[]
     if not df_fio.empty:
         for _ in range(min(10, len(df_fio))):
             f_row = df_fio.sample(n=1).iloc[0]
             names_sample.append(f"{f_row.get('Имя', '')} {f_row.get('Фамилия', '')}".strip())
             
-    # Подготавливаем примеры шаблонов
-    templates_sample = []
-    if not df_templates.empty and 'Шаблон' in df_templates.columns:
-        templates_sample = df_templates['Шаблон'].dropna().sample(min(5, len(df_templates))).tolist()
-        
-    prompt = f"""Ты — копирайтер, пишущий реалистичные B2B отзывы от лица клиентов.
+    prompt = f"""Ты — копирайтер, пишущий реалистичные B2B отзывы от лица клиентов (снабженцев, прорабов, закупщиков).
 Тема отзывов (товар/услуга): "{h2_header}".
 
-ИНСТРУКЦИИ:
-1. Напиши ровно {target_count} отзывов.
-2. Имена авторов выбирай или придумывай (Примеры имен: {", ".join(names_sample)}).
-3. Используй эти шаблоны как ориентир для структуры и стиля:
-{chr(10).join(templates_sample)}
-4. Доступные переменные: {json.dumps(var_dict, ensure_ascii=False)[:600]}. Интегрируй их значения по смыслу.
-5. ОБЯЗАТЕЛЬНО используй эти LSI-слова, вплетая их естественно, и выдели их жирным (**слово**): {", ".join(lsi_words)}
-6. Отзывы должны быть технически грамотными, без лишних восторгов.
-7. Для каждого отзыва используй одну из этих дат обращения или покупки: {", ".join(random_dates)}. Вплетай дату органично (например: "Обращались {random_dates[0]}...", "Заказ от {random_dates[1]}...").
-8. ВЕРНИ СТРОГО В ФОРМАТЕ JSON-МАССИВА:
-[
+ИНСТРУКЦИИ (ОЧЕНЬ ВАЖНО):
+1. Напиши ровно {target_count} отзывов. Имена бери из списка: {", ".join(names_sample)}.
+2. РАЗНООБРАЗИЕ ОБЪЕМА: Отзывы должны быть от РАЗНЫХ людей. 
+   - Сделай один отзыв очень коротким (1-2 рубленые фразы, типа "привезли, всё норм").
+   - Второй сделай средним, укажи детали процесса.
+   - Третий (и далее) сделай длинным, подробным, можно с небольшой придиркой, но хорошим итогом.
+3. ЖИВОЙ ЯЗЫК: В интернете не пишут как академики!
+   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать длинные тире (—) и точку с запятой (;). Если нужно, ставь обычный короткий дефис (-).
+   - Избегай сложных деепричастных оборотов и идеальной пунктуации.
+   - Используй простые фразы, сленг закупщиков ("закрыли объем", "по докам", "отгрузили"). Можно иногда пропустить запятую.
+4. LSI СЛОВА: ОБЯЗАТЕЛЬНО используй эти слова, вплетая их как случайные детали. ВЫДЕЛИ ИХ ЖИРНЫМ (**слово**): {", ".join(lsi_words)}
+5. ДАТЫ: Используй эти даты покупки: {", ".join(random_dates)} (например: "Оплатили {random_dates[0]}...", "Заказ от {random_dates[1]}").
+6. ВЕРНИ СТРОГО В ФОРМАТЕ JSON-МАССИВА:[
   {{"Имя": "Имя Фамилия", "Дата": "ДД.ММ.ГГГГ", "Текст": "Текст отзыва..."}}
 ]
 """
@@ -2748,7 +2743,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fi
         resp = client.chat.completions.create(
             model="deepseek/deepseek-v3.2",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5 # Чуть повысили температуру для большей вариативности текстов
+            temperature=0.7 # Повышаем температуру для большего разнообразия стилей
         )
         content = resp.choices[0].message.content
         if content.startswith("```json"): content = content[7:]
@@ -2756,7 +2751,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fi
         if content.endswith("```"): content = content[:-3]
         return json.loads(content.strip())
     except Exception as e:
-        return [{"Имя": "Ошибка", "Дата": "", "Текст": str(e)}]
+        return[{"Имя": "Ошибка", "Дата": "", "Текст": str(e)}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
@@ -4823,50 +4818,35 @@ with tab_wholesale_main:
                             else: unmatched_kws.append(kw)
                     else: unmatched_kws.extend(tags_2_cands)
 
-                    # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ СЕМАНТИКИ (FAQ И ОТЗЫВЫ)
-                    all_commercial_general = list(set(cat_commercial + cat_general + unmatched_kws))
-                    random.shuffle(all_commercial_general)
-                    
-                    faq_cands = st.session_state.get('categorized_info', []) # Изначальный запас для FAQ
-                    review_cands = []
-                    
-                    # Отщипываем 7 слов из упущенной семантики для FAQ
-                    if st.session_state.get('ws_global_faq', True):
-                        chunk = all_commercial_general[:7]
-                        faq_cands.extend(chunk)
-                        all_commercial_general = all_commercial_general[7:]
-                        
-                    # Отщипываем 7 слов из упущенной семантики для Отзывов
-                    if st.session_state.get('ws_global_reviews', True):
-                        chunk = all_commercial_general[:7]
-                        review_cands.extend(chunk)
-                        all_commercial_general = all_commercial_general[7:]
-                
-                    # 4. ОТКАЗНИКИ ИДУТ В РАСПРЕДЕЛЕНИЕ (ТЕКСТ, FAQ, ОТЗЫВЫ)
+# =================================================================
+                    # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ ОСТАТКОВ (ТЕКСТ, FAQ, ОТЗЫВЫ)
+                    # =================================================================
+                    # Собираем все неиспользованные слова в единый котел
                     all_initial_lsi = list(set(cat_commercial + cat_general + unmatched_kws))
+                    import random
                     random.shuffle(all_initial_lsi)
                     
-                    faq_cands = st.session_state.get('categorized_info', []) # Запас для FAQ
-                    review_cands = []
+                    faq_cands = st.session_state.get('categorized_info',[]) # Запас для FAQ
+                    review_cands =[]
                     
                     leftover_lsi = all_initial_lsi.copy()
             
-                    # Отщипываем до 7 слов для FAQ
+                    # Отщипываем слова для FAQ
                     if global_faq:
                         chunk_size = min(7, len(leftover_lsi))
                         faq_cands.extend(leftover_lsi[:chunk_size])
                         leftover_lsi = leftover_lsi[chunk_size:]
                         
-                    # Отщипываем до 7 слов для Отзывов
+                    # Отщипываем слова для Отзывов
                     if st.session_state.get('ws_global_reviews', True):
                         chunk_size = min(7, len(leftover_lsi))
                         review_cands.extend(leftover_lsi[:chunk_size])
                         leftover_lsi = leftover_lsi[chunk_size:]
             
-                    # Остаток уходит в основной текст
+                    # Весь остаток отправляем в основной текст
                     final_text_seo_list = leftover_lsi
             
-                    # Честный подсчет вообще всех собранных слов
+                    # Правильный подсчет вообще всех собранных слов
                     total_collected = len(cat_commercial) + len(cat_general) + len(structure_keywords) + len(cat_dimensions) + len(cat_geo)
             
                     with st.expander(f"📊 ОТЧЕТ: Распределение слов (Всего собрано: {total_collected} шт.)", expanded=True): 
@@ -4875,6 +4855,8 @@ with tab_wholesale_main:
                         st.write(f"**В Отзывы ({len(review_cands)} шт)**")
                         st.write(f"**В Плитку тегов ({len(tags_block_1) + len(tags_block_2)} шт)**")
                         st.write(f"**В Промо-блок ({len(promo_block)} шт)**")
+                        st.write(f"**В Таблицу (ГОСТ/Размеры) ({len(cat_dimensions)} шт)**")
+                        st.write(f"**В Гео-Блок ({len(cat_geo)} шт)**")
 
                     # =================================================================
                     # ГЕНЕРАЦИЯ ТЕКСТА
@@ -4998,17 +4980,18 @@ with tab_wholesale_main:
                                 final_faq_html = "\n".join(faq_html_parts)
                         except Exception as e:
                             status_logger.error(f"Ошибка FAQ: {e}")
-                    # =================================================================
-                    # ГЕНЕРАЦИЯ ОТЗЫВОВ (DEEPSEEK)
+# =================================================================
+                    # ГЕНЕРАЦИЯ ОТЗЫВОВ (DEEPSEEK) И СБОРКА ИХ В HTML
                     # =================================================================
                     global_reviews = st.session_state.get('ws_global_reviews', True)
+                    final_reviews_html = ""
+                    
                     if global_reviews and gemini_api_key:
                         rev_count = st.session_state.get('ws_reviews_count', 3)
                         status_logger.write(f"💬 Генерируем {rev_count} отзывов (DeepSeek)...")
                         
                         import os
                         import pandas as pd
-                        # Читаем шаблоны из репозитория
                         df_fio = pd.read_csv("dicts/fio.csv", sep=";") if os.path.exists("dicts/fio.csv") else pd.DataFrame()
                         df_templates = pd.read_csv("dicts/templates.csv", sep=";") if os.path.exists("dicts/templates.csv") else pd.DataFrame()
                         
@@ -5020,27 +5003,43 @@ with tab_wholesale_main:
                                 if pd.notna(rv['Значения']):
                                     var_dict[f"{{{v_name}}}"] = [v.strip() for v in str(rv['Значения']).split('|')]
                                     
-                        # Вызов нейросети с передачей всего контекста и переменных
-                        reviews_json = generate_reviews_deepseek(
-                            gemini_api_key, 
-                            h2_header, 
-                            review_cands, 
-                            rev_count, 
-                            df_fio, 
-                            df_templates, 
-                            var_dict
-                        )
+                        reviews_json = generate_reviews_deepseek(gemini_api_key, h2_header, review_cands, rev_count, df_fio, df_templates, var_dict)
                         
                         if 'ws_reviews_export_data' not in st.session_state:
-                            st.session_state.ws_reviews_export_data = []
+                            st.session_state.ws_reviews_export_data =[]
                             
-                        for item in reviews_json:
-                            st.session_state.ws_reviews_export_data.append({
-                                'Page URL': current_task['url'],
-                                'Product Name': h2_header,
-                                'Имя': item.get('Имя', ''),
-                                'Отзыв': item.get('Текст', '')
-                            })
+                        # Если нейросеть вернула нормальный массив
+                        if isinstance(reviews_json, list) and len(reviews_json) > 0 and "Текст" in reviews_json[0]:
+                            rev_html_parts =[
+                                '<div class="reviews-section" style="margin-top: 30px;">', 
+                                f'<div class="h2"><h2>Отзывы клиентов: {h2_header}</h2></div>', 
+                                '<div class="reviews-container">'
+                            ]
+                            
+                            def md_to_html(text):
+                                return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(text))
+                            
+                            for item in reviews_json:
+                                r_name = item.get('Имя', 'Клиент')
+                                r_date = item.get('Дата', '')
+                                r_text = md_to_html(item.get('Текст', ''))
+                                
+                                # Верстаем отзыв
+                                rev_html_parts.append(f'<div class="review-item" style="padding: 15px; border-left: 4px solid #277EFF; background: #f9fafb; margin-bottom: 15px;">')
+                                rev_html_parts.append(f'<div class="review-header" style="margin-bottom: 8px;"><strong class="review-author">{r_name}</strong> <span class="review-date" style="color: #6b7280; font-size: 13px; margin-left: 10px;">{r_date}</span></div>')
+                                rev_html_parts.append(f'<div class="review-text" style="color: #374151; font-size: 15px;"><p>{r_text}</p></div>')
+                                rev_html_parts.append(f'</div>')
+                                
+                                # Сохраняем в таблицу
+                                st.session_state.ws_reviews_export_data.append({
+                                    'Page URL': current_task['url'],
+                                    'Product Name': h2_header,
+                                    'Имя': r_name,
+                                    'Отзыв': r_text
+                                })
+                                
+                            rev_html_parts.append('</div></div>')
+                            final_reviews_html = "\n".join(rev_html_parts)
 
                     # =================================================================
                     # ГЕО-ДОСТАВКА
@@ -5062,11 +5061,11 @@ with tab_wholesale_main:
                         html_injections['table'] = f'<div class="table-scroll-wrapper">\n{cl_tab}\n</div>'
                     
                     if global_tags and tags_block_1:
-                        html_t1 = [f'<a href="{i["url"]}" class="tag-item">{i["name"]}</a>' for i in tags_block_1]
+                        html_t1 =[f'<a href="{i["url"]}" class="tag-item">{i["name"]}</a>' for i in tags_block_1]
                         html_injections['tags1'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t1)}</div></div></div>'
                     
                     if global_promo and promo_block:
-                        g_items = [f'<div class="gallery-item"><h3><a href="{i["url"]}" target="_blank">{i["name"]}</a></h3><figure><a href="{i["url"]}" target="_blank"><picture><img src="{i["img"]}" loading="lazy"></picture></a></figure></div>' for i in promo_block]
+                        g_items =[f'<div class="gallery-item"><h3><a href="{i["url"]}" target="_blank">{i["name"]}</a></h3><figure><a href="{i["url"]}" target="_blank"><picture><img src="{i["img"]}" loading="lazy"></picture></a></figure></div>' for i in promo_block]
                         html_injections['promo'] = f'<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(g_items)}</div></div></div>'
                     
                     if global_tags and tags_block_2:
@@ -5084,12 +5083,15 @@ with tab_wholesale_main:
                             if blocks[slot]: blocks[slot] += "\n\n" + inj_html
                             else: blocks[slot] = inj_html
 
-                    TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
+                    TEXT_CONTAINERS =['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
                     for i_c, c_name in enumerate(TEXT_CONTAINERS):
                         if i_c < len(blocks): row_data[c_name] = blocks[i_c]
 
+                    # Собираем итоговую статью (Склеиваем Текст + FAQ + Отзывы)
                     merged_html = "".join(blocks)
                     if final_faq_html: merged_html += f"\n\n{final_faq_html}"
+                    if final_reviews_html: merged_html += f"\n\n{final_reviews_html}"
+                    
                     row_data['Весь текст целиком'] = merged_html
                     row_data['FAQ HTML'] = final_faq_html
                     
@@ -6709,6 +6711,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
