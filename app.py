@@ -3117,7 +3117,7 @@ with tab_seo_main:
         if st.session_state.get('analysis_done'):
             results = st.session_state.analysis_results
             
-            # ==========================================
+# ==========================================
             # БЛОК ЭКСПОРТА РЕЗУЛЬТАТОВ (УМНЫЙ EXCEL)
             # ==========================================
             st.markdown("---")
@@ -3178,7 +3178,7 @@ with tab_seo_main:
                         if not sem_list: return pd.DataFrame()
                         grouped = defaultdict(list)
                         for item in sem_list:
-                            word = item['word']  # <--- ИСПРАВЛЕНО ТУТ
+                            word = item['word'] # <--- ОШИБКА ИСПРАВЛЕНА ЗДЕСЬ
                             cat = categorize_lsi_word(word) if 'categorize_lsi_word' in globals() else "Остальные"
                             grouped[cat].append(word)
                         
@@ -6500,6 +6500,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
