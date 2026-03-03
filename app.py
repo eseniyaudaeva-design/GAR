@@ -1841,7 +1841,8 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "my_score": {"width": my_width_score, "depth": my_depth_score}, 
         "missing_semantics_high": missing_semantics_high, 
         "missing_semantics_low": missing_semantics_low[:500],
-        "debug_width": {"found": total_found, "needed": total_needed}
+        "debug_width": {"found": total_found, "needed": total_needed},
+        "bad_urls": bad_urls_dicts
     }
     
 def get_hybrid_word_type(word, main_marker_root, specs_dict=None):
@@ -3116,77 +3117,128 @@ with tab_seo_main:
         if st.session_state.get('analysis_done') and st.session_state.get('analysis_results'):
             results = st.session_state.analysis_results
             # ==========================================
-            # ВСТАВЬ ВЕСЬ ЭТОТ БЛОК ПРЯМО СЮДА
-            # ==========================================
-            st.markdown("---")
-            st.subheader("💾 Экспорт результатов")
-    
-            export_format = st.radio(
-                "Выберите формат файла:", 
-                ["📊 Excel", "⚙️ JSON"], 
-                horizontal=True
-            )
-    
-            import datetime
-            import io
-    
-            if "Excel" in export_format:
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                    # Лист 1: Релевантность
-                    if 'relevance_top' in results:
-                        results['relevance_top'].to_excel(writer, sheet_name='Релевантность', index=False)
-                    
-                    # Лист 2: Упущенная семантика (Важные) + Категоризация
-                    if 'missing_semantics_high' in results:
-                        df_high = pd.DataFrame(results['missing_semantics_high'])
-                        if not df_high.empty:
-                            if 'categorize_lsi_word' in globals():
-                                df_high['Категория'] = df_high['lemma'].apply(categorize_lsi_word)
-                                df_high = df_high.sort_values(by=['Категория', 'weight'], ascending=[True, False])
-                            df_high.to_excel(writer, sheet_name='Семантика_Важные', index=False)
-                            
-                    # Лист 3: Упущенная семантика (Дополнительные)
-                    if 'missing_semantics_low' in results:
-                        df_low = pd.DataFrame(results['missing_semantics_low'])
-                        if not df_low.empty:
-                            df_low.to_excel(writer, sheet_name='Семантика_Доп', index=False)
-    
-                    # Лист 4: Матрица Глубины
-                    if 'depth' in results:
-                        results['depth'].to_excel(writer, sheet_name='Матрица_Глубины', index=False)
-    
-                    # Лист 5: TF-IDF Гибрид
-                    if 'hybrid' in results:
-                        results['hybrid'].to_excel(writer, sheet_name='TF-IDF', index=False)
-    
-                st.download_button(
-                    label="📥 Скачать файл",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"SEO_Analysis_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-            else:
-                def custom_serializer(obj):
-                    if isinstance(obj, pd.DataFrame): return obj.to_dict(orient='records')
-                    import numpy as np
-                    if isinstance(obj, np.integer): return int(obj)
-                    if isinstance(obj, np.floating): return float(obj)
-                    if isinstance(obj, np.ndarray): return obj.tolist()
-                    return str(obj)
-    
-                import json
-                json_data = json.dumps(results, default=custom_serializer, ensure_ascii=False, indent=4)
+        # БЛОК ЭКСПОРТА РЕЗУЛЬТАТОВ (УМНЫЙ EXCEL)
+        # ==========================================
+        st.markdown("---")
+        st.subheader("💾 Экспорт результатов")
+
+        export_format = st.radio(
+            "Выберите формат файла:", 
+            ["📊 Excel (С графиками и группами)", "⚙️ JSON (Для разработчиков)"], 
+            horizontal=True
+        )
+
+        import datetime
+        import io
+        from collections import defaultdict
+
+        if "Excel" in export_format:
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                workbook = writer.book
                 
-                st.download_button(
-                    label="📥 Скачать файл",
-                    data=json_data,
-                    file_name=f"SEO_Analysis_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.json",
-                    mime="application/json",
-                    use_container_width=True
-                )
-            st.markdown("---")
+                # --- ЛИСТ 1: РЕЛЕВАНТНОСТЬ И ГРАФИК ---
+                if 'relevance_top' in results:
+                    df_rel = results['relevance_top']
+                    df_rel.to_excel(writer, sheet_name='Релевантность', index=False)
+                    worksheet = writer.sheets['Релевантность']
+                    
+                    max_row = len(df_rel)
+                    
+                    # Создаем нативный график прямо в Excel
+                    chart = workbook.add_chart({'type': 'line'})
+                    # Ширина (Столбец D, индекс 3)
+                    chart.add_series({
+                        'name':       ['Релевантность', 0, 3],
+                        'categories': ['Релевантность', 1, 0, max_row, 0], # Названия доменов
+                        'values':     ['Релевантность', 1, 3, max_row, 3], # Значения ширины
+                        'line':       {'color': '#1f77b4', 'width': 2.5}
+                    })
+                    # Глубина (Столбец E, индекс 4)
+                    chart.add_series({
+                        'name':       ['Релевантность', 0, 4],
+                        'categories': ['Релевантность', 1, 0, max_row, 0],
+                        'values':     ['Релевантность', 1, 4, max_row, 4],
+                        'line':       {'color': '#d62728', 'width': 2.5}
+                    })
+                    chart.set_title ({'name': 'Анализ конкурентов ТОПа'})
+                    chart.set_size({'width': 750, 'height': 400})
+                    
+                    # Вставляем график правее таблицы
+                    worksheet.insert_chart('G2', chart)
+
+                    # Добавляем отсеянных конкурентов внизу таблицы
+                    if 'bad_urls' in results and results['bad_urls']:
+                        start_row_bad = max_row + 3
+                        # Пишем заголовок
+                        format_header = workbook.add_format({'bold': True, 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+                        worksheet.write(start_row_bad, 0, "ОТСЕЯННЫЕ КОНКУРЕНТЫ (АНОМАЛИИ)", format_header)
+                        # Вставляем саму таблицу отсеянных
+                        df_bad = pd.DataFrame(results['bad_urls'])
+                        df_bad.to_excel(writer, sheet_name='Релевантность', startrow=start_row_bad+1, index=False)
+
+                    worksheet.set_column('A:B', 30) # Растягиваем колонки с URL
+
+                # --- ФУНКЦИЯ ДЛЯ ГРУППИРОВКИ СЕМАНТИКИ ---
+                def format_semantics(sem_list):
+                    if not sem_list: return pd.DataFrame()
+                    grouped = defaultdict(list)
+                    for item in sem_list:
+                        word = item['lemma']
+                        cat = categorize_lsi_word(word) if 'categorize_lsi_word' in globals() else "Остальные"
+                        grouped[cat].append(word)
+                    
+                    formatted_data = [{"Группа": cat, "Слова": ", ".join(words)} for cat, words in grouped.items()]
+                    return pd.DataFrame(formatted_data)
+
+                # --- ЛИСТ 2: ВАЖНЫЕ ---
+                if 'missing_semantics_high' in results:
+                    df_high_formatted = format_semantics(results['missing_semantics_high'])
+                    if not df_high_formatted.empty:
+                        df_high_formatted.to_excel(writer, sheet_name='Упущенная_Важные', index=False)
+                        worksheet_high = writer.sheets['Упущенная_Важные']
+                        worksheet_high.set_column('A:A', 20)
+                        worksheet_high.set_column('B:B', 120) # Широкая колонка для слов
+
+                # --- ЛИСТ 3: ДОПОЛНИТЕЛЬНЫЕ ---
+                if 'missing_semantics_low' in results:
+                    df_low_formatted = format_semantics(results['missing_semantics_low'])
+                    if not df_low_formatted.empty:
+                        df_low_formatted.to_excel(writer, sheet_name='Упущенная_Доп', index=False)
+                        worksheet_low = writer.sheets['Упущенная_Доп']
+                        worksheet_low.set_column('A:A', 20)
+                        worksheet_low.set_column('B:B', 120)
+
+                # --- ЛИСТ 4: ГЛУБИНА ---
+                if 'depth' in results:
+                    results['depth'].to_excel(writer, sheet_name='Матрица_Глубины', index=False)
+
+            st.download_button(
+                label="📥 Скачать готовый отчет",
+                data=excel_buffer.getvalue(),
+                file_name=f"SEO_Отчет_{datetime.datetime.now().strftime('%d_%m_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        else:
+            def custom_serializer(obj):
+                if isinstance(obj, pd.DataFrame): return obj.to_dict(orient='records')
+                import numpy as np
+                if isinstance(obj, np.integer): return int(obj)
+                if isinstance(obj, np.floating): return float(obj)
+                if isinstance(obj, np.ndarray): return obj.tolist()
+                return str(obj)
+
+            import json
+            json_data = json.dumps(results, default=custom_serializer, ensure_ascii=False, indent=4)
+            st.download_button(
+                label="📥 Скачать JSON",
+                data=json_data,
+                file_name=f"SEO_Raw_{datetime.datetime.now().strftime('%d_%m_%H%M')}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        st.markdown("---")
             # ==========================================
             # КОНЕЦ БЛОКА ВСТАВКИ
             # ==========================================
@@ -6454,6 +6506,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
