@@ -4324,6 +4324,9 @@ with tab_seo_main:
                 time.sleep(1)
                 st.rerun()
 
+        if not st.session_state.get('lsi_automode_active'):
+            st.rerun()
+
 # ==========================================
 # TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V11 - БРОНЕБОЙНЫЙ ТЕКСТ)
 # ==========================================
@@ -6310,6 +6313,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
