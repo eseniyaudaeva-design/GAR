@@ -4477,7 +4477,7 @@ with tab_wholesale_main:
                     
                     auto_num_blocks = st.session_state.get('ws_num_blocks_val', 5)
                     
-if curr_use_text and client:
+                    if curr_use_text and client:
                         words_count = len(final_text_seo_list)
                         
                         if st.session_state.get('ws_auto_blocks', True):
@@ -6129,6 +6129,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
