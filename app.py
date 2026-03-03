@@ -4515,38 +4515,52 @@ with tab_wholesale_main:
                             status_logger.error(f"Ошибка таблицы: {e}")
 
                     # =================================================================
-                    # ГЕНЕРАЦИЯ FAQ
-                    # =================================================================
-                    final_faq_html = ""
-                    if global_faq and client:
-                        current_faq_count = st.session_state.get('ws_faq_count', 4)
-                        status_logger.write(f"❓ Генерируем FAQ ({current_faq_count} вопросов)...")
-                        try:
-                            faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
-                            if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
-                                comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
-                                info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
-                                
-                                if 'faq_export_data' not in st.session_state: st.session_state.faq_export_data = []
-                                for item in faq_json:
-                                    st.session_state.faq_export_data.append({
-                                        'Page URL': current_task['url'], 'Product Name': h2_header,
-                                        'Тип вопроса': item.get("Тип", ""), 'Вопрос': item.get("Вопрос", ""), 'Ответ': item.get("Ответ", "")
-                                    })
-                                
-                                faq_html_parts = ['<div class="faq-section">', f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>']
-                                if comm_items:
-                                    faq_html_parts.append('<div class="faq-category"><div class="h3"><h3>Коммерческие вопросы</h3></div>')
-                                    for item in comm_items: faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
-                                    faq_html_parts.append('</div>')
-                                if info_items:
-                                    faq_html_parts.append('<div class="faq-category"><div class="h3"><h3>Информационные вопросы</h3></div>')
-                                    for item in info_items: faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{item.get("Вопрос", "")}</h4></div><p>{item.get("Ответ", "")}</p></div>')
-                                    faq_html_parts.append('</div>')
+                # ГЕНЕРАЦИЯ FAQ
+                # =================================================================
+                final_faq_html = ""
+                if global_faq and client:
+                    current_faq_count = st.session_state.get('ws_faq_count', 4)
+                    status_logger.write(f"❓ Генерируем FAQ ({current_faq_count} вопросов)...")
+                    try:
+                        faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
+                        if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
+                            comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
+                            info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
+                            
+                            if 'faq_export_data' not in st.session_state: st.session_state.faq_export_data = []
+                            for item in faq_json:
+                                st.session_state.faq_export_data.append({
+                                    'Page URL': current_task['url'], 'Product Name': h2_header,
+                                    'Тип вопроса': item.get("Тип", ""), 'Вопрос': item.get("Вопрос", ""), 'Ответ': item.get("Ответ", "")
+                                })
+                            
+                            faq_html_parts = ['<div class="faq-section">', f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>']
+                            
+                            # --- УМНЫЙ ФИЛЬТР МАРКДАУНА В HTML ---
+                            def md_to_html(text):
+                                # Превращаем **текст** в <strong>текст</strong>
+                                return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(text))
+                            
+                            if comm_items:
+                                faq_html_parts.append('<div class="faq-category"><div class="h3"><h3>Коммерческие вопросы</h3></div>')
+                                for item in comm_items: 
+                                    q_clean = md_to_html(item.get("Вопрос", ""))
+                                    a_clean = md_to_html(item.get("Ответ", ""))
+                                    faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{q_clean}</h4></div><p>{a_clean}</p></div>')
                                 faq_html_parts.append('</div>')
-                                final_faq_html = "\n".join(faq_html_parts)
-                        except Exception as e:
-                            status_logger.error(f"Ошибка FAQ: {e}")
+                                
+                            if info_items:
+                                faq_html_parts.append('<div class="faq-category"><div class="h3"><h3>Информационные вопросы</h3></div>')
+                                for item in info_items: 
+                                    q_clean = md_to_html(item.get("Вопрос", ""))
+                                    a_clean = md_to_html(item.get("Ответ", ""))
+                                    faq_html_parts.append(f'<div class="faq-item"><div class="h4"><h4>{q_clean}</h4></div><p>{a_clean}</p></div>')
+                                faq_html_parts.append('</div>')
+                                
+                            faq_html_parts.append('</div>')
+                            final_faq_html = "\n".join(faq_html_parts)
+                    except Exception as e:
+                        status_logger.error(f"Ошибка FAQ: {e}")
 
                     # =================================================================
                     # ГЕО-ДОСТАВКА
@@ -6194,6 +6208,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
