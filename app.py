@@ -5042,33 +5042,33 @@ with tab_wholesale_main:
         with st.expander("👀 Техническая таблица"):
             st.dataframe(df_export.style.apply(highlight_bad_results, axis=1), use_container_width=True)
                 
-                # Подсветка DeepSeek
-                if str(row.get('DeepSeek Контекст')) == "NO" and 'DeepSeek Контекст' in col_idx:
-                    styles[col_idx['DeepSeek Контекст']] = err_style
-                    
-                # Подсветка Тургенева
-                try:
-                    t_val = str(row.get('Риск Тургенев', '0'))
-                    t_num = float(re.search(r'\d+\.?\d*', t_val).group())
-                    if t_num > 5 and 'Риск Тургенев' in col_idx:
-                        styles[col_idx['Риск Тургенев']] = err_style
-                except: pass
-                
-                # Подсветка Уникальности
-                try:
-                    u_val = str(row.get('Уникальность', '100'))
-                    u_num = float(re.search(r'\d+\.?\d*', u_val).group())
-                    if u_num < 95 and 'Уникальность' in col_idx:
-                        styles[col_idx['Уникальность']] = err_style
-                except: pass
-                
-                # Подсветка Комментария
-                if str(row.get('Комментарий')) != "Ок" and 'Комментарий' in col_idx:
-                    styles[col_idx['Комментарий']] = err_style
-                    
-                return styles
-                
-            st.dataframe(df_export.style.apply(highlight_bad_results, axis=1), use_container_width=True)
+        # Подсветка DeepSeek
+        if str(row.get('DeepSeek Контекст')) == "NO" and 'DeepSeek Контекст' in col_idx:
+            styles[col_idx['DeepSeek Контекст']] = err_style
+            
+        # Подсветка Тургенева
+        try:
+            t_val = str(row.get('Риск Тургенев', '0'))
+            t_num = float(re.search(r'\d+\.?\d*', t_val).group())
+            if t_num > 5 and 'Риск Тургенев' in col_idx:
+                styles[col_idx['Риск Тургенев']] = err_style
+        except: pass
+        
+        # Подсветка Уникальности
+        try:
+            u_val = str(row.get('Уникальность', '100'))
+            u_num = float(re.search(r'\d+\.?\d*', u_val).group())
+            if u_num < 95 and 'Уникальность' in col_idx:
+                styles[col_idx['Уникальность']] = err_style
+        except: pass
+        
+        # Подсветка Комментария
+        if str(row.get('Комментарий')) != "Ок" and 'Комментарий' in col_idx:
+            styles[col_idx['Комментарий']] = err_style
+            
+        return styles
+        
+    st.dataframe(df_export.style.apply(highlight_bad_results, axis=1), use_container_width=True)
 
         st.markdown("---")
         st.markdown("### 🖥️ Визуальный предпросмотр")
@@ -6295,6 +6295,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
