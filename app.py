@@ -2321,16 +2321,16 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     seo_words = seo_words or []
     seo_instruction_block = ""
     
-    # === 1. ИНСТРУКЦИЯ ПО SEO ===
-    if seo_words:
-        seo_list_str = ", ".join(seo_words)
-        seo_instruction_block = f"""
+# === 1. ИНСТРУКЦИЯ ПО SEO ===
+        if seo_words:
+            seo_list_str = ", ".join(seo_words)
+            seo_instruction_block = f"""
 --- СТРОГАЯ ИНСТРУКЦИЯ ПО КЛЮЧЕВЫМ СЛОВАМ ---
 Тебе нужно внедрить в текст следующие LSI-слова: {seo_list_str}
 ПРАВИЛА РАБОТЫ СО СЛОВАМИ:
-1. Используй каждое слово из списка РОВНО 1 РАЗ на весь объем текста.
+1. ОБЯЗАТЕЛЬНО используй каждое слово из списка ровно ОДИН раз. Не повторяй их!
 2. Вписывай слова максимально естественно, меняя падежи, числа и формы.
-3. СТРОГО ЗАПРЕЩЕНО: Не выделяй ключевые слова жирным (ни **текст**, ни <b>текст</b>).
+3. ОБЯЗАТЕЛЬНО выделяй все вставленные SEO-слова жирным шрифтом (оборачивай в **слово** или <strong>слово</strong>), чтобы их было видно.
 4. Качество: Если ключ выглядит как мусор или название конкурента — игнорируй его.
 -------------------------------------------
 """
@@ -2378,7 +2378,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 - В списках между характеристикой и значением ставь тире: "Материал – углеродистая сталь".
 - Латиница: только марки стали (AISI, DIN) и стандарты. Все остальное — кириллица.
 - НИКАКОГО Markdown (```).
-- НИКАКОГО ЖИРНОГО ТЕКСТА (<b>, <strong>, **).
 - Только чистый HTML.
 """
 
@@ -4399,38 +4398,45 @@ with tab_wholesale_main:
                                 if u and u != 'nan' and img and img != 'nan': p_img_map[u.rstrip('/')] = img
                         except: pass
 
-                    final_text_seo_list = cat_commercial + cat_general
-                    
-# 1. УМНОЕ КВОТИРОВАНИЕ (Новая логика)
-                    # Коммерция и Общие слова ВСЕГДА идут в текст и FAQ
-                    text_and_faq_base = cat_commercial + cat_general
-                    
+                    # 1. Убираем дубликаты из списков (чтобы точно не было повторов)
+                    cat_commercial = list(set(cat_commercial))
+                    cat_general = list(set(cat_general))
+                    structure_keywords = list(set(structure_keywords))
+
+                    # 2. Жесткое распределение без пересечений
                     tags_cands = []
                     promo_cands = []
-                    extra_cands = []
+                    faq_cands = []
+                    text_words = cat_commercial + cat_general # Коммерция и общие - всегда в текст
                     
-                    total_str_kw = len(structure_keywords)
+                    total_str = len(structure_keywords)
                     
-                    # Каскадное распределение Товаров и Услуг
-                    if total_str_kw <= 20:
+                    if total_str <= 10:
                         tags_cands = structure_keywords.copy()
-                    elif total_str_kw <= 40:
+                    elif total_str <= 20:
+                        tags_cands = structure_keywords[:10]
+                        promo_cands = structure_keywords[10:]
+                    elif total_str <= 40:
                         tags_cands = structure_keywords[:20]
                         promo_cands = structure_keywords[20:]
                     else:
                         tags_cands = structure_keywords[:20]
                         promo_cands = structure_keywords[20:40]
-                        extra_cands = structure_keywords[40:]
-                        
-                    # Излишки (если товаров > 40) делим пополам
-                    if extra_cands:
-                        mid = len(extra_cands) // 2
-                        text_and_faq_base.extend(extra_cands[:mid])
-                        faq_cands = text_and_faq_base + extra_cands[mid:]
-                    else:
-                        faq_cands = text_and_faq_base.copy()
-                        
-                    final_text_seo_list = text_and_faq_base.copy()
+                        # Излишки свыше 40 делим пополам: часть в текст, часть в FAQ
+                        leftovers = structure_keywords[40:]
+                        mid = len(leftovers) // 2
+                        text_words.extend(leftovers[:mid])
+                        faq_cands = leftovers[mid:]
+
+                    final_text_seo_list = text_words.copy()
+
+                    # 3. ВЫВОД ОТЧЕТА НА ЭКРАН (чтобы вы видели глазами)
+                    with st.expander("📊 ОТЧЕТ: Куда алгоритм распределил слова?", expanded=True):
+                        st.write(f"**В Текст ({len(final_text_seo_list)} шт):** {', '.join(final_text_seo_list) if final_text_seo_list else 'Нет слов'}")
+                        st.write(f"**В Плитку тегов ({len(tags_cands)} шт):** {', '.join(tags_cands) if tags_cands else 'Нет слов'}")
+                        st.write(f"**В Промо-блок ({len(promo_cands)} шт):** {', '.join(promo_cands) if promo_cands else 'Нет слов'}")
+                        st.write(f"**В FAQ ({len(faq_cands)} шт):** {', '.join(faq_cands) if faq_cands else 'Нет слов'}")
+                        st.info("💡 Если ниже теги или промо не сгенерируются, значит эти слова не нашли совпадений в ваших файлах links_base.txt или images_db.xlsx!")
                         
                     # 2. ЖЕСТКОЕ ПРАВИЛО: если слово не нашло тег/промо, оно НЕ ВОЗВРАЩАЕТСЯ в текст!
                     target_tag_urls = []
@@ -6161,6 +6167,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
