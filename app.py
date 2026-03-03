@@ -2347,7 +2347,8 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         "2. НИКАКИХ ссылок на внешние источники. "
         "3. Числовые диапазоны ТОЛЬКО через тире без пробелов: 5-10 мм, 100-200 кг. "
         "4. В 90% случаев заменяй союз 'и' на запятые при перечислении. "
-        "5. ГОСТ всегда пишется заглавными буквами."
+        "5. ГОСТ всегда пишется заглавными буквами. "
+        "6. СТРОГИЙ ЗАПРЕТ НА ЛАТИНИЦУ: Категорически запрещено использовать английские слова и транслит. Исключение: только ГОСТы, стандарты (DIN, ISO, EN) и марки (AISI). Любой другой мусор на латинице из списка LSI — игнорируй и не вписывай в текст."
     )
 
     # === 3. ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМТ ===
@@ -4400,26 +4401,36 @@ with tab_wholesale_main:
 
                     final_text_seo_list = cat_commercial + cat_general
                     
-                    # 1. УМНОЕ КВОТИРОВАНИЕ (чтобы текст не пух от 200+ слов)
+# 1. УМНОЕ КВОТИРОВАНИЕ (Новая логика)
+                    # Коммерция и Общие слова ВСЕГДА идут в текст и FAQ
+                    text_and_faq_base = cat_commercial + cat_general
+                    
                     tags_cands = []
                     promo_cands = []
-                    faq_cands = []
+                    extra_cands = []
                     
                     total_str_kw = len(structure_keywords)
-                    if total_str_kw > 15:
-                        # Даем тексту максимум 25 дополнительных слов, чтобы не было переспама
-                        idx1 = min(total_str_kw, 25) 
-                        idx2 = idx1 + int((total_str_kw - idx1) * 0.4) # 40% остатка в теги
-                        idx3 = idx2 + int((total_str_kw - idx1) * 0.4) # 40% остатка в промо
-                        
-                        final_text_seo_list.extend(structure_keywords[:idx1])
-                        tags_cands = structure_keywords[idx1:idx2]
-                        promo_cands = structure_keywords[idx2:idx3]
-                        faq_cands = structure_keywords[idx3:]
-                    else:
-                        final_text_seo_list.extend(structure_keywords)
+                    
+                    # Каскадное распределение Товаров и Услуг
+                    if total_str_kw <= 20:
                         tags_cands = structure_keywords.copy()
-                        faq_cands = structure_keywords.copy()
+                    elif total_str_kw <= 40:
+                        tags_cands = structure_keywords[:20]
+                        promo_cands = structure_keywords[20:]
+                    else:
+                        tags_cands = structure_keywords[:20]
+                        promo_cands = structure_keywords[20:40]
+                        extra_cands = structure_keywords[40:]
+                        
+                    # Излишки (если товаров > 40) делим пополам
+                    if extra_cands:
+                        mid = len(extra_cands) // 2
+                        text_and_faq_base.extend(extra_cands[:mid])
+                        faq_cands = text_and_faq_base + extra_cands[mid:]
+                    else:
+                        faq_cands = text_and_faq_base.copy()
+                        
+                    final_text_seo_list = text_and_faq_base.copy()
                         
                     # 2. ЖЕСТКОЕ ПРАВИЛО: если слово не нашло тег/промо, оно НЕ ВОЗВРАЩАЕТСЯ в текст!
                     target_tag_urls = []
@@ -4604,14 +4615,35 @@ with tab_wholesale_main:
                         else:
                             status_logger.write("⚠️ Сбой формата ответа FAQ от нейросети.")
 
-                    # --- СБОРКА КОНТЕНТА В БЛОКИ ---
-                    effective_blocks_count = max(1, auto_num_blocks)
-                    for i_inj, inj in enumerate(injections):
-                        target_idx = i_inj % effective_blocks_count
-                        if blocks[target_idx]:
-                            blocks[target_idx] = blocks[target_idx] + "\n\n" + inj
+# --- СБОРКА КОНТЕНТА В БЛОКИ (Умное разведение инъекций) ---
+                    # Собираем словарь сгенерированных HTML-элементов
+                    html_injections = {}
+                    if curr_use_tables and 'cl_tab' in locals():
+                        html_injections['table'] = f'<div class="table-scroll-wrapper">\n{cl_tab}\n</div>'
+                    if curr_use_tags and html_t:
+                        html_injections['tags'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>'
+                    if curr_use_promo and gallery_items:
+                        html_injections['promo'] = f'<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>'
+
+                    # Жестко резервируем слоты под вставку
+                    # Блок 0 - Введение (без инъекций)
+                    # Блок 1 - Сюда пойдет Таблица
+                    # Блок 2 - Сюда пойдут Теги
+                    # Блок 3 - Сюда пойдет Промо-галерея
+                    target_slots = {'table': 1, 'tags': 2, 'promo': 3}
+                    
+                    effective_blocks_count = max(1, len(blocks))
+                    
+                    for inj_type, inj_html in html_injections.items():
+                        slot = target_slots.get(inj_type, 1)
+                        # Если сгенерировалось меньше блоков, чем нужно, сдвигаем в последний доступный
+                        if slot >= effective_blocks_count:
+                            slot = effective_blocks_count - 1
+                            
+                        if blocks[slot]:
+                            blocks[slot] = blocks[slot] + "\n\n" + inj_html
                         else:
-                            blocks[target_idx] = inj
+                            blocks[slot] = inj_html
                             
                     TEXT_CONTAINERS = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
                     for i_c, c_name in enumerate(TEXT_CONTAINERS):
@@ -4861,22 +4893,22 @@ with tab_wholesale_main:
                                 updated_any = True
                 if updated_any: st.rerun()
 
-        # Убираем старые колонки FAQ из основной таблицы, чтобы они не мешались
-            cols_to_drop = ['Text.ru UID', 'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ']
-            df_export = st.session_state.gen_result_df.drop(columns=cols_to_drop, errors='ignore')
-            
-            import io
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                # 1. Записываем основной контент
-                df_export.to_excel(writer, sheet_name='Основные тексты', index=False)
-                
-                # 2. Записываем FAQ на второй лист построчно
-                if 'faq_export_data' in st.session_state and st.session_state.faq_export_data:
-                    df_faq = pd.DataFrame(st.session_state.faq_export_data)
-                    df_faq.to_excel(writer, sheet_name='База FAQ', index=False)
+# Убираем старые колонки FAQ из основной таблицы, чтобы они не мешались
+        cols_to_drop = ['Text.ru UID', 'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ']
+        df_export = st.session_state.gen_result_df.drop(columns=cols_to_drop, errors='ignore')
         
-        col_dl, col_cl = st.columns([2, 1])
+        import io
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            # 1. Записываем основной контент
+            df_export.to_excel(writer, sheet_name='Основные тексты', index=False)
+            
+            # 2. Записываем FAQ на второй лист построчно
+            if 'faq_export_data' in st.session_state and st.session_state.faq_export_data:
+                df_faq = pd.DataFrame(st.session_state.faq_export_data)
+                df_faq.to_excel(writer, sheet_name='База FAQ', index=False)
+        
+            col_dl, col_cl = st.columns([2, 1]) # <-- ДОЛЖНО БЫТЬ НА ОДНОМ УРОВНЕ С df_export
         with col_dl:
             st.download_button(
                 label=f"📥 СКАЧАТЬ EXCEL ({len(df_export)} шт.)",
@@ -6129,6 +6161,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
