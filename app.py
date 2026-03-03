@@ -4963,16 +4963,15 @@ with tab_wholesale_main:
                                 updated_any = True
                 if updated_any: st.rerun()
 
-        # --- 1. ОПРЕДЕЛЕНИЕ ФУНКЦИИ ПОДСВЕТКИ (ДО ИСПОЛЬЗОВАНИЯ) ---
+        # --- 1. ОПРЕДЕЛЕНИЕ ФУНКЦИИ ПОДСВЕТКИ (ИСПРАВЛЯЕТ NameError) ---
         def highlight_bad_results(row):
             styles = [''] * len(row)
             err_style = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold;'
             col_idx = {name: i for i, name in enumerate(row.index)}
             
-            # Подсветка DeepSeek
+            # Подсветка DeepSeek (если БРАК)
             if str(row.get('DeepSeek Контекст')) == "NO" and 'DeepSeek Контекст' in col_idx:
                 styles[col_idx['DeepSeek Контекст']] = err_style
-            
             # Подсветка Тургенева
             try:
                 t_val = str(row.get('Риск Тургенев', '0'))
@@ -4980,7 +4979,6 @@ with tab_wholesale_main:
                 if t_num > 5 and 'Риск Тургенев' in col_idx:
                     styles[col_idx['Риск Тургенев']] = err_style
             except: pass
-            
             # Подсветка Уникальности
             try:
                 u_val = str(row.get('Уникальность', '100'))
@@ -4988,8 +4986,7 @@ with tab_wholesale_main:
                 if u_num < 95 and 'Уникальность' in col_idx:
                     styles[col_idx['Уникальность']] = err_style
             except: pass
-            
-            # Подсветка Комментария
+            # Подсветка Комментария (если не Ок)
             if str(row.get('Комментарий')) != "Ок" and 'Комментарий' in col_idx:
                 styles[col_idx['Комментарий']] = err_style
             return styles
@@ -5015,29 +5012,34 @@ with tab_wholesale_main:
 
         df_export['Комментарий'] = df_export.apply(build_unified_comment, axis=1)
         
-        # Список полей, которые НЕ идут в Excel
-        cols_to_drop = ['Text.ru UID', 'FAQ HTML', 'DeepSeek Комментарий', 'Тургенев Комментарий', 'Text.ru Комментарий',
-                       'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ']
-        df_export_clean = df_export.drop(columns=[c for c in cols_to_drop if c in df_export.columns], errors='ignore')
+        # Очистка мусора для Excel (FAQ HTML оставляем для превью, удалим при скачивании)
+        cols_to_drop_excel = ['Text.ru UID', 'FAQ HTML', 'DeepSeek Комментарий', 'Тургенев Комментарий', 'Text.ru Комментарий']
+        df_export_clean = df_export.drop(columns=[c for c in cols_to_drop_excel if c in df_export.columns], errors='ignore')
 
-        # --- 3. БЛОК ОБНОВЛЕНИЯ TEXT.RU ---
-        has_uids = any("⏳" in str(row.get('Уникальность', '')) for _, row in st.session_state.gen_result_df.iterrows())
-        if has_uids:
-            if st.button("🔄 ОБНОВИТЬ СТАТУСЫ TEXT.RU", type="primary", use_container_width=True):
-                key_txt = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
-                if key_txt:
-                    with st.spinner("Проверяем Text.ru..."):
-                        for idx, row in st.session_state.gen_result_df.iterrows():
-                            if "⏳" in str(row.get('Уникальность', '')):
-                                uid = row.get('Text.ru UID')
-                                if uid:
-                                    res = check_textru_status_sync(uid, key_txt)
-                                    if res not in ["processing", "error"] and "Ошибка" not in res:
-                                        st.session_state.gen_result_df.at[idx, 'Уникальность'] = res
-                                        st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
+        # --- 3. ПОСТОЯННОЕ РЕШЕНИЕ: АВТО-ОПРОС TEXT.RU (БЕЗ КНОПКИ) ---
+        has_pending_uids = False
+        if 'Text.ru UID' in st.session_state.gen_result_df.columns:
+            has_pending_uids = any("⏳" in str(row.get('Уникальность', '')) for _, row in st.session_state.gen_result_df.iterrows())
+
+        # Если генератор НЕ работает, но есть тексты в очереди - опрашиваем API автоматически
+        if has_pending_uids and not st.session_state.get('ws_automode_active', False):
+            txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
+            if txtru_key_active:
+                st.info("🔄 Автоматическое обновление статусов Text.ru...")
+                updated_any = False
+                for idx, row in st.session_state.gen_result_df.iterrows():
+                    if "⏳" in str(row.get('Уникальность', '')):
+                        uid = row.get('Text.ru UID')
+                        if uid:
+                            stts = check_textru_status_sync(uid, txtru_key_active)
+                            if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                                st.session_state.gen_result_df.at[idx, 'Уникальность'] = stts
+                                st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
+                                updated_any = True
+                if updated_any:
                     st.rerun()
 
-        # --- 4. EXCEL И КНОПКИ ---
+        # --- 4. КНОПКИ СКАЧИВАНИЯ ---
         import io
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -5047,57 +5049,66 @@ with tab_wholesale_main:
             red_fmt = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
             headers = list(df_export_clean.columns)
             
-            # Заливка брака в Excel
-            if 'DeepSeek Контекст' in headers:
-                c_idx = headers.index('DeepSeek Контекст')
-                worksheet.conditional_format(1, c_idx, len(df_export_clean), c_idx, {'type': 'text', 'criteria': 'containing', 'value': 'NO', 'format': red_fmt})
-            if 'Риск Тургенев' in headers:
-                c_idx = headers.index('Риск Тургенев')
-                worksheet.conditional_format(1, c_idx, len(df_export_clean), c_idx, {'type': 'cell', 'criteria': '>', 'value': 5, 'format': red_fmt})
-            if 'Уникальность' in headers:
-                c_idx = headers.index('Уникальность')
-                worksheet.conditional_format(1, c_idx, len(df_export_clean), c_idx, {'type': 'cell', 'criteria': '<', 'value': 95, 'format': red_fmt})
+            # Красим Комментарий в Excel, если там не "Ок"
             if 'Комментарий' in headers:
                 c_idx = headers.index('Комментарий')
-                worksheet.conditional_format(1, c_idx, len(df_export_clean), c_idx, {'type': 'text', 'criteria': 'not containing', 'value': 'Ок', 'format': red_fmt})
+                worksheet.conditional_format(1, c_idx, len(df_export_clean), c_idx, 
+                                            {'type': 'text', 'criteria': 'not containing', 'value': 'Ок', 'format': red_fmt})
 
         col_dl, col_cl = st.columns([2, 1])
         with col_dl:
-            st.download_button(label=f"📥 СКАЧАТЬ EXCEL ({len(df_export_clean)} шт.)", data=buffer.getvalue(), 
-                               file_name=f"wholesale_SMART_{int(time.time())}.xlsx", mime="application/vnd.ms-excel", use_container_width=True)
+            st.download_button(
+                label=f"📥 СКАЧАТЬ EXCEL ({len(df_export_clean)} шт.)",
+                data=buffer.getvalue(),
+                file_name=f"wholesale_texts_{int(time.time())}.xlsx",
+                mime="application/vnd.ms-excel",
+                use_container_width=True
+            )
         with col_cl:
             if st.button("🗑️ Очистить таблицу", use_container_width=True):
                 st.session_state.gen_result_df = st.session_state.gen_result_df.iloc[0:0]
                 st.rerun()
 
+        # --- 5. ТЕХНИЧЕСКАЯ ТАБЛИЦА (ТЕПЕРЬ БЕЗ ОШИБОК) ---
         with st.expander("👀 Техническая таблица результатов", expanded=False):
             st.dataframe(df_export.style.apply(highlight_bad_results, axis=1), use_container_width=True)
 
         st.markdown("---")
+
+        # --- 6. ВИЗУАЛЬНЫЙ ПРЕДПРОСМОТР (ВКЛАДКИ) ---
         st.markdown("### 🖥️ Визуальный предпросмотр")
         
         if not df_export.empty and 'Product Name' in df_export.columns:
             all_products = df_export['Product Name'].tolist()
-            sel_p = st.selectbox("Выберите товар:", all_products, index=len(all_products)-1, key="ws_preview_sel_new")
+            sel_p = st.selectbox("Выберите товар:", all_products, index=len(all_products)-1, key="ws_preview_final_sel")
             
             if sel_p:
                 row_p = df_export[df_export['Product Name'] == sel_p].iloc[0]
-                # Убираем ГЕО-блок (IP_PROP4819) из визуала
-                visual_cols = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
-                active_visual = [c for c in visual_cols if str(row_p.get(c, "")).strip() != ""]
+                
+                # Поля для визуала (БЕЗ ГЕО-блока IP_PROP4819)
+                visual_fields = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
+                active_visual = [c for c in visual_fields if str(row_p.get(c, "")).strip() != ""]
+                
+                # Стили CSS (переиспользованы из твоего кода)
+                st.markdown("""<style>.preview-box { border: 1px solid #e2e8f0; background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 25px; } .block-title { color: #277EFF; margin-top: 30px; font-weight: 600; border-bottom: 2px solid #e2e8f0; } .faq-section { background: #F6F7FC; padding: 20px; border-radius: 10px; }</style>""", unsafe_allow_html=True)
                 
                 tabs_v = st.tabs(["📝 Текст и блоки", "❓ FAQ"])
                 with tabs_v[0]:
-                    for col in active_visual:
-                        b_name = "ГЛАВНЫЙ ТЕКСТ" if col == "IP_PROP4839" else col.replace("IP_PROP", "БЛОК ")
-                        st.markdown(f"<div class='block-title'>{b_name}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='preview-box'>{str(row_p[col])}</div>", unsafe_allow_html=True)
-                with tabs_v[1]:
-                    faq_html = str(row_p.get('FAQ HTML', '')).strip()
-                    if faq_html and faq_html != "None":
-                        st.markdown(f"<div class='faq-section'>{faq_html}</div>", unsafe_allow_html=True)
+                    if active_visual:
+                        for col in active_visual:
+                            b_name = "ГЛАВНЫЙ ТЕКСТ" if col == "IP_PROP4839" else col.replace("IP_PROP", "БЛОК ")
+                            st.markdown(f"<div class='block-title'>{b_name}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div class='preview-box'>{str(row_p[col])}</div>", unsafe_allow_html=True)
                     else:
-                        st.info("FAQ отсутствует")
+                        st.info("Текстовые блоки отсутствуют.")
+                
+                with tabs_v[1]:
+                    # ВЫВОДИМ FAQ HTML
+                    f_html = str(row_p.get('FAQ HTML', '')).strip()
+                    if f_html and f_html != "None":
+                        st.markdown(f"<div class='faq-section'>{f_html}</div>", unsafe_allow_html=True)
+                    else:
+                        st.warning("FAQ для этого товара не генерировался.")
 # ==========================================
 
 # ==========================================
@@ -6265,3 +6276,4 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
