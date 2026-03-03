@@ -3123,7 +3123,7 @@ with tab_seo_main:
     
             export_format = st.radio(
                 "Выберите формат файла:", 
-                ["📊 Excel (Данные по листам)", "⚙️ JSON (Для разработчиков)"], 
+                ["📊 Excel", "⚙️ JSON"], 
                 horizontal=True
             )
     
@@ -6454,6 +6454,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
