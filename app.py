@@ -2322,9 +2322,9 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     seo_instruction_block = ""
     
 # === 1. ИНСТРУКЦИЯ ПО SEO ===
-        if seo_words:
-            seo_list_str = ", ".join(seo_words)
-            seo_instruction_block = f"""
+    if seo_words:
+        seo_list_str = ", ".join(seo_words)
+        seo_instruction_block = f"""
 --- СТРОГАЯ ИНСТРУКЦИЯ ПО КЛЮЧЕВЫМ СЛОВАМ ---
 Тебе нужно внедрить в текст следующие LSI-слова: {seo_list_str}
 ПРАВИЛА РАБОТЫ СО СЛОВАМИ:
@@ -6167,6 +6167,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
