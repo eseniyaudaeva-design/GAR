@@ -4464,19 +4464,13 @@ with tab_wholesale_main:
                         kw_translit = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                         
                         # Шаг 1: Ищем точное совпадение по русской колонке 'Название'
+                        # Шаг 1: Ищем точное совпадение по русской колонке 'Название'
                         for u in available_urls:
                             if u in used_urls: continue
-                            db_name = unified_db[u]['name'].lower()
-                            if db_name and (kw_lower == db_name or kw_lower in db_name or db_name in kw_lower):
-                                return u, unified_db[u]['name'].capitalize()
-                                
-                        # Шаг 2: Если русского названия в базе нет, ищем транслитом по ссылке
-                        for u in available_urls:
-                            if u in used_urls: continue
-                            if kw_translit in u.lower():
-                                final_name = unified_db[u]['name'].capitalize() if unified_db[u]['name'] else kw.capitalize()
-                                return u, final_name
-                                
+                            db_name = unified_db[u]['name'].strip()
+                            if db_name and (kw_lower == db_name.lower() or kw_lower in db_name.lower() or db_name.lower() in kw_lower):
+                                return u, db_name # <-- ВОТ ЗДЕСЬ ДОЛЖНО БЫТЬ СТРОГО db_name
+                        
                         return None, None
 
                     if global_tags:
@@ -4495,10 +4489,15 @@ with tab_wholesale_main:
                                 target_promo_urls.append((f_url, f_name))
                                 matched_promo_kw.append(kw)
                     
-                    # ВОЗВРАЩАЕМ ПОТЕРЯННЫЕ СЛОВА ОБРАТНО В ТЕКСТ! (Чтобы всегда было 41)
+                    # ВОЗВРАЩАЕМ ПОТЕРЯННЫЕ СЛОВА И ДЕЛИМ ИХ ПОПОЛАМ МЕЖДУ ТЕКСТОМ И FAQ
                     unmatched_tags = [w for w in tags_cands if w not in matched_tags_kw]
                     unmatched_promo = [w for w in promo_cands if w not in matched_promo_kw]
-                    final_text_seo_list.extend(unmatched_tags + unmatched_promo)
+                    all_unmatched = unmatched_tags + unmatched_promo
+                    
+                    if all_unmatched:
+                        mid_unm = len(all_unmatched) // 2
+                        final_text_seo_list.extend(all_unmatched[:mid_unm])
+                        faq_cands.extend(all_unmatched[mid_unm:])
                     
                     if not global_faq:
                         pass
@@ -4563,17 +4562,13 @@ with tab_wholesale_main:
                         dims_str = ", ".join(cat_dimensions)
                         prompt_tbl = f"""
                         ТЫ — СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
-                        ВВОДНЫЕ: Контекст: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
+                        ВВОДНЫЕ: Контекст текста: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
                         ПРАВИЛА И ШАБЛОН: 
-                        1. Таблица должна быть СУХОЙ и ТЕХНИЧЕСКОЙ. Никаких длинных предложений и SEO-воды! Только сухие параметры и цифры/марки.
-                        2. Количество колонок: от 2 до 5 штук максимум!
-                        3. Формат HTML строго такой:
-                        <table class="brand-accent-table">
-                         <thead><tr><th>Колонка 1</th><th>Колонка 2</th><th>...</th></tr></thead>
-                         <tbody>
-                             ...
-                         </tbody>
-                        </table>
+                        1. КРИТИЧЕСКИ ВАЖНО: Таблица НЕ ДОЛЖНА дублировать информацию, уже описанную в тексте!
+                        2. Добавь СОВЕРШЕННО НОВЫЕ, полезные технические характеристики (точные размеры, вес, допуски, марки стали, аналоги, ГОСТы, габариты, температуры), которых НЕТ в абзацах выше.
+                        3. Таблица должна быть СУХОЙ и ТЕХНИЧЕСКОЙ. Максимум 5 колонок.
+                        4. Формат строго HTML:
+                        <table class="brand-accent-table"><thead><tr>...</tr></thead><tbody>...</tbody></table>
                         Выдай только HTML код таблицы.
                         """
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.25)
@@ -4701,6 +4696,7 @@ with tab_wholesale_main:
                     if final_faq_html:
                         merged_html += f"\n\n{final_faq_html}"
                     row_data['Весь текст целиком'] = merged_html
+                    row_data['FAQ HTML'] = final_faq_html
                     
                     # --- ВЫТАСКИВАЕМ ТОЛЬКО ЧИСТЫЙ ТЕКСТ ДЛЯ ПРОВЕРОК (БЕЗ FAQ, ТАБЛИЦ И ТЕГОВ) ---
                     pure_text_for_check = BeautifulSoup(generated_full_text, "html.parser").get_text(separator=" ").strip()
@@ -4965,8 +4961,22 @@ with tab_wholesale_main:
                 if updated_any: st.rerun()
 
 # Убираем старые колонки FAQ из основной таблицы, чтобы они не мешались
-        cols_to_drop = ['Text.ru UID', 'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ']
-        df_export = st.session_state.gen_result_df.drop(columns=cols_to_drop, errors='ignore')
+        # --- ФОРМИРУЕМ ЕДИНЫЙ СТОЛБЕЦ "КОММЕНТАРИЙ" ---
+        df_export = st.session_state.gen_result_df.copy()
+        
+        def build_unified_comment(row):
+            errs = []
+            if str(row.get('DeepSeek Контекст')) == "NO": errs.append("DeepSeek: БРАК (Не по теме)")
+            if "Риск > 5" in str(row.get('Тургенев Комментарий', '')): errs.append(f"Тургенев: Риск {row.get('Риск Тургенев')}")
+            if "Уникальность < 95%" in str(row.get('Text.ru Комментарий', '')): errs.append(f"Text.ru: {row.get('Уникальность')}")
+            if "Ошибка" in str(row.get('Тургенев Комментарий', '')) or "Ошибка" in str(row.get('Text.ru Комментарий', '')): errs.append("Сбой проверки")
+            return " | ".join(errs) if errs else "Ок"
+            
+        df_export['Комментарий'] = df_export.apply(build_unified_comment, axis=1)
+        
+        # Убираем старые мусорные колонки из финальной таблицы
+        cols_to_drop = ['Text.ru UID', 'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ', 'DeepSeek Комментарий', 'Тургенев Комментарий', 'Text.ru Комментарий', 'FAQ HTML']
+        df_export = df_export.drop(columns=[c for c in cols_to_drop if c in df_export.columns], errors='ignore')
         
         import io
         buffer = io.BytesIO()
@@ -4974,12 +4984,27 @@ with tab_wholesale_main:
             # 1. Записываем основной контент
             df_export.to_excel(writer, sheet_name='Основные тексты', index=False)
             
-            # 2. Записываем FAQ на второй лист построчно
+            # --- КРАСНАЯ ЗАЛИВКА ПРОБЛЕМНЫХ ЯЧЕЕК В EXCEL ---
+            workbook = writer.book
+            worksheet = writer.sheets['Основные тексты']
+            red_fmt = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+            
+            headers = list(df_export.columns)
+            
+            # Красим ячейку DeepSeek, если там "NO"
+            if 'DeepSeek Контекст' in headers:
+                c_idx = headers.index('DeepSeek Контекст')
+                worksheet.conditional_format(1, c_idx, len(df_export), c_idx, {'type': 'text', 'criteria': 'containing', 'value': 'NO', 'format': red_fmt})
+            
+            # Красим ячейку Комментария, если там не "Ок"
+            if 'Комментарий' in headers:
+                c_idx = headers.index('Комментарий')
+                worksheet.conditional_format(1, c_idx, len(df_export), c_idx, {'type': 'text', 'criteria': 'not containing', 'value': 'Ок', 'format': red_fmt})
+
+            # 2. Записываем FAQ на второй лист
             if 'faq_export_data' in st.session_state and st.session_state.faq_export_data:
                 df_faq = pd.DataFrame(st.session_state.faq_export_data)
                 df_faq.to_excel(writer, sheet_name='База FAQ', index=False)
-        
-            col_dl, col_cl = st.columns([2, 1]) # <-- ДОЛЖНО БЫТЬ НА ОДНОМ УРОВНЕ С df_export
         with col_dl:
             st.download_button(
                 label=f"📥 СКАЧАТЬ EXCEL ({len(df_export)} шт.)",
@@ -4994,26 +5019,19 @@ with tab_wholesale_main:
                 st.session_state.gen_result_df = st.session_state.gen_result_df.iloc[0:0]
                 st.rerun()
 
-        with st.expander("👀 Техническая таблица результатов", expanded=False):
+       with st.expander("👀 Техническая таблица результатов", expanded=False):
             def highlight_bad_results(row):
                 styles = [''] * len(row)
                 err_style = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold;'
                 col_idx = {name: i for i, name in enumerate(row.index)}
-
+                
                 if str(row.get('DeepSeek Контекст')) == "NO" and 'DeepSeek Контекст' in col_idx:
                     styles[col_idx['DeepSeek Контекст']] = err_style
-                    if 'DeepSeek Комментарий' in col_idx: styles[col_idx['DeepSeek Комментарий']] = err_style
-
-                if 'Риск > 5' in str(row.get('Тургенев Комментарий', '')):
-                    if 'Риск Тургенев' in col_idx: styles[col_idx['Риск Тургенев']] = err_style
-                    if 'Тургенев Комментарий' in col_idx: styles[col_idx['Тургенев Комментарий']] = err_style
-
-                if 'Уникальность < 95%' in str(row.get('Text.ru Комментарий', '')):
-                    if 'Уникальность' in col_idx: styles[col_idx['Уникальность']] = err_style
-                    if 'Text.ru Комментарий' in col_idx: styles[col_idx['Text.ru Комментарий']] = err_style
-
+                if str(row.get('Комментарий')) != "Ок" and 'Комментарий' in col_idx:
+                    styles[col_idx['Комментарий']] = err_style
+                    
                 return styles
-
+                
             st.dataframe(df_export.style.apply(highlight_bad_results, axis=1), use_container_width=True)
 
         st.markdown("---")
@@ -5028,8 +5046,7 @@ with tab_wholesale_main:
                 row_p = df_export[df_export['Product Name'] == sel_p].iloc[0]
                 cols_to_show = [
                     'IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819',
-                    'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 
-                    'FAQ Информационный вопрос', 'FAQ Информационный ответ'
+                    'FAQ HTML'
                 ]
                 active_cols = [c for c in cols_to_show if str(row_p.get(c, "")).strip() != ""]
                 
@@ -6232,6 +6249,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
