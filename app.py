@@ -5005,6 +5005,8 @@ with tab_wholesale_main:
             if 'faq_export_data' in st.session_state and st.session_state.faq_export_data:
                 df_faq = pd.DataFrame(st.session_state.faq_export_data)
                 df_faq.to_excel(writer, sheet_name='База FAQ', index=False)
+        
+        col_dl, col_cl = st.columns([2, 1])
         with col_dl:
             st.download_button(
                 label=f"📥 СКАЧАТЬ EXCEL ({len(df_export)} шт.)",
@@ -5019,7 +5021,7 @@ with tab_wholesale_main:
                 st.session_state.gen_result_df = st.session_state.gen_result_df.iloc[0:0]
                 st.rerun()
 
-       with st.expander("👀 Техническая таблица результатов", expanded=False):
+        with st.expander("👀 Техническая таблица результатов", expanded=False):
             def highlight_bad_results(row):
                 styles = [''] * len(row)
                 err_style = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold;'
@@ -6249,6 +6251,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
