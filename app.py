@@ -4960,21 +4960,42 @@ with tab_wholesale_main:
                                 updated_any = True
                 if updated_any: st.rerun()
 
-# Убираем старые колонки FAQ из основной таблицы, чтобы они не мешались
-        # --- ФОРМИРУЕМ ЕДИНЫЙ СТОЛБЕЦ "КОММЕНТАРИЙ" ---
+        # --- ФОРМИРУЕМ ЕДИНЫЙ СТОЛБЕЦ "КОММЕНТАРИЙ" (ПИШЕМ ТРЕБОВАНИЯ) ---
         df_export = st.session_state.gen_result_df.copy()
         
         def build_unified_comment(row):
             errs = []
-            if str(row.get('DeepSeek Контекст')) == "NO": errs.append("DeepSeek: БРАК (Не по теме)")
-            if "Риск > 5" in str(row.get('Тургенев Комментарий', '')): errs.append(f"Тургенев: Риск {row.get('Риск Тургенев')}")
-            if "Уникальность < 95%" in str(row.get('Text.ru Комментарий', '')): errs.append(f"Text.ru: {row.get('Уникальность')}")
-            if "Ошибка" in str(row.get('Тургенев Комментарий', '')) or "Ошибка" in str(row.get('Text.ru Комментарий', '')): errs.append("Сбой проверки")
+            
+            # 1. Если DeepSeek забраковал контекст
+            if str(row.get('DeepSeek Контекст')) == "NO": 
+                errs.append("Текст должен быть строго по теме")
+                
+            # 2. Проверяем Тургенева
+            t_val = str(row.get('Риск Тургенев', '0'))
+            try:
+                # Ищем число в строке
+                t_num = float(re.search(r'\d+\.?\d*', t_val).group())
+                if t_num > 5: 
+                    errs.append("Риск Тургенева должен быть не более 5")
+            except:
+                pass
+                
+            # 3. Проверяем Text.ru
+            u_val = str(row.get('Уникальность', '100'))
+            try:
+                # Ищем число в строке
+                u_num = float(re.search(r'\d+\.?\d*', u_val).group())
+                if u_num < 95: 
+                    errs.append("Уникальность от 95%")
+            except:
+                if "Ошибка" in u_val or "Сбой" in u_val:
+                    errs.append("Сбой проверки Text.ru")
+                    
             return " | ".join(errs) if errs else "Ок"
             
         df_export['Комментарий'] = df_export.apply(build_unified_comment, axis=1)
         
-        # Убираем старые мусорные колонки из финальной таблицы
+        # Убираем старые мусорные колонки
         cols_to_drop = ['Text.ru UID', 'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ', 'DeepSeek Комментарий', 'Тургенев Комментарий', 'Text.ru Комментарий', 'FAQ HTML']
         df_export = df_export.drop(columns=[c for c in cols_to_drop if c in df_export.columns], errors='ignore')
         
@@ -4996,7 +5017,17 @@ with tab_wholesale_main:
                 c_idx = headers.index('DeepSeek Контекст')
                 worksheet.conditional_format(1, c_idx, len(df_export), c_idx, {'type': 'text', 'criteria': 'containing', 'value': 'NO', 'format': red_fmt})
             
-            # Красим ячейку Комментария, если там не "Ок"
+            # Красим ячейку Тургенева, если там > 5
+            if 'Риск Тургенев' in headers:
+                c_idx = headers.index('Риск Тургенев')
+                worksheet.conditional_format(1, c_idx, len(df_export), c_idx, {'type': 'cell', 'criteria': '>', 'value': 5, 'format': red_fmt})
+
+            # Красим ячейку Уникальности, если там < 95
+            if 'Уникальность' in headers:
+                c_idx = headers.index('Уникальность')
+                worksheet.conditional_format(1, c_idx, len(df_export), c_idx, {'type': 'cell', 'criteria': '<', 'value': 95, 'format': red_fmt})
+
+            # Красим Комментарий, если там не "Ок"
             if 'Комментарий' in headers:
                 c_idx = headers.index('Комментарий')
                 worksheet.conditional_format(1, c_idx, len(df_export), c_idx, {'type': 'text', 'criteria': 'not containing', 'value': 'Ок', 'format': red_fmt})
@@ -5005,7 +5036,7 @@ with tab_wholesale_main:
             if 'faq_export_data' in st.session_state and st.session_state.faq_export_data:
                 df_faq = pd.DataFrame(st.session_state.faq_export_data)
                 df_faq.to_excel(writer, sheet_name='База FAQ', index=False)
-        
+
         col_dl, col_cl = st.columns([2, 1])
         with col_dl:
             st.download_button(
@@ -5027,8 +5058,27 @@ with tab_wholesale_main:
                 err_style = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold;'
                 col_idx = {name: i for i, name in enumerate(row.index)}
                 
+                # Подсветка DeepSeek
                 if str(row.get('DeepSeek Контекст')) == "NO" and 'DeepSeek Контекст' in col_idx:
                     styles[col_idx['DeepSeek Контекст']] = err_style
+                    
+                # Подсветка Тургенева
+                try:
+                    t_val = str(row.get('Риск Тургенев', '0'))
+                    t_num = float(re.search(r'\d+\.?\d*', t_val).group())
+                    if t_num > 5 and 'Риск Тургенев' in col_idx:
+                        styles[col_idx['Риск Тургенев']] = err_style
+                except: pass
+                
+                # Подсветка Уникальности
+                try:
+                    u_val = str(row.get('Уникальность', '100'))
+                    u_num = float(re.search(r'\d+\.?\d*', u_val).group())
+                    if u_num < 95 and 'Уникальность' in col_idx:
+                        styles[col_idx['Уникальность']] = err_style
+                except: pass
+                
+                # Подсветка Комментария
                 if str(row.get('Комментарий')) != "Ок" and 'Комментарий' in col_idx:
                     styles[col_idx['Комментарий']] = err_style
                     
@@ -6251,6 +6301,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
