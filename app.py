@@ -4392,6 +4392,91 @@ with tab_seo_main:
         if not st.session_state.get('lsi_automode_active'):
             st.rerun()
 
+            # ==========================================
+        # БЛОК ЭКСПОРТА РЕЗУЛЬТАТОВ (EXCEL / JSON)
+        # ==========================================
+        st.markdown("---")
+        st.subheader("💾 Скачать результаты анализа")
+
+        col_ex1, col_ex2 = st.columns(2)
+
+        results = st.session_state.analysis_results
+
+        # --- 1. Подготовка Excel ---
+        import io
+        import datetime
+        excel_buffer = io.BytesIO()
+        
+        with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+            # Лист 1: Релевантность
+            if 'relevance_top' in results:
+                df_rel = results['relevance_top'].copy()
+                df_rel.to_excel(writer, sheet_name='Релевантность', index=False)
+                
+            # Лист 2: Упущенная (Важные) и Лист 3: Группировка
+            if 'missing_semantics_high' in results:
+                df_high = pd.DataFrame(results['missing_semantics_high'])
+                if not df_high.empty:
+                    # Пробуем добавить категории, если функция categorize_lsi_word доступна
+                    if 'categorize_lsi_word' in globals():
+                        df_high['Категория'] = df_high['lemma'].apply(categorize_lsi_word)
+                    
+                    df_high.to_excel(writer, sheet_name='Упущенная_Важные', index=False)
+                    
+                    # Лист 3: Группировка по категориям
+                    if 'Категория' in df_high.columns:
+                        df_grouped = df_high.sort_values(by=['Категория', 'weight'], ascending=[True, False])
+                        df_grouped.to_excel(writer, sheet_name='Упущенная_Группы', index=False)
+                        
+            # Лист 4: Упущенная (Доп)
+            if 'missing_semantics_low' in results:
+                df_low = pd.DataFrame(results['missing_semantics_low'])
+                if not df_low.empty:
+                    df_low.to_excel(writer, sheet_name='Упущенная_Доп', index=False)
+
+            # Лист 5: Глубина
+            if 'depth' in results:
+                df_depth = results['depth'].copy()
+                df_depth.to_excel(writer, sheet_name='Матрица_Глубины', index=False)
+
+            # Лист 6: TF-IDF
+            if 'hybrid' in results:
+                df_hybrid = results['hybrid'].copy()
+                df_hybrid.to_excel(writer, sheet_name='TF-IDF_Гибрид', index=False)
+
+        excel_data = excel_buffer.getvalue()
+
+        with col_ex1:
+            st.download_button(
+                label="📊 Скачать Excel (Все листы)",
+                data=excel_data,
+                file_name=f"SEO_Analysis_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+        # --- 2. Подготовка JSON ---
+        def custom_serializer(obj):
+            if isinstance(obj, pd.DataFrame): return obj.to_dict(orient='records')
+            import numpy as np
+            if isinstance(obj, np.integer): return int(obj)
+            if isinstance(obj, np.floating): return float(obj)
+            if isinstance(obj, np.ndarray): return obj.tolist()
+            return str(obj)
+
+        import json
+        json_data = json.dumps(results, default=custom_serializer, ensure_ascii=False, indent=4)
+
+        with col_ex2:
+            st.download_button(
+                label="⚙️ Скачать JSON",
+                data=json_data,
+                file_name=f"SEO_Analysis_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        # ==========================================
+
 # ==========================================
 # TAB 2: WHOLESALE GENERATOR (SMART PIPELINE V11 - БРОНЕБОЙНЫЙ ТЕКСТ)
 # ==========================================
@@ -6378,6 +6463,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
