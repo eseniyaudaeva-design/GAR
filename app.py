@@ -4390,61 +4390,43 @@ with tab_wholesale_main:
                     global_faq = st.session_state.get('ws_global_faq', True)
                     
                     # =================================================================
-                    # УМНЫЙ ПОИСК ПО ЕДИНОЙ БАЗЕ И РАСПРЕДЕЛЕНИЕ (ДО ГЕНЕРАЦИИ!)
+                    # УМНЫЙ ПОИСК ПО БАЗАМ И РАСПРЕДЕЛЕНИЕ (ДО ГЕНЕРАЦИИ!)
                     # =================================================================
-                    unified_db = {}
-                    if (global_promo or global_tags) and os.path.exists("data/images_db.xlsx"):
-                        try:
-                            df_db = pd.read_excel("data/images_db.xlsx")
-                            for _, r_db in df_db.iterrows():
-                                u_link = str(r_db.iloc[0]).strip().rstrip('/')
-                                if not u_link or u_link == 'nan': continue
-                                name_val = str(r_db.iloc[1]).strip() if len(df_db.columns) > 1 else ""
-                                img_val = str(r_db.iloc[2]).strip() if len(df_db.columns) > 2 else "https://via.placeholder.com/260"
-                                unified_db[u_link] = {'name': name_val, 'img': img_val}
-                        except Exception as e:  # ВОТ ЭТОТ EXCEPT ТЫ СЛУЧАЙНО УДАЛИЛ В ПРОШЛЫЙ РАЗ!
-                            status_logger.error(f"Ошибка словаря: {e}")
-
-                    available_urls = [u for u in unified_db.keys() if u != current_task['url'].rstrip('/')]
                     
-                    def find_match_in_db(kw, used_urls):
-                        kw_clean = kw.lower().strip()
-                        kw_stem = kw_clean[:5] if len(kw_clean) > 5 else kw_clean
-                        
-                        # Безопасный вызов библиотеки транслитерации
-                        try:
-                            from transliterate import translit
-                            kw_translit = translit(kw_stem, 'ru', reversed=True).replace("'", "")
-                        except Exception:
-                            kw_translit = kw_stem
-                        
-                        for u in available_urls:
-                            if u in used_urls: continue
+                    # 1. Загрузка базы для ТЕГОВ (links_base.xlsx)
+                    links_data = []
+                    if global_promo or global_tags:
+                        db_path = "data/links_base.xlsx" if os.path.exists("data/links_base.xlsx") else "links_base.xlsx"
+                        if not os.path.exists(db_path) and os.path.exists("data/links_base..xlsx"):
+                            db_path = "data/links_base..xlsx"
                             
-                            db_name = unified_db[u]['name'].strip()
-                            db_n_low = db_name.lower()
-                            u_low = u.lower()
-                            
-                            img_val = unified_db[u].get('img', "https://via.placeholder.com/260")
-                            if str(img_val) == 'nan' or not img_val: img_val = "https://via.placeholder.com/260"
-                            
-                            # 1. Поиск по русскому названию
-                            if (kw_clean == db_n_low or kw_clean in db_n_low or db_n_low in kw_clean or (len(kw_stem) >= 4 and kw_stem in db_n_low)):
-                                final_name = db_name if db_name else kw.capitalize()
-                                return u, final_name, img_val
-                                
-                            # 2. Поиск по транслиту в URL
-                            if len(kw_translit) >= 4 and kw_translit in u_low:
-                                final_name = db_name if db_name else kw.capitalize()
-                                return u, final_name, img_val
-                                
-                        return None, None, None
+                        if os.path.exists(db_path):
+                            try:
+                                df_links = pd.read_excel(db_path)
+                                for _, r in df_links.iterrows():
+                                    u_link = str(r.iloc[0]).strip().rstrip('/')
+                                    if not u_link or u_link == 'nan': continue
+                                    name_val = str(r.iloc[1]).strip() if len(df_links.columns) > 1 else ""
+                                    links_data.append({'url': u_link, 'name': name_val})
+                            except Exception as e:
+                                status_logger.error(f"Ошибка чтения {db_path}: {e}")
 
-                    matched_items = []
-                    unmatched_kws = []
-                    used_links = []
-                    
-                    # --- МЯСОРУБКА ДЛЯ СЛОВ (ДРОБИМ И ЧИСТИМ) ---
+                    # 2. Загрузка базы для ПРОМО (images_db.xlsx)
+                    images_data = []
+                    if global_promo:
+                        img_db_path = "data/images_db.xlsx" if os.path.exists("data/images_db.xlsx") else "images_db.xlsx"
+                        if os.path.exists(img_db_path):
+                            try:
+                                df_img = pd.read_excel(img_db_path)
+                                for _, r in df_img.iterrows():
+                                    u_link = str(r.iloc[0]).strip().rstrip('/')
+                                    if not u_link or u_link == 'nan': continue
+                                    img_val = str(r.iloc[1]).strip() if len(df_img.columns) > 1 else ""
+                                    images_data.append({'url': u_link, 'img': img_val})
+                            except Exception as e:
+                                status_logger.error(f"Ошибка чтения {img_db_path}: {e}")
+
+                    # --- МЯСОРУБКА ДЛЯ СЛОВ (ДРОБИМ СТРОКИ) ---
                     raw_candidates = list(set(structure_keywords))
                     all_candidates = []
                     for raw_kw in raw_candidates:
@@ -4456,24 +4438,112 @@ with tab_wholesale_main:
                                 all_candidates.append(p)
                                 
                     all_candidates = list(set(all_candidates))
-                    # ---------------------------------------------
-
-                    for kw in all_candidates:
-                        f_url, f_name, f_img = find_match_in_db(kw, used_links)
-                        if f_url:
-                            matched_items.append({"url": f_url, "name": f_name, "img": f_img, "kw": kw})
-                            used_links.append(f_url)
-                        else:
-                            unmatched_kws.append(kw)
-
-                    # ЖЕСТКИЙ ПРИОРИТЕТ РАСПРЕДЕЛЕНИЯ (Теги -> Промо -> Теги 2)
-                    tags_block_1 = matched_items[:15]
-                    promo_block = matched_items[15:20]
-                    tags_block_2 = matched_items[20:]
-
-                    # ОТКАЗНИКИ ИДУТ В ТЕКСТ (ДЛЯ ИДЕАЛЬНЫХ СКЛОНЕНИЙ)
-                    final_text_seo_list = list(set(cat_commercial + cat_general + unmatched_kws))
                     
+                    # Разделяем слова на блоки ДО поиска
+                    tags_1_cands = all_candidates[:15]
+                    promo_cands = all_candidates[15:20]
+                    tags_2_cands = all_candidates[20:]
+
+                    used_urls = set([current_task['url'].rstrip('/')])
+                    unmatched_kws = []
+                    tags_block_1 = []
+                    promo_block = []
+                    tags_block_2 = []
+
+                    import random
+
+                    # --- ФУНКЦИЯ ПОИСКА ДЛЯ ТЕГОВ (Ищет по Названию) ---
+                    def get_tag_data(kw):
+                        kw_clean = kw.lower().strip()
+                        kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
+                        matches = []
+                        
+                        for item in links_data:
+                            if item['url'].rstrip('/') in used_urls: continue
+                            db_n_low = item['name'].lower()
+                            # Ищем корень слова во втором столбце
+                            if kw_stem in db_n_low or kw_clean in db_n_low:
+                                matches.append(item)
+                                
+                        if matches:
+                            chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
+                            used_urls.add(chosen['url'].rstrip('/'))
+                            return chosen['url'], chosen['name']
+                        return None, None
+
+                    # --- ФУНКЦИЯ ПОИСКА И ПАРСИНГА ДЛЯ ПРОМО (Ищет транслит в URL) ---
+                    def get_promo_data(kw):
+                        kw_clean = kw.lower().strip()
+                        kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
+                        
+                        # Делаем транслит корня (со встроенной подстраховкой)
+                        try:
+                            from transliterate import translit
+                            kw_translit = translit(kw_stem, 'ru', reversed=True).replace("'", "")
+                        except Exception:
+                            t_dict = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'}
+                            kw_translit = "".join([t_dict.get(c, c) for c in kw_stem])
+                            
+                        matches = []
+                        for item in images_data:
+                            u_clean = item['url'].rstrip('/')
+                            if u_clean in used_urls: continue
+                            # Ищем транслит в URL (первый столбец)
+                            if kw_translit in u_clean.lower():
+                                matches.append(item)
+                                
+                        if matches:
+                            chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
+                            u_target = chosen['url']
+                            img_target = chosen['img']
+                            
+                            if str(img_target) == 'nan' or not img_target: 
+                                img_target = "https://via.placeholder.com/260"
+                            
+                            # ИДЕМ НА САЙТ И ПАРСИМ H1
+                            h1_text = kw.capitalize() # Заглушка, если сайт не ответит
+                            try:
+                                resp = requests.get(u_target, timeout=5) # Твои глобальные прокси сами подхватятся
+                                if resp.status_code == 200:
+                                    soup = BeautifulSoup(resp.text, 'html.parser')
+                                    h1_tag = soup.find('h1')
+                                    if h1_tag: 
+                                        h1_text = h1_tag.get_text(strip=True)
+                            except Exception:
+                                pass # Если парсинг упал по таймауту, оставляем исходное слово
+                                
+                            used_urls.add(u_target.rstrip('/'))
+                            return u_target, h1_text, img_target
+                        return None, None, None
+
+                    # --- РАСПРЕДЕЛЯЕМ ПО БЛОКАМ ---
+                    
+                    # 1. Плитка тегов 1
+                    if global_tags:
+                        for kw in tags_1_cands:
+                            u, n = get_tag_data(kw)
+                            if u: tags_block_1.append({"url": u, "name": n, "kw": kw})
+                            else: unmatched_kws.append(kw)
+                    else: unmatched_kws.extend(tags_1_cands)
+
+                    # 2. Промо-блок (с парсингом)
+                    if global_promo:
+                        for kw in promo_cands:
+                            u, n, img = get_promo_data(kw)
+                            if u: promo_block.append({"url": u, "name": n, "img": img, "kw": kw})
+                            else: unmatched_kws.append(kw)
+                    else: unmatched_kws.extend(promo_cands)
+
+                    # 3. Плитка тегов 2
+                    if global_tags:
+                        for kw in tags_2_cands:
+                            u, n = get_tag_data(kw)
+                            if u: tags_block_2.append({"url": u, "name": n, "kw": kw})
+                            else: unmatched_kws.append(kw)
+                    else: unmatched_kws.extend(tags_2_cands)
+
+                    # 4. ОТКАЗНИКИ ИДУТ В ТЕКСТ (ДЛЯ ИДЕАЛЬНЫХ СКЛОНЕНИЙ)
+                    final_text_seo_list = list(set(cat_commercial + cat_general + unmatched_kws))
                     with st.expander("📊 ОТЧЕТ: Куда алгоритм распределил слова?", expanded=True):
                         st.write(f"**В Текст ({len(final_text_seo_list)} шт):** {', '.join(final_text_seo_list) if final_text_seo_list else 'Нет слов'}")
                         st.write(f"**В Плитку тегов 1 ({len(tags_block_1)} шт)**")
@@ -6240,6 +6310,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
