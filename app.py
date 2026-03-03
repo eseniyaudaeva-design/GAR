@@ -3115,7 +3115,7 @@ with tab_seo_main:
         
         # ГРАФИК
         if st.session_state.get('analysis_done'):
-        results = st.session_state.analysis_results
+            results = st.session_state.analysis_results
         
         # ==========================================
         # БЛОК ЭКСПОРТА РЕЗУЛЬТАТОВ (УМНЫЙ EXCEL)
@@ -6500,6 +6500,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
