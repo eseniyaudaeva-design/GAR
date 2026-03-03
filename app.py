@@ -4842,8 +4842,39 @@ with tab_wholesale_main:
                         review_cands.extend(chunk)
                         all_commercial_general = all_commercial_general[7:]
                 
-                    # 5. ОСТАВШИЕСЯ ОТКАЗНИКИ ИДУТ В ТЕКСТ (ДЛЯ ИДЕАЛЬНЫХ СКЛОНЕНИЙ)
-                    final_text_seo_list = all_commercial_general
+                    # 4. ОТКАЗНИКИ ИДУТ В РАСПРЕДЕЛЕНИЕ (ТЕКСТ, FAQ, ОТЗЫВЫ)
+                    all_initial_lsi = list(set(cat_commercial + cat_general + unmatched_kws))
+                    random.shuffle(all_initial_lsi)
+                    
+                    faq_cands = st.session_state.get('categorized_info', []) # Запас для FAQ
+                    review_cands = []
+                    
+                    leftover_lsi = all_initial_lsi.copy()
+            
+                    # Отщипываем до 7 слов для FAQ
+                    if global_faq:
+                        chunk_size = min(7, len(leftover_lsi))
+                        faq_cands.extend(leftover_lsi[:chunk_size])
+                        leftover_lsi = leftover_lsi[chunk_size:]
+                        
+                    # Отщипываем до 7 слов для Отзывов
+                    if st.session_state.get('ws_global_reviews', True):
+                        chunk_size = min(7, len(leftover_lsi))
+                        review_cands.extend(leftover_lsi[:chunk_size])
+                        leftover_lsi = leftover_lsi[chunk_size:]
+            
+                    # Остаток уходит в основной текст
+                    final_text_seo_list = leftover_lsi
+            
+                    # Честный подсчет вообще всех собранных слов
+                    total_collected = len(cat_commercial) + len(cat_general) + len(structure_keywords) + len(cat_dimensions) + len(cat_geo)
+            
+                    with st.expander(f"📊 ОТЧЕТ: Распределение слов (Всего собрано: {total_collected} шт.)", expanded=True): 
+                        st.write(f"**В Текст ({len(final_text_seo_list)} шт)**")
+                        st.write(f"**В FAQ ({len(faq_cands)} шт)**")
+                        st.write(f"**В Отзывы ({len(review_cands)} шт)**")
+                        st.write(f"**В Плитку тегов ({len(tags_block_1) + len(tags_block_2)} шт)**")
+                        st.write(f"**В Промо-блок ({len(promo_block)} шт)**")
 
                     # =================================================================
                     # ГЕНЕРАЦИЯ ТЕКСТА
@@ -4925,11 +4956,20 @@ with tab_wholesale_main:
                                 comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
                                 info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
                                 
-                                if 'faq_export_data' not in st.session_state: st.session_state.faq_export_data = []
+                                if 'faq_export_data' not in st.session_state:
+                                    st.session_state.faq_export_data = []
+                                    
+                                # Функция для чистки маркдауна (конвертация в HTML)
+                                def clean_faq_md(text):
+                                    return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(text))
+                                    
                                 for item in faq_json:
                                     st.session_state.faq_export_data.append({
-                                        'Page URL': current_task['url'], 'Product Name': h2_header,
-                                        'Тип вопроса': item.get("Тип", ""), 'Вопрос': item.get("Вопрос", ""), 'Ответ': item.get("Ответ", "")
+                                        'Page URL': current_task['url'],
+                                        'Product Name': h2_header,
+                                        'Тип вопроса': item.get("Тип", ""),
+                                        'Вопрос': clean_faq_md(item.get("Вопрос", "")),
+                                        'Ответ': clean_faq_md(item.get("Ответ", ""))
                                     })
                                 
                                 faq_html_parts = ['<div class="faq-section">', f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>']
@@ -5472,7 +5512,7 @@ with tab_wholesale_main:
                     </style>
                 """, unsafe_allow_html=True)
                 
-                tabs_v = st.tabs(["📝 Текст и блоки", "❓ FAQ"])
+                tabs_v = st.tabs(["📝 Текст и блоки", "❓ FAQ", "💬 Отзывы"])
                 with tabs_v[0]:
                     if active_visual:
                         for col in active_visual:
@@ -5489,6 +5529,19 @@ with tab_wholesale_main:
                         st.markdown(f"<div class='faq-section'>{f_html}</div>", unsafe_allow_html=True)
                     else:
                         st.warning("FAQ для этого товара не генерировался.")
+                with tabs_v[2]:
+                    st.markdown("### Сгенерированные отзывы:")
+                    if 'ws_reviews_export_data' in st.session_state and st.session_state.ws_reviews_export_data:
+                        # Ищем отзывы, которые относятся только к выбранному в селекторе товару (sel_p)
+                        current_reviews = [r for r in st.session_state.ws_reviews_export_data if r['Product Name'] == sel_p]
+                        if current_reviews:
+                            for rev in current_reviews:
+                                st.markdown(f"**{rev.get('Имя', 'Аноним')}** 🗓️ *{rev.get('Дата', '')}*")
+                                st.markdown(f"<div style='padding:10px; border-left: 3px solid #ccc; margin-bottom: 20px;'>{rev.get('Отзыв', '')}</div>", unsafe_allow_html=True)
+                        else:
+                            st.info("Для этого товара нет отзывов.")
+                    else:
+                        st.info("База отзывов пуста. Убедитесь, что галочка генерации отзывов была включена.")
 # ==========================================
 
 # ==========================================
@@ -6656,6 +6709,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
