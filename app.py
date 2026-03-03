@@ -4544,10 +4544,6 @@ with tab_wholesale_main:
                         </table>
                         Выдай только HTML код таблицы.
                         """
-                         </tbody>
-                        </table>
-                        Выдай только HTML код таблицы.
-                        """
                         resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.25)
                         raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                         if "<table" in raw_table:
@@ -6180,6 +6176,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
