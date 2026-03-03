@@ -4407,11 +4407,6 @@ with tab_wholesale_main:
 
                     available_urls = [u for u in unified_db.keys() if u != current_task['url'].rstrip('/')]
                     
-                    def translit_for_url(word):
-                    # Простой словарь для перевода кириллицы в латиницу (как в ссылках)
-                    t_dict = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'}
-                    return "".join([t_dict.get(c, c) for c in word.lower()])
-
                 def find_match_in_db(kw, used_urls):
                     kw_clean = kw.lower().strip()
                     # Берем корень (первые 5 букв), чтобы поймать "гайка" -> "gayka"
@@ -6233,6 +6228,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
