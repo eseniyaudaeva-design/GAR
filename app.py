@@ -2720,30 +2720,30 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fi
             f_row = df_fio.sample(n=1).iloc[0]
             names_sample.append(f"{f_row.get('Имя', '')} {f_row.get('Фамилия', '')}".strip())
             
-    prompt = f"""Ты — копирайтер, пишущий реалистичные B2B отзывы от лица клиентов (снабженцев, прорабов, закупщиков).
-Тема отзывов (товар/услуга): "{h2_header}".
+    prompt = f"""Ты — реальный покупатель (снабженец, прораб, строитель, клиент металлобазы).
+Тема отзыва (что купили): "{h2_header}".
 
-ИНСТРУКЦИИ (ОЧЕНЬ ВАЖНО):
-1. Напиши ровно {target_count} отзывов. Имена бери из списка: {", ".join(names_sample)}.
-2. РАЗНООБРАЗИЕ ОБЪЕМА: Отзывы должны быть от РАЗНЫХ людей. 
-   - Сделай один отзыв очень коротким (1-2 рубленые фразы, типа "привезли, всё норм").
-   - Второй сделай средним, укажи детали процесса.
-   - Третий (и далее) сделай длинным, подробным, можно с небольшой придиркой, но хорошим итогом.
-3. ЖИВОЙ ЯЗЫК: В интернете не пишут как академики!
-   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать длинные тире (—) и точку с запятой (;). Если нужно, ставь обычный короткий дефис (-).
-   - Избегай сложных деепричастных оборотов и идеальной пунктуации.
-   - Используй простые фразы, сленг закупщиков ("закрыли объем", "по докам", "отгрузили"). Можно иногда пропустить запятую.
-4. LSI СЛОВА: ОБЯЗАТЕЛЬНО используй эти слова, вплетая их как случайные детали. ВЫДЕЛИ ИХ ЖИРНЫМ (**слово**): {", ".join(lsi_words)}
-5. ДАТЫ: Используй эти даты покупки: {", ".join(random_dates)} (например: "Оплатили {random_dates[0]}...", "Заказ от {random_dates[1]}").
+ИНСТРУКЦИИ (ЧИТАЙ ВНИМАТЕЛЬНО, ЭТО КРИТИЧЕСКИ ВАЖНО):
+1. Напиши ровно {target_count} отзывов от разных людей. Имена бери из списка: {", ".join(names_sample)}.
+2. ЕСТЕСТВЕННОСТЬ И РЕАЛИЗМ (САМОЕ ВАЖНОЕ): 
+   - Пиши так, как пишут ЖИВЫЕ люди. Никаких рассуждений в стиле Википедии или ИИ. 
+   - ЗАПРЕЩЕНЫ канцеляриты и искусственные фразы типа: "главный компонент конструкции", "отличительная особенность", "оптимальное решение", "данный товар". 
+   - Пиши просто и по делу: "брали на навес", "металл нормальный", "геометрия ровная", "привезли вовремя", "менеджер помог", "закрыли объект".
+   - Отзывы должны быть разного объема: один очень короткий (1-2 предложения), остальные чуть подробнее, но без "воды".
+3. ГРАММАТИКА И ПУНКТУАЦИЯ:
+   - Текст должен быть грамматически ПРАВИЛЬНЫМ (без откровенных ошибок и опечаток).
+   - СТРОЖАЙШИЙ ЗАПРЕТ НА ЛЮБЫЕ ТИРЕ И ДЕФИСЫ (-, —, –). Вообще не используй этот знак! Нигде! Если хочется поставить тире — перефразируй предложение или поставь запятую.
+4. LSI СЛОВА: ОБЯЗАТЕЛЬНО используй эти слова, вплетая их максимально естественно. ВЫДЕЛИ ИХ ЖИРНЫМ (**слово**): {", ".join(lsi_words)}
+5. ДАТЫ (СТРОГИЙ ЗАПРЕТ): КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ писать дату ВНУТРИ самого текста отзыва! Дату передавай ТОЛЬКО как значение ключа "Дата" в JSON. Список дат для выбора: {", ".join(random_dates)}.
 6. ВЕРНИ СТРОГО В ФОРМАТЕ JSON-МАССИВА:[
-  {{"Имя": "Имя Фамилия", "Дата": "ДД.ММ.ГГГГ", "Текст": "Текст отзыва..."}}
+  {{"Имя": "Имя Фамилия", "Дата": "ДД.ММ.ГГГГ", "Текст": "Живой текст отзыва СТРОГО без даты и СТРОГО без тире..."}}
 ]
 """
     try:
         resp = client.chat.completions.create(
             model="deepseek/deepseek-v3.2",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7 # Повышаем температуру для большего разнообразия стилей
+            temperature=0.7 
         )
         content = resp.choices[0].message.content
         if content.startswith("```json"): content = content[7:]
@@ -2751,7 +2751,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fi
         if content.endswith("```"): content = content[:-3]
         return json.loads(content.strip())
     except Exception as e:
-        return[{"Имя": "Ошибка", "Дата": "", "Текст": str(e)}]
+        return [{"Имя": "Ошибка", "Дата": "", "Текст": str(e)}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
@@ -5017,17 +5017,20 @@ with tab_wholesale_main:
                             ]
                             
                             def md_to_html(text):
+                                # Превращаем маркдаун DeepSeek в HTML-теги strong
                                 return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(text))
                             
                             for item in reviews_json:
                                 r_name = item.get('Имя', 'Клиент')
                                 r_date = item.get('Дата', '')
-                                r_text = md_to_html(item.get('Текст', ''))
                                 
-                                # Верстаем отзыв
+                                # Оборачиваем в HTML-теги для таблицы Excel
+                                r_text_html = f"<p>{md_to_html(item.get('Текст', ''))}</p>"
+                                
+                                # Верстаем отзыв для предпросмотра и вставки на сайт
                                 rev_html_parts.append(f'<div class="review-item" style="padding: 15px; border-left: 4px solid #277EFF; background: #f9fafb; margin-bottom: 15px;">')
                                 rev_html_parts.append(f'<div class="review-header" style="margin-bottom: 8px;"><strong class="review-author">{r_name}</strong> <span class="review-date" style="color: #6b7280; font-size: 13px; margin-left: 10px;">{r_date}</span></div>')
-                                rev_html_parts.append(f'<div class="review-text" style="color: #374151; font-size: 15px;"><p>{r_text}</p></div>')
+                                rev_html_parts.append(f'<div class="review-text" style="color: #374151; font-size: 15px;">{r_text_html}</div>')
                                 rev_html_parts.append(f'</div>')
                                 
                                 # Сохраняем в таблицу
@@ -5035,7 +5038,8 @@ with tab_wholesale_main:
                                     'Page URL': current_task['url'],
                                     'Product Name': h2_header,
                                     'Имя': r_name,
-                                    'Отзыв': r_text
+                                    'Дата': r_date, # Отдельная колонка для даты
+                                    'Отзыв': r_text_html # Чистый HTML текст: <p>Текст <strong>LSI</strong> текст</p>
                                 })
                                 
                             rev_html_parts.append('</div></div>')
@@ -5452,8 +5456,8 @@ with tab_wholesale_main:
                 df_rev_export.to_excel(writer, sheet_name='Отзывы', index=False)
                 w_rev = writer.sheets['Отзывы']
                 w_rev.set_column('A:B', 30)
-                w_rev.set_column('C:C', 20)
-                w_rev.set_column('D:D', 80)
+                w_rev.set_column('C:D', 20)  # Сюда попадут "Имя" и "Дата"
+                w_rev.set_column('E:E', 80)  # Сюда попадет сам "Отзыв"
 
         col_dl, col_cl = st.columns([2, 1])
         with col_dl:
@@ -6711,6 +6715,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
