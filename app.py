@@ -5070,7 +5070,7 @@ with tab_wholesale_main:
         
     st.dataframe(df_export.style.apply(highlight_bad_results, axis=1), use_container_width=True)
 
-        st.markdown("---")
+    st.markdown("---")
         st.markdown("### 🖥️ Визуальный предпросмотр")
         
         if 'Product Name' in df_export.columns:
@@ -6295,6 +6295,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
