@@ -4402,50 +4402,62 @@ with tab_wholesale_main:
                                 name_val = str(r_db.iloc[1]).strip() if len(df_db.columns) > 1 else ""
                                 img_val = str(r_db.iloc[2]).strip() if len(df_db.columns) > 2 else "https://via.placeholder.com/260"
                                 unified_db[u_link] = {'name': name_val, 'img': img_val}
-                        except Exception as e:
+                        except Exception as e:  # ВОТ ЭТОТ EXCEPT ТЫ СЛУЧАЙНО УДАЛИЛ В ПРОШЛЫЙ РАЗ!
                             status_logger.error(f"Ошибка словаря: {e}")
 
                     available_urls = [u for u in unified_db.keys() if u != current_task['url'].rstrip('/')]
                     
-                def find_match_in_db(kw, used_urls):
-                    kw_clean = kw.lower().strip()
-                    # Берем корень (первые 5 букв), чтобы поймать "гайка" -> "gayka"
-                    kw_stem = kw_clean[:5] if len(kw_clean) > 5 else kw_clean
-                    
-                    # Делаем транслит через нормальную библиотеку (убираем мягкие/твердые знаки, если библиотека ставит апострофы)
-                    try:
-                        kw_translit = translit(kw_stem, 'ru', reversed=True).replace("'", "")
-                    except Exception:
-                        kw_translit = kw_stem # На случай непредвиденных ошибок или если слово уже на латинице
-                    
-                    for u in available_urls:
-                        if u in used_urls: continue
+                    def find_match_in_db(kw, used_urls):
+                        kw_clean = kw.lower().strip()
+                        kw_stem = kw_clean[:5] if len(kw_clean) > 5 else kw_clean
                         
-                        db_name = unified_db[u]['name'].strip()
-                        db_n_low = db_name.lower()
-                        u_low = u.lower()
+                        # Безопасный вызов библиотеки транслитерации
+                        try:
+                            from transliterate import translit
+                            kw_translit = translit(kw_stem, 'ru', reversed=True).replace("'", "")
+                        except Exception:
+                            kw_translit = kw_stem
                         
-                        img_val = unified_db[u].get('img', "https://via.placeholder.com/260")
-                        if str(img_val) == 'nan' or not img_val: img_val = "https://via.placeholder.com/260"
-                        
-                        # 1. СНАЧАЛА ИЩЕМ ПО РУССКОМУ НАЗВАНИЮ
-                        if (kw_clean == db_n_low or kw_clean in db_n_low or db_n_low in kw_clean or (len(kw_stem) >= 4 and kw_stem in db_n_low)):
-                            final_name = db_name if db_name else kw.capitalize()
-                            return u, final_name, img_val
+                        for u in available_urls:
+                            if u in used_urls: continue
                             
-                        # 2. ЗАТЕМ ИЩЕМ ПО ТРАНСЛИТУ В ССЫЛКЕ
-                        if len(kw_translit) >= 4 and kw_translit in u_low:
-                            # Возвращаем СТРОГО русское слово из БД, а не транслит!
-                            final_name = db_name if db_name else kw.capitalize()
-                            return u, final_name, img_val
+                            db_name = unified_db[u]['name'].strip()
+                            db_n_low = db_name.lower()
+                            u_low = u.lower()
                             
-                    return None, None, None
+                            img_val = unified_db[u].get('img', "https://via.placeholder.com/260")
+                            if str(img_val) == 'nan' or not img_val: img_val = "https://via.placeholder.com/260"
+                            
+                            # 1. Поиск по русскому названию
+                            if (kw_clean == db_n_low or kw_clean in db_n_low or db_n_low in kw_clean or (len(kw_stem) >= 4 and kw_stem in db_n_low)):
+                                final_name = db_name if db_name else kw.capitalize()
+                                return u, final_name, img_val
+                                
+                            # 2. Поиск по транслиту в URL
+                            if len(kw_translit) >= 4 and kw_translit in u_low:
+                                final_name = db_name if db_name else kw.capitalize()
+                                return u, final_name, img_val
+                                
+                        return None, None, None
 
                     matched_items = []
                     unmatched_kws = []
                     used_links = []
                     
-                    all_candidates = list(set(structure_keywords))
+                    # --- МЯСОРУБКА ДЛЯ СЛОВ (ДРОБИМ И ЧИСТИМ) ---
+                    raw_candidates = list(set(structure_keywords))
+                    all_candidates = []
+                    for raw_kw in raw_candidates:
+                        clean_str = re.sub(r'^.*?[–-]\s*', '', str(raw_kw))
+                        parts = re.split(r'[,;]', clean_str)
+                        for p in parts:
+                            p = p.strip().strip('.')
+                            if len(p) > 2:
+                                all_candidates.append(p)
+                                
+                    all_candidates = list(set(all_candidates))
+                    # ---------------------------------------------
+
                     for kw in all_candidates:
                         f_url, f_name, f_img = find_match_in_db(kw, used_links)
                         if f_url:
@@ -6228,6 +6240,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
