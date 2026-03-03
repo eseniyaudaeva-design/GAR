@@ -4407,18 +4407,44 @@ with tab_wholesale_main:
 
                     available_urls = [u for u in unified_db.keys() if u != current_task['url'].rstrip('/')]
                     
-                    def find_match_in_db(kw, used_urls):
-                        kw_clean = kw.lower().strip()
-                        kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
-                        for u in available_urls:
-                            if u in used_urls: continue
-                            db_name = unified_db[u]['name'].strip()
-                            db_n_low = db_name.lower()
-                            if (kw_clean == db_n_low or kw_clean in db_n_low or db_n_low in kw_clean or (len(kw_stem) >= 4 and kw_stem in db_n_low)):
-                                img_val = unified_db[u].get('img', "https://via.placeholder.com/260")
-                                if str(img_val) == 'nan' or not img_val: img_val = "https://via.placeholder.com/260"
-                                return u, db_name, img_val
-                        return None, None, None
+                    def translit_for_url(word):
+                    # Простой словарь для перевода кириллицы в латиницу (как в ссылках)
+                    t_dict = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'}
+                    return "".join([t_dict.get(c, c) for c in word.lower()])
+
+                def find_match_in_db(kw, used_urls):
+                    kw_clean = kw.lower().strip()
+                    # Берем корень (первые 5 букв), чтобы поймать "гайка" -> "gayka"
+                    kw_stem = kw_clean[:5] if len(kw_clean) > 5 else kw_clean
+                    
+                    # Делаем транслит через нормальную библиотеку (убираем мягкие/твердые знаки, если библиотека ставит апострофы)
+                    try:
+                        kw_translit = translit(kw_stem, 'ru', reversed=True).replace("'", "")
+                    except Exception:
+                        kw_translit = kw_stem # На случай непредвиденных ошибок или если слово уже на латинице
+                    
+                    for u in available_urls:
+                        if u in used_urls: continue
+                        
+                        db_name = unified_db[u]['name'].strip()
+                        db_n_low = db_name.lower()
+                        u_low = u.lower()
+                        
+                        img_val = unified_db[u].get('img', "https://via.placeholder.com/260")
+                        if str(img_val) == 'nan' or not img_val: img_val = "https://via.placeholder.com/260"
+                        
+                        # 1. СНАЧАЛА ИЩЕМ ПО РУССКОМУ НАЗВАНИЮ
+                        if (kw_clean == db_n_low or kw_clean in db_n_low or db_n_low in kw_clean or (len(kw_stem) >= 4 and kw_stem in db_n_low)):
+                            final_name = db_name if db_name else kw.capitalize()
+                            return u, final_name, img_val
+                            
+                        # 2. ЗАТЕМ ИЩЕМ ПО ТРАНСЛИТУ В ССЫЛКЕ
+                        if len(kw_translit) >= 4 and kw_translit in u_low:
+                            # Возвращаем СТРОГО русское слово из БД, а не транслит!
+                            final_name = db_name if db_name else kw.capitalize()
+                            return u, final_name, img_val
+                            
+                    return None, None, None
 
                     matched_items = []
                     unmatched_kws = []
@@ -6207,6 +6233,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
