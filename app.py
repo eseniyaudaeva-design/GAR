@@ -4874,7 +4874,7 @@ with tab_wholesale_main:
             st.warning("⚠️ Есть тексты в очереди Text.ru. Обновите статусы вручную:")
             if st.button("🔄 ОБНОВИТЬ СТАТУСЫ TEXT.RU", type="primary", use_container_width=True):
                 txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '') # <--- ИЗМЕНЕНА ЭТА СТРОКА
-                    with st.spinner("Стучимся в Text.ru..."):
+                with st.spinner("Стучимся в Text.ru..."):
                         for idx, row in st.session_state.gen_result_df.iterrows():
                             if "⏳" in str(row.get('Уникальность', '')):
                                 uid = row.get('Text.ru UID')
@@ -6176,6 +6176,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
