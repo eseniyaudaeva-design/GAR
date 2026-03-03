@@ -4889,26 +4889,26 @@ with tab_wholesale_main:
                                         except:
                                             st.session_state.gen_result_df.at[idx, 'Text.ru Комментарий'] = "Проверено"
                     # st.rerun()  <--- ОТКЛЮЧЕНО
-            elif has_pending and is_running:
-                txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
-                if txtru_key_active:
-                    updated_any = False
-                    for idx, row in st.session_state.gen_result_df.iterrows():
-                        if "⏳" in str(row.get('Уникальность', '')):
-                            uid = row.get('Text.ru UID')
-                            if uid:
-                                stts = check_textru_status_sync(uid, txtru_key_active)
-                                if stts not in ["processing", "error"] and "Ошибка" not in stts:
-                                    st.session_state.gen_result_df.at[idx, 'Уникальность'] = stts
-                                    st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
-                                    try:
-                                        u_num = float(re.search(r'\d+\.?\d*', str(stts)).group())
-                                        st.session_state.gen_result_df.at[idx, 'Text.ru Комментарий'] = "Ок" if u_num >= 95 else "Уникальность < 95%"
-                                    except:
-                                        st.session_state.gen_result_df.at[idx, 'Text.ru Комментарий'] = "Проверено"
-                                    updated_any = True
-                    # if updated_any:   <--- ОТКЛЮЧЕНО
-                    #     st.rerun()    <--- ОТКЛЮЧЕНО
+        elif has_pending and is_running:
+            txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
+            if txtru_key_active:
+                updated_any = False
+                for idx, row in st.session_state.gen_result_df.iterrows():
+                    if "⏳" in str(row.get('Уникальность', '')):
+                        uid = row.get('Text.ru UID')
+                        if uid:
+                            stts = check_textru_status_sync(uid, txtru_key_active)
+                            if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                                st.session_state.gen_result_df.at[idx, 'Уникальность'] = stts
+                                st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
+                                try:
+                                    u_num = float(re.search(r'\d+\.?\d*', str(stts)).group())
+                                    st.session_state.gen_result_df.at[idx, 'Text.ru Комментарий'] = "Ок" if u_num >= 95 else "Уникальность < 95%"
+                                except:
+                                    st.session_state.gen_result_df.at[idx, 'Text.ru Комментарий'] = "Проверено"
+                                updated_any = True
+                # if updated_any:   <--- ОТКЛЮЧЕНО
+                #     st.rerun()    <--- ОТКЛЮЧЕНО
 
         elif has_pending and is_running:
             txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '') # <--- ИЗМЕНЕНА ЭТА СТРОКА
@@ -6197,6 +6197,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
