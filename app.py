@@ -2332,6 +2332,9 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 2. Вписывай слова максимально естественно, меняя падежи, числа и формы.
 3. ОБЯЗАТЕЛЬНО выделяй все вставленные SEO-слова жирным шрифтом (оборачивай в **слово** или <strong>слово</strong>), чтобы их было видно.
 4. Качество: Если ключ выглядит как мусор или название конкурента — игнорируй его.
+5. КАТЕГОРИЧЕСКИЙ ЗАПРЕТ НА ЛАТИНИЦУ: Никаких английских слов, транслита (типа 'truba', 'stal'). 
+ИСКЛЮЧЕНИЕ: Только международные марки стали (AISI 304, S355), стандарты (DIN, ISO, EN) и ГОСТ. 
+Всё остальное пиши ТОЛЬКО кириллицей. Если видишь в ключевых словах латиницу (не марку) — ИГНОРИРУЙ ЕЁ.
 -------------------------------------------
 """
 
@@ -4460,17 +4463,22 @@ with tab_wholesale_main:
                     available_urls = [u for u in unified_db.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
                     
                     def find_match_in_db(kw, used_urls):
-                        kw_lower = kw.lower()
-                        kw_translit = transliterate_text(kw).replace(' ', '-').replace('_', '-')
+                        kw_clean = kw.lower().strip()
+                        # Мягкий поиск: берем корень (первые 4-5 символов)
+                        kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
                         
-                        # Шаг 1: Ищем точное совпадение по русской колонке 'Название'
-                        # Шаг 1: Ищем точное совпадение по русской колонке 'Название'
                         for u in available_urls:
                             if u in used_urls: continue
                             db_name = unified_db[u]['name'].strip()
-                            if db_name and (kw_lower == db_name.lower() or kw_lower in db_name.lower() or db_name.lower() in kw_lower):
-                                return u, db_name # <-- ВОТ ЗДЕСЬ ДОЛЖНО БЫТЬ СТРОГО db_name
-                        
+                            db_name_low = db_name.lower()
+                            
+                            # Проверяем точное совпадение или совпадение по корню
+                            if (kw_clean == db_name_low or 
+                                kw_clean in db_name_low or 
+                                db_name_low in kw_clean or
+                                (len(kw_stem) >= 4 and kw_stem in db_name_low)):
+                                return u, db_name 
+                                
                         return None, None
 
                     if global_tags:
@@ -4492,12 +4500,15 @@ with tab_wholesale_main:
                     # ВОЗВРАЩАЕМ ПОТЕРЯННЫЕ СЛОВА И ДЕЛИМ ИХ ПОПОЛАМ МЕЖДУ ТЕКСТОМ И FAQ
                     unmatched_tags = [w for w in tags_cands if w not in matched_tags_kw]
                     unmatched_promo = [w for w in promo_cands if w not in matched_promo_kw]
-                    all_unmatched = unmatched_tags + unmatched_promo
+                    # Все, что не вошло в теги/промо, размазываем
+                    all_unmatched = [w for w in tags_cands if w not in matched_tags_kw] + \
+                                    [w for w in promo_cands if w not in matched_promo_kw]
                     
                     if all_unmatched:
-                        mid_unm = len(all_unmatched) // 2
-                        final_text_seo_list.extend(all_unmatched[:mid_unm])
-                        faq_cands.extend(all_unmatched[mid_unm:])
+                        # 30% в текст, 70% в FAQ (в FAQ слова вписываются легче)
+                        split_idx = int(len(all_unmatched) * 0.3)
+                        final_text_seo_list.extend(all_unmatched[:split_idx])
+                        faq_cands.extend(all_unmatched[split_idx:])
                     
                     if not global_faq:
                         pass
@@ -5087,7 +5098,7 @@ with tab_wholesale_main:
             st.dataframe(df_export.style.apply(highlight_bad_results, axis=1), use_container_width=True)
 
         st.markdown("---")
-        st.markdown("### 🖥️ Визуальный предпросмотр (Сплошная лента)")
+        st.markdown("### 🖥️ Визуальный предпросмотр")
         
         if 'Product Name' in df_export.columns:
             all_products = df_export['Product Name'].tolist()
@@ -5096,14 +5107,12 @@ with tab_wholesale_main:
             
             if sel_p:
                 row_p = df_export[df_export['Product Name'] == sel_p].iloc[0]
-                cols_to_show = [
-                    'IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819',
-                    'FAQ HTML'
-                ]
+                
+                # КРИТИЧНО: Убираем IP_PROP4819 (Гео) и FAQ HTML из общего списка перебора
+                cols_to_show = ['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
                 active_cols = [c for c in cols_to_show if str(row_p.get(c, "")).strip() != ""]
                 
-                if active_cols:
-                    st.markdown("""
+                st.markdown("""
                     <style>
                         .preview-box { border: 1px solid #e2e8f0; background-color: #ffffff; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); }
                         .block-title { color: #277EFF; margin-top: 30px; margin-bottom: 10px; font-size: 1.2em; font-weight: 600; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }
@@ -5119,21 +5128,33 @@ with tab_wholesale_main:
                         .gallery-item img { width: 100%; height: auto; border-radius: 4px; }
                         .gallery-item h3 { font-size: 14px; margin-top: 10px; font-weight: normal; }
                         .gallery-item a { text-decoration: none; color: #333; }
-                        .faq-section { margin: 20px 0; padding: 20px; background: #F6F7FC; border-radius: 8px; border: 1px solid #e2e8f0; }
-                        .faq-item { margin-bottom: 15px; background: #fff; padding: 15px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);}
-                        .faq-item h4 { margin-bottom: 5px; color: #1e293b; font-weight: 600; margin-top: 0;}
-                        .faq-item p { margin-top: 0; color: #475569; font-size: 14px; margin-bottom: 0;}
+                        .faq-section { margin: 10px 0; padding: 15px; background: #F6F7FC; border-radius: 8px; }
                     </style>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown(f"### 📄 Итоговый контент для: {sel_p}")
-                    
-                    for col in active_cols:
-                        block_name = col.replace("IP_PROP", "БЛОК ")
-                        if col == "IP_PROP4819": block_name = "ГЕО БЛОК (Доставка)"
-                        
-                        st.markdown(f"<div class='block-title'>{block_name}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='preview-box'>{str(row_p[col])}</div>", unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+                
+                st.markdown(f"### 📄 Итоговый контент для: {sel_p}")
+                
+                # Создаем вкладки для разделения основного текста и FAQ
+                tabs = st.tabs(["📝 Текст и блоки", "❓ FAQ (Вопросы и ответы)"])
+                
+                with tabs[0]:
+                    if active_cols:
+                        for col in active_cols:
+                            block_name = col.replace("IP_PROP", "БЛОК ")
+                            if col == "IP_PROP4839": block_name = "ГЛАВНЫЙ ТЕКСТ"
+                            
+                            st.markdown(f"<div class='block-title'>{block_name}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div class='preview-box'>{str(row_p[col])}</div>", unsafe_allow_html=True)
+                    else:
+                        st.info("Основные текстовые блоки отсутствуют.")
+
+                with tabs[1]:
+                    faq_data = str(row_p.get('FAQ HTML', '')).strip()
+                    if faq_data:
+                        st.markdown("<div class='block-title'>БЛОК FAQ</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='faq-section'>{faq_data}</div>", unsafe_allow_html=True)
+                    else:
+                        st.info("Блок FAQ для этого товара пуст или не генерировался.")
 # ==========================================
 
 # ==========================================
@@ -6301,6 +6322,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
