@@ -2693,6 +2693,71 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     except Exception as e:
         return [{"Тип": "Ошибка", "Вопрос": "Ошибка генерации", "Ответ": str(e)}]
 
+def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fio, df_templates, var_dict):
+    import json
+    import random
+    from datetime import date, timedelta
+    from openai import OpenAI
+    
+    try:
+        client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
+    except Exception as e:
+        return [{"Имя": "Ошибка", "Текст": f"Ошибка инициализации API: {str(e)}"}]
+        
+    # Генерация случайных дат для отзывов
+    start_date = date(2026, 1, 1)
+    end_date = date(2026, 2, 10)
+    delta = end_date - start_date
+    
+    random_dates = []
+    for _ in range(target_count):
+        random_days = random.randrange(delta.days + 1)
+        rand_date = start_date + timedelta(days=random_days)
+        random_dates.append(rand_date.strftime("%d.%m.%Y"))
+            
+    # Подготавливаем примеры имен из базы
+    names_sample = []
+    if not df_fio.empty:
+        for _ in range(min(10, len(df_fio))):
+            f_row = df_fio.sample(n=1).iloc[0]
+            names_sample.append(f"{f_row.get('Имя', '')} {f_row.get('Фамилия', '')}".strip())
+            
+    # Подготавливаем примеры шаблонов
+    templates_sample = []
+    if not df_templates.empty and 'Шаблон' in df_templates.columns:
+        templates_sample = df_templates['Шаблон'].dropna().sample(min(5, len(df_templates))).tolist()
+        
+    prompt = f"""Ты — копирайтер, пишущий реалистичные B2B отзывы от лица клиентов.
+Тема отзывов (товар/услуга): "{h2_header}".
+
+ИНСТРУКЦИИ:
+1. Напиши ровно {target_count} отзывов.
+2. Имена авторов выбирай или придумывай (Примеры имен: {", ".join(names_sample)}).
+3. Используй эти шаблоны как ориентир для структуры и стиля:
+{chr(10).join(templates_sample)}
+4. Доступные переменные: {json.dumps(var_dict, ensure_ascii=False)[:600]}. Интегрируй их значения по смыслу.
+5. ОБЯЗАТЕЛЬНО используй эти LSI-слова, вплетая их естественно, и выдели их жирным (**слово**): {", ".join(lsi_words)}
+6. Отзывы должны быть технически грамотными, без лишних восторгов.
+7. Для каждого отзыва используй одну из этих дат обращения или покупки: {", ".join(random_dates)}. Вплетай дату органично (например: "Обращались {random_dates[0]}...", "Заказ от {random_dates[1]}...").
+8. ВЕРНИ СТРОГО В ФОРМАТЕ JSON-МАССИВА:
+[
+  {{"Имя": "Имя Фамилия", "Дата": "ДД.ММ.ГГГГ", "Текст": "Текст отзыва..."}}
+]
+"""
+    try:
+        resp = client.chat.completions.create(
+            model="deepseek/deepseek-v3.2",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5 # Чуть повысили температуру для большей вариативности текстов
+        )
+        content = resp.choices[0].message.content
+        if content.startswith("```json"): content = content[7:]
+        if content.startswith("```"): content = content[3:]
+        if content.endswith("```"): content = content[:-3]
+        return json.loads(content.strip())
+    except Exception as e:
+        return [{"Имя": "Ошибка", "Дата": "", "Текст": str(e)}]
+
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
     try:
@@ -4758,13 +4823,27 @@ with tab_wholesale_main:
                             else: unmatched_kws.append(kw)
                     else: unmatched_kws.extend(tags_2_cands)
 
-                    # 4. ОТКАЗНИКИ ИДУТ В ТЕКСТ (ДЛЯ ИДЕАЛЬНЫХ СКЛОНЕНИЙ)
-                    final_text_seo_list = list(set(cat_commercial + cat_general + unmatched_kws))
-                    with st.expander("📊 ОТЧЕТ: Куда алгоритм распределил слова?", expanded=True):
-                        st.write(f"**В Текст ({len(final_text_seo_list)} шт):** {', '.join(final_text_seo_list) if final_text_seo_list else 'Нет слов'}")
-                        st.write(f"**В Плитку тегов 1 ({len(tags_block_1)} шт)**")
-                        st.write(f"**В Промо-блок ({len(promo_block)} шт)**")
-                        st.write(f"**В Плитку тегов 2 ({len(tags_block_2)} шт)**")
+                    # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ СЕМАНТИКИ (FAQ И ОТЗЫВЫ)
+                    all_commercial_general = list(set(cat_commercial + cat_general + unmatched_kws))
+                    random.shuffle(all_commercial_general)
+                    
+                    faq_cands = st.session_state.get('categorized_info', []) # Изначальный запас для FAQ
+                    review_cands = []
+                    
+                    # Отщипываем 7 слов из упущенной семантики для FAQ
+                    if st.session_state.get('ws_global_faq', True):
+                        chunk = all_commercial_general[:7]
+                        faq_cands.extend(chunk)
+                        all_commercial_general = all_commercial_general[7:]
+                        
+                    # Отщипываем 7 слов из упущенной семантики для Отзывов
+                    if st.session_state.get('ws_global_reviews', True):
+                        chunk = all_commercial_general[:7]
+                        review_cands.extend(chunk)
+                        all_commercial_general = all_commercial_general[7:]
+                
+                    # 5. ОСТАВШИЕСЯ ОТКАЗНИКИ ИДУТ В ТЕКСТ (ДЛЯ ИДЕАЛЬНЫХ СКЛОНЕНИЙ)
+                    final_text_seo_list = all_commercial_general
 
                     # =================================================================
                     # ГЕНЕРАЦИЯ ТЕКСТА
@@ -4879,6 +4958,49 @@ with tab_wholesale_main:
                                 final_faq_html = "\n".join(faq_html_parts)
                         except Exception as e:
                             status_logger.error(f"Ошибка FAQ: {e}")
+                    # =================================================================
+                    # ГЕНЕРАЦИЯ ОТЗЫВОВ (DEEPSEEK)
+                    # =================================================================
+                    global_reviews = st.session_state.get('ws_global_reviews', True)
+                    if global_reviews and gemini_api_key:
+                        rev_count = st.session_state.get('ws_reviews_count', 3)
+                        status_logger.write(f"💬 Генерируем {rev_count} отзывов (DeepSeek)...")
+                        
+                        import os
+                        import pandas as pd
+                        # Читаем шаблоны из репозитория
+                        df_fio = pd.read_csv("dicts/fio.csv", sep=";") if os.path.exists("dicts/fio.csv") else pd.DataFrame()
+                        df_templates = pd.read_csv("dicts/templates.csv", sep=";") if os.path.exists("dicts/templates.csv") else pd.DataFrame()
+                        
+                        var_dict = {}
+                        if os.path.exists("dicts/vars.csv"):
+                            df_vars = pd.read_csv("dicts/vars.csv", sep=";")
+                            for _, rv in df_vars.iterrows():
+                                v_name = str(rv['Переменная']).strip()
+                                if pd.notna(rv['Значения']):
+                                    var_dict[f"{{{v_name}}}"] = [v.strip() for v in str(rv['Значения']).split('|')]
+                                    
+                        # Вызов нейросети с передачей всего контекста и переменных
+                        reviews_json = generate_reviews_deepseek(
+                            gemini_api_key, 
+                            h2_header, 
+                            review_cands, 
+                            rev_count, 
+                            df_fio, 
+                            df_templates, 
+                            var_dict
+                        )
+                        
+                        if 'ws_reviews_export_data' not in st.session_state:
+                            st.session_state.ws_reviews_export_data = []
+                            
+                        for item in reviews_json:
+                            st.session_state.ws_reviews_export_data.append({
+                                'Page URL': current_task['url'],
+                                'Product Name': h2_header,
+                                'Имя': item.get('Имя', ''),
+                                'Отзыв': item.get('Текст', '')
+                            })
 
                     # =================================================================
                     # ГЕО-ДОСТАВКА
@@ -5066,11 +5188,15 @@ with tab_wholesale_main:
                     st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
                     st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
                     st.checkbox("❓ FAQ", value=True, key="ws_global_faq")
-                    # НОВОЕ: Поле для выбора количества вопросов
-                    st.number_input("Количество вопросов FAQ", min_value=2, max_value=12, value=4, step=2, key="ws_faq_count")
+                    # Обновлен лимит вопросов до 50
+                    st.number_input("Количество вопросов FAQ", min_value=2, max_value=50, value=4, step=1, key="ws_faq_count")
+                    
                 with grid_2:
                     st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
                     st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo")
+                    # Добавлена галочка и счетчик для отзывов
+                    st.checkbox("💬 Отзывы", value=True, key="ws_global_reviews")
+                    st.number_input("Количество отзывов", min_value=1, max_value=50, value=3, step=1, key="ws_reviews_count")
                 
             
     c_start, c_stop = st.columns([2, 1])
@@ -5271,19 +5397,21 @@ with tab_wholesale_main:
             df_export_clean.to_excel(writer, sheet_name='Результаты', index=False)
             workbook = writer.book
             worksheet = writer.sheets['Результаты']
-            red_fmt = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-            headers = list(df_export_clean.columns)
+            # ... (оставьте тут ваши старые форматы)
             
-            # Красим Комментарий в Excel, если там не "Ок"
-            if 'Комментарий' in headers:
-                c_idx = headers.index('Комментарий')
-                worksheet.conditional_format(1, c_idx, len(df_export_clean), c_idx, 
-                                            {'type': 'text', 'criteria': 'not containing', 'value': 'Ок', 'format': red_fmt})
-
             # ЛИСТ 2: Выгрузка базы FAQ на отдельный лист
             if 'faq_export_data' in st.session_state and st.session_state.faq_export_data:
                 df_faq = pd.DataFrame(st.session_state.faq_export_data)
                 df_faq.to_excel(writer, sheet_name='База FAQ', index=False)
+                
+            # ЛИСТ 3: Выгрузка Отзывов на отдельный лист (НОВОЕ)
+            if 'ws_reviews_export_data' in st.session_state and st.session_state.ws_reviews_export_data:
+                df_rev_export = pd.DataFrame(st.session_state.ws_reviews_export_data)
+                df_rev_export.to_excel(writer, sheet_name='Отзывы', index=False)
+                w_rev = writer.sheets['Отзывы']
+                w_rev.set_column('A:B', 30)
+                w_rev.set_column('C:C', 20)
+                w_rev.set_column('D:D', 80)
 
         col_dl, col_cl = st.columns([2, 1])
         with col_dl:
@@ -5298,7 +5426,9 @@ with tab_wholesale_main:
             if st.button("🗑️ Очистить таблицу", use_container_width=True):
                 st.session_state.gen_result_df = st.session_state.gen_result_df.iloc[0:0]
                 if 'faq_export_data' in st.session_state:
-                    st.session_state.faq_export_data = [] # Очищаем и базу FAQ, чтобы она не переносилась на след. проекты
+                    st.session_state.faq_export_data = []
+                if 'ws_reviews_export_data' in st.session_state:
+                    st.session_state.ws_reviews_export_data = []
                 st.rerun()
 
         # --- 5. ТЕХНИЧЕСКАЯ ТАБЛИЦА (ТЕПЕРЬ БЕЗ ОШИБОК) ---
@@ -6526,6 +6656,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
