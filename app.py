@@ -2414,7 +2414,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
             for b in blocks:
                 cb = b.strip()
                 cb = cb.replace("**", "")
-                cb = re.sub(r'</?(b|strong)>', '', cb, flags=re.IGNORECASE)
                 if cb: cleaned_blocks.append(cb)
                 
             # Гарантируем нужное количество блоков, чтобы скрипт не упал
@@ -4438,29 +4437,39 @@ with tab_wholesale_main:
                         st.write(f"**В FAQ ({len(faq_cands)} шт):** {', '.join(faq_cands) if faq_cands else 'Нет слов'}")
                         st.info("💡 Если ниже теги или промо не сгенерируются, значит эти слова не нашли совпадений в ваших файлах links_base.txt или images_db.xlsx!")
                         
-                    # 2. ЖЕСТКОЕ ПРАВИЛО: если слово не нашло тег/промо, оно НЕ ВОЗВРАЩАЕТСЯ в текст!
+                   # 2. ИЩЕМ СОВПАДЕНИЯ ДЛЯ ТЕГОВ И ПРОМО (С СОХРАНЕНИЕМ ИМЕН И ВОЗВРАТОМ СЛОВ)
                     target_tag_urls = []
+                    matched_tags_kw = []
                     if global_tags and all_tags_links:
                         tags_cands_all = [u for u in all_tags_links if u.rstrip('/') != current_task['url'].rstrip('/')]
                         for kw in tags_cands:
                             tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                             for url in tags_cands_all:
-                                if tr_kw in url.lower() and url not in target_tag_urls:
-                                    target_tag_urls.append(url)
+                                # Проверяем, что url еще не добавлен в итоговый массив
+                                if tr_kw in url.lower() and not any(url == t[0] for t in target_tag_urls):
+                                    target_tag_urls.append((url, kw)) # Сохраняем пару: (Ссылка, Нормальное слово)
+                                    matched_tags_kw.append(kw)
                                     break
                             
                     target_promo_urls = []
+                    matched_promo_kw = []
                     if global_promo and p_img_map:
                         p_cands_all = [u for u in p_img_map.keys() if u.rstrip('/') != current_task['url'].rstrip('/')]
                         for kw in promo_cands:
                             tr_kw = transliterate_text(kw).replace(' ', '-').replace('_', '-')
                             for u in p_cands_all:
-                                if tr_kw in u.lower() and u not in target_promo_urls:
-                                    target_promo_urls.append(u)
+                                if tr_kw in u.lower() and not any(u == t[0] for t in target_promo_urls):
+                                    target_promo_urls.append((u, kw)) # Сохраняем пару: (Ссылка, Нормальное слово)
+                                    matched_promo_kw.append(kw)
                                     break
                     
+                    # ВОЗВРАЩАЕМ ПОТЕРЯННЫЕ СЛОВА ОБРАТНО В ТЕКСТ! (Чтобы всегда было 41)
+                    unmatched_tags = [w for w in tags_cands if w not in matched_tags_kw]
+                    unmatched_promo = [w for w in promo_cands if w not in matched_promo_kw]
+                    final_text_seo_list.extend(unmatched_tags + unmatched_promo)
+                    
                     if not global_faq:
-                        pass # FAQ слова тоже просто сгорают, а не летят в текст
+                        pass
                     # ----------------------------------
 
                     curr_use_text = global_text
@@ -4524,13 +4533,17 @@ with tab_wholesale_main:
                         ТЫ — СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
                         ВВОДНЫЕ: Контекст: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
                         ПРАВИЛА И ШАБЛОН: 
-                        1. Придумай логичные заголовки колонок, подходящие под товар.
+                        1. Таблица должна быть СУХОЙ и ТЕХНИЧЕСКОЙ. Никаких длинных предложений и SEO-воды! Только сухие параметры и цифры/марки.
                         2. Количество колонок: от 2 до 5 штук максимум!
                         3. Формат HTML строго такой:
                         <table class="brand-accent-table">
                          <thead><tr><th>Колонка 1</th><th>Колонка 2</th><th>...</th></tr></thead>
                          <tbody>
-                            ...
+                             ...
+                         </tbody>
+                        </table>
+                        Выдай только HTML код таблицы.
+                        """
                          </tbody>
                         </table>
                         Выдай только HTML код таблицы.
@@ -4545,21 +4558,18 @@ with tab_wholesale_main:
                     if curr_use_tags:
                         status_logger.write("🏷️ Внедряем теги...")
                         html_t = []
-                        for u in target_tag_urls[:15]:
-                            try: nm = force_cyrillic_name_global(u.split("/")[-1])
-                            except: nm = u.split("/")[-1]
-                            html_t.append(f'<a href="{u}" class="tag-item">{nm}</a>')
+                        for u, nm in target_tag_urls[:15]:
+                            # Теперь nm - это нормальное русское слово из списка
+                            html_t.append(f'<a href="{u}" class="tag-item">{nm.capitalize()}</a>')
                         if html_t:
                             injections.append(f'''<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t)}</div></div></div>''')
                         
                     if curr_use_promo:
                         status_logger.write("🔥 Формируем промо-галерею...")
                         gallery_items = []
-                        for u in target_promo_urls[:5]:
-                            try: nm = force_cyrillic_name_global(u.split("/")[-1])
-                            except: nm = u.split("/")[-1]
+                        for u, nm in target_promo_urls[:5]:
                             img_src = p_img_map.get(u, "https://via.placeholder.com/260")
-                            gallery_items.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>''')
+                            gallery_items.append(f'''<div class="gallery-item"><h3><a href="{u}" target="_blank">{nm.capitalize()}</a></h3><figure><a href="{u}" target="_blank"><picture><img src="{img_src}" loading="lazy"></picture></a></figure></div>''')
                         if gallery_items:
                             injections.append(f'''<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(gallery_items)}</div></div></div>''')
 
@@ -4681,9 +4691,9 @@ with tab_wholesale_main:
                         except Exception:
                             row_data['DeepSeek Комментарий'] = "Сбой API"
                             
-                    if st.session_state.get('use_turgenev_bulk') and st.session_state.get('turg_key_bulk') and pure_text_for_check:
+                    if st.session_state.get('use_turgenev_bulk') and st.session_state.get('TURGENEV_GLOBAL_KEY') and pure_text_for_check:
                         try:
-                            turg_val = check_turgenev_sync(pure_text_for_check, st.session_state['turg_key_bulk'])
+                            turg_val = check_turgenev_sync(pure_text_for_check, st.session_state['TURGENEV_GLOBAL_KEY'])
                             row_data['Риск Тургенев'] = turg_val
                             try:
                                 t_num = float(re.search(r'\d+\.?\d*', str(turg_val)).group())
@@ -4693,9 +4703,9 @@ with tab_wholesale_main:
                         except Exception:
                             row_data['Тургенев Комментарий'] = "Сбой API"
                             
-                    if st.session_state.get('use_textru_bulk') and st.session_state.get('textru_key_bulk') and pure_text_for_check:
+                    if st.session_state.get('use_textru_bulk') and st.session_state.get('TEXTRU_GLOBAL_KEY') and pure_text_for_check:
                         try:
-                            uid = send_textru_sync(pure_text_for_check, st.session_state['textru_key_bulk'])
+                            uid = send_textru_sync(pure_text_for_check, st.session_state['TEXTRU_GLOBAL_KEY'])
                             if uid:
                                 row_data['Text.ru UID'] = uid
                                 row_data['Уникальность'] = "⏳ Проверяется..."
@@ -4751,9 +4761,13 @@ with tab_wholesale_main:
         st.markdown("**Анализ контента:**")
         cv1, cv2, cv3 = st.columns(3)
         with cv1:
-            if st.checkbox("📚 Риск Тургенева", key="use_turgenev_bulk"): st.text_input("🔑 API-ключ", type="password", key="turg_key_bulk")
+            if st.checkbox("📚 Риск Тургенева", key="use_turgenev_bulk"): 
+                turg_val = st.text_input("🔑 API-ключ", value=st.session_state.get('TURGENEV_GLOBAL_KEY', ''), type="password", key="turg_key_widget")
+                if turg_val: st.session_state['TURGENEV_GLOBAL_KEY'] = turg_val
         with cv2:
-            if st.checkbox("🚀 Text.ru", key="use_textru_bulk"): st.text_input("🔑 API-ключ", type="password", key="textru_key_bulk")
+            if st.checkbox("🚀 Text.ru", key="use_textru_bulk"): 
+                txtru_val = st.text_input("🔑 API-ключ", value=st.session_state.get('TEXTRU_GLOBAL_KEY', ''), type="password", key="txtru_key_widget")
+                if txtru_val: st.session_state['TEXTRU_GLOBAL_KEY'] = txtru_val
         with cv3:
             st.checkbox("🧠 Валидация DeepSeek", key="use_ds_bulk", value=True)
 
@@ -4863,8 +4877,7 @@ with tab_wholesale_main:
         if has_pending and not is_running:
             st.warning("⚠️ Есть тексты в очереди Text.ru. Обновите статусы вручную:")
             if st.button("🔄 ОБНОВИТЬ СТАТУСЫ TEXT.RU", type="primary", use_container_width=True):
-                txtru_key_active = st.session_state.get('textru_key_bulk', '')
-                if txtru_key_active:
+                txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '') # <--- ИЗМЕНЕНА ЭТА СТРОКА
                     with st.spinner("Стучимся в Text.ru..."):
                         for idx, row in st.session_state.gen_result_df.iterrows():
                             if "⏳" in str(row.get('Уникальность', '')):
@@ -4881,7 +4894,7 @@ with tab_wholesale_main:
                         st.rerun()
 
         elif has_pending and is_running:
-            txtru_key_active = st.session_state.get('textru_key_bulk', '')
+            txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '') # <--- ИЗМЕНЕНА ЭТА СТРОКА
             if txtru_key_active:
                 updated_any = False
                 for idx, row in st.session_state.gen_result_df.iterrows():
@@ -4962,7 +4975,7 @@ with tab_wholesale_main:
             if sel_p:
                 row_p = df_export[df_export['Product Name'] == sel_p].iloc[0]
                 cols_to_show = [
-                    'IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 
+                    'IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831', 'IP_PROP4819',
                     'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 
                     'FAQ Информационный вопрос', 'FAQ Информационный ответ'
                 ]
@@ -6167,6 +6180,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
