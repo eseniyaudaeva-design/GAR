@@ -2187,6 +2187,34 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     df_filtered = df_filtered.reset_index(drop=True); df_filtered.index = df_filtered.index + 1
     
+   # --- БЛОК РУЧНОЙ ПРОВЕРКИ TEXT.RU ---
+        # Проверяем, есть ли в таблице хоть один UID для проверки
+        has_uids = False
+        if 'Text.ru UID' in st.session_state.gen_result_df.columns:
+            # Ищем строки, где есть UID, но еще нет итоговой уникальности (есть значок часиков)
+            has_uids = any("⏳" in str(row.get('Уникальность', '')) for _, row in st.session_state.gen_result_df.iterrows())
+
+        if has_uids:
+            st.info("⌛ В таблице есть тексты, ожидающие проверки уникальности.")
+            if st.button("🔄 ОБНОВИТЬ СТАТУСЫ TEXT.RU ВРУЧНУЮ", type="primary", use_container_width=True):
+                txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
+                if not txtru_key_active:
+                    st.error("❌ Не найден API-ключ Text.ru в настройках выше!")
+                else:
+                    with st.spinner("Запрашиваем данные у Text.ru..."):
+                        for idx, row in st.session_state.gen_result_df.iterrows():
+                            if "⏳" in str(row.get('Уникальность', '')):
+                                uid = row.get('Text.ru UID')
+                                if uid:
+                                    res_st = check_textru_status_sync(uid, txtru_key_active)
+                                    # Если пришло число (уникальность)
+                                    if res_st not in ["processing", "error"] and "Ошибка" not in res_st:
+                                        st.session_state.gen_result_df.at[idx, 'Уникальность'] = res_st
+                                        # Очищаем UID, так как проверка завершена
+                                        st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
+                        st.success("Статусы обновлены!")
+                        st.rerun() # Здесь реран нужен, чтобы обновить таблицу на экране
+        # ------------------------------------
     # Экспорт
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -6322,6 +6350,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
