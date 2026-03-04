@@ -5220,9 +5220,10 @@ with tab_wholesale_main:
                         except: pass
 
                     # =================================================================
-                    # СБОРКА КОНТЕНТА В БЛОКИ (УМНОЕ РАЗВЕДЕНИЕ HTML-ИНЪЕКЦИЙ)
+                    # СБОРКА КОНТЕНТА В БЛОКИ (ЖЕСТКОЕ ПРАВИЛО: 1 ЭЛЕМЕНТ В 1 БЛОК)
                     # =================================================================
                     html_injections = {}
+                    
                     if curr_use_tables and 'cl_tab' in locals():
                         html_injections['table'] = f'<div class="table-scroll-wrapper">\n{cl_tab}\n</div>'
                     
@@ -5231,23 +5232,54 @@ with tab_wholesale_main:
                         html_injections['tags1'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t1)}</div></div></div>'
                     
                     if global_promo and promo_block:
-                        g_items =[f'<div class="gallery-item"><h3><a href="{i["url"]}" target="_blank">{i["name"]}</a></h3><figure><a href="{i["url"]}" target="_blank"><picture><img src="{i["img"]}" loading="lazy"></picture></a></figure></div>' for i in promo_block]
-                        html_injections['promo'] = f'<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(g_items)}</div></div></div>'
+                        # ИСПРАВЛЕННАЯ HTML-СТРУКТУРА ПРОМО (картинки больше не растягиваются)
+                        g_items =[
+                            f'<div class="gallery-item">'
+                            f'<figure class="gallery-img-wrap"><a href="{i["url"]}" target="_blank"><picture><img src="{i["img"]}" loading="lazy" alt="{i["name"]}"></picture></a></figure>'
+                            f'<div class="gallery-title-wrap"><h3><a href="{i["url"]}" target="_blank">{i["name"]}</a></h3></div>'
+                            f'</div>' 
+                            for i in promo_block
+                        ]
+                        html_injections['promo'] = f'<div class="outer-full-width-section promo-block-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(g_items)}</div></div></div>'
                     
                     if global_tags and tags_block_2:
                         html_t2 = [f'<a href="{i["url"]}" class="tag-item">{i["name"]}</a>' for i in tags_block_2]
                         html_injections['tags2'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t2)}</div></div></div>'
 
-                    # Раскладываем блоки между абзацами
-                    target_slots = {'table': 1, 'tags1': 2, 'promo': 3, 'tags2': 4}
-                    effective_blocks_count = max(1, len([b for b in blocks if b.strip()]))
+                    # --- СТРОГАЯ ЛОГИКА РАСПРЕДЕЛЕНИЯ ---
+                    # Собираем все доступные элементы в жесткую очередь (порядок вывода)
+                    available_injections =[]
+                    if 'tags1' in html_injections: available_injections.append(html_injections['tags1'])
+                    if 'table' in html_injections: available_injections.append(html_injections['table'])
+                    if 'promo' in html_injections: available_injections.append(html_injections['promo'])
+                    if 'tags2' in html_injections: available_injections.append(html_injections['tags2'])
+
+                    # Находим реальные текстовые блоки (которые нейросеть вернула не пустыми)
+                    active_text_slots =[i for i, b in enumerate(blocks) if b.strip()]
                     
-                    for inj_type, inj_html in html_injections.items():
-                        slot = target_slots.get(inj_type, 1)
-                        if slot >= effective_blocks_count: slot = effective_blocks_count - 1
-                        if slot < len(blocks):
-                            if blocks[slot]: blocks[slot] += "\n\n" + inj_html
-                            else: blocks[slot] = inj_html
+                    # Защита от "сплошного текста" без разделителей (если ИИ выдал все одним куском)
+                    if not active_text_slots:
+                        active_text_slots = [0]
+                        blocks[0] = ""
+                        
+                    inj_idx = 0
+                    for slot_idx in active_text_slots:
+                        # 1-й абзац (Вводный) всегда оставляем ЧИСТЫМ для текста (если блоков больше 1)
+                        if slot_idx == 0 and len(active_text_slots) > 1:
+                            continue
+                            
+                        # Вшиваем ровно 1 элемент в конец текущего абзаца
+                        if inj_idx < len(available_injections):
+                            blocks[slot_idx] += "\n\n" + available_injections[inj_idx]
+                            inj_idx += 1
+
+                    # Если элементов больше, чем абзацев (например, 4 элемента, но нейросеть дала 2 блока),
+                    # то оставшиеся аккуратно складываем списком в самый последний блок.
+                    if active_text_slots:
+                        last_slot = active_text_slots[-1]
+                        while inj_idx < len(available_injections):
+                            blocks[last_slot] += "\n\n" + available_injections[inj_idx]
+                            inj_idx += 1
 
                     TEXT_CONTAINERS =['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
                     for i_c, c_name in enumerate(TEXT_CONTAINERS):
@@ -5379,13 +5411,10 @@ with tab_wholesale_main:
             with col_right:
                 st.write("⚙️ **Настройки генерации**")
                 
-                # Блок текста: чекбокс и количество в одну строку
-                st.checkbox("🤖 AI Тексты", value=True, key="ws_global_text")
-                c_b1, c_b2 = st.columns([1, 1])
-                with c_b1:
-                    st.selectbox("Блоков", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val", label_visibility="collapsed")
-                with c_b2:
-                    st.checkbox("Авто-расчет", value=True, key="ws_auto_blocks")
+                # Блок текста: всегда умный авто-расчет (3-5 блоков)
+                st.checkbox("🤖 AI Тексты (Авто: 3-5 блоков)", value=True, key="ws_global_text")
+                st.session_state.safe_ws_auto_blocks = True # Принудительно
+                st.session_state.safe_ws_num_blocks_val = 5 # Технический максимум контейнеров
                 
                 st.write("---") # Разделитель
                 
@@ -5702,9 +5731,14 @@ with tab_wholesale_main:
                         .popular-tags-text { margin: 20px 0; }
                         .tag-item { display: inline-block; padding: 6px 12px; margin: 4px; background: #f0f4f8; border-radius: 4px; text-decoration: none; color: #277EFF; font-size: 14px; }
                         .gallery-content-wrapper { background: #F6F7FC; padding: 20px; border-radius: 10px; margin: 20px 0; }
-                        .five-col-gallery { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 10px; }
-                        .gallery-item { min-width: 200px; background: white; padding: 10px; border-radius: 8px; text-align: center; }
-                        .gallery-item img { width: 100%; height: auto; border-radius: 4px; }
+                        .promo-block-section { margin: 30px 0; }
+                        .five-col-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+                        .gallery-item { display: flex; flex-direction: column; justify-content: space-between; background: white; padding: 15px; border-radius: 12px; text-align: center; border: 1px solid #e5e7eb; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+                        .gallery-img-wrap { height: 160px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin: 0 0 15px 0; }
+                        .gallery-img-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; }
+                        .gallery-title-wrap h3 { font-size: 14px; margin: 0; line-height: 1.3; font-weight: 500; }
+                        .gallery-title-wrap a { text-decoration: none; color: #277EFF; }
+                        .gallery-title-wrap a:hover { text-decoration: underline; }
                         .gallery-item h3 { font-size: 14px; margin-top: 10px; font-weight: normal; }
                         .gallery-item a { text-decoration: none; color: #333; }
                         .faq-section { margin: 20px 0; padding: 20px; background: #F6F7FC; border-radius: 8px; border: 1px solid #e2e8f0; }
@@ -6908,6 +6942,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
