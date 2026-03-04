@@ -3224,14 +3224,17 @@ with tab_seo_main:
             st.cache_data.clear()
             st.rerun()
 
-        my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio")
+        # Узнаем, запущена ли генерация
+        is_running = st.session_state.get('start_analysis_flag', False)
+
+        my_input_type = st.radio("Тип страницы", ["Релевантная страница на вашем сайте", "Исходный код страницы или текст", "Без страницы"], horizontal=True, label_visibility="collapsed", key="my_page_source_radio", disabled=is_running)
         if my_input_type == "Релевантная страница на вашем сайте":
-            st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input")
+            st.text_input("URL страницы", placeholder="https://site.ru/catalog/tovar", label_visibility="collapsed", key="my_url_input", disabled=is_running)
         elif my_input_type == "Исходный код страницы или текст":
-            st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML", key="my_content_input")
+            st.text_area("Исходный код или текст", height=200, label_visibility="collapsed", placeholder="Вставьте HTML", key="my_content_input", disabled=is_running)
 
         st.markdown("### Поисковой запрос")
-        st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input")
+        st.text_input("Основной запрос", placeholder="Например: купить пластиковые окна", label_visibility="collapsed", key="query_input", disabled=is_running)
         
         st.markdown("### Поиск конкурентов")
         
@@ -3241,7 +3244,7 @@ with tab_seo_main:
         st.session_state['force_radio_switch'] = False
         # -----------------------------------------------
 
-        source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio")
+        source_type_new = st.radio("Источник", ["Поиск через API Arsenkin (TOP-30)", "Список url-адресов ваших конкурентов"], horizontal=True, label_visibility="collapsed", key="competitor_source_radio", disabled=is_running)
         source_type = "API" if "API" in source_type_new else "Ручной список"
         
         if source_type == "Ручной список":
@@ -3495,11 +3498,12 @@ with tab_seo_main:
         if "settings_norm" not in st.session_state: st.session_state.settings_norm = True
         if "settings_auto_filter" not in st.session_state: st.session_state.settings_auto_filter = True
 
-        st.checkbox("Исключать <noindex>", key="settings_noindex")
-        st.checkbox("Учитывать Alt/Title", key="settings_alt")
-        st.checkbox("Учитывать числа", key="settings_numbers")
-        st.checkbox("Нормировать по длине", key="settings_norm")
-        st.checkbox("Авто-фильтр слабых сайтов", key="settings_auto_filter", help="Сайты с низкой релевантностью будут автоматически перенесены в список исключенных.")
+        is_running = st.session_state.get('start_analysis_flag', False)
+        st.checkbox("Исключать <noindex>", key="settings_noindex", disabled=is_running)
+        st.checkbox("Учитывать Alt/Title", key="settings_alt", disabled=is_running)
+        st.checkbox("Учитывать числа", key="settings_numbers", disabled=is_running)
+        st.checkbox("Нормировать по длине", key="settings_norm", disabled=is_running)
+        st.checkbox("Авто-фильтр слабых сайтов", key="settings_auto_filter", help="Сайты с низкой релевантностью будут автоматически перенесены в список исключенных.", disabled=is_running)
         
         # === [ИЗМЕНЕНИЕ] СПИСКИ ПЕРЕНЕСЕНЫ СЮДА ===
         st.markdown("---")
@@ -5381,16 +5385,19 @@ with tab_wholesale_main:
                 with grid_1:
                     st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
                     st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
-                    st.checkbox("❓ FAQ", value=True, key="ws_global_faq")
+                    st.checkbox("❓ FAQ", value=True, key="ws_global_faq", disabled=is_running)
+                    # Увеличили лимит вопросов до 50
+                    st.number_input("Количество вопросов FAQ", min_value=2, max_value=50, value=4, step=1, key="ws_faq_count", disabled=is_running)
                     # Обновлен лимит вопросов до 50
                     st.number_input("Количество вопросов FAQ", min_value=2, max_value=50, value=4, step=1, key="ws_faq_count")
                     
                 with grid_2:
-                    st.checkbox("🔥 Промо", value=True, key="ws_global_promo")
-                    st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo")
+                    st.checkbox("🔥 Промо", value=True, key="ws_global_promo", disabled=is_running)
+                    st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo", disabled=is_running)
+                    
                     # Добавлена галочка и счетчик для отзывов
-                    st.checkbox("💬 Отзывы", value=True, key="ws_global_reviews")
-                    st.number_input("Количество отзывов", min_value=1, max_value=50, value=3, step=1, key="ws_reviews_count")
+                    st.checkbox("💬 Отзывы", value=True, key="ws_global_reviews", disabled=is_running)
+                    st.number_input("Количество отзывов", min_value=1, max_value=50, value=3, step=1, key="ws_reviews_count", disabled=is_running)
                 
             
     c_start, c_stop = st.columns([2, 1])
@@ -6890,6 +6897,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
