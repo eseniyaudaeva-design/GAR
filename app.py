@@ -2697,6 +2697,11 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     Ты технический эксперт в металлопрокате и B2B продажах.
     Составь FAQ для страницы "{h1}".
     
+    "КРИТИЧЕСКОЕ ПРАВИЛО КОЛИЧЕСТВА: Ты ОБЯЗАН сгенерировать ровно {target_count} пар Вопрос-Ответ. Ни больше, ни меньше. "
+    "Если информации в исходном тексте не хватает на {target_count} вопросов, ТЫ ДОЛЖЕН самостоятельно придумать реалистичные технические детали "
+    "(о монтаже, ГОСТах, доставке, аналогах, сроках службы), чтобы добить количество строго до {target_count}. "
+    "За выдачу меньшего количества последует системная ошибка."
+
     СТРУКТУРА ВОПРОСОВ (ОБЯЗАТЕЛЬНО):
     1. 50% — КОММЕРЧЕСКИЕ: доставка по РФ, способы оплаты, наличие, отгрузка, резка в размер.
     2. 50% — ИНФОРМАЦИОННЫЕ: технические характеристики, ГОСТы, марки стали и их отличия.
@@ -2720,7 +2725,8 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         res_1 = client.chat.completions.create(
             model="google/gemini-2.5-pro",
             messages=[{"role": "user", "content": prompt_1}],
-            temperature=0.3
+            temperature=0.3,
+            max_tokens=8192
         )
         draft_text = res_1.choices[0].message.content.strip()
         
@@ -2748,7 +2754,8 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         res_2 = client.chat.completions.create(
             model="google/gemini-2.5-pro",
             messages=[{"role": "user", "content": prompt_2}],
-            temperature=0.3
+            temperature=0.3,
+            max_tokens=8192
         )
         final_text = res_2.choices[0].message.content.strip()
         
@@ -2801,6 +2808,11 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fi
 Тема отзыва (что купили): "{h2_header}".
 
 ИНСТРУКЦИИ (ЧИТАЙ ВНИМАТЕЛЬНО, ЭТО КРИТИЧЕСКИ ВАЖНО):
+"КРИТИЧЕСКОЕ ПРАВИЛО КОЛИЧЕСТВА: Сгенерируй ровно {target_count} уникальных отзывов. "
+"Если в исходном тексте нет данных, придумывай реалистичные сценарии использования: закупка на завод, проверка качества сварных швов, "
+"общение с менеджером, скорость отгрузки, допуски по размерам. "
+"Главное условие — в итоговом JSON должно быть ровно {target_count} объектов. Не смей останавливаться раньше!"
+
 1. Напиши ровно {target_count} отзывов от разных людей. Имена бери из списка: {", ".join(names_sample)}.
 2. ЕСТЕСТВЕННОСТЬ И РЕАЛИЗМ (САМОЕ ВАЖНОЕ): 
    - Пиши так, как пишут ЖИВЫЕ люди. Никаких рассуждений в стиле Википедии или ИИ. 
@@ -2820,7 +2832,8 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fi
         resp = client.chat.completions.create(
             model="deepseek/deepseek-v3.2",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7 
+            temperature=0.7,
+            max_tokens=8192
         )
         content = resp.choices[0].message.content
         if content.startswith("```json"): content = content[7:]
@@ -4867,21 +4880,33 @@ with tab_wholesale_main:
                             if str(img_target) == 'nan' or not img_target: 
                                 img_target = "https://via.placeholder.com/260"
                             
-                            # ИДЕМ НА САЙТ И ПАРСИМ H1
-                            h1_text = kw.capitalize() # Заглушка, если сайт не ответит
+                            # ИДЕМ НА САЙТ И ПАРСИМ ХЛЕБНЫЕ КРОШКИ (ДЛЯ НАЗВАНИЯ ПРОМО)
+                            promo_title = kw.capitalize() # Заглушка по умолчанию
                             try:
-                                resp = requests.get(u_target, timeout=5) # Твои глобальные прокси сами подхватятся
+                                resp = requests.get(u_target, timeout=5)
                                 if resp.status_code == 200:
                                     soup = BeautifulSoup(resp.text, 'html.parser')
-                                    h1_tag = soup.find('h1')
-                                    if h1_tag: 
-                                        h1_text = h1_tag.get_text(strip=True)
+                                    
+                                    # Ищем контейнер с крошками (стандартные классы)
+                                    breadcrumbs = soup.find(['ul', 'div', 'nav'], class_=re.compile(r'breadcrumb|breadcrumbs|nav-path', re.I))
+                                    
+                                    if breadcrumbs:
+                                        # Ищем все элементы внутри
+                                        crumbs = breadcrumbs.find_all(['li', 'span', 'a'])
+                                        # Чистим от разделителей (/, » и т.д.)
+                                        clean_crumbs = [c.get_text(strip=True) for c in crumbs if len(c.get_text(strip=True)) > 2 and c.get_text(strip=True) not in ['/', '\\', '>', '»', '•', '-']]
+                                        if clean_crumbs:
+                                            promo_title = clean_crumbs[-1] # Берем последний пункт
+                                    else:
+                                        # Резервный вариант, если крошек нет - берем H1
+                                        h1_tag = soup.find('h1')
+                                        if h1_tag: 
+                                            promo_title = h1_tag.get_text(strip=True)
                             except Exception:
-                                pass # Если парсинг упал по таймауту, оставляем исходное слово
+                                pass 
                                 
                             used_urls.add(u_target.rstrip('/'))
-                            return u_target, h1_text, img_target
-                        return None, None, None
+                            return u_target, promo_title, img_target
 
                     # --- РАСПРЕДЕЛЯЕМ ПО БЛОКАМ ---
                     
@@ -6833,6 +6858,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
