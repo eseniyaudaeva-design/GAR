@@ -4891,7 +4891,7 @@ with tab_wholesale_main:
                     def get_promo_data(kw):
                         kw_clean = kw.lower().strip()
                         kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
-                        
+                    
                         # Делаем транслит корня (со встроенной подстраховкой)
                         try:
                             from transliterate import translit
@@ -4899,11 +4899,12 @@ with tab_wholesale_main:
                         except Exception:
                             t_dict = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'}
                             kw_translit = "".join([t_dict.get(c, c) for c in kw_stem])
-                            
+                    
                         matches = []
                         for item in images_data:
                             u_clean = item['url'].rstrip('/')
-                            if u_clean in used_urls: continue
+                            if u_clean in used_urls:
+                                continue
                             # Ищем транслит в URL (первый столбец)
                             if kw_translit in u_clean.lower():
                                 matches.append(item)
@@ -4912,8 +4913,7 @@ with tab_wholesale_main:
                             chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
                             u_target = chosen['url']
                             img_target = chosen['img']
-                            
-                            if str(img_target) == 'nan' or not img_target: 
+                            if str(img_target) == 'nan' or not img_target:
                                 img_target = "https://via.placeholder.com/260"
                             
                             # ИДЕМ НА САЙТ И ПАРСИМ ХЛЕБНЫЕ КРОШКИ (ДЛЯ НАЗВАНИЯ ПРОМО)
@@ -4943,6 +4943,9 @@ with tab_wholesale_main:
                                 
                             used_urls.add(u_target.rstrip('/'))
                             return u_target, promo_title, img_target
+                            
+                        # ВОТ ЭТОЙ СТРОЧКИ НЕ ХВАТАЛО (Возвращаем 3 пустые переменные, если совпадений нет)
+                        return None, None, None
 
                     # --- РАСПРЕДЕЛЯЕМ ПО БЛОКАМ ---
                     
@@ -6895,6 +6898,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
