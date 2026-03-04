@@ -249,8 +249,43 @@ if 'SUPER_GLOBAL_KEY' not in st.session_state:
 
 @st.cache_data
 def load_names_db():
-    # Читаем твой новый сжатый файл
-    return pd.read_csv('data/users_db.csv.gz', compression='gzip')
+    """Загружает сжатую базу имен один раз"""
+    if os.path.exists("data/users_db.csv.gz"):
+        return pd.read_csv("data/users_db.csv.gz", compression='gzip')
+    return pd.DataFrame(columns=['template_type', 'username', 'gender'])
+
+def get_diverse_authors(n=10):
+    """Выбирает авторов: строго 1 аноним, остальные равномерно"""
+    df = load_names_db()
+    if df.empty:
+        return [{"name": "Имя скрыто", "type": "anonymous", "gender": "Н"}] * n
+    
+    df_anon = df[df['template_type'] == 'anonymous']
+    df_others = df[df['template_type'] != 'anonymous']
+    
+    selected_rows = []
+    # 1. Ровно один аноним
+    if not df_anon.empty:
+        selected_rows.append(df_anon.sample(n=1).iloc[0].to_dict())
+    
+    # 2. Остальные n-1 равномерно по типам
+    needed_others = n - len(selected_rows)
+    other_types = df_others['template_type'].unique()
+    
+    if len(other_types) > 0:
+        per_type = needed_others // len(other_types)
+        remainder = needed_others % len(other_types)
+        
+        for t in other_types:
+            count = per_type + (1 if remainder > 0 else 0)
+            if remainder > 0: remainder -= 1
+            type_slice = df_others[df_others['template_type'] == t]
+            if not type_slice.empty:
+                take = min(len(type_slice), count)
+                selected_rows.extend(type_slice.sample(n=take).to_dict('records'))
+    
+    random.shuffle(selected_rows) # Перемешиваем, чтобы аноним не был всегда первым
+    return [{"name": r['username'], "type": r['template_type'], "gender": r['gender']} for r in selected_rows[:n]]
 # ==========================================
 # 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ
 # ==========================================
@@ -2814,71 +2849,77 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     except Exception as e:
         return [{"Тип": "Ошибка", "Вопрос": "Ошибка генерации", "Ответ": str(e)}]
 
-def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fio, df_templates, var_dict):
+def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chosen_authors, df_templates, var_dict):
     import json
     import random
+    import re
     from datetime import date, timedelta
     
     try:
         from openai import OpenAI
+        # Используем твой базовый URL и прокси
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     except Exception as e:
-        return[{"Имя": "Ошибка", "Текст": f"Ошибка инициализации API: {str(e)}"}]
+        return [{"Имя": "Ошибка", "Текст": f"Ошибка инициализации API: {str(e)}"}]
         
+    # Твоя логика генерации дат (с 01.01.2026 по 10.02.2026)
     start_date = date(2026, 1, 1)
     end_date = date(2026, 2, 10)
     delta = end_date - start_date
     
-    random_dates =[]
+    random_dates = []
     for _ in range(target_count):
         random_days = random.randrange(delta.days + 1)
         rand_date = start_date + timedelta(days=random_days)
         random_dates.append(rand_date.strftime("%d.%m.%Y"))
+
+    # Подготавливаем список авторов для промпта (имя + его тип для стиля)
+    # Используем chr(10) для переноса строки внутри f-строки
+    names_display = [f"- {a['name']} (тип: {a['type']})" for a in chosen_authors]
+    nl = chr(10) 
             
-    names_sample =[]
-    if not df_fio.empty:
-        for _ in range(min(10, len(df_fio))):
-            f_row = df_fio.sample(n=1).iloc[0]
-            names_sample.append(f"{f_row.get('Имя', '')} {f_row.get('Фамилия', '')}".strip())
-            
-    prompt = f"""Ты — реальный покупатель (снабженец, прораб, строитель, клиент металлобазы).
+    prompt = f"""Ты — группа реальных покупателей металлопроката (снабженцы, прорабы, частники).
 Тема отзыва (что купили): "{h2_header}".
 
-ИНСТРУКЦИИ (ЧИТАЙ ВНИМАТЕЛЬНО, ЭТО КРИТИЧЕСКИ ВАЖНО):
-"КРИТИЧЕСКОЕ ПРАВИЛО КОЛИЧЕСТВА: Сгенерируй ровно {target_count} уникальных отзывов. "
-"Если в исходном тексте нет данных, придумывай реалистичные сценарии использования: закупка на завод, проверка качества сварных швов, "
-"общение с менеджером, скорость отгрузки, допуски по размерам. "
-"Главное условие — в итоговом JSON должно быть ровно {target_count} объектов. Не смей останавливаться раньше!"
+ИНСТРУКЦИИ ПО КОЛИЧЕСТВУ:
+Генерируй ровно {target_count} уникальных отзывов. Ни больше, ни меньше.
 
-1. Напиши ровно {target_count} отзывов от разных людей. Имена бери из списка: {", ".join(names_sample)}.
-2. ЕСТЕСТВЕННОСТЬ И РЕАЛИЗМ (САМОЕ ВАЖНОЕ): 
-   - Пиши так, как пишут ЖИВЫЕ люди. Никаких рассуждений в стиле Википедии или ИИ. 
-   - ЗАПРЕЩЕНЫ канцеляриты и искусственные фразы типа: "главный компонент конструкции", "отличительная особенность", "оптимальное решение", "данный товар". 
-   - Пиши просто и по делу: "брали на навес", "металл нормальный", "геометрия ровная", "привезли вовремя", "менеджер помог", "закрыли объект".
-   - Отзывы должны быть разного объема: один очень короткий (1-2 предложения), остальные чуть подробнее, но без "воды".
-3. ГРАММАТИКА И ПУНКТУАЦИЯ:
-   - Текст должен быть грамматически ПРАВИЛЬНЫМ (без откровенных ошибок и опечаток).
-   - СТРОЖАЙШИЙ ЗАПРЕТ НА ЛЮБЫЕ ТИРЕ И ДЕФИСЫ (-, —, –). Вообще не используй этот знак! Нигде! Если хочется поставить тире — перефразируй предложение или поставь запятую.
-4. LSI СЛОВА: ОБЯЗАТЕЛЬНО используй эти слова, вплетая их максимально естественно. ВЫДЕЛИ ИХ ЖИРНЫМ (**слово**): {", ".join(lsi_words)}
-5. ДАТЫ (СТРОГИЙ ЗАПРЕТ): КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ писать дату ВНУТРИ самого текста отзыва! Дату передавай ТОЛЬКО как значение ключа "Дата" в JSON. Список дат для выбора: {", ".join(random_dates)}.
-6. ВЕРНИ СТРОГО В ФОРМАТЕ JSON-МАССИВА:[
-  {{"Имя": "Имя Фамилия", "Дата": "ДД.ММ.ГГГГ", "Текст": "Живой текст отзыва СТРОГО без даты и СТРОГО без тире..."}}
+АВТОРЫ (используй строго эти имена из списка):
+{nl.join(names_display)}
+
+ИНСТРУКЦИИ ПО СТИЛЮ ДЛЯ ТИПОВ ИМЕН:
+1. Если тип 'anonymous' (Имя скрыто) — пиши МАКСИМАЛЬНО КРАТКО (одно короткое предложение, например: "Все привезли быстро, спасибо" или "Норм металл").
+2. Если тип 'full_name_ru' (Имя Фамилия) — пиши развернуто, солидно, с упоминанием деталей (проверка швов, общение с менеджером, допуски).
+3. Если тип 'nickname_en' или 'nickname_ru' (Ники) — пиши по-простому, разговорным стилем, 2-3 предложения.
+
+ОБЩИЕ ПРАВИЛА (КРИТИЧЕСКИ ВАЖНО):
+1. ЕСТЕСТВЕННОСТЬ: Пиши как живой человек. Запрещены канцеляриты: "оптимальное решение", "данный товар", "широкий ассортимент".
+2. СТРОЖАЙШИЙ ЗАПРЕТ НА ТИРЕ И ДЕФИСЫ: Вообще не используй знаки (-, —, –). Ни в тексте, ни в списках. Заменяй на запятые или точки.
+3. LSI СЛОВА: Обязательно вплетай естественно и ВЫДЕЛЯЙ ЖИРНЫМ (**слово**): {", ".join(lsi_words[:20])}.
+4. ДАТЫ: НЕ ПИШИ дату внутри текста. Используй даты из списка только для ключа "Дата": {", ".join(random_dates)}.
+
+ВЕРНИ СТРОГО В ФОРМАТЕ JSON-МАССИВА:
+[
+  {{"Имя": "Имя из списка", "Дата": "ДД.ММ.ГГГГ", "Текст": "Живой текст без тире..."}}
 ]
 """
     try:
         resp = client.chat.completions.create(
             model="deepseek/deepseek-v3.2",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            temperature=0.8,
             max_tokens=8192
         )
         content = resp.choices[0].message.content
+        
+        # Твоя чистка ответа
         if content.startswith("```json"): content = content[7:]
         if content.startswith("```"): content = content[3:]
         if content.endswith("```"): content = content[:-3]
+        
         return json.loads(content.strip())
     except Exception as e:
-        return [{"Имя": "Ошибка", "Дата": "", "Текст": str(e)}]
+        return [{"Имя": "Ошибка", "Дата": "", "Текст": f"Ошибка генерации: {str(e)}"}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
@@ -5149,34 +5190,18 @@ with tab_wholesale_main:
 # =================================================================
                     # ГЕНЕРАЦИЯ ОТЗЫВОВ (DEEPSEEK) С НОВОЙ БАЗОЙ ИМЕН
                     # =================================================================
+                    # 🔥 БЕРЕМ СОХРАНЕННУЮ ГАЛОЧКУ И КОЛИЧЕСТВО (минимум 10)
                     global_reviews = st.session_state.get('safe_ws_global_reviews', True)
                     final_reviews_html = ""
                     
                     if global_reviews and gemini_api_key:
-                        rev_count = st.session_state.get('safe_ws_reviews_count', 10) # Минимум 10 для разнообразия
-                        status_logger.write(f"💬 Выбираем {rev_count} уникальных авторов и генерируем отзывы...")
+                        rev_count = st.session_state.get('safe_ws_reviews_count', 10)
+                        status_logger.write(f"💬 Подготовка {rev_count} авторов и генерация...")
                         
-                        import os
-                        import pandas as pd
-
-                        # 1. ЗАГРУЗКА И ВЫБОР ИМЕН ИЗ МИЛЛИОННИКА
-                        names_db = load_names_db()
-                        if not names_db.empty:
-                            # Берем случайную выборку. Это сразу дает нужный % ФИО, ников и инициалов
-                            authors_sample = names_db.sample(n=rev_count)
-                            # Создаем список имен с их типами для подсказки нейронке
-                            chosen_authors = []
-                            for _, row in authors_sample.iterrows():
-                                chosen_authors.append({
-                                    "name": row['username'],
-                                    "type": row['template_type'],
-                                    "gender": row['gender']
-                                })
-                        else:
-                            # Запасной вариант, если файла нет
-                            chosen_authors = [{"name": "Клиент", "type": "anonymous", "gender": "М"}] * rev_count
-
-                        # 2. ШАБЛОНЫ И ПЕРЕМЕННЫЕ (твоя старая логика)
+                        # Вызываем нашу новую функцию выбора
+                        chosen_authors = get_diverse_authors(rev_count)
+                        
+                        # Твои старые шаблоны и переменные
                         df_templates = pd.read_csv("dicts/templates.csv", sep=";") if os.path.exists("dicts/templates.csv") else pd.DataFrame()
                         var_dict = {}
                         if os.path.exists("dicts/vars.csv"):
@@ -5186,22 +5211,12 @@ with tab_wholesale_main:
                                 if pd.notna(rv['Значения']):
                                     var_dict[f"{{{v_name}}}"] = [v.strip() for v in str(rv['Значения']).split('|')]
 
-                        # 3. ГЕНЕРАЦИЯ (передаем список авторов вместо старой таблицы fio)
-                        # Важно: обнови функцию generate_reviews_deepseek, чтобы она принимала chosen_authors
-                        reviews_json = generate_reviews_deepseek(
-                            gemini_api_key, 
-                            h2_header, 
-                            review_cands, 
-                            rev_count, 
-                            chosen_authors, # ПЕРЕДАЕМ НОВЫЙ СПИСОК
-                            df_templates, 
-                            var_dict
-                        )
+                        # Генерация
+                        reviews_json = generate_reviews_deepseek(gemini_api_key, h2_header, review_cands, rev_count, chosen_authors, df_templates, var_dict)
                         
                         if 'ws_reviews_export_data' not in st.session_state:
                             st.session_state.ws_reviews_export_data = []
                             
-                        # 4. СБОРКА РЕЗУЛЬТАТОВ
                         if isinstance(reviews_json, list) and len(reviews_json) > 0:
                             rev_html_parts = [
                                 '<div class="reviews-section" style="margin-top: 30px;">', 
@@ -5213,19 +5228,18 @@ with tab_wholesale_main:
                                 return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(text))
                             
                             for i, item in enumerate(reviews_json):
-                                # Сопоставляем отзыв с выбранным автором из нашей базы
+                                # Берем имя из нашего подготовленного списка
                                 author_info = chosen_authors[i] if i < len(chosen_authors) else {"name": "Клиент"}
                                 r_name = author_info['name']
                                 r_date = item.get('Дата', '10.02.2026')
                                 r_text_html = f"<p>{md_to_html(item.get('Текст', ''))}</p>"
                                 
-                                # Верстаем
+                                # Верстка (остается твоя оригинальная)
                                 rev_html_parts.append(f'<div class="review-item" style="padding: 15px; border-left: 4px solid #277EFF; background: #f9fafb; margin-bottom: 15px;">')
                                 rev_html_parts.append(f'<div class="review-header" style="margin-bottom: 8px;"><strong class="review-author">{r_name}</strong> <span class="review-date" style="color: #6b7280; font-size: 13px; margin-left: 10px;">{r_date}</span></div>')
                                 rev_html_parts.append(f'<div class="review-text" style="color: #374151; font-size: 15px;">{r_text_html}</div>')
                                 rev_html_parts.append(f'</div>')
                                 
-                                # Сохраняем в таблицу
                                 st.session_state.ws_reviews_export_data.append({
                                     'Page URL': current_task['url'],
                                     'Product Name': h2_header,
@@ -6971,6 +6985,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
