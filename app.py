@@ -5040,13 +5040,16 @@ with tab_wholesale_main:
                     
                     if curr_use_text and client:
                         words_count = len(final_text_seo_list)
-                        auto_num_blocks = st.session_state.get('ws_num_blocks_val', 5)
-                        if st.session_state.get('ws_auto_blocks', True):
+                        # 🔥 БЕРЕМ СОХРАНЕННОЕ КОЛИЧЕСТВО БЛОКОВ
+                        auto_num_blocks = st.session_state.get('safe_ws_num_blocks_val', 5)
+                        
+                        # 🔥 ПРОВЕРЯЕМ СОХРАНЕННУЮ ГАЛОЧКУ АВТО-РАСПРЕДЕЛЕНИЯ
+                        if st.session_state.get('safe_ws_auto_blocks', True):
                             if words_count <= 15: auto_num_blocks = 3
                             elif words_count <= 25: auto_num_blocks = 4
                             else: auto_num_blocks = 5
-                            
-                        step_logger.warning(f"🤖 Этап 2: Пишем SEO-текст (Слов: {words_count} ➔ Блоков: {auto_num_blocks})...")
+                        
+                        status_logger.write(f"🤖 Пишем SEO-текст (Слов: {words_count} ➔ Блоков: {auto_num_blocks})...")
                         blocks_raw = generate_ai_content_blocks(gemini_api_key, safe_base_text, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
                         
                         if not blocks_raw or "Error" in str(blocks_raw[0]):
@@ -5087,9 +5090,9 @@ with tab_wholesale_main:
                     # =================================================================
                     final_faq_html = ""
                     if global_faq and client:
-                        # 🔥 БЕРЕМ ЗАМОРОЖЕННУЮ ПЕРЕМЕННУЮ, КОТОРАЯ НЕ СБРАСЫВАЕТСЯ 🔥
-                        current_faq_count = st.session_state.get('safe_ws_faq_count', st.session_state.get('ws_faq_count', 4))
-                        step_logger.warning(f"❓ Этап 4: Генерируем FAQ ({current_faq_count} вопросов)...")
+                        # 🔥 БЕРЕМ СОХРАНЕННОЕ КОЛИЧЕСТВО ВОПРОСОВ
+                        current_faq_count = st.session_state.get('safe_ws_faq_count', 4)
+                        status_logger.write(f"❓ Генерируем FAQ ({current_faq_count} вопросов)...")
                         try:
                             faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
                             if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
@@ -5141,12 +5144,13 @@ with tab_wholesale_main:
 # =================================================================
                     # ГЕНЕРАЦИЯ ОТЗЫВОВ (DEEPSEEK) И СБОРКА ИХ В HTML
                     # =================================================================
-                    global_reviews = st.session_state.get('ws_global_reviews', True)
+                    # 🔥 БЕРЕМ СОХРАНЕННУЮ ГАЛОЧКУ ОТЗЫВОВ
+                    global_reviews = st.session_state.get('safe_ws_global_reviews', True)
                     final_reviews_html = ""
                     if global_reviews and gemini_api_key:
-                        # 🔥 БЕРЕМ ЗАМОРОЖЕННУЮ ПЕРЕМЕННУЮ ОТЗЫВОВ 🔥
-                        rev_count = st.session_state.get('safe_ws_reviews_count', st.session_state.get('ws_reviews_count', 3))
-                        step_logger.warning(f"💬 Этап 5: Генерируем {rev_count} отзывов (DeepSeek)...")
+                        # 🔥 БЕРЕМ СОХРАНЕННОЕ КОЛИЧЕСТВО ОТЗЫВОВ
+                        rev_count = st.session_state.get('safe_ws_reviews_count', 3)
+                        status_logger.write(f"💬 Генерируем {rev_count} отзывов (DeepSeek)...")
                         
                         import os
                         import pandas as pd
@@ -5433,6 +5437,11 @@ with tab_wholesale_main:
                 st.session_state.safe_use_textru = st.session_state.get('use_textru_bulk', False)
                 st.session_state.safe_use_ds = st.session_state.get('use_ds_bulk', True)
                 # ----------------------------------------------------------------------
+
+                # === АКТИВИРУЕМ ЗАПУСК ===
+                st.session_state.start_analysis_flag = True
+                st.session_state.ws_automode_active = True
+                st.rerun() # Мгновенно обновляем страницу, чтобы интерфейс заблокировался
 
                 # А ВОТ ДАЛЬШЕ ИДЕТ ТВОЙ ОРИГИНАЛЬНЫЙ КОД СБОРКИ ОЧЕРЕДИ:
                 queue =[]
@@ -6901,6 +6910,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
