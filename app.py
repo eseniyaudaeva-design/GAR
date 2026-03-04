@@ -4658,12 +4658,29 @@ with tab_wholesale_main:
                     structure_keywords = st.session_state.get('categorized_products', []) + st.session_state.get('categorized_services', [])
                     faq_cands = st.session_state.get('categorized_info', []) # Запас для FAQ
                     
-                    global_text = st.session_state.get('ws_global_text', True)
-                    global_tables = st.session_state.get('ws_global_tables', True)
-                    global_tags = st.session_state.get('ws_global_tags', True)
-                    global_promo = st.session_state.get('ws_global_promo', True)
-                    global_geo = st.session_state.get('ws_global_geo', True)
-                    global_faq = st.session_state.get('ws_global_faq', True)
+                    # --- ЧИТАЕМ ИЗ НАДЕЖНОГО СЕЙФА ---
+                    global_text = st.session_state.get('safe_ws_global_text', True)
+                    global_tables = st.session_state.get('safe_ws_global_tables', True)
+                    global_tags = st.session_state.get('safe_ws_global_tags', True)
+                    global_promo = st.session_state.get('safe_ws_global_promo', True)
+                    global_geo = st.session_state.get('safe_ws_global_geo', True)
+                    global_faq = st.session_state.get('safe_ws_global_faq', True)
+                    global_reviews = st.session_state.get('safe_ws_global_reviews', True)
+
+                    auto_num_blocks_setting = st.session_state.get('safe_ws_num_blocks_val', 5)
+                    use_auto_blocks = st.session_state.get('safe_ws_auto_blocks', True)
+                    current_faq_count = st.session_state.get('safe_ws_faq_count', 4)
+                    rev_count = st.session_state.get('safe_ws_reviews_count', 3)
+
+                    # ДОСТАЕМ ЗАМОРОЖЕННЫЕ КЛЮЧИ И ГАЛОЧКИ
+                    gemini_api_key = st.session_state.get('safe_gemini_key', '')
+                    turgenev_api_key = st.session_state.get('safe_turgenev_key', '')
+                    textru_api_key = st.session_state.get('safe_textru_key', '')
+
+                    use_turgenev_chk = st.session_state.get('safe_use_turgenev', False)
+                    use_textru_chk = st.session_state.get('safe_use_textru', False)
+                    use_ds_chk = st.session_state.get('safe_use_ds', True)
+                    # ----------------------------------)
                     
                     # =================================================================
                     # УМНЫЙ ПОИСК ПО БАЗАМ И РАСПРЕДЕЛЕНИЕ (ДО ГЕНЕРАЦИИ!)
@@ -5100,7 +5117,7 @@ with tab_wholesale_main:
                     row_data['FAQ HTML'] = final_faq_html
                     
                     # =================================================================
-                    # ПРОВЕРКИ АНТИСПАМ И TEXT.RU
+                    # ПРОВЕРКИ АНТИСПАМ И TEXT.RU (С ИСПОЛЬЗОВАНИЕМ ЗАМОРОЖЕННЫХ КЛЮЧЕЙ)
                     # =================================================================
                     pure_text_for_check = BeautifulSoup(generated_full_text, "html.parser").get_text(separator=" ").strip()
                     row_data['DeepSeek Контекст'] = "-"; row_data['DeepSeek Комментарий'] = "-"
@@ -5109,24 +5126,24 @@ with tab_wholesale_main:
                     
                     status_logger.write("🔍 Отправляем на проверки (Антиспам и Уникальность)...")
                     
-                    if st.session_state.get('use_ds_bulk') and gemini_api_key and pure_text_for_check:
+                    if use_ds_chk and gemini_api_key and pure_text_for_check:
                         try:
                             is_valid = validate_topic_deepseek(gemini_api_key, h1_marker, h2_header, pure_text_for_check)
                             row_data['DeepSeek Контекст'] = "YES" if is_valid else "NO"
                             row_data['DeepSeek Комментарий'] = "Ок" if is_valid else "Ошибка: не по теме"
                         except: row_data['DeepSeek Комментарий'] = "Сбой API"
                         
-                    if st.session_state.get('use_turgenev_bulk') and st.session_state.get('TURGENEV_GLOBAL_KEY') and pure_text_for_check:
+                    if use_turgenev_chk and turgenev_api_key and pure_text_for_check:
                         try:
-                            turg_val = check_turgenev_sync(pure_text_for_check, st.session_state['TURGENEV_GLOBAL_KEY'])
+                            turg_val = check_turgenev_sync(pure_text_for_check, turgenev_api_key)
                             row_data['Риск Тургенев'] = turg_val
                             t_num = float(re.search(r'\d+\.?\d*', str(turg_val)).group())
                             row_data['Тургенев Комментарий'] = "Ок" if t_num <= 5 else "Риск > 5 (Нужно править)"
                         except: row_data['Тургенев Комментарий'] = "Сбой API"
                             
-                    if st.session_state.get('use_textru_bulk') and st.session_state.get('TEXTRU_GLOBAL_KEY') and pure_text_for_check:
+                    if use_textru_chk and textru_api_key and pure_text_for_check:
                         try:
-                            uid = send_textru_sync(pure_text_for_check, st.session_state['TEXTRU_GLOBAL_KEY'])
+                            uid = send_textru_sync(pure_text_for_check, textru_api_key)
                             if uid:
                                 row_data['Text.ru UID'] = uid; row_data['Уникальность'] = "⏳ Проверяется..."; row_data['Text.ru Комментарий'] = "В очереди"
                             else: row_data['Text.ru Комментарий'] = "Ошибка отправки"
@@ -5250,15 +5267,41 @@ with tab_wholesale_main:
         is_running = st.session_state.get('ws_automode_active', False)
         if not is_running:
             if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ И ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
-                queue = []
+                
+                # --- ЗАМОРАЖИВАЕМ ВСЕ НАСТРОЙКИ, КЛЮЧИ И ГАЛОЧКИ (СПАСЕНИЕ ОТ СБРОСА) ---
+                st.session_state.safe_ws_global_text = st.session_state.get('ws_global_text', True)
+                st.session_state.safe_ws_global_tables = st.session_state.get('ws_global_tables', True)
+                st.session_state.safe_ws_global_tags = st.session_state.get('ws_global_tags', True)
+                st.session_state.safe_ws_global_promo = st.session_state.get('ws_global_promo', True)
+                st.session_state.safe_ws_global_geo = st.session_state.get('ws_global_geo', True)
+                st.session_state.safe_ws_global_faq = st.session_state.get('ws_global_faq', True)
+                st.session_state.safe_ws_global_reviews = st.session_state.get('ws_global_reviews', True)
+                
+                st.session_state.safe_ws_faq_count = st.session_state.get('ws_faq_count', 4)
+                st.session_state.safe_ws_reviews_count = st.session_state.get('ws_reviews_count', 3)
+                st.session_state.safe_ws_num_blocks_val = st.session_state.get('ws_num_blocks_val', 5)
+                st.session_state.safe_ws_auto_blocks = st.session_state.get('ws_auto_blocks', True)
+
+                # ЗАМОРАЖИВАЕМ API-КЛЮЧИ И ГАЛОЧКИ
+                st.session_state.safe_gemini_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
+                st.session_state.safe_turgenev_key = st.session_state.get('TURGENEV_GLOBAL_KEY', '')
+                st.session_state.safe_textru_key = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
+
+                st.session_state.safe_use_turgenev = st.session_state.get('use_turgenev_bulk', False)
+                st.session_state.safe_use_textru = st.session_state.get('use_textru_bulk', False)
+                st.session_state.safe_use_ds = st.session_state.get('use_ds_bulk', True)
+                # ----------------------------------------------------------------------
+
+                # А ВОТ ДАЛЬШЕ ИДЕТ ТВОЙ ОРИГИНАЛЬНЫЙ КОД СБОРКИ ОЧЕРЕДИ:
+                queue =[]
                 if "URL" in gen_mode or "Подфильтровые" in gen_mode:
-                    urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
+                    urls =[u.strip() for u in raw_urls.split('\n') if u.strip()]
                     for u in urls:
                         h1_s, h2_s, _ = scrape_h1_h2_from_url(u) if "URL" in gen_mode else ("", "", "")
                         b_text, _, _, _ = get_page_data_for_gen(u) if u else ("", "", "", "")
                         queue.append({'url': u, 'h1': h1_s or u.split('/')[-1], 'h2': h2_s or u.split('/')[-1], 'base_text': b_text, 'name': h1_s or u})
                 else:
-                    h1s = [x.strip() for x in raw_h1.split('\n') if x.strip()]
+                    h1s =[x.strip() for x in raw_h1.split('\n') if x.strip()]
                     h2s = [x.strip() for x in raw_h2.split('\n') if x.strip()]
                     for h1, h2 in zip(h1s, h2s): queue.append({'url': 'manual', 'h1': h1, 'h2': h2, 'base_text': '', 'name': h1})
                 
@@ -6715,6 +6758,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
