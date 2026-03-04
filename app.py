@@ -3,6 +3,7 @@ import pymorphy3 as pymorphy2
 import pandas as pd
 import numpy as np
 import requests
+import gzip
 from bs4 import BeautifulSoup, Comment
 import re
 from collections import Counter, defaultdict
@@ -246,6 +247,10 @@ if 'SUPER_GLOBAL_KEY' not in st.session_state:
     except: pass
 # ==================================
 
+@st.cache_data
+def load_names_db():
+    # Читаем твой новый сжатый файл
+    return pd.read_csv('data/users_db.csv.gz', compression='gzip')
 # ==========================================
 # 0. ГЛОБАЛЬНЫЕ ФУНКЦИИ
 # ==========================================
@@ -5142,21 +5147,37 @@ with tab_wholesale_main:
                         except Exception as e:
                             status_logger.error(f"Ошибка FAQ: {e}")
 # =================================================================
-                    # ГЕНЕРАЦИЯ ОТЗЫВОВ (DEEPSEEK) И СБОРКА ИХ В HTML
+                    # ГЕНЕРАЦИЯ ОТЗЫВОВ (DEEPSEEK) С НОВОЙ БАЗОЙ ИМЕН
                     # =================================================================
-                    # 🔥 БЕРЕМ СОХРАНЕННУЮ ГАЛОЧКУ ОТЗЫВОВ
                     global_reviews = st.session_state.get('safe_ws_global_reviews', True)
                     final_reviews_html = ""
+                    
                     if global_reviews and gemini_api_key:
-                        # 🔥 БЕРЕМ СОХРАНЕННОЕ КОЛИЧЕСТВО ОТЗЫВОВ
-                        rev_count = st.session_state.get('safe_ws_reviews_count', 3)
-                        status_logger.write(f"💬 Генерируем {rev_count} отзывов (DeepSeek)...")
+                        rev_count = st.session_state.get('safe_ws_reviews_count', 10) # Минимум 10 для разнообразия
+                        status_logger.write(f"💬 Выбираем {rev_count} уникальных авторов и генерируем отзывы...")
                         
                         import os
                         import pandas as pd
-                        df_fio = pd.read_csv("dicts/fio.csv", sep=";") if os.path.exists("dicts/fio.csv") else pd.DataFrame()
+
+                        # 1. ЗАГРУЗКА И ВЫБОР ИМЕН ИЗ МИЛЛИОННИКА
+                        names_db = load_names_db()
+                        if not names_db.empty:
+                            # Берем случайную выборку. Это сразу дает нужный % ФИО, ников и инициалов
+                            authors_sample = names_db.sample(n=rev_count)
+                            # Создаем список имен с их типами для подсказки нейронке
+                            chosen_authors = []
+                            for _, row in authors_sample.iterrows():
+                                chosen_authors.append({
+                                    "name": row['username'],
+                                    "type": row['template_type'],
+                                    "gender": row['gender']
+                                })
+                        else:
+                            # Запасной вариант, если файла нет
+                            chosen_authors = [{"name": "Клиент", "type": "anonymous", "gender": "М"}] * rev_count
+
+                        # 2. ШАБЛОНЫ И ПЕРЕМЕННЫЕ (твоя старая логика)
                         df_templates = pd.read_csv("dicts/templates.csv", sep=";") if os.path.exists("dicts/templates.csv") else pd.DataFrame()
-                        
                         var_dict = {}
                         if os.path.exists("dicts/vars.csv"):
                             df_vars = pd.read_csv("dicts/vars.csv", sep=";")
@@ -5164,32 +5185,41 @@ with tab_wholesale_main:
                                 v_name = str(rv['Переменная']).strip()
                                 if pd.notna(rv['Значения']):
                                     var_dict[f"{{{v_name}}}"] = [v.strip() for v in str(rv['Значения']).split('|')]
-                                    
-                        reviews_json = generate_reviews_deepseek(gemini_api_key, h2_header, review_cands, rev_count, df_fio, df_templates, var_dict)
+
+                        # 3. ГЕНЕРАЦИЯ (передаем список авторов вместо старой таблицы fio)
+                        # Важно: обнови функцию generate_reviews_deepseek, чтобы она принимала chosen_authors
+                        reviews_json = generate_reviews_deepseek(
+                            gemini_api_key, 
+                            h2_header, 
+                            review_cands, 
+                            rev_count, 
+                            chosen_authors, # ПЕРЕДАЕМ НОВЫЙ СПИСОК
+                            df_templates, 
+                            var_dict
+                        )
                         
                         if 'ws_reviews_export_data' not in st.session_state:
-                            st.session_state.ws_reviews_export_data =[]
+                            st.session_state.ws_reviews_export_data = []
                             
-                        # Если нейросеть вернула нормальный массив
-                        if isinstance(reviews_json, list) and len(reviews_json) > 0 and "Текст" in reviews_json[0]:
-                            rev_html_parts =[
+                        # 4. СБОРКА РЕЗУЛЬТАТОВ
+                        if isinstance(reviews_json, list) and len(reviews_json) > 0:
+                            rev_html_parts = [
                                 '<div class="reviews-section" style="margin-top: 30px;">', 
                                 f'<div class="h2"><h2>Отзывы клиентов: {h2_header}</h2></div>', 
                                 '<div class="reviews-container">'
                             ]
                             
                             def md_to_html(text):
-                                # Превращаем маркдаун DeepSeek в HTML-теги strong
                                 return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(text))
                             
-                            for item in reviews_json:
-                                r_name = item.get('Имя', 'Клиент')
-                                r_date = item.get('Дата', '')
-                                
-                                # Оборачиваем в HTML-теги для таблицы Excel
+                            for i, item in enumerate(reviews_json):
+                                # Сопоставляем отзыв с выбранным автором из нашей базы
+                                author_info = chosen_authors[i] if i < len(chosen_authors) else {"name": "Клиент"}
+                                r_name = author_info['name']
+                                r_date = item.get('Дата', '10.02.2026')
                                 r_text_html = f"<p>{md_to_html(item.get('Текст', ''))}</p>"
                                 
-                                # Верстаем отзыв для предпросмотра и вставки на сайт
+                                # Верстаем
                                 rev_html_parts.append(f'<div class="review-item" style="padding: 15px; border-left: 4px solid #277EFF; background: #f9fafb; margin-bottom: 15px;">')
                                 rev_html_parts.append(f'<div class="review-header" style="margin-bottom: 8px;"><strong class="review-author">{r_name}</strong> <span class="review-date" style="color: #6b7280; font-size: 13px; margin-left: 10px;">{r_date}</span></div>')
                                 rev_html_parts.append(f'<div class="review-text" style="color: #374151; font-size: 15px;">{r_text_html}</div>')
@@ -5200,13 +5230,12 @@ with tab_wholesale_main:
                                     'Page URL': current_task['url'],
                                     'Product Name': h2_header,
                                     'Имя': r_name,
-                                    'Дата': r_date, # Отдельная колонка для даты
-                                    'Отзыв': r_text_html # Чистый HTML текст: <p>Текст <strong>LSI</strong> текст</p>
+                                    'Дата': r_date,
+                                    'Отзыв': r_text_html
                                 })
                                 
                             rev_html_parts.append('</div></div>')
                             final_reviews_html = "\n".join(rev_html_parts)
-
                     # =================================================================
                     # ГЕО-ДОСТАВКА
                     # =================================================================
@@ -6942,6 +6971,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
