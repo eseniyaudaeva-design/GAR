@@ -2870,12 +2870,11 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
     from openai import OpenAI
     from datetime import date, timedelta, datetime
 
-    # --- 1. ЛОГИКА ОЦЕНОК (Плавающее среднее >= 4.7, одна 3.5 — ОБЯЗАТЕЛЬНО) ---
+    # --- 1. ЛОГИКА ОЦЕНОК (сохраняем среднее 4.7+) ---
     def get_balanced_ratings(n):
         target_avg = random.uniform(4.75, 4.97)
-        ratings = [3.5] # Твоё условие: минимум одна 3.5 должна быть
+        ratings = [3.5]
         for _ in range(n - 1): ratings.append(5.0)
-        
         indices = list(range(1, n))
         random.shuffle(indices)
         for idx in indices:
@@ -2888,68 +2887,56 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 
     ratings = get_balanced_ratings(target_count)
 
-    # --- 2. ДИНАМИЧЕСКИЕ ДАТЫ (От 2022 года до СЕГОДНЯШНЕГО дня) ---
-    start_dt = date(2022, 1, 1)
-    end_dt = date.today() # Дата всегда актуальна на момент запуска
+    # --- 2. ДАТЫ (Динамика) ---
+    start_dt, end_dt = date(2022, 1, 1), date.today()
     delta_days = (end_dt - start_dt).days
-    
-    raw_dates = []
-    for _ in range(target_count):
-        rand_days = random.randint(0, delta_days)
-        raw_dates.append((start_dt + timedelta(days=rand_days)).strftime("%d.%m.%Y"))
-    # Сортируем, чтобы новые даты визуально были в приоритете
-    raw_dates.sort(key=lambda x: datetime.strptime(x, "%d.%m.%Y"), reverse=True)
+    raw_dates = sorted([(start_dt + timedelta(days=random.randint(0, delta_days))).strftime("%d.%m.%Y") for _ in range(target_count)], 
+                       key=lambda x: datetime.strptime(x, "%d.%m.%Y"), reverse=True)
 
-    # Подготовка данных для промпта
+    # Подготовка списка авторов с ПОЛОМ
     authors_listing = []
     for i in range(target_count):
-        authors_listing.append(f"Автор: {chosen_authors[i]['name']} | Оценка: {ratings[i]} | Тип ника: {chosen_authors[i]['type']}")
+        gender_map = {"М": "Мужской", "Ж": "Женский", "Н": "Любой"}
+        g = gender_map.get(chosen_authors[i].get('gender', 'Н'), 'Любой')
+        authors_listing.append(f"Автор: {chosen_authors[i]['name']} | Пол: {g} | Оценка: {ratings[i]} | Тип: {chosen_authors[i]['type']}")
     
     nl = chr(10)
     
     try:
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
         
-        # --- 3. РАСШИРЕННЫЙ SEO-ПРОМПТ ---
-        prompt = f"""Ты — Senior SEO-копирайтер и эксперт по управлению репутацией (ORM). 
-Твоя задача: написать {target_count} отзывов на тему "{h2_header}", которые выглядят как РАЗНЫЕ живые люди.
+        prompt = f"""Ты — мастер репутационного маркетинга. Напиши {target_count} отзывов на тему "{h2_header}".
+Твоя цель: создать иллюзию РАЗНЫХ людей. 
 
-СПИСОК АВТОРОВ И ИХ ОЦЕНОК:
+АВТОРЫ И ИХ ПОЛ:
 {nl.join(authors_listing)}
 
-КРИТИЧЕСКИЕ ПРАВИЛА КОНТЕНТА:
-1. ЛОГИКА ДЛЯ ОЦЕНОК < 5.0 (3.5, 4.0, 4.5): 
-   Ты ОБЯЗАН описать ВНЕШНЕЕ обстоятельство (аншлаг на базе, очередь, плановое отключение света, задержка поставки заводом). 
-   АКЦЕНТ: Компания — КРАСАВЦЫ. Менеджер звонил сам, предупреждал, извинялся, был на связи и все разрулил. 
-   ЗАПРЕЩЕНО: писать про ошибки сотрудников или "не брали трубку". Это убивает доверие.
+КРИТИЧЕСКИЕ ПРАВИЛА (ЧИТАЙ ВНИМАТЕЛЬНО):
+1. СОГЛАСОВАНИЕ ПОЛА: Если пол ЖЕНСКИЙ — используй только женские окончания (сама видела, купила, довольна). Если МУЖСКОЙ — мужские (сам видел, купил, доволен). ОШИБКИ В ПОЛЕ ЗАПРЕЩЕНЫ.
 
-2. АНТИ-РОБОТ (ХАОС ОШИБОК И СТИЛЯ):
-   - РЕГИСТР: Минимум 8 из 10 отзывов ДОЛЖНЫ начинаться с заглавной буквы.
-   - АРХЕТИПЫ: Пиши как разные люди:
-     * "Занятой мужик": Коротко, без лишних запятых, суть.
-     * "Хозяин дома": Пишет про забор/навес, использует смайлы 👍, 👌.
-     * "Профи": Спокойный текст про качество металла, вес, допуски (без фанатизма).
-   - ОШИБКИ: Используй редкие, "живые" опечатки (замена буквы: "доставкв", "привезлиь"). 
-   - ЗАПРЕТ НА МУСОР: Никаких пустых скобок (), знаков "==" или закономерных паттернов.
-   - ТИРЕ: Используй ТОЛЬКО короткий минус "-". Никакого английского языка!
+2. СТИЛИСТИЧЕСКИЙ ХАОС: 
+   - Не делай всё одинаково! Распредели: 30% отзывов с маленькой буквы, 50% с большой, 20% — супер-короткие.
+   - Разная пунктуация: кто-то ставит многоточия... кто-то вообще не ставит запятых, кто-то пишет грамотно.
+   - Ошибки: 1-2 живых опечатки на всю пачку (напр. "доставкв", "метал"). Никаких пустых скобок.
 
-3. ФОРМАТ:
-   - 2-3 отзыва сделай ультра-короткие ("Ок 👍", "Все четко").
-   - В остальных вплетай LSI слова ЖИРНЫМ (**слово**): {", ".join(lsi_words[:15])}.
-   - Даты для JSON бери строго из этого списка: {", ".join(raw_dates)}.
+3. ЕСТЕСТВЕННЫЕ LSI: 
+   - Список слов: {", ".join(lsi_words[:20])}.
+   - ТРЕБОВАНИЕ: Вставляй их ЕСТЕСТВЕННО. Ты можешь и ДОЛЖЕН их СКЛОНЯТЬ (менять падеж, число, род). Не вставляй их в сыром виде, если это звучит криво. Выделяй их **жирным**.
 
-ВЕРНИ СТРОГО JSON МАССИВ:
+4. БЕЗ НЕГАТИВА (ОЦЕНКИ < 5.0):
+   - Только внешние причины (очередь, свет на районе, завод задержал). Менеджеры — красавцы, все решили, были на связи.
+
+ВЕРНИ СТРОГО JSON:
 [{{"Имя": "...", "Дата": "...", "Оценка": ..., "Текст": "..."}}]
+(Даты бери из списка: {", ".join(raw_dates)})
 """
         resp = client.chat.completions.create(
             model="deepseek/deepseek-v3.2",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.9
+            temperature=1.0 # Повышаем хаос
         )
-        
         content = re.sub(r'```json\s*|```', '', resp.choices[0].message.content).strip()
         return json.loads(content)
-        
     except Exception as e:
         return [{"Имя": "Ошибка", "Текст": str(e), "Оценка": 5.0, "Дата": date.today().strftime("%d.%m.%Y")}]
 
@@ -5259,40 +5246,37 @@ with tab_wholesale_main:
                         if 'ws_reviews_export_data' not in st.session_state:
                             st.session_state.ws_reviews_export_data = []
 
+                        # --- ОБНОВЛЕННЫЙ ЦИКЛ СОХРАНЕНИЯ (СТРОГО С ТВОИМИ КЛЮЧАМИ) ---
                         if isinstance(reviews_json, list) and len(reviews_json) > 0:
-                            st.write(f"#### ✅ Готово! Сгенерировано отзывов: {len(reviews_json)}")
-                            
                             for i, item in enumerate(reviews_json):
                                 r_name = item.get('Имя', 'Клиент')
                                 r_date = item.get('Дата', '')
                                 r_rating = float(item.get('Оценка', 5.0))
                                 r_text_raw = item.get('Текст', '')
                                 
-                                # HTML-версия для предпросмотра
-                                r_text_html = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(r_text_raw))
-                                
+                                # Предпросмотр в Streamlit
                                 full_stars = int(r_rating)
                                 stars_visual = "★" * full_stars + ("½" if r_rating % 1 != 0 else "") + "☆" * (5 - int(r_rating + 0.5))
-
-                                # Красивая карточка
+                                
                                 st.markdown(f'''
                                     <div class="review-card">
-                                        <div style="display: flex; justify-content: space-between;">
-                                            <div><span class="author-name">{r_name}</span><div class="review-date">{r_date}</div></div>
-                                            <div style="text-align: right;"><div class="stars">{stars_visual}</div><div>{r_rating} / 5.0</div></div>
+                                        <div style="display:flex; justify-content:space-between;">
+                                            <span class="author-name">{r_name}</span>
+                                            <span class="stars">{stars_visual} {r_rating}</span>
                                         </div>
-                                        <div class="review-body">{r_text_html}</div>
+                                        <div class="review-date">{r_date}</div>
+                                        <div class="review-body">{re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(r_text_raw))}</div>
                                     </div>
                                 ''', unsafe_allow_html=True)
 
-                                # СОХРАНЯЕМ С КЛЮЧАМИ, КОТОРЫЕ ЖДЕТ ТВОЙ СКРИПТ
+                                # ТЕХНИЧЕСКОЕ СОХРАНЕНИЕ (КЛЮЧИ ПОД ТВОЙ ФИЛЬТР)
                                 st.session_state.ws_reviews_export_data.append({
                                     'Page URL': current_task['url'],
-                                    'Product Name': h2_header,  # ОСТАВЛЯЕМ КАК БЫЛО
+                                    'Product Name': h2_header, # Тот самый ключ для фильтрации
                                     'Имя': r_name,
                                     'Оценка': r_rating,
                                     'Дата': r_date,
-                                    'Отзыв': r_text_raw       # ОСТАВЛЯЕМ КАК БЫЛО
+                                    'Отзыв': r_text_raw       # Тот самый ключ для текста
                                 })
                         else:
                             st.error(f"Генерация для '{h2_header}' вернула пустой список или ошибку.")
@@ -7031,6 +7015,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
