@@ -5255,7 +5255,7 @@ with tab_wholesale_main:
                         </style>
                         """, unsafe_allow_html=True)
 
-                        # --- 2. ОБРАБОТКА И ОТРИСОВКА ---
+                        # --- ОБРАБОТКА И ОТРИСОВКА (ИСПРАВЛЕНО) ---
                         if 'ws_reviews_export_data' not in st.session_state:
                             st.session_state.ws_reviews_export_data = []
 
@@ -5266,41 +5266,33 @@ with tab_wholesale_main:
                                 r_name = item.get('Имя', 'Клиент')
                                 r_date = item.get('Дата', '')
                                 r_rating = float(item.get('Оценка', 5.0))
-                                
-                                # Подсветка LSI слов (делаем их жирными в HTML)
                                 r_text_raw = item.get('Текст', '')
+                                
+                                # HTML-версия для предпросмотра
                                 r_text_html = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(r_text_raw))
                                 
-                                # Рисуем звезды (визуальный рейтинг)
                                 full_stars = int(r_rating)
-                                half = 1 if r_rating % 1 != 0 else 0
-                                stars_visual = "★" * full_stars + ("½" if half else "") + "☆" * (5 - int(r_rating + 0.5))
+                                stars_visual = "★" * full_stars + ("½" if r_rating % 1 != 0 else "") + "☆" * (5 - int(r_rating + 0.5))
 
-                                # Вывод красивой карточки в Streamlit
+                                # Красивая карточка
                                 st.markdown(f'''
                                     <div class="review-card">
-                                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                            <div>
-                                                <div class="author-name">{r_name}</div>
-                                                <div class="review-date">Опубликовано: {r_date}</div>
-                                            </div>
-                                            <div style="text-align: right;">
-                                                <div class="stars">{stars_visual}</div>
-                                                <div style="font-size: 0.9rem; color: #64748b; font-weight: 600;">{r_rating} / 5.0</div>
-                                            </div>
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <div><span class="author-name">{r_name}</span><div class="review-date">{r_date}</div></div>
+                                            <div style="text-align: right;"><div class="stars">{stars_visual}</div><div>{r_rating} / 5.0</div></div>
                                         </div>
                                         <div class="review-body">{r_text_html}</div>
                                     </div>
                                 ''', unsafe_allow_html=True)
 
-                                # --- 3. СОХРАНЕНИЕ В EXCEL (БЕЗ ТЕГОВ) ---
+                                # СОХРАНЯЕМ С КЛЮЧАМИ, КОТОРЫЕ ЖДЕТ ТВОЙ СКРИПТ
                                 st.session_state.ws_reviews_export_data.append({
-                                    'URL страницы': current_task['url'],
-                                    'Категория/Товар': h2_header,
-                                    'Имя автора': r_name,
-                                    'Рейтинг': r_rating,
+                                    'Page URL': current_task['url'],
+                                    'Product Name': h2_header,  # ОСТАВЛЯЕМ КАК БЫЛО
+                                    'Имя': r_name,
+                                    'Оценка': r_rating,
                                     'Дата': r_date,
-                                    'Текст отзыва': r_text_raw  # Тут сохраняем чистый текст без <strong>
+                                    'Отзыв': r_text_raw       # ОСТАВЛЯЕМ КАК БЫЛО
                                 })
                         else:
                             st.error(f"Генерация для '{h2_header}' вернула пустой список или ошибку.")
@@ -7039,6 +7031,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
