@@ -5388,8 +5388,6 @@ with tab_wholesale_main:
                     st.checkbox("❓ FAQ", value=True, key="ws_global_faq", disabled=is_running)
                     # Увеличили лимит вопросов до 50
                     st.number_input("Количество вопросов FAQ", min_value=2, max_value=50, value=4, step=1, key="ws_faq_count", disabled=is_running)
-                    # Обновлен лимит вопросов до 50
-                    st.number_input("Количество вопросов FAQ", min_value=2, max_value=50, value=4, step=1, key="ws_faq_count")
                     
                 with grid_2:
                     st.checkbox("🔥 Промо", value=True, key="ws_global_promo", disabled=is_running)
@@ -6897,6 +6895,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
