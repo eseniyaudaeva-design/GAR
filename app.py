@@ -5522,7 +5522,8 @@ with tab_wholesale_main:
 
         # --- 5. ТЕХНИЧЕСКАЯ ТАБЛИЦА (ТЕПЕРЬ БЕЗ ОШИБОК) ---
         with st.expander("👀 Техническая таблица результатов", expanded=False):
-            st.dataframe(df_export.style.apply(highlight_bad_results, axis=1), use_container_width=True)
+            # Используем df_export_clean, из которого уже вырезаны пустые FAQ и лишние системные колонки
+            st.dataframe(df_export_clean.style.apply(highlight_bad_results, axis=1), use_container_width=True)
 
         st.markdown("---")
 
@@ -6758,6 +6759,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
