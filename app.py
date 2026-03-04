@@ -2865,52 +2865,93 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
 
 def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chosen_authors):
     import json
+    import random
+    import re
     from openai import OpenAI
-    from datetime import date, timedelta
+    from datetime import date, timedelta, datetime
 
-    # Подготовка данных
+    # --- 1. ЛОГИКА ОЦЕНОК (Плавающее среднее >= 4.7, одна 3.5 — ОБЯЗАТЕЛЬНО) ---
+    def get_balanced_ratings(n):
+        target_avg = random.uniform(4.75, 4.97)
+        ratings = [3.5] # Твоё условие: минимум одна 3.5 должна быть
+        for _ in range(n - 1): ratings.append(5.0)
+        
+        indices = list(range(1, n))
+        random.shuffle(indices)
+        for idx in indices:
+            if (sum(ratings) / n) <= target_avg: break
+            new_val = random.choice([4.0, 4.5])
+            if (sum(ratings) - ratings[idx] + new_val) / n >= 4.7:
+                ratings[idx] = new_val
+        random.shuffle(ratings)
+        return ratings
+
     ratings = get_balanced_ratings(target_count)
-    start_dt, end_dt = date(2026, 1, 1), date(2026, 2, 10)
-    delta = (end_dt - start_dt).days
-    dates = [(start_dt + timedelta(days=random.randint(0, delta))).strftime("%d.%m.%Y") for _ in range(target_count)]
+
+    # --- 2. ДИНАМИЧЕСКИЕ ДАТЫ (От 2022 года до СЕГОДНЯШНЕГО дня) ---
+    start_dt = date(2022, 1, 1)
+    end_dt = date.today() # Дата всегда актуальна на момент запуска
+    delta_days = (end_dt - start_dt).days
     
-    authors_data = [f"- {a['name']} (Оценка: {ratings[i]}, Тип: {a['type']})" for i, a in enumerate(chosen_authors)]
+    raw_dates = []
+    for _ in range(target_count):
+        rand_days = random.randint(0, delta_days)
+        raw_dates.append((start_dt + timedelta(days=rand_days)).strftime("%d.%m.%Y"))
+    # Сортируем, чтобы новые даты визуально были в приоритете
+    raw_dates.sort(key=lambda x: datetime.strptime(x, "%d.%m.%Y"), reverse=True)
+
+    # Подготовка данных для промпта
+    authors_listing = []
+    for i in range(target_count):
+        authors_listing.append(f"Автор: {chosen_authors[i]['name']} | Оценка: {ratings[i]} | Тип ника: {chosen_authors[i]['type']}")
+    
+    nl = chr(10)
     
     try:
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
-        prompt = f"""Ты — группа РАЗНЫХ людей (прорабы, снабженцы, частники). Тема: "{h2_header}".
-НУЖНО СГЕНЕРИРОВАТЬ РОВНО {target_count} УНИКАЛЬНЫХ ОТЗЫВОВ.
+        
+        # --- 3. РАСШИРЕННЫЙ SEO-ПРОМПТ ---
+        prompt = f"""Ты — Senior SEO-копирайтер и эксперт по управлению репутацией (ORM). 
+Твоя задача: написать {target_count} отзывов на тему "{h2_header}", которые выглядят как РАЗНЫЕ живые люди.
 
-АВТОРЫ И ОЦЕНКИ:
-{chr(10).join(authors_data)}
+СПИСОК АВТОРОВ И ИХ ОЦЕНОК:
+{nl.join(authors_listing)}
 
-ПРАВИЛА КОНТЕНТА:
-1. СТРОГО БЕЗ НЕГАТИВА. Если оценка < 5.0 (3.5, 4.0, 4.5) — напиши про мелкий нюанс, который компания решила ИДЕАЛЬНО (забыли доки — довезли мигом, машина опоздала — менеджер предупредил и сделал бонус).
-2. ЯЗЫК: Только РУССКИЙ. Никакого английского.
-3. ТИРЕ: Только короткий минус "-". Никаких длинных "—".
-4. ФОРМАТ: Минимум 2-3 отзыва — это просто смайл (👍, 👌) или "все ок". Один отзыв — чисто смайл. Остальные 1-2 предложения.
+КРИТИЧЕСКИЕ ПРАВИЛА КОНТЕНТА:
+1. ЛОГИКА ДЛЯ ОЦЕНОК < 5.0 (3.5, 4.0, 4.5): 
+   Ты ОБЯЗАН описать ВНЕШНЕЕ обстоятельство (аншлаг на базе, очередь, плановое отключение света, задержка поставки заводом). 
+   АКЦЕНТ: Компания — КРАСАВЦЫ. Менеджер звонил сам, предупреждал, извинялся, был на связи и все разрулил. 
+   ЗАПРЕЩЕНО: писать про ошибки сотрудников или "не брали трубку". Это убивает доверие.
 
-ХАОС ОШИБОК (уникально для каждого отзыва, не повторяй шаблоны):
-- "Ленивый": все маленькими буквами, без знаков препинания.
-- "Кривой": лишние пробелы ПЕРЕД запятыми ( вот так , пример) или внутри скобок ( пример ).
-- "Спешащий": опечатки (перепутаны буквы), нет пробела после запятой.
-- "Живой": используй "спс", "норм", "дост".
-- "Грамотный": пиши четко (только для ФИО).
+2. АНТИ-РОБОТ (ХАОС ОШИБОК И СТИЛЯ):
+   - РЕГИСТР: Минимум 8 из 10 отзывов ДОЛЖНЫ начинаться с заглавной буквы.
+   - АРХЕТИПЫ: Пиши как разные люди:
+     * "Занятой мужик": Коротко, без лишних запятых, суть.
+     * "Хозяин дома": Пишет про забор/навес, использует смайлы 👍, 👌.
+     * "Профи": Спокойный текст про качество металла, вес, допуски (без фанатизма).
+   - ОШИБКИ: Используй редкие, "живые" опечатки (замена буквы: "доставкв", "привезлиь"). 
+   - ЗАПРЕТ НА МУСОР: Никаких пустых скобок (), знаков "==" или закономерных паттернов.
+   - ТИРЕ: Используй ТОЛЬКО короткий минус "-". Никакого английского языка!
 
-LSI: Вплетай жирным (**слово**) только в длинные отзывы: {", ".join(lsi_words[:15])}.
+3. ФОРМАТ:
+   - 2-3 отзыва сделай ультра-короткие ("Ок 👍", "Все четко").
+   - В остальных вплетай LSI слова ЖИРНЫМ (**слово**): {", ".join(lsi_words[:15])}.
+   - Даты для JSON бери строго из этого списка: {", ".join(raw_dates)}.
 
-ВЕРНИ СТРОГО JSON:
+ВЕРНИ СТРОГО JSON МАССИВ:
 [{{"Имя": "...", "Дата": "...", "Оценка": ..., "Текст": "..."}}]
 """
         resp = client.chat.completions.create(
             model="deepseek/deepseek-v3.2",
             messages=[{"role": "user", "content": prompt}],
-            temperature=1.0
+            temperature=0.9
         )
+        
         content = re.sub(r'```json\s*|```', '', resp.choices[0].message.content).strip()
         return json.loads(content)
+        
     except Exception as e:
-        return [{"Имя": "Ошибка", "Текст": str(e), "Оценка": 5.0, "Дата": "10.02.2026"}]
+        return [{"Имя": "Ошибка", "Текст": str(e), "Оценка": 5.0, "Дата": date.today().strftime("%d.%m.%Y")}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
@@ -5194,52 +5235,75 @@ with tab_wholesale_main:
                         # 2. Генерируем отзывы
                         reviews_json = generate_reviews_deepseek(gemini_api_key, h2_header, review_cands, rev_count, chosen_authors)
                         
+                        # --- 1. ДОРОГО-БОГАТО: CSS СТИЛИ ---
+                        st.markdown("""
+                        <style>
+                            .review-card {
+                                background: white;
+                                border: 1px solid #e2e8f0;
+                                border-left: 6px solid #2563eb;
+                                border-radius: 12px;
+                                padding: 20px;
+                                margin-bottom: 20px;
+                                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+                            }
+                            .author-name { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
+                            .stars { color: #fbbf24; font-size: 1.2rem; }
+                            .review-date { color: #94a3b8; font-size: 0.85rem; margin-top: 4px; }
+                            .review-body { color: #334155; line-height: 1.6; margin-top: 12px; }
+                            .review-body strong { color: #2563eb; background: #f0f7ff; padding: 0 2px; border-radius: 3px; }
+                        </style>
+                        """, unsafe_allow_html=True)
+
+                        # --- 2. ОБРАБОТКА И ОТРИСОВКА ---
                         if 'ws_reviews_export_data' not in st.session_state:
                             st.session_state.ws_reviews_export_data = []
 
                         if isinstance(reviews_json, list) and len(reviews_json) > 0:
-                            rev_html_parts = [
-                                '<div class="reviews-section" style="margin-top: 30px;">', 
-                                f'<div class="h2"><h2>Отзывы: {h2_header}</h2></div>', 
-                                '<div class="reviews-container">'
-                            ]
-                            
-                            def md_to_html(text):
-                                return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(text))
+                            st.write(f"#### ✅ Готово! Сгенерировано отзывов: {len(reviews_json)}")
                             
                             for i, item in enumerate(reviews_json):
-                                author_info = chosen_authors[i] if i < len(chosen_authors) else {"name": "Клиент"}
-                                r_name = author_info['name']
-                                r_date = item.get('Дата', '10.02.2026')
-                                r_rating = item.get('Оценка', 5.0)
-                                r_text_html = f"<p>{md_to_html(item.get('Текст', ''))}</p>"
+                                r_name = item.get('Имя', 'Клиент')
+                                r_date = item.get('Дата', '')
+                                r_rating = float(item.get('Оценка', 5.0))
                                 
-                                # Верстка звезд
-                                stars_display = "⭐" * int(float(r_rating)) + ("½" if float(r_rating)%1 !=0 else "")
+                                # Подсветка LSI слов (делаем их жирными в HTML)
+                                r_text_raw = item.get('Текст', '')
+                                r_text_html = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(r_text_raw))
                                 
-                                rev_html_parts.append(f'''
-                                    <div class="review-item" style="padding:15px; border-left:4px solid #277EFF; background:#f9fafb; margin-bottom:15px;">
-                                        <div style="margin-bottom:8px;">
-                                            <strong style="font-size:16px;">{r_name}</strong> 
-                                            <span style="color:#facc15; margin-left:10px;">{stars_display} ({r_rating})</span>
-                                            <span style="color:#6b7280; font-size:13px; float:right;">{r_date}</span>
+                                # Рисуем звезды (визуальный рейтинг)
+                                full_stars = int(r_rating)
+                                half = 1 if r_rating % 1 != 0 else 0
+                                stars_visual = "★" * full_stars + ("½" if half else "") + "☆" * (5 - int(r_rating + 0.5))
+
+                                # Вывод красивой карточки в Streamlit
+                                st.markdown(f'''
+                                    <div class="review-card">
+                                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                            <div>
+                                                <div class="author-name">{r_name}</div>
+                                                <div class="review-date">Опубликовано: {r_date}</div>
+                                            </div>
+                                            <div style="text-align: right;">
+                                                <div class="stars">{stars_visual}</div>
+                                                <div style="font-size: 0.9rem; color: #64748b; font-weight: 600;">{r_rating} / 5.0</div>
+                                            </div>
                                         </div>
-                                        <div style="color:#374151;">{r_text_html}</div>
+                                        <div class="review-body">{r_text_html}</div>
                                     </div>
-                                ''')
-                                
-                                # Сохранение в Excel
+                                ''', unsafe_allow_html=True)
+
+                                # --- 3. СОХРАНЕНИЕ В EXCEL (БЕЗ ТЕГОВ) ---
                                 st.session_state.ws_reviews_export_data.append({
-                                    'Page URL': current_task['url'],
-                                    'Product Name': h2_header,
-                                    'Имя': r_name,
-                                    'Оценка': r_rating,
+                                    'URL страницы': current_task['url'],
+                                    'Категория/Товар': h2_header,
+                                    'Имя автора': r_name,
+                                    'Рейтинг': r_rating,
                                     'Дата': r_date,
-                                    'Отзыв': r_text_html
+                                    'Текст отзыва': r_text_raw  # Тут сохраняем чистый текст без <strong>
                                 })
-                                
-                            rev_html_parts.append('</div></div>')
-                            final_reviews_html = "\n".join(rev_html_parts)
+                        else:
+                            st.error(f"Генерация для '{h2_header}' вернула пустой список или ошибку.")
                     # =================================================================
                     # ГЕО-ДОСТАВКА
                     # =================================================================
@@ -6975,6 +7039,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
