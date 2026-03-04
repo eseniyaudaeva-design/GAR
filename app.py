@@ -4761,7 +4761,8 @@ with tab_wholesale_main:
             h2_header = current_task.get('h2', current_task['name'])
             
             with st.status(f"⚙️ Обработка: {h2_header} (Товар {task_idx + 1} из {len(queue)})", expanded=True) as status_logger:
-                status_logger.write("✅ Семантика получена. Начинаем распределение слов...")
+                step_logger = st.empty() # <--- СОЗДАЕМ ЕДИНУЮ КОРОБКУ ДЛЯ СТАТУСОВ
+                step_logger.info("⏳ Этап 1: Семантика получена. Начинаем распределение слов...")
                 
                 row_data = {col: "" for col in st.session_state.gen_result_df.columns}
                 row_data['Page URL'] = current_task['url']
@@ -5045,23 +5046,24 @@ with tab_wholesale_main:
                             elif words_count <= 25: auto_num_blocks = 4
                             else: auto_num_blocks = 5
                             
-                        status_logger.write(f"🤖 Пишем SEO-текст (Слов: {words_count} ➔ Блоков: {auto_num_blocks})...")
+                        step_logger.warning(f"🤖 Этап 2: Пишем SEO-текст (Слов: {words_count} ➔ Блоков: {auto_num_blocks})...")
                         blocks_raw = generate_ai_content_blocks(gemini_api_key, safe_base_text, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
                         
                         if not blocks_raw or "Error" in str(blocks_raw[0]):
-                            status_logger.error(f"❌ Нейросеть вернула ошибку: {blocks_raw[0]}")
+                            step_logger.error(f"❌ Нейросеть вернула ошибку: {blocks_raw[0]}")
                         else:
                             cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
                             for i_b in range(len(cleaned_blocks)):
                                 if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
+                                
                             generated_full_text = " ".join(blocks)
-                            status_logger.write(f"✅ Текст сгенерирован (Получено блоков: {len(cleaned_blocks)})")
+                            # Убрали спам об успешной генерации, статус просто переключится на следующий шаг
 
                     # =================================================================
                     # ГЕНЕРАЦИЯ ТАБЛИЦЫ
                     # =================================================================
                     if curr_use_tables and client:
-                        status_logger.write("🧩 Верстаем таблицу размеров...")
+                        step_logger.warning("🧩 Этап 3: Верстаем таблицу размеров...")
                         dims_str = ", ".join(cat_dimensions)
                         prompt_tbl = f"""ТЫ — СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
 ВВОДНЫЕ: Контекст текста: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
@@ -5085,8 +5087,9 @@ with tab_wholesale_main:
                     # =================================================================
                     final_faq_html = ""
                     if global_faq and client:
-                        current_faq_count = st.session_state.get('ws_faq_count', 4)
-                        status_logger.write(f"❓ Генерируем FAQ ({current_faq_count} вопросов)...")
+                        # 🔥 БЕРЕМ ЗАМОРОЖЕННУЮ ПЕРЕМЕННУЮ, КОТОРАЯ НЕ СБРАСЫВАЕТСЯ 🔥
+                        current_faq_count = st.session_state.get('safe_ws_faq_count', st.session_state.get('ws_faq_count', 4))
+                        step_logger.warning(f"❓ Этап 4: Генерируем FAQ ({current_faq_count} вопросов)...")
                         try:
                             faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
                             if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
@@ -5140,10 +5143,10 @@ with tab_wholesale_main:
                     # =================================================================
                     global_reviews = st.session_state.get('ws_global_reviews', True)
                     final_reviews_html = ""
-                    
                     if global_reviews and gemini_api_key:
-                        rev_count = st.session_state.get('ws_reviews_count', 3)
-                        status_logger.write(f"💬 Генерируем {rev_count} отзывов (DeepSeek)...")
+                        # 🔥 БЕРЕМ ЗАМОРОЖЕННУЮ ПЕРЕМЕННУЮ ОТЗЫВОВ 🔥
+                        rev_count = st.session_state.get('safe_ws_reviews_count', st.session_state.get('ws_reviews_count', 3))
+                        step_logger.warning(f"💬 Этап 5: Генерируем {rev_count} отзывов (DeepSeek)...")
                         
                         import os
                         import pandas as pd
@@ -5262,7 +5265,7 @@ with tab_wholesale_main:
                     row_data['Риск Тургенев'] = "-"; row_data['Тургенев Комментарий'] = "-"
                     row_data['Уникальность'] = "-"; row_data['Text.ru Комментарий'] = "-"; row_data['Text.ru UID'] = None
                     
-                    status_logger.write("🔍 Отправляем на проверки (Антиспам и Уникальность)...")
+                    step_logger.warning("🔍 Этап 6: Отправляем на проверки (Антиспам и Уникальность)...")
                     
                     if use_ds_chk and gemini_api_key and pure_text_for_check:
                         try:
@@ -6898,6 +6901,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
