@@ -2684,9 +2684,9 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         
         for item in parsed_data:
             if "Вопрос" in item:
-                item["Вопрос"] = item["Вопрос"].replace("—", "–").replace(" - ", " – ")
+                item["Вопрос"] = item["Вопрос"].replace('—', '&ndash;').replace('–', '&ndash;').replace('&mdash;', '&ndash;')
             if "Ответ" in item:
-                item["Ответ"] = item["Ответ"].replace("—", "–").replace(" - ", " – ")
+                item["Ответ"] = item["Ответ"].replace('—', '&ndash;').replace('–', '&ndash;').replace('&mdash;', '&ndash;')
                 
         return parsed_data
         
@@ -2914,10 +2914,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
         
         # --- ОЧИСТКА ---
         # Теги <b> НЕ удаляем!
-        content = content.replace(' - ', ' &ndash; ')
-        content = content.replace('—', '&ndash;')
-        content = content.replace('–', '&ndash;')
-        content = content.replace('&mdash;', '&ndash;')
+        content = content.replace('—', '&ndash;').replace('–', '&ndash;').replace('&mdash;', '&ndash;')
         content = content.replace('**', '').replace('__', '')
         
         return content
@@ -6759,6 +6756,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
