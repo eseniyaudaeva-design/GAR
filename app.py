@@ -5438,29 +5438,26 @@ with tab_wholesale_main:
                 st.session_state.safe_use_ds = st.session_state.get('use_ds_bulk', True)
                 # ----------------------------------------------------------------------
 
-                # === АКТИВИРУЕМ ЗАПУСК ===
-                st.session_state.start_analysis_flag = True
-                st.session_state.ws_automode_active = True
-                st.rerun() # Мгновенно обновляем страницу, чтобы интерфейс заблокировался
-
-                # А ВОТ ДАЛЬШЕ ИДЕТ ТВОЙ ОРИГИНАЛЬНЫЙ КОД СБОРКИ ОЧЕРЕДИ:
-                queue =[]
+               queue =[]
                 if "URL" in gen_mode or "Подфильтровые" in gen_mode:
-                    urls =[u.strip() for u in raw_urls.split('\n') if u.strip()]
-                    for u in urls:
-                        h1_s, h2_s, _ = scrape_h1_h2_from_url(u) if "URL" in gen_mode else ("", "", "")
-                        b_text, _, _, _ = get_page_data_for_gen(u) if u else ("", "", "", "")
-                        queue.append({'url': u, 'h1': h1_s or u.split('/')[-1], 'h2': h2_s or u.split('/')[-1], 'base_text': b_text, 'name': h1_s or u})
+                    urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
+                    with st.spinner("Сбор данных со ссылок (ожидайте)..."):
+                        for u in urls:
+                            h1_s, h2_s, _ = scrape_h1_h2_from_url(u) if "URL" in gen_mode else ("", "", "")
+                            b_text, _, _, _ = get_page_data_for_gen(u) if u else ("", "", "", "")
+                            queue.append({'url': u, 'h1': h1_s or u.split('/')[-1], 'h2': h2_s or u.split('/')[-1], 'base_text': b_text, 'name': h1_s or u})
                 else:
                     h1s =[x.strip() for x in raw_h1.split('\n') if x.strip()]
-                    h2s = [x.strip() for x in raw_h2.split('\n') if x.strip()]
+                    h2s =[x.strip() for x in raw_h2.split('\n') if x.strip()]
                     for h1, h2 in zip(h1s, h2s): queue.append({'url': 'manual', 'h1': h1, 'h2': h2, 'base_text': '', 'name': h1})
                 
                 if queue:
+                    # === АКТИВИРУЕМ ЗАПУСК ТОЛЬКО ПОСЛЕ УСПЕШНОГО СБОРА ОЧЕРЕДИ ===
                     st.session_state.ws_bg_tasks_queue = queue
                     st.session_state.auto_current_index = 0
                     st.session_state.ws_automode_active = True
                     st.session_state.ws_waiting_for_analysis = True
+                    st.session_state.start_analysis_flag = True
                     
                     first_task = queue[0]
                     f_source = "Релевантная страница на вашем сайте" if first_task.get('url') and first_task['url'] != 'manual' else "Без страницы"
@@ -5471,9 +5468,11 @@ with tab_wholesale_main:
                         'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                         'settings_region': st.session_state.get('ws_settings_region', 'Москва')
                     }
-                    st.session_state.start_analysis_flag = True
-                    st.session_state.pop('analysis_done', None); st.session_state.pop('analysis_results', None)
-                    st.rerun()
+                    st.session_state.pop('analysis_done', None)
+                    st.session_state.pop('analysis_results', None)
+                    st.rerun() # Теперь обновляем страницу, когда все данные подготовлены
+                else:
+                    st.error("❌ Очередь пуста! Проверьте введенные данные.")
         else:
             q_len = len(st.session_state.get('ws_bg_tasks_queue', []))
             curr = st.session_state.get('auto_current_index', 0)
@@ -6910,6 +6909,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
