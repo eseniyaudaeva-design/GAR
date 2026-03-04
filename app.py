@@ -5437,8 +5437,7 @@ with tab_wholesale_main:
                 st.session_state.safe_use_textru = st.session_state.get('use_textru_bulk', False)
                 st.session_state.safe_use_ds = st.session_state.get('use_ds_bulk', True)
                 # ----------------------------------------------------------------------
-
-               queue =[]
+                queue =[]
                 if "URL" in gen_mode or "Подфильтровые" in gen_mode:
                     urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
                     with st.spinner("Сбор данных со ссылок (ожидайте)..."):
@@ -6909,6 +6908,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
