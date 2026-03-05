@@ -2951,7 +2951,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 """
         
         resp = client.chat.completions.create(
-            model="deepseek/deepseek-v3.2-speciale",
+            model="deepseek/deepseek-v3.2",
             messages=[{"role": "user", "content": prompt}],
             temperature=1.0 
         )
@@ -7077,6 +7077,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
