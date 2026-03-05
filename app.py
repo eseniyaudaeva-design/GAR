@@ -2870,7 +2870,6 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
     from openai import OpenAI
     from datetime import date, timedelta, datetime
 
-    # 1. Оценки: среднее 4.7+, одна 3.5 обязательна
     def get_balanced_ratings(n):
         target_avg = random.uniform(4.75, 4.98)
         ratings = [3.5]
@@ -2887,9 +2886,8 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 
     ratings = get_balanced_ratings(target_count)
 
-    # 2. Динамические даты
-    start_dt = date(2022, 1, 1)
-    end_dt = date.today()
+    start_dt = date(2026, 1, 1)
+    end_dt = date(2026, 2, 10)
     delta_days = (end_dt - start_dt).days
     raw_dates = sorted([(start_dt + timedelta(days=random.randint(0, delta_days))).strftime("%d.%m.%Y") for _ in range(target_count)], 
                        key=lambda x: datetime.strptime(x, "%d.%m.%Y"), reverse=True)
@@ -2903,41 +2901,39 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
     
     try:
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
+        
         prompt = f"""Ты — мастер имитации живых отзывов.
 Тема: "{h2_header}". 
-Твоя задача: написать {target_count} отзывов, которые абсолютно НЕ выглядят как работа ИИ. 
+Твоя задача: написать {target_count} отзывов. 
 
 ГЛАВНАЯ ЗАДАЧА — УНИКАЛЬНОСТЬ И РАЗРЫВ ШАБЛОНОВ: 
-Все отзывы пишут кардинально разные люди. 
-- Избегай стандартных нейросетевых конструкций вроде "В целом доволен", "Рекомендую", "Сетка отличная", "Спасибо продавцу".
-- Меняй длину: один отзыв супер-короткий (2-3 слова), другой длинный и эмоциональный, третий — сухой факт.
-- Меняй начало: не начинай всегда с "Купил...", "Заказывал...". Начинай с "Искали месяц...", "Ну слушайте...", "Менеджер Алексей спас...", или сразу переходи к делу без вступлений.
-- Ошибки должны быть хаотичными и не повторяться. 
+Все отзывы пишут разные люди. Избегай стандартных фраз ("В целом доволен", "Рекомендую"). Меняй длину отзывов и стиль начала предложений. Ошибки должны быть хаотичными.
 
 СПИСОК АВТОРОВ:
 {nl.join(authors_listing)}
 
 КРИТИЧЕСКИЕ ПРАВИЛА:
-1. ЖЕСТКОЕ ПРАВИЛО ДЛЯ ОЦЕНКИ 3.5 И НИЖЕ 5.0:
-   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ругать саму компанию, наш склад, наших логистов или производство.
-   - Проблема должна быть 100% независимой от нас (жесткий форс-мажор, непогода, дикий снегопад, фура сторонней ТК сломалась в пути, сам клиент ошибся адресом).
-   - ОБЯЗАТЕЛЬНО укажи, что НАШИ менеджеры — абсолютные молодцы, всегда были на связи, помогали и разрулили чужую ошибку. 
-   - Сам товар — идеальный, клиент в итоге очень доволен покупкой, но оценку чуть снизил чисто за этот внешний казус и потраченные нервы.
-2. ПОЛ АВТОРА: Строго соблюдай род глаголов (женщина — "заказывала", мужчина — "заказывал").
-3. ЗАПРЕТ НА АНГЛИЙСКИЙ: Исключительно кириллица.
-4. ЗАПРЕТ НА ГОРОДА/ГЕО: Никаких упоминаний городов. Игнорируй любые города в LSI.
-5. СМАЙЛЫ: ТОЛЬКО палец вверх (👍) и ОК (👌). Никаких галочек и прочих эмодзи. Ставь хаотично.
-6. ТИРЕ: Только короткий минус "-". Запрет на длинное "—".
-7. LSI И СКЛОНЕНИЯ: Список: {", ".join(lsi_words[:20])}. Склоняй максимально естественно и выделяй **жирным**.
+1. ПРАВИЛО ДЛЯ ОЦЕНКИ 3.5 И НИЖЕ 5.0:
+   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ругать компанию, склад или логистику.
+   - Проблема 100% независимая от нас (форс-мажор, непогода, фура сторонней ТК сломалась).
+   - ОБЯЗАТЕЛЬНО укажи, что НАШИ менеджеры — молодцы, были на связи и спасли ситуацию. 
+   - Клиент товаром доволен, оценку снизил чисто за внешний казус.
+2. ЗАПРЕТ НА АНГЛИЙСКИЙ: Исключительно кириллица.
+3. ЗАПРЕТ НА ГОРОДА/ГЕО: Никаких упоминаний городов. Игнорируй любые города в LSI.
+4. СМАЙЛЫ: ТОЛЬКО 👍 и 👌. Ставь хаотично. Никаких галочек.
+5. ТИРЕ: Только короткий минус "-".
+6. LSI И HTML-ТЕГИ: Список: {", ".join(lsi_words[:20])}. 
+   - Склоняй их естественно.
+   - ВАЖНО: Выделяй LSI-слова СТРОГО HTML-тегом <b> (например: <b>стальная труба</b>). Запрещено использовать звездочки (**) для выделения!
 
 ВЕРНИ СТРОГО JSON МАССИВ:
-[{{"Имя": "...", "Дата": "...", "Оценка": ..., "Текст": "..."}}]
+[{{ "Имя": "...", "Дата": "...", "Оценка": ..., "Текст": "..." }}]
 (Даты используй из списка: {", ".join(raw_dates)})
 """
         resp = client.chat.completions.create(
             model="deepseek/deepseek-v3.2",
             messages=[{"role": "user", "content": prompt}],
-            temperature=1.15 # Немного повысил температуру для еще большей вариативности стилей
+            temperature=1.15
         )
         content = re.sub(r'```json\s*|```', '', resp.choices[0].message.content).strip()
         return json.loads(content)
@@ -5256,14 +5252,17 @@ with tab_wholesale_main:
                         if isinstance(reviews_json, list) and len(reviews_json) > 0:
                             st.write(f"### 📋 Предпросмотр отзывов ({len(reviews_json)} шт.)")
                             
+                            review_sources = ["Яндекс Карты", "Google Карты", "2ГИС", "Flamp", "Blizko"]
+                            
                             for i, item in enumerate(reviews_json):
                                 r_name = item.get('Имя', 'Клиент')
                                 r_date = item.get('Дата', '')
                                 r_rating = float(item.get('Оценка', 5.0))
                                 r_text_raw = item.get('Текст', '')
+                                r_source = random.choice(review_sources)
                                 
-                                # Превращаем **слово** в <strong> для подсветки
-                                r_text_html = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(r_text_raw))
+                                # Превращаем **слово** в <b>слово</b> (перестраховка, если ИИ ошибся)
+                                r_text_html = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', str(r_text_raw))
                                 
                                 # ГЕНЕРАЦИЯ ЗВЕЗД (HTML)
                                 full_stars = int(r_rating)
@@ -5272,13 +5271,13 @@ with tab_wholesale_main:
                                 if has_half: stars_html += '<span class="star-gold">½</span>'
                                 stars_html += '<span class="star-gray">' + '☆' * (5 - full_stars - has_half) + '</span>'
 
-                                # ВЫВОД КАРТОЧКИ
+                                # ВЫВОД КАРТОЧКИ В ПРОЦЕССЕ ГЕНЕРАЦИИ
                                 st.markdown(f'''
                                     <div class="review-card">
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             <div>
                                                 <div class="author-name">{r_name}</div>
-                                                <div class="review-date">📅 {r_date}</div>
+                                                <div class="review-date">📅 {r_date} | 📍 {r_source}</div>
                                             </div>
                                             <div style="text-align: right;">
                                                 <div class="star-gold">{stars_html}</div>
@@ -5289,7 +5288,7 @@ with tab_wholesale_main:
                                     </div>
                                 ''', unsafe_allow_html=True)
 
-                                # СОХРАНЕНИЕ С КЛЮЧАМИ ПОД ТВОЙ ФИЛЬТР
+                                # СОХРАНЕНИЕ ДЛЯ ЭКСПОРТА В EXCEL
                                 if 'ws_reviews_export_data' not in st.session_state:
                                     st.session_state.ws_reviews_export_data = []
                                     
@@ -5297,9 +5296,10 @@ with tab_wholesale_main:
                                     'Page URL': current_task['url'],
                                     'Product Name': h2_header,
                                     'Имя': r_name,
+                                    'Источник': r_source,
                                     'Оценка': r_rating,
                                     'Дата': r_date,
-                                    'Отзыв': r_text_raw
+                                    'Отзыв': r_text_html
                                 })
                         else:
                             st.error(f"Генерация для '{h2_header}' вернула пустой список или ошибку.")
@@ -5773,8 +5773,9 @@ with tab_wholesale_main:
                 df_rev_export.to_excel(writer, sheet_name='Отзывы', index=False)
                 w_rev = writer.sheets['Отзывы']
                 w_rev.set_column('A:B', 30)
-                w_rev.set_column('C:D', 20)  # Сюда попадут "Имя" и "Дата"
-                w_rev.set_column('E:E', 80)  # Сюда попадет сам "Отзыв"
+                w_rev.set_column('C:D', 18)  # Имя и Источник
+                w_rev.set_column('E:F', 12)  # Оценка и Дата
+                w_rev.set_column('G:G', 80)  # Отзыв
 
         col_dl, col_cl = st.columns([2, 1])
         with col_dl:
@@ -5861,11 +5862,18 @@ with tab_wholesale_main:
                 with tabs_v[2]:
                     st.markdown("### Сгенерированные отзывы:")
                     if 'ws_reviews_export_data' in st.session_state and st.session_state.ws_reviews_export_data:
-                        # Ищем отзывы, которые относятся только к выбранному в селекторе товару (sel_p)
                         current_reviews = [r for r in st.session_state.ws_reviews_export_data if r['Product Name'] == sel_p]
                         if current_reviews:
                             for rev in current_reviews:
-                                st.markdown(f"**{rev.get('Имя', 'Аноним')}** 🗓️ *{rev.get('Дата', '')}*")
+                                r_rating = rev.get('Оценка', 5.0)
+                                full_stars = int(r_rating)
+                                has_half = 1 if r_rating % 1 != 0 else 0
+                                stars_html = '<span style="color: #eab308; font-size: 1.2rem;">' + '★' * full_stars + '</span>'
+                                if has_half: stars_html += '<span style="color: #eab308; font-size: 1.2rem;">½</span>'
+                                stars_html += '<span style="color: #d1d5db; font-size: 1.2rem;">' + '☆' * (5 - full_stars - has_half) + '</span>'
+
+                                # Отрисовка Имени, Источника, Звезд и Оценки
+                                st.markdown(f"**{rev.get('Имя', 'Аноним')}** 🗓️ *{rev.get('Дата', '')}* | 📍 *{rev.get('Источник', 'Яндекс Карты')}* | {stars_html} **{r_rating}**", unsafe_allow_html=True)
                                 st.markdown(f"<div style='padding:10px; border-left: 3px solid #ccc; margin-bottom: 20px;'>{rev.get('Отзыв', '')}</div>", unsafe_allow_html=True)
                         else:
                             st.info("Для этого товара нет отзывов.")
@@ -7038,54 +7046,3 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
