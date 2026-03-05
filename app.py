@@ -2886,9 +2886,12 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 
     ratings = get_balanced_ratings(target_count)
 
-    start_dt = date(2026, 1, 1)
-    end_dt = date(2026, 2, 10)
+    # 2. Динамические даты с 1 января 2020 года до текущего дня
+    start_dt = date(2020, 1, 1)
+    end_dt = date.today()
     delta_days = (end_dt - start_dt).days
+    
+    # Генерируем даты и сортируем их от новых к старым
     raw_dates = sorted([(start_dt + timedelta(days=random.randint(0, delta_days))).strftime("%d.%m.%Y") for _ in range(target_count)], 
                        key=lambda x: datetime.strptime(x, "%d.%m.%Y"), reverse=True)
 
@@ -7046,3 +7049,4 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
