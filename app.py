@@ -2954,19 +2954,25 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
             temperature=1.0 
         )
         
-        # Получаем ответ
+        # 1. Забираем сырой ответ
         raw_content = resp.choices[0].message.content
         
-        # Защита от NoneType
+        # 2. Защита от NoneType: если основной контент пустой, ищем в reasoning_content (фишка DeepSeek)
         if raw_content is None:
-            raise ValueError("API DeepSeek вернуло пустой ответ (None). Сервер перегружен или сбросил соединение.")
-            
-        # Если ответ есть, чистим его
-        content = re.sub(r'```json\s*|```', '', raw_content).strip()
-        return json.loads(content)
+            if hasattr(resp.choices[0].message, 'reasoning_content') and resp.choices[0].message.reasoning_content:
+                raw_content = resp.choices[0].message.reasoning_content
+            else:
+                raise ValueError(f"API вернуло пустой ответ (None). Возможен перегруз сервера.")
+        
+        # 3. Чистим текст от мусора и тегов (включая <think> от DeepSeek Reasoner)
+        cleaned_content = re.sub(r'<think>.*?</think>', '', raw_content, flags=re.DOTALL)
+        cleaned_content = re.sub(r'```json\s*|```', '', cleaned_content).strip()
+        
+        return json.loads(cleaned_content)
         
     except Exception as e:
-        return [{"Имя": "Ошибка", "Текст": str(e), "Оценка": 5.0, "Дата": date.today().strftime("%d.%m.%Y")}]
+        # Теперь скрипт не упадет, а аккуратно вернет ошибку текстом в твой итоговый файл
+        return [{"Имя": "Ошибка генерации", "Текст": f"Сбой API: {str(e)}", "Оценка": 5.0, "Дата": date.today().strftime("%d.%m.%Y")}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
@@ -7074,6 +7080,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
