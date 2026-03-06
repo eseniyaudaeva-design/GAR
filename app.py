@@ -2919,18 +2919,32 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
     gender_pool = ['Мужской'] * male_count + ['Женский'] * female_count
     random.shuffle(gender_pool)
 
-    # --- 5. БАЗОВЫЕ СЮЖЕТЫ ---
+    # --- 5. ЖЕСТКОЕ РАСПРЕДЕЛЕНИЕ СТИЛЕЙ (50/30/20 и 50/50) ---
+    
+    # Регистр (50% с маленькой, 50% с большой)
+    lower_count = int(target_count * 0.5)
+    upper_count = target_count - lower_count
+    case_pool = ['lower'] * lower_count + ['upper'] * upper_count
+    random.shuffle(case_pool)
+
+    # Ошибки (50% сильные, 30% средние, 20% грамотные)
+    heavy_count = int(target_count * 0.5)
+    moderate_count = int(target_count * 0.3)
+    clean_count = target_count - heavy_count - moderate_count
+    grammar_pool = ['heavy'] * heavy_count + ['moderate'] * moderate_count + ['clean'] * clean_count
+    random.shuffle(grammar_pool)
+
+    # --- 6. БАЗОВЫЕ СЮЖЕТЫ ---
     plot_types = [
-        "Стройка/Дача: Упомяни конкретную бытовую постройку (забор, крыша, сарай, теплица, навес). Не описывай сам товар, опиши, КУДА ты его применил.",
+        "Стройка/Дача: Упомяни конкретную бытовую постройку (забор, крыша, сарай, теплица).",
         "Экономия: Искал, где дешевле. Напиши, что везде цены космос, а тут вышло терпимо по деньгам.",
         "Помощь: Не особо разбирался. Ребята (или менеджер) по телефону помогли посчитать, привезли, всё подошло."
     ]
 
     authors_listing = []
     
-    # --- 6. ИНДЕКСЫ ДЛЯ РАЗНООБРАЗИЯ ---
+    # Индексы для единичных фишек
     indices = list(range(target_count))
-    perfect_index = random.choice(indices) if indices else 0 
     ultra_short_index = random.choice(indices) if indices else 0
     emoji_index = random.choice(indices) if indices else 0
 
@@ -2942,7 +2956,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         gender_instruction = "Строго ЖЕНСКИЙ пол (глаголы: заказала, привезла)" if assigned_gender == 'Женский' else "Строго МУЖСКОЙ пол (глаголы: заказал, привез)"
 
         base_plot = random.choice(plot_types)
-        plot_instruction = f"СЮЖЕТ: {base_plot} Контекст товара '{h2_header}'. Пиши от лица простого человека."
+        plot_instruction = f"СЮЖЕТ: {base_plot} Контекст товара '{h2_header}'."
         
         if ratings[i] == 5.0:
              plot_instruction += " Оценка 5.0. Всё прошло гладко."
@@ -2953,27 +2967,21 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 
         style_inst = "СТРОГИЙ ЗАПРЕТ: Не используй слова полностью ЗАГЛАВНЫМИ буквами (КАПСОМ)."
 
-        # СТИЛИСТИКА И ПУНКТУАЦИЯ
-        if i == perfect_index:
-            style_inst += "\n- ОШИБКА: Текст без орфографических ошибок. Идеальная пунктуация. Начни с заглавной буквы и поставь точку в конце."
+        # Применяем жесткое правило по ошибкам (50/30/20)
+        current_grammar = grammar_pool[i]
+        if current_grammar == 'heavy':
+            style_inst += "\n- ОШИБКИ И ПУНКТУАЦИЯ: Пиши ОЧЕНЬ неграмотно. Сделай 2-3 заметные ошибки (вообщем, нету, ихний, зделал), почти не используй запятые (пропускай их везде). Пунктуация должна быть сломана."
+            if random.random() <= 0.4: style_inst += " Используй сленг: норм, збс, спс."
+        elif current_grammar == 'moderate':
+            style_inst += "\n- ОШИБКИ И ПУНКТУАЦИЯ: Пиши с легкими ошибками. Пропусти 1-2 запятые, сделай одну мелкую опечатку (нет пробела после запятой, опечатка в окончании)."
+        else: # clean
+            style_inst += "\n- ОШИБКИ И ПУНКТУАЦИЯ: Пиши +- грамотно. Без явных опечаток, запятые расставлены в основном верно."
+
+        # Регистр для нейросети (но Python потом все равно перепроверит)
+        if case_pool[i] == 'lower':
+            style_inst += "\n- РЕГИСТР: СТРОГО начни текст с маленькой (строчной) буквы."
         else:
-            # Опечатки (шанс 15%)
-            if random.random() <= 0.15:
-                style_inst += "\n- ОШИБКА: Сделай 1-2 легкие опечатки (вообщем, нету, пойдет без мягкого знака, или пропусти букву)."
-            else:
-                style_inst += "\n- ОШИБКА: Без орфографических ошибок, но текст небрежный."
-            
-            # Естественная, но несовершенная пунктуация
-            punctuation_style = random.choice([
-                "Запятые есть, но расставлены небрежно (можешь пропустить перед 'что' или 'а').",
-                "Пунктуация почти правильная, но с парой лишних или пропущенных запятых.",
-                "Используй запятые, но в паре мест замени их многоточием '...'."
-            ])
-            style_inst += f"\n- ПУНКТУАЦИЯ ВНУТРИ: {punctuation_style}"
-            
-            # Сленг (шанс 25%)
-            if random.random() <= 0.25:
-                style_inst += "\n- СЛЕНГ: Используй слова: норм, збс, четко, спс, пойдет, нормас, мужики."
+            style_inst += "\n- РЕГИСТР: Начни текст с заглавной буквы."
 
         # Длина текста
         if i == ultra_short_index:
@@ -3003,7 +3011,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
     try:
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
         
-        prompt = f"""Ты — мужик на стройке/даче, который печатает отзыв со смартфона. Текущий товар: "{h2_header}".
+        prompt = f"""Ты — обычный человек с дачи/стройки, который пишет отзыв со смартфона. Текущий товар: "{h2_header}".
 Твоя задача — написать бытовые, разговорные отзывы. Не пиши литературно.
 
 КАК ПИСАТЬ (КРИТИЧЕСКИ ВАЖНО):
@@ -3029,26 +3037,28 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         content = re.sub(r'```json\s*|```', '', resp.choices[0].message.content).strip()
         reviews = json.loads(content)
         
-        # === ДОЗИРОВАННАЯ ПРОГРАММНАЯ ПОСТОБРАБОТКА ===
+        # === ЖЕЛЕЗНЫЙ ПОСТ-ПРОЦЕССИНГ (ИСПОЛНЕНИЕ РАСПРЕДЕЛЕНИЯ ПРИНУДИТЕЛЬНО) ===
         for i in range(len(reviews)):
             if i < len(raw_dates):
                 reviews[i]["Дата"] = raw_dates[i]
             else:
                 reviews[i]["Дата"] = date.today().strftime("%d.%m.%Y")
                 
-            if i != perfect_index:
-                text = reviews[i].get("Текст", "")
-                if text:
-                    # 1. 40% отзывов начинаются с маленькой буквы (остальные 60% нормально с большой)
-                    if random.random() <= 0.40:
-                        text = text[0].lower() + text[1:]
-                    
-                    # 2. 50% отзывов без знака препинания в самом конце (у остальных останется точка или воскл. знак)
-                    if random.random() <= 0.50:
+            text = reviews[i].get("Текст", "")
+            if text:
+                # 1. 50% отзывов принудительно делаем с маленькой буквы (в соответствии с case_pool)
+                if case_pool[i] == 'lower':
+                    text = text[0].lower() + text[1:]
+                elif case_pool[i] == 'upper':
+                    text = text[0].upper() + text[1:]
+                
+                # 2. Убираем точку в конце у большинства отзывов с ошибками (heavy и moderate)
+                if grammar_pool[i] in ['heavy', 'moderate']:
+                    if random.random() <= 0.85: # 85% шанс для "неграмотных" остаться без точки в конце
                         while text and text[-1] in ['.', '!', '?', ',', ';']:
                             text = text[:-1]
                             
-                    reviews[i]["Текст"] = text
+                reviews[i]["Текст"] = text
                     
         return reviews
     except Exception as e:
@@ -7159,6 +7169,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
