@@ -2928,7 +2928,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 
     authors_listing = []
     
-    # --- 6. НЕЗАВИСИМЫЕ ИНДЕКСЫ ДЛЯ УНИКАЛЬНЫХ СТИЛЕЙ ---
+    # --- 6. НЕЗАВИСИМЫЕ ИНДЕКСЫ ---
     indices = list(range(target_count))
     perfect_index = random.choice(indices) if indices else 0 
     ultra_short_index = random.choice(indices) if indices else 0
@@ -2956,20 +2956,36 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 
         # Стилистика, опечатки и пунктуация
         if i == perfect_index:
-            style_inst += "\n- ОШИБКА: Текст без орфографических ошибок. Идеальная пунктуация."
+            style_inst += "\n- ОШИБКА: Текст без орфографических ошибок. Идеальная пунктуация. Начни с заглавной буквы и поставь точку в конце."
         else:
+            # Опечатки
             if random.random() <= 0.05:
                 style_inst += "\n- ОШИБКА: Допусти 1-2 реалистичные опечатки (например, 'вообщем', 'как-то' без дефиса, ИЛИ 'ш' вместо 'щ')."
             else:
                 style_inst += "\n- ОШИБКА: Без орфографических ошибок."
-                
+            
+            # Внутренняя пунктуация
             punctuation_style = random.choice([
-                "Идеальная пунктуация.",
+                "Идеальная пунктуация внутри предложений.",
                 "Запятые есть, но их маловато (некоторые пропущены).",
                 "Вместо некоторых запятых или точек ставит многоточие '...'",
                 "Запятые стоят неправильно (иногда не там, где нужно)."
             ])
-            style_inst += f"\n- ПУНКТУАЦИЯ: {punctuation_style}"
+            style_inst += f"\n- ПУНКТУАЦИЯ ВНУТРИ: {punctuation_style}"
+            
+            # === ПРАВИЛА: НАЧАЛО, КОНЕЦ И ЖАРГОН ===
+            if random.random() <= 0.30:  # ИЗМЕНЕНО НА 30%
+                style_inst += "\n- ФОРМАТ: СТРОГО начни весь отзыв с маленькой (строчной) буквы."
+            else:
+                style_inst += "\n- ФОРМАТ: Начни отзыв с заглавной буквы."
+                
+            if random.random() <= 0.80:
+                style_inst += "\n- ФОРМАТ КОНЦА: СТРОГО НЕ ставь точку, восклицательный знак или любой другой знак в самом конце текста."
+            else:
+                style_inst += "\n- ФОРМАТ КОНЦА: Поставь точку в конце отзыва."
+                
+            if random.random() <= 0.15:
+                style_inst += "\n- СЛЕНГ: Используй популярный интернет-жаргон и сокращения (например: норм, збс, четко, спс)."
 
         # Длина текста (независимо от эмодзи)
         if i == ultra_short_index:
@@ -3027,12 +3043,19 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         content = re.sub(r'```json\s*|```', '', resp.choices[0].message.content).strip()
         reviews = json.loads(content)
         
-        # Присваиваем даты
+        # Присваиваем даты и дополнительно очищаем точки в конце программно
         for i in range(len(reviews)):
             if i < len(raw_dates):
                 reviews[i]["Дата"] = raw_dates[i]
             else:
                 reviews[i]["Дата"] = date.today().strftime("%d.%m.%Y")
+                
+            # Программный фикс: если нейросеть проигнорировала правило про точку в конце (80% случаев), 
+            # мы убираем ее принудительно через Python
+            if i != perfect_index and random.random() <= 0.80:
+                text = reviews[i].get("Текст", "")
+                if text and text[-1] in ['.', '!', '?']:
+                    reviews[i]["Текст"] = text[:-1]
                 
         return reviews
     except Exception as e:
@@ -7143,6 +7166,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
