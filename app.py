@@ -5162,42 +5162,43 @@ with tab_wholesale_main:
                             if u: tags_block_2.append({"url": u, "name": n, "kw": kw})
                             else: unmatched_kws.append(kw)
                     else: unmatched_kws.extend(tags_2_cands)
-
-# =================================================================
-                    # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ ОСТАТКОВ (ТЕКСТ, FAQ, ОТЗЫВЫ)
                     # =================================================================
-                    # Собираем все неиспользованные слова в единый котел
-                    all_initial_lsi = list(set(cat_commercial + cat_general + unmatched_kws))
+                    # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ ОСТАТКОВ (ИЗОЛИРОВАННЫЕ ПОТОКИ)
+                    # =================================================================
                     import random
-                    random.shuffle(all_initial_lsi)
                     
-                    faq_cands = st.session_state.get('categorized_info',[]) # Запас для FAQ
-                    review_cands =[]
+                    # 1. Формируем "Чистый пул" (Только коммерция и остатки товаров/услуг).
+                    # Сюда НЕ ПОПАДАЕТ корпоративный SEO-мусор из cat_general!
+                    safe_cands = list(set(cat_commercial + unmatched_kws))
+                    random.shuffle(safe_cands)
                     
-                    leftover_lsi = all_initial_lsi.copy()
-            
-                    # Отщипываем слова для FAQ
+                    faq_cands = st.session_state.get('categorized_info', []) # Запас для FAQ
+                    review_cands = []
+                    
+                    # Отщипываем слова для FAQ (только из чистых!)
                     if global_faq:
-                        chunk_size = min(7, len(leftover_lsi))
-                        faq_cands.extend(leftover_lsi[:chunk_size])
-                        leftover_lsi = leftover_lsi[chunk_size:]
-                        
-                    # Отщипываем слова для Отзывов
+                        chunk_size = min(7, len(safe_cands))
+                        faq_cands.extend(safe_cands[:chunk_size])
+                        safe_cands = safe_cands[chunk_size:]
+            
+                    # Отщипываем слова для Отзывов (только из чистых!)
                     if st.session_state.get('ws_global_reviews', True):
-                        chunk_size = min(7, len(leftover_lsi))
-                        review_cands.extend(leftover_lsi[:chunk_size])
-                        leftover_lsi = leftover_lsi[chunk_size:]
+                        chunk_size = min(7, len(safe_cands))
+                        review_cands.extend(safe_cands[:chunk_size])
+                        safe_cands = safe_cands[chunk_size:]
             
-                    # Весь остаток отправляем в основной текст
-                    final_text_seo_list = leftover_lsi
+                    # 2. Формируем пул для Главного текста.
+                    # Сюда идут остатки чистых слов + ВЕСЬ cat_general (корпоративная вода).
+                    # В SEO-статье нейросеть нормально переварит слова типа "проект", "успешно", "кабинет".
+                    final_text_seo_list = list(set(safe_cands + cat_general))
+                    random.shuffle(final_text_seo_list)
             
-                    # Правильный подсчет вообще всех собранных слов
+                    # Правильный подсчет вообще всех собранных слов для отчета
                     total_collected = len(cat_commercial) + len(cat_general) + len(structure_keywords) + len(cat_dimensions) + len(cat_geo)
-            
-                    with st.expander(f"📊 ОТЧЕТ: Распределение слов (Всего собрано: {total_collected} шт.)", expanded=True): 
-                        st.write(f"**В Текст ({len(final_text_seo_list)} шт)**")
+                    with st.expander(f"📊 ОТЧЕТ: Распределение слов (Всего собрано: {total_collected} шт.)", expanded=True):
+                        st.write(f"**В Текст ({len(final_text_seo_list)} шт)** (Включая общую семантику)")
                         st.write(f"**В FAQ ({len(faq_cands)} шт)**")
-                        st.write(f"**В Отзывы ({len(review_cands)} шт)**")
+                        st.write(f"**В Отзывы ({len(review_cands)} шт)** (Только коммерция и товары)")
                         st.write(f"**В Плитку тегов ({len(tags_block_1) + len(tags_block_2)} шт)**")
                         st.write(f"**В Промо-блок ({len(promo_block)} шт)**")
                         st.write(f"**В Таблицу (ГОСТ/Размеры) ({len(cat_dimensions)} шт)**")
@@ -7170,6 +7171,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
