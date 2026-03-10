@@ -2484,12 +2484,13 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     
     client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     
-    # --- ЗАЩИТА 1: Фильтруем мусор до отправки в нейросеть ---
-    # Убираем слова короче 3 букв и берем только первые 15 слов, чтобы не перегрузить текст
+    # ЗАЩИТА: берем только нормальные слова (длиннее 2 букв) и не больше 15 штук.
+    # Это спасет текст, если парсер натаскал 40+ мусорных слов с сайта.
     clean_seo = [w for w in (seo_words or []) if len(w) > 2][:15]
     seo_string = ", ".join(clean_seo) if clean_seo else ""
     
     if seo_string:
+        # Тройные скобки {{{seo_string}}} выдадут нейросети текст формата: {слово1, слово2, слово3}
         seo_instruction_block = f"""
 --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
 Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме: {{{seo_string}}}
@@ -2498,13 +2499,12 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем 5 блокам.
 2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b>..."
 3. СТРОГИЙ ЗАПРЕТ: Используй тег <b> ТОЛЬКО для этих SEO-слов. Не выделяй жирным ничего другого.
-4. ЕСТЕСТВЕННОСТЬ И ЗАЩИТА: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь. Если в списке попался мусор, элементы интерфейса сайта (войти, корзина, кнопка) или куски кода — ПРОСТО ИГНОРИРУЙ ИХ.
+4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь. Если слово не вписывается по смыслу (мусор, элементы меню) — просто пропусти его.
 -------------------------------------------
 """
     else:
         seo_instruction_block = "SEO-слов нет. Пиши текст без искусственного внедрения ключей."
 
-    # --- ТВОЯ СИСТЕМНАЯ РОЛЬ (БЕЗ ИЗМЕНЕНИЙ) ---
     system_instruction = (
         "Ты — профессиональный технический копирайтер и верстальщик. "
         "Твоя цель — писать глубокий, технически полезный текст для профессионалов, насыщенный фактами и цифрами. "
@@ -2522,7 +2522,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 
     final_h2_text = forced_header if forced_header else tag_name
 
-    # --- ТВОЙ ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМПТ (БЕЗ ИЗМЕНЕНИЙ СТРУКТУРЫ) ---
     user_prompt = f"""
 ИСХОДНЫЕ ДАННЫЕ:
 Название товара: "{tag_name}"
@@ -2575,7 +2574,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         raw_content = response.choices[0].message.content
         if not raw_content: return ["Error: Пустой ответ от API"] * num_blocks
 
-        # --- ЗАЩИТА 2: Очистка от маркдауна и контроль количества блоков ---
         content = re.sub(r'^```[a-zA-Z]*\s*', '', raw_content.strip())
         content = re.sub(r'\s*```$', '', content.strip())
         blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
@@ -2585,7 +2583,6 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         cleaned_blocks = [b.replace("**", "") for b in blocks if b]
         while len(cleaned_blocks) < num_blocks: cleaned_blocks.append("")
             
-        # Гарантируем правильный H2 в первом блоке
         first_block = re.sub(r'^<h[23][^>]*>.*?</h[23]>', '', cleaned_blocks[0], flags=re.IGNORECASE).strip()
         cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{first_block}"
 
@@ -7300,6 +7297,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
