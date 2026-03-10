@@ -5694,6 +5694,23 @@ with tab_wholesale_main:
         is_running = st.session_state.get('ws_automode_active', False)
         if not is_running:
             if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ И ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
+
+                # --- БЛОК ЛОГИРОВАНИЯ ---
+                st.markdown("### ⚙️ Процесс работы...")
+                
+                # Создаем пустые контейнеры для каждого этапа
+                status_text = st.empty()
+                status_faq = st.empty()
+                status_review = st.empty()
+                
+                # Задаем начальное состояние (пока 0)
+                # Предполагается, что переменные num_texts, num_faqs, num_reviews у тебя уже заданы из инпутов
+                status_text.info(f"📝 Тексты: 0 / {num_texts}")
+                status_faq.info(f"❓ FAQ: 0 / {num_faqs}")
+                status_review.info(f"💬 Отзывы: 0 / {num_reviews}")
+                
+                # Опционально: общий прогресс-бар
+                progress_bar = st.progress(0)
                 
                 # --- ЗАМОРАЖИВАЕМ ВСЕ НАСТРОЙКИ, КЛЮЧИ И ГАЛОЧКИ (СПАСЕНИЕ ОТ СБРОСА) ---
                 st.session_state.safe_ws_global_text = st.session_state.get('ws_global_text', True)
@@ -7203,6 +7220,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
