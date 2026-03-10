@@ -764,9 +764,16 @@ def classify_semantics_with_api(words_list, yandex_key):
             categories['dimensions'].add(word_lower); continue
             
         # === 3. ГЕО (ЖЕЛЕЗОБЕТОННАЯ ПРОВЕРКА) ===
-        # Вырезаем дефисы из самого слова перед проверкой
         word_clean = word_lower.replace('-', '').replace(' ', '')
         lemma_clean = lemma.replace('-', '').replace(' ', '')
+        
+        # --- ЛОВУШКА ДЛЯ ПЕТЕРБУРГА ---
+        if "петербург" in word_lower:
+            st.error(f"🛑 ОТЛАДКА: Из текста пришло: '{word_clean}'. В словаре нашлось: {[g for g in GEO_SET_CLEAN if 'петербург' in g]}")
+        # ------------------------------
+        
+        if word_clean in GEO_SET_CLEAN or lemma_clean in GEO_SET_CLEAN:
+            categories['geo'].add(word_lower); continue
         
         if word_clean in GEO_SET_CLEAN or lemma_clean in GEO_SET_CLEAN:
             categories['geo'].add(word_lower); continue
@@ -7155,6 +7162,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
