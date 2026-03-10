@@ -6879,7 +6879,8 @@ with tab_faq_gen:
         
         # Функция для безопасной синхронизации ключа между вкладками
         def sync_faq_api_key():
-            st.session_state['SUPER_GLOBAL_KEY'] = st.session_state['faq_api_key_input_unique']
+            if 'faq_api_key_input_unique' in st.session_state:
+                st.session_state['SUPER_GLOBAL_KEY'] = st.session_state['faq_api_key_input_unique']
 
         # === ПОЛЕ ДЛЯ API КЛЮЧА НА 6 ВКЛАДКЕ ===
         st.text_input(
@@ -7162,6 +7163,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
