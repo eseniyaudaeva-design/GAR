@@ -44,6 +44,31 @@ import sqlite3
 import json
 import datetime
 
+BACKUP_FILE = "generation_backup.json"
+
+# Инициализируем базовые переменные, если их нет
+if 'all_results' not in st.session_state:
+    st.session_state['all_results'] = []
+if 'tags_queue' not in st.session_state:
+    st.session_state['tags_queue'] = []
+if 'current_tag_index' not in st.session_state:
+    st.session_state['current_tag_index'] = 0
+if 'is_processing_tags' not in st.session_state:
+    st.session_state['is_processing_tags'] = False
+if 'is_paused' not in st.session_state:
+    st.session_state['is_paused'] = False
+
+# Пытаемся загрузить бэкап, если сессия пустая, но файл существует
+if not st.session_state['all_results'] and os.path.exists(BACKUP_FILE):
+    try:
+        with open(BACKUP_FILE, 'r', encoding='utf-8') as f:
+            backup_data = json.load(f)
+            if backup_data:
+                st.session_state['all_results'] = backup_data
+                st.toast("🔄 Восстановлены результаты из предыдущей сессии!")
+    except:
+        pass
+        
 def init_seo_db():
     conn = sqlite3.connect('seo_cache.db', timeout=10)
     c = conn.cursor()
@@ -5649,7 +5674,14 @@ with tab_wholesale_main:
 
             with col_left:
                 st.write("📝 **Ввод данных**")
-                if "Подфильтровые" in gen_mode or "URL" in gen_mode:
+                if "Подфильтровые" in gen_mode:
+                    raw_urls = st.text_area("Родительская ссылка (где лежат теги):", height=140, placeholder="https://site.ru/catalog/trubi/", key="ws_area_urls")
+                    col_b1, col_b2 = st.columns(2)
+                    with col_b1:
+                        st.session_state['ws_batch_size'] = st.number_input("Тегов за проход:", min_value=1, value=3, step=1)
+                    with col_b2:
+                        st.session_state['ws_auto_cont'] = st.checkbox("Авто-переход", value=True, help="Если выключено, конвейер встанет на паузу после пачки")
+                elif "URL" in gen_mode:
                     raw_urls = st.text_area("Список ссылок:", height=215, placeholder="https://...", key="ws_area_urls")
                 else:
                     # H1 и H2 теперь компактно в два столбика
@@ -6458,59 +6490,125 @@ with tab_lsi_gen:
         raw_h1_input = None; raw_h2_input = None
 
     # КНОПКА ЗАГРУЗКИ В ОЧЕРЕДЬ
-    if st.button("📥 Загрузить задачи в очередь", use_container_width=True):
-        st.session_state.bg_tasks_queue = [] # Очищаем старую очередь при новой загрузке
-        st.session_state.bg_results = []
-        st.session_state.bg_is_running = False
-        
-        # ЛОГИКА ЗАГРУЗКИ (РУЧНАЯ)
-        if "Вручную" in load_mode:
-            lines_h1 = [l.strip() for l in raw_h1_input.split('\n') if l.strip()]
-            lines_h2 = [l.strip() for l in raw_h2_input.split('\n') if l.strip()]
+        if st.button("📥 Загрузить задачи в очередь", use_container_width=True):
+            st.session_state.bg_tasks_queue = [] # Очищаем старую очередь при новой загрузке
+            st.session_state.bg_results = []
+            st.session_state.bg_is_running = False
             
-            if len(lines_h1) != len(lines_h2):
-                st.error(f"❌ Ошибка: Несовпадение строк! H1: {len(lines_h1)}, H2: {len(lines_h2)}")
-            elif not lines_h1:
-                st.error("❌ Списки пусты!")
-            else:
-                for h1, h2 in zip(lines_h1, lines_h2):
-                    st.session_state.bg_tasks_queue.append({
-                        'h1': h1,
-                        'h2': h2,
-                        'source_url': 'Manual',
-                        'lsi_added': []
-                    })
-                st.success(f"✅ Загружено задач вручную: {len(lines_h1)}")
-                time.sleep(1)
-                st.rerun()
-
-        # ЛОГИКА ЗАГРУЗКИ (ССЫЛКИ)
-        else:
-            urls_list = [u.strip() for u in raw_urls_input.split('\n') if u.strip()]
-            if not urls_list:
-                st.error("❌ Список ссылок пуст!")
-            else:
-                progress_bar = st.progress(0)
-                status_box = st.status("🔗 Парсинг ссылок...", expanded=True)
-                valid_count = 0
-                for i, url in enumerate(urls_list):
-                    status_box.write(f"Сканирую: {url}...")
-                    h1_found, h2_found, err = scrape_h1_h2_from_url(url)
-                    if h1_found:
+            # 1. ЛОГИКА ЗАГРУЗКИ (РУЧНАЯ)
+            if "Вручную" in load_mode:
+                lines_h1 = [l.strip() for l in raw_h1_input.split('\n') if l.strip()]
+                lines_h2 = [l.strip() for l in raw_h2_input.split('\n') if l.strip()]
+                
+                if len(lines_h1) != len(lines_h2):
+                    st.error(f"❌ Ошибка: Несовпадение строк! H1: {len(lines_h1)}, H2: {len(lines_h2)}")
+                elif not lines_h1:
+                    st.error("❌ Списки пусты!")
+                else:
+                    for h1, h2 in zip(lines_h1, lines_h2):
                         st.session_state.bg_tasks_queue.append({
-                            'h1': h1_found,
-                            'h2': h2_found,
-                            'source_url': url,
+                            'h1': h1,
+                            'h2': h2,
+                            'source_url': 'Manual',
                             'lsi_added': []
                         })
-                        valid_count += 1
-                    else:
-                        status_box.warning(f"⚠️ Сбой {url}: {err}")
-                    progress_bar.progress((i + 1) / len(urls_list))
-                
-                status_box.update(label=f"✅ Готово! Добавлено: {valid_count}", state="complete")
-                time.sleep(1)
-                st.rerun()
+                    st.success(f"✅ Загружено задач вручную: {len(lines_h1)}")
+                    time.sleep(1)
+                    st.rerun()
+
+            # 2. ЛОГИКА ЗАГРУЗКИ (ПОДФИЛЬТРЫ / ТЕГИ)
+            elif "Подфильтр" in load_mode:
+                parent_urls = [u.strip() for u in raw_urls_input.split('\n') if u.strip()]
+                if not parent_urls:
+                    st.error("❌ Список родительских ссылок пуст!")
+                else:
+                    progress_bar = st.progress(0)
+                    status_box = st.status("🔗 Парсинг родительских категорий и сбор тегов...", expanded=True)
+                    valid_count = 0
+                    
+                    for i, p_url in enumerate(parent_urls):
+                        status_box.write(f"Сканирую родителя: {p_url}...")
+                        try:
+                            headers = {'User-Agent': 'Mozilla/5.0'}
+                            resp = requests.get(p_url, headers=headers, proxies={"http": proxy_url, "https": proxy_url}, timeout=15, verify=False)
+                            soup = BeautifulSoup(resp.content, 'html.parser')
+                            
+                            parent_h1_tag = soup.find('h1')
+                            parent_h1 = parent_h1_tag.get_text(strip=True) if parent_h1_tag else "Родительская категория"
+                            
+                            # Чистим и берем базовый текст родителя
+                            for s in soup(['script', 'style', 'nav', 'footer', 'header']): s.decompose()
+                            parent_base_text = soup.body.get_text(separator="\n", strip=True)[:6000] if soup.body else ""
+                            
+                            # Ищем теги
+                            tags_div = soup.find('div', class_=re.compile(r'popular-tags'))
+                            if tags_div:
+                                links = tags_div.find_all('a')
+                                for a in links:
+                                    tag_href = a.get('href')
+                                    tag_text = a.get_text(strip=True)
+                                    if tag_href and tag_text:
+                                        tag_url = urljoin(p_url, tag_href)
+                                        status_box.write(f"  -> Нашел тег: {tag_text}")
+                                        
+                                        # Парсим H2 тега
+                                        try:
+                                            t_resp = requests.get(tag_url, headers=headers, proxies={"http": proxy_url, "https": proxy_url}, timeout=10, verify=False)
+                                            t_soup = BeautifulSoup(t_resp.content, 'html.parser')
+                                            t_h2_tag = t_soup.find('h2')
+                                            t_h2 = t_h2_tag.get_text(strip=True) if t_h2_tag else tag_text
+                                        except:
+                                            t_h2 = tag_text
+                                            
+                                        # Кладем в очередь с меткой подфильтра и базовым текстом
+                                        st.session_state.bg_tasks_queue.append({
+                                            'h1': tag_text,
+                                            'h2': t_h2,
+                                            'source_url': tag_url,
+                                            'lsi_added': [],
+                                            'base_text': parent_base_text,
+                                            'is_subfilter': True,
+                                            'parent_h1': parent_h1
+                                        })
+                                        valid_count += 1
+                            else:
+                                status_box.warning(f"⚠️ Блок popular-tags не найден на {p_url}")
+                        except Exception as e:
+                            status_box.error(f"❌ Сбой родителя {p_url}: {e}")
+                        
+                        progress_bar.progress((i + 1) / len(parent_urls))
+                    
+                    status_box.update(label=f"✅ Готово! Добавлено тегов в очередь: {valid_count}", state="complete")
+                    time.sleep(1)
+                    st.rerun()
+
+            # 3. ЛОГИКА ЗАГРУЗКИ (ОБЫЧНЫЕ ССЫЛКИ)
+            else:
+                urls_list = [u.strip() for u in raw_urls_input.split('\n') if u.strip()]
+                if not urls_list:
+                    st.error("❌ Список ссылок пуст!")
+                else:
+                    progress_bar = st.progress(0)
+                    status_box = st.status("🔗 Парсинг ссылок...", expanded=True)
+                    valid_count = 0
+                    for i, url in enumerate(urls_list):
+                        status_box.write(f"Сканирую: {url}...")
+                        h1_found, h2_found, err = scrape_h1_h2_from_url(url)
+                        if h1_found:
+                            st.session_state.bg_tasks_queue.append({
+                                'h1': h1_found,
+                                'h2': h2_found,
+                                'source_url': url,
+                                'lsi_added': []
+                            })
+                            valid_count += 1
+                        else:
+                            status_box.warning(f"⚠️ Сбой {url}: {err}")
+                        progress_bar.progress((i + 1) / len(urls_list))
+                    
+                    status_box.update(label=f"✅ Готово! Добавлено: {valid_count}", state="complete")
+                    time.sleep(1)
+                    st.rerun()
 
     # --- 3. УПРАВЛЕНИЕ ПРОЦЕССОМ ---
     
@@ -6548,7 +6646,7 @@ with tab_lsi_gen:
                 
                 # Для LSI текстов всегда режим "Без страницы"
                 st.session_state['pending_widget_updates'] = {
-                    'query_input': task['h1'],
+                    'query_input': task.get('parent_h1', task['h1']),
                     'my_page_source_radio': "Без страницы",
                     'my_url_input': "",
                     'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
@@ -7202,6 +7300,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
