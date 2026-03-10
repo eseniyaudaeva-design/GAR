@@ -4052,6 +4052,28 @@ with tab_seo_main:
                     except Exception as e:
                         html_out = f"Error generating: {e}"
                         status_code = "Gen Error"
+                    
+                    # 2. ПРОВЕРКИ (Изолированный блок, не убивающий текст при ошибке)
+                    if status_code == "OK" and html_out:
+                        try:
+                            plain_text = BeautifulSoup(html_out, "html.parser").get_text(separator=" ")
+                            
+                            if st.session_state.get('use_deepseek_check'):
+                                ai_match_res = validate_topic_deepseek(api_key_gen, task['h1'], task['h2'], plain_text)
+                    
+                            if st.session_state.get('use_turgenev') and st.session_state.get('turgenev_api_key', ''):
+                                turgenev_res = check_turgenev_sync(plain_text, st.session_state.get('turgenev_api_key'))
+                                
+                            if st.session_state.get('use_textru') and st.session_state.get('textru_api_key', ''):
+                                uid = send_textru_sync(plain_text, st.session_state.get('textru_api_key'))
+                                if uid:
+                                    textru_uid = uid
+                                    textru_res = "⏳ Отправлено..."
+                                else:
+                                    textru_res = "Ошибка отправки"
+                        except Exception as e:
+                            # Текст выжил! Ошибка только в логах проверок.
+                            turgenev_res = f"Ошибка проверки: {e}"
 
                 # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
                 if 'bg_results' not in st.session_state:
@@ -5420,8 +5442,12 @@ with tab_wholesale_main:
                         # 1. Получаем уникальных авторов (1 аноним + остальные)
                         chosen_authors = get_diverse_authors(rev_count)
                         
-                        # 2. Генерируем отзывы
-                        reviews_json = generate_reviews_deepseek(gemini_api_key, h2_header, review_cands, rev_count, chosen_authors)
+                        # 2. Генерируем отзывы (С ПОДУШКОЙ БЕЗОПАСНОСТИ)
+                        try:
+                            reviews_json = generate_reviews_deepseek(gemini_api_key, h2_header, review_cands, rev_count, chosen_authors)
+                        except Exception as rev_err:
+                            status_logger.error(f"Сбой при генерации отзывов: {rev_err}")
+                            reviews_json =
                         
                        # --- ВОТ ЭТОТ БЛОК ВСТАВЛЯТЬ СРАЗУ ПОСЛЕ ВЫЗОВА generate_reviews_deepseek ---
 
@@ -5458,7 +5484,13 @@ with tab_wholesale_main:
                             for i, item in enumerate(reviews_json):
                                 r_name = item.get('Имя', 'Клиент')
                                 r_date = item.get('Дата', '')
-                                r_rating = float(item.get('Оценка', 5.0))
+                                raw_rating = str(item.get('Оценка', 5.0)).replace(',', '.')
+                                try:
+                                    # Ищем любые числа в ответе ИИ
+                                    rating_match = re.search(r'\d+\.?\d*', raw_rating)
+                                    r_rating = float(rating_match.group()) if rating_match else 5.0
+                                except:
+                                    r_rating = 5.0
                                 r_text_raw = item.get('Текст', '')
                                 r_source = random.choice(review_sources)
                                 
@@ -5617,7 +5649,13 @@ with tab_wholesale_main:
 
                 # ТЕПЕРЬ EXCEPT СВЯЗАН С TRY И ВСЕ РАБОТАЕТ!
                 except Exception as e:
-                    row_data['Весь текст целиком'] = f"❌ ОШИБКА ГЕНЕРАЦИИ: {e}"
+                    # УМНОЕ СОХРАНЕНИЕ: Если текст уже успел сгенерироваться, мы его НЕ УДАЛЯЕМ!
+                    текущий_текст = row_data.get('Весь текст целиком', '')
+                    if текущий_текст and len(текущий_текст) > 100:
+                        row_data['Весь текст целиком'] = текущий_текст + f"\n\n<br><b>⚠️ Частичный сбой (конвейер не доработал до конца):</b> {e}"
+                    else:
+                        row_data['Весь текст целиком'] = f"❌ ОШИБКА ГЕНЕРАЦИИ: {e}"
+                        
                     status_logger.update(label=f"❌ Ошибка: {h2_header}", state="error", expanded=True)
                     status_logger.error(f"Сбой: {e}")
                     
@@ -7240,6 +7278,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
