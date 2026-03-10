@@ -2866,7 +2866,9 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
             temperature=0.3,
             max_tokens=8192
         )
-        final_text = res_2.choices[0].message.content.strip()
+        content_2 = res_2.choices[0].message.content
+        if not content_2: return [{"Тип": "Ошибка", "Вопрос": "Сбой API", "Ответ": "Нейросеть вернула пустой ответ"}]
+        final_text = content_2.strip()
         
         if final_text.startswith("```json"): final_text = final_text[7:]
         if final_text.startswith("```"): final_text = final_text[3:]
@@ -3261,7 +3263,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
 2. Написание диапазонов: Числовые диапазоны (длина, вес, размер) пиши через тире и с сокращением единиц измерения. Пример: "4-9 м", "10-20 мм". КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ писать "от 4 до 9 метров". 
    - Исключение: для температурных диапазонов с минусовыми значениями используй слова (например, "от -10 до +50 °C").
 3. Игнорирование конкурентов: Если в списке переданных ключевых слов тебе попадется странный мусор на латинице или названия чужих магазинов/компаний, полностью ИГНОРИРУЙ ИХ. Из латиницы разрешается писать только марки сталей и стандарты (AISI 304, DIN и т.д.).
-4. Характеристики в списках: Если в пункте списка перечисляется свойство (характеристика) и его значения, ОБЯЗАТЕЛЬНО ставь тире (–) между названием свойства и списком значений.
+4. Характеристики в списках: КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ставить тире (–), дефис (-) или двоеточие (:) после названия характеристики перед числовыми значениями! Пиши слитно. Пример ПРАВИЛЬНОГО написания: "Номинальный диаметр 6-426 мм;". Неправильно: "Номинальный диаметр - 6-426 мм;". Для полностью текстовых параметров (без цифр) тире ставить можно.
 5. Максимально сократи использование союза "и". В 90% случаев заменяй его запятой при перечислении или просто перестраивай предложение. Текст должен быть динамичным и лаконичным, без лишнего "нагромождения" связок.
     """
     
@@ -5006,11 +5008,11 @@ with tab_wholesale_main:
         
         col_st1, col_st2, col_st3 = st.columns(3)
         if task_idx < total_q:
-            col_st1.info(f"📝 Тексты (URL): {task_idx} / {total_q}")
-            col_st2.info(f"❓ FAQ (URL): {task_idx} / {total_q}")
-            col_st3.info(f"💬 Отзывы (URL): {task_idx} / {total_q}")
+            col_st1.info(f"📝 Категории: {task_idx} / {total_q}")
+            col_st2.info(f"❓ FAQ: {task_idx} / {total_q}")
+            col_st3.info(f"💬 Отзывы: {task_idx} / {total_q}")
         else:
-            col_st1.success(f"📝 Тексты: {total_q} / {total_q}")
+            col_st1.success(f"📝 Категории: {total_q} / {total_q}")
             col_st2.success(f"❓ FAQ: {total_q} / {total_q}")
             col_st3.success(f"💬 Отзывы: {total_q} / {total_q}")
             
@@ -5541,28 +5543,30 @@ with tab_wholesale_main:
                         html_t2 = [f'<a href="{i["url"]}" class="tag-item">{i["name"]}</a>' for i in tags_block_2]
                         html_injections['tags2'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t2)}</div></div></div>'
 
-                    # --- СТРОГАЯ ЛОГИКА РАСПРЕДЕЛЕНИЯ (СТРОГО 1 ЭЛЕМЕНТ В 1 БЛОК) ---
+                    # --- СТРОГАЯ ЛОГИКА РАСПРЕДЕЛЕНИЯ (1 ЭЛЕМЕНТ В 1 ТЕКСТОВЫЙ БЛОК) ---
                     available_injections = []
                     if 'tags1' in html_injections: available_injections.append(html_injections['tags1'])
                     if 'table' in html_injections: available_injections.append(html_injections['table'])
                     if 'promo' in html_injections: available_injections.append(html_injections['promo'])
                     if 'tags2' in html_injections: available_injections.append(html_injections['tags2'])
 
-                    # Находим непустые текстовые блоки, выданные нейросетью
-                    active_text_slots = [i for i, b in enumerate(blocks) if b.strip()]
+                    # ИСПРАВЛЕНИЕ: Выбираем только те блоки, в которых есть реальный текст (чтобы не встраивать под одинокий H2)
+                    active_text_slots = [i for i, b in enumerate(blocks) if len(b.strip()) > 50 or "<p" in b.lower()]
+                    
                     if not active_text_slots:
                         active_text_slots = [0]
                         blocks[0] = ""
 
-                    # Строгое распределение: 1 визуальный элемент в 1 текстовый блок, НАЧИНАЯ С ПЕРВОГО
-                    for i, inj in enumerate(available_injections):
-                        if i < len(active_text_slots):
-                            target_slot = active_text_slots[i]
-                            blocks[target_slot] += f"\n\n{inj}"
-                        else:
-                            # Защита: если нейросеть выдала всего 2 абзаца текста, а элементов 4,
-                            # остатки придется положить в последний (иначе они пропадут)
-                            blocks[active_text_slots[-1]] += f"\n\n{inj}"
+                    inj_idx = 0
+                    for slot in active_text_slots:
+                        if inj_idx < len(available_injections):
+                            blocks[slot] += f"\n\n{available_injections[inj_idx]}"
+                            inj_idx += 1
+                            
+                    # Если визуальных элементов больше, чем текстовых абзацев, скидываем остатки в самый низ
+                    while inj_idx < len(available_injections):
+                        blocks[active_text_slots[-1]] += f"\n\n{available_injections[inj_idx]}"
+                        inj_idx += 1
 
                     TEXT_CONTAINERS =['IP_PROP4839', 'IP_PROP4816', 'IP_PROP4838', 'IP_PROP4829', 'IP_PROP4831']
                     for i_c, c_name in enumerate(TEXT_CONTAINERS):
@@ -7236,6 +7240,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
