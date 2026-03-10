@@ -2981,8 +2981,16 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         return 'Мужской'
 
     # Устанавливаем индексы для уникальных фишек
-    indices = list(range(target_count))
-    emoji_index = random.choice(indices) if indices else 0
+        indices = list(range(target_count))
+        emoji_index = random.choice(indices) if indices else 0
+        
+        # --- НОВОЕ: ИНДЕКСЫ ДЛЯ ОПЕЧАТОК (20%) ---
+        typo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
+        typo_indices = random.sample(indices, min(typo_count, target_count)) if indices else []
+
+        # --- НОВОЕ: ИНДЕКСЫ ДЛЯ БУКВЫ Ё (20%) ---
+        yo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
+        yo_indices = random.sample(indices, min(yo_count, target_count)) if indices else []
 
     for i in range(target_count):
         author_data = chosen_authors[i] if i < len(chosen_authors) else {}
@@ -3019,6 +3027,11 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         # Строгая раздача смайликов
         emoji_rule = "СТРОГО ОБЯЗАТЕЛЬНО добавь в конец текста 1 смайлик (👍, 👌 или 🔥)." if i == emoji_index else "СМАЙЛИКИ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ."
 
+        # --- НОВОЕ: Строгая раздача опечаток ---
+        typo_rule = "СДЕЛАЙ 1-2 ЕСТЕСТВЕННЫЕ ОШИБКИ (частая орфография: 'вообщем', 'сдесь', 'зделать', 'извените', ИЛИ промах по соседней клавише: 'трубв' вместо 'трубы'). Ошибка должна быть как у реального человека, который спешил." if i in typo_indices else "Пиши абсолютно грамотно, без ошибок и опечаток."
+
+        yo_rule = "Используй букву 'ё' в словах, где она должна быть (всё, ещё, пошёл)." if i in yo_indices else "Пиши вместо 'ё' букву 'е' (все, еще, пошел)."
+
         authors_listing.append(
             f"--- ОТЗЫВ #{i+1} ---\n"
             f"Имя: {name}\n"
@@ -3028,6 +3041,8 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
             f"Оценка (Эмоция): {sentiment}\n"
             f"Стиль и объем текста: {style} {case_rule}\n"
             f"Смайлики: {emoji_rule}\n"
+            f"Опечатки: {typo_rule}\n"
+            f"Буква Ё: {yo_rule}\n"
         )
 
     nl = chr(10)
@@ -3057,6 +3072,12 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
    - Используй обычные русские имена (Алексей, Сергей, Александр, Елена, Анна, Дмитрий, Михаил, Екатерина и т.д.).
    - Примеры естественного упоминания: "Спасибо менеджеру Алексею, быстро всё оформил", "Елена по телефону помогла прикинуть по размерам", "Водитель Саня вообще красавчик, заехал куда просили".
    - В остальных 80% случаев используй общие слова: "менеджер", "ребята", "продавец", "водитель".
+9. ЖИВЫЕ ОПЕЧАТКИ И ОШИБКИ:
+   - В задании к конкретному отзыву может быть требование сделать опечатку. Выполни его строго!
+   - Разрешенные частые орфографические ошибки: "вообщем", "сдесь", "зделать", "симпАтичный", "извЕните", "как то".
+   - Разрешенные промахи по клавиатуре (соседние клавиши): "нормлаьно", "хорошоо", "трубв", "мнн".
+   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО делать опечатки в LSI-словах (они обернуты в <b>)! LSI-слова должны быть написаны идеально грамотно.
+   - Не коверкай текст до состояния бреда. Ошибка должна быть одна-две на весь отзыв, остальной текст читаемый.
 
 ВВОДНЫЕ ДАННЫЕ ДЛЯ КАЖДОГО ОТЗЫВА:
 {nl.join(authors_listing)}
@@ -3082,6 +3103,8 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
                 
             text = reviews[i].get("Текст", "")
             if text:
+                if i not in yo_indices:
+                    text = text.replace('ё', 'е').replace('Ё', 'Е')
                 if case_pool[i] == 'lower':
                     text = text[0].lower() + text[1:]
                 elif case_pool[i] == 'upper':
@@ -7213,6 +7236,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
