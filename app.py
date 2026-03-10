@@ -1019,7 +1019,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
     while status == "process" and attempts < 120:
         time.sleep(5); attempts += 1
         try:
-            r_check = requests.post(url_check, headers=headers, json={"task_id": task_id})
+            r_check = requests.post(url_check, headers=headers, json={"task_id": task_id}, timeout=15)
             res_check_data = r_check.json()
             if res_check_data.get("status") == "finish": status = "done"; break
         except: pass
@@ -1133,14 +1133,19 @@ def check_positions_NO_ALT(query, target_url, region_name, api_token):
         # 2. ОЖИДАНИЕ
         for i in range(40):
             time.sleep(2)
-            r_c = requests.post(url_check, headers=headers, json={"task_id": task_id})
-            if r_c.json().get("status") == "finish":
-                break
+            try:
+                # Добавлен timeout=15
+                r_c = requests.post(url_check, headers=headers, json={"task_id": task_id}, timeout=15)
+                if r_c.json().get("status") == "finish":
+                    break
+            except:
+                pass # Если прокси отвалился, просто пробуем еще раз на следующей итерации
         else:
             return 0, {"error": "Timeout"}
 
         # 3. РЕЗУЛЬТАТ
-        r_g = requests.post(url_get, headers=headers, json={"task_id": task_id})
+        # Добавлен timeout=30
+        r_g = requests.post(url_get, headers=headers, json={"task_id": task_id}, timeout=30)
         data = r_g.json()
         
         res_list = data.get("result", [])
@@ -5983,11 +5988,16 @@ with tab_monitoring:
                                 # CHECK
                                 for _ in range(15):
                                     time.sleep(1.5)
-                                    r_c = requests.post("https://arsenkin.ru/api/tools/check", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
-                                    if r_c.json().get("status") == "finish": break
+                                    try:
+                                        # Добавлен timeout=15
+                                        r_c = requests.post("https://arsenkin.ru/api/tools/check", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid}, timeout=15)
+                                        if r_c.json().get("status") == "finish": break
+                                    except:
+                                        pass
                                 
                                 # GET
-                                r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid})
+                                # Добавлен timeout=30
+                                r_get = requests.post("https://arsenkin.ru/api/tools/get", headers={"Authorization": f"Bearer {ARSENKIN_TOKEN}"}, json={"task_id": tid}, timeout=30)
                                 final_data = r_get.json()
 
                                 # === 🔍 ОТЛАДКА: ВЫВОДИМ JSON НА ЭКРАН ===
@@ -6908,3 +6918,4 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
