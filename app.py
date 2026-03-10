@@ -5660,10 +5660,27 @@ with tab_wholesale_main:
             with col_right:
                 st.write("⚙️ **Настройки генерации**")
                 
-                # Блок текста: всегда умный авто-расчет (3-5 блоков)
-                st.checkbox("🤖 AI Тексты (Авто: 3-5 блоков)", value=True, key="ws_global_text")
-                st.session_state.safe_ws_auto_blocks = True # Принудительно
-                st.session_state.safe_ws_num_blocks_val = 5 # Технический максимум контейнеров
+                ws_is_running = st.session_state.get('ws_automode_active', False)
+                
+                st.checkbox("🤖 AI Тексты (Генерация статьи)", value=True, key="ws_global_text", disabled=ws_is_running)
+                
+                st.checkbox(
+                    "Умный авто-расчет (3-5 блоков в зависимости от объема LSI)", 
+                    value=True, 
+                    key="ws_auto_blocks", 
+                    disabled=ws_is_running
+                )
+                
+                st.number_input(
+                    "Количество блоков текста (если авто выключено):", 
+                    min_value=1, 
+                    max_value=5, 
+                    value=5, 
+                    step=1, 
+                    key="ws_num_blocks_val", 
+                    disabled=st.session_state.get("ws_auto_blocks", True) or ws_is_running,
+                    help="Максимум 5 блоков (ограничение контейнеров на сайте)."
+                )
                 
                 st.write("---") # Разделитель
                 
@@ -7268,3 +7285,4 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
