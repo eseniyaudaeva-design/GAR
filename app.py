@@ -1011,7 +1011,7 @@ st.markdown(f"""
         div[data-testid="stDataFrame"] strong {{
             font-weight: 900 !important;
             color: #000000 !important;
-            background-color: #fff7ed !important; /* легкая подсветка фона для надежности */
+            background-color: #fff7ed !important; 
         }}
         
         div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important; border-radius: 8px !important; }}
@@ -4970,11 +4970,29 @@ with tab_wholesale_main:
     st.header("🏭 Умный Оптовый Конвейер (V11 - Бронебойный текст)")
     st.info("Исправлена критическая ошибка генерации текста. Теперь текст пишется всегда, а доп. блоки (таблицы, теги) встраиваются ПОД текстом.")
 
-# --- НЕВИДИМЫЙ ХУК АВТО-КОНВЕЙЕРА ---
+    # --- НЕВИДИМЫЙ ХУК АВТО-КОНВЕЙЕРА ---
     if st.session_state.get('ws_automode_active') and st.session_state.get('ws_waiting_for_analysis') and st.session_state.get('analysis_done'):
         task_idx = st.session_state.auto_current_index
         queue = st.session_state.ws_bg_tasks_queue
         
+        # ===== КРАСИВОЕ ЛОГИРОВАНИЕ В РЕАЛЬНОМ ВРЕМЕНИ =====
+        total_q = len(queue)
+        st.markdown("### 📊 Статус генерации")
+        
+        col_st1, col_st2, col_st3 = st.columns(3)
+        if task_idx < total_q:
+            col_st1.info(f"📝 Тексты: {task_idx} / {total_q}")
+            col_st2.info(f"❓ FAQ: {task_idx} / {total_q}")
+            col_st3.info(f"💬 Отзывы: {task_idx} / {total_q}")
+        else:
+            col_st1.success(f"📝 Тексты: {total_q} / {total_q}")
+            col_st2.success(f"❓ FAQ: {total_q} / {total_q}")
+            col_st3.success(f"💬 Отзывы: {total_q} / {total_q}")
+            
+        st.progress(task_idx / total_q if total_q > 0 else 0)
+        st.markdown("---")
+        # ===================================================
+
         if task_idx < len(queue):
             current_task = queue[task_idx]
             h1_marker = current_task.get('h1', current_task['name'])
@@ -5688,29 +5706,14 @@ with tab_wholesale_main:
                     st.checkbox("💬 Отзывы", value=True, key="ws_global_reviews", disabled=is_running)
                     st.number_input("Количество отзывов", min_value=1, max_value=50, value=3, step=1, key="ws_reviews_count", disabled=is_running)
                 
-            
     c_start, c_stop = st.columns([2, 1])
     with c_start:
         is_running = st.session_state.get('ws_automode_active', False)
         if not is_running:
             if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ И ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
 
-                # --- БЛОК ЛОГИРОВАНИЯ ---
-                st.markdown("### ⚙️ Процесс работы...")
-                
-                # Создаем пустые контейнеры для каждого этапа
-                status_text = st.empty()
-                status_faq = st.empty()
-                status_review = st.empty()
-                
-                # Задаем начальное состояние (пока 0)
-                # Предполагается, что переменные num_texts, num_faqs, num_reviews у тебя уже заданы из инпутов
-                status_text.info(f"📝 Тексты: 0 / {num_texts}")
-                status_faq.info(f"❓ FAQ: 0 / {num_faqs}")
-                status_review.info(f"💬 Отзывы: 0 / {num_reviews}")
-                
-                # Опционально: общий прогресс-бар
-                progress_bar = st.progress(0)
+                # --- ЗАМОРАЖИВАЕМ ВСЕ НАСТРОЙКИ, КЛЮЧИ И ГАЛОЧКИ (СПАСЕНИЕ ОТ СБРОСА) ---
+                st.session_state.safe_ws_global_text = st.session_state.get('ws_global_text', True)
                 
                 # --- ЗАМОРАЖИВАЕМ ВСЕ НАСТРОЙКИ, КЛЮЧИ И ГАЛОЧКИ (СПАСЕНИЕ ОТ СБРОСА) ---
                 st.session_state.safe_ws_global_text = st.session_state.get('ws_global_text', True)
@@ -7220,6 +7223,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
