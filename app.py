@@ -734,6 +734,11 @@ def classify_semantics_with_api(words_list, yandex_key):
     PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = load_lemmatized_dictionaries()
     FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
 
+    # === КУВАЛДА ДЛЯ ГЕО ===
+    # Очищаем все города в словаре от дефисов для железобетонного сравнения
+    GEO_SET_CLEAN = {str(g).replace('-', '').replace(' ', '') for g in GEO_SET}
+    # =======================
+
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     
@@ -741,11 +746,7 @@ def classify_semantics_with_api(words_list, yandex_key):
                   'dimensions': set(), 'geo': set(), 'general': set(), 'sensitive': set()}
     
     for word in words_list:
-        word_lower = word.lower().replace('ё', 'е')
-        word_lower = re.sub(r'[\—\–\−]', '-', word_lower) # Нормализуем тире в тексте!
-        
-        # 1. СТОП-СЛОВА
-        # ... дальше твой код
+        word_lower = word.lower()
         
         # 1. СТОП-СЛОВА
         is_sensitive = False
@@ -762,10 +763,12 @@ def classify_semantics_with_api(words_list, yandex_key):
         if word_lower in SPECS_SET or lemma in SPECS_SET or dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower); continue
             
-        # === 3. ГЕО (СМЕЩЕНО ВЫШЕ) ===
-        # Раньше гео стояло ниже товаров. Из-за этого город "Екатеринбург" мог 
-        # распознаться как товар из-за корня "кате" (например, от слова "катер").
-        if lemma in GEO_SET or word_lower in GEO_SET:
+        # === 3. ГЕО (ЖЕЛЕЗОБЕТОННАЯ ПРОВЕРКА) ===
+        # Вырезаем дефисы из самого слова перед проверкой
+        word_clean = word_lower.replace('-', '').replace(' ', '')
+        lemma_clean = lemma.replace('-', '').replace(' ', '')
+        
+        if word_clean in GEO_SET_CLEAN or lemma_clean in GEO_SET_CLEAN:
             categories['geo'].add(word_lower); continue
 
         # === 4. УСЛУГИ ===
@@ -780,7 +783,6 @@ def classify_semantics_with_api(words_list, yandex_key):
         if word_lower in PRODUCTS_SET or lemma in PRODUCTS_SET:
             categories['products'].add(word_lower); continue
         
-        # Размытый поиск корня перенесен в самый конец, чтобы он не крал чужие слова!
         is_product_root = False
         for prod in PRODUCTS_SET:
             check_root = prod[:-1] if len(prod) > 4 else prod
@@ -794,7 +796,6 @@ def classify_semantics_with_api(words_list, yandex_key):
         categories['general'].add(word_lower)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
-
 # ==========================================
 # STATE INIT
 # ==========================================
@@ -7154,6 +7155,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
