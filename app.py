@@ -992,8 +992,9 @@ st.markdown(f"""
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
             background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
+        
         /* ФИКС СТИЛЕЙ ДЛЯ ВТОРОЙ ВКЛАДКИ */
-        .review-card {
+        .review-card {{
             background: #ffffff !important;
             border: 1px solid #e2e8f0 !important;
             border-left: 5px solid #2563eb !important;
@@ -1001,14 +1002,18 @@ st.markdown(f"""
             padding: 15px !important;
             margin-bottom: 15px !important;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
-        }
+        }}
+        
         /* Выделение LSI жирным в таблице Streamlit */
         div[data-testid="stDataFrame"] td [data-testid="stMarkdownContainer"] b,
-        div[data-testid="stDataFrame"] td [data-testid="stMarkdownContainer"] strong {
+        div[data-testid="stDataFrame"] td [data-testid="stMarkdownContainer"] strong,
+        div[data-testid="stDataFrame"] b,
+        div[data-testid="stDataFrame"] strong {{
             font-weight: 900 !important;
             color: #000000 !important;
             background-color: #fff7ed !important; /* легкая подсветка фона для надежности */
-        }
+        }}
+        
         div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important; border-radius: 8px !important; }}
         div[data-testid="stDataFrame"] div[role="columnheader"] {{
             background-color: {HEADER_BG} !important; color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
@@ -1028,6 +1033,7 @@ st.markdown(f"""
         }}
         .stButton button:disabled {{ opacity: 1 !important; background-color: {PRIMARY_COLOR} !important; color: white !important; cursor: progress !important; }}
         div[data-testid="stAppViewContainer"] {{ filter: none !important; opacity: 1 !important; transition: none !important; }}
+        
         /* Стили для ссылок внутри графика Plotly */
         .chart-link {{
             color: #277EFF !important;
@@ -7192,6 +7198,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
