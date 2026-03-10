@@ -693,7 +693,6 @@ def load_lemmatized_dictionaries():
     }
 
     for filename, set_key in files_map.items():
-        # 1. Ищем файл и в папке data, и в корне (чтобы точно не промахнуться)
         path_data = os.path.join(base_path, filename)
         path_root = os.path.join(script_dir, filename)
         full_path = path_data if os.path.exists(path_data) else (path_root if os.path.exists(path_root) else None)
@@ -705,7 +704,6 @@ def load_lemmatized_dictionaries():
                 data = json.load(f) 
                 
                 words_bucket = []
-                # 2. Безопасное извлечение (чтобы не разбивал строки на отдельные буквы)
                 if isinstance(data, dict):
                     for val in data.values():
                         if isinstance(val, list): words_bucket.extend(val)
@@ -713,18 +711,27 @@ def load_lemmatized_dictionaries():
                 elif isinstance(data, list):
                     words_bucket = data
                 
-                # 3. Нормализация
                 for phrase in words_bucket:
                     w_clean = str(phrase).lower().strip().replace('ё', 'е')
-                    # Прибиваем все виды тире к одному стандартному дефису
                     w_clean = re.sub(r'[\—\–\−]', '-', w_clean)
                     
                     if len(w_clean) < 2: continue
+                    
+                    # 1. Добавляем город целиком
                     sets[set_key].add(w_clean)
                     if morph:
                         sets[set_key].add(morph.parse(w_clean)[0].normal_form.replace('ё', 'е'))
+                        
+                    # 2. АНТИ-РАСЧЛЕНИТЕЛЬ: Учим словарь узнавать куски городов!
+                    # Добавляем 'санкт', 'петербург', 'нижний', 'новгород' как самостоятельные триггеры
+                    if ' ' in w_clean or '-' in w_clean:
+                        parts = re.split(r'[\s\-]+', w_clean)
+                        for p in parts:
+                            if len(p) > 2: # Игнорируем предлог "на" (в Ростов-на-Дону)
+                                sets[set_key].add(p)
+                                if morph:
+                                    sets[set_key].add(morph.parse(p)[0].normal_form.replace('ё', 'е'))
         except Exception as e:
-            # Теперь если в JSON будет опечатка, скрипт покажет тебе красную ошибку, а не промолчит!
             st.error(f"❌ Ошибка загрузки файла {filename}: {e}")
 
     return sets["products"], sets["commercial"], sets["specs"], sets["geo"], sets["services"], sets["sensitive"]
@@ -7163,6 +7170,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
