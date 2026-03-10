@@ -680,7 +680,7 @@ def analyze_serp_anomalies(df_rel):
 
     return normal_urls, anomalies, {"type": "info", "msg": trend_msg}
 
-@st.cache_data
+# @st.cache_data
 def load_lemmatized_dictionaries():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     base_path = os.path.join(script_dir, "data")
@@ -716,10 +716,12 @@ def load_lemmatized_dictionaries():
                 # 3. Нормализация
                 for phrase in words_bucket:
                     w_clean = str(phrase).lower().strip().replace('ё', 'е')
+                    # Прибиваем все виды тире к одному стандартному дефису
+                    w_clean = re.sub(r'[\—\–\−]', '-', w_clean)
+                    
                     if len(w_clean) < 2: continue
                     sets[set_key].add(w_clean)
                     if morph:
-                        # Добавляем сразу нормальную форму
                         sets[set_key].add(morph.parse(w_clean)[0].normal_form.replace('ё', 'е'))
         except Exception as e:
             # Теперь если в JSON будет опечатка, скрипт покажет тебе красную ошибку, а не промолчит!
@@ -739,7 +741,11 @@ def classify_semantics_with_api(words_list, yandex_key):
                   'dimensions': set(), 'geo': set(), 'general': set(), 'sensitive': set()}
     
     for word in words_list:
-        word_lower = word.lower()
+        word_lower = word.lower().replace('ё', 'е')
+        word_lower = re.sub(r'[\—\–\−]', '-', word_lower) # Нормализуем тире в тексте!
+        
+        # 1. СТОП-СЛОВА
+        # ... дальше твой код
         
         # 1. СТОП-СЛОВА
         is_sensitive = False
@@ -7148,6 +7154,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
