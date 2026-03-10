@@ -685,71 +685,52 @@ def load_lemmatized_dictionaries():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     base_path = os.path.join(script_dir, "data")
     
-    # Создаем множества
-    sets = {
-        "products": set(),
-        "commercial": set(),
-        "specs": set(),
-        "geo": set(),
-        "services": set(),
-        "sensitive": set()
-    }
-
-    # Карта файлов
+    sets = {"products": set(), "commercial": set(), "specs": set(), "geo": set(), "services": set(), "sensitive": set()}
     files_map = {
-        "metal_products.json": "products",
-        "commercial_triggers.json": "commercial",
-        "geo_locations.json": "geo",
-        "services_triggers.json": "services",
-        "tech_specs.json": "specs",
-        "SENSITIVE_STOPLIST.json": "sensitive"
+        "metal_products.json": "products", "commercial_triggers.json": "commercial",
+        "geo_locations.json": "geo", "services_triggers.json": "services",
+        "tech_specs.json": "specs", "SENSITIVE_STOPLIST.json": "sensitive"
     }
 
     for filename, set_key in files_map.items():
-        full_path = os.path.join(base_path, filename)
-        if not os.path.exists(full_path):
-            continue
+        # 1. Ищем файл и в папке data, и в корне (чтобы точно не промахнуться)
+        path_data = os.path.join(base_path, filename)
+        path_root = os.path.join(script_dir, filename)
+        full_path = path_data if os.path.exists(path_data) else (path_root if os.path.exists(path_root) else None)
+        
+        if not full_path: continue
         
         try:
             with open(full_path, 'r', encoding='utf-8') as f:
                 data = json.load(f) 
                 
                 words_bucket = []
+                # 2. Безопасное извлечение (чтобы не разбивал строки на отдельные буквы)
                 if isinstance(data, dict):
-                    for cat_list in data.values():
-                        words_bucket.extend(cat_list)
+                    for val in data.values():
+                        if isinstance(val, list): words_bucket.extend(val)
+                        elif isinstance(val, str): words_bucket.append(val)
                 elif isinstance(data, list):
                     words_bucket = data
                 
+                # 3. Нормализация
                 for phrase in words_bucket:
                     w_clean = str(phrase).lower().strip().replace('ё', 'е')
-                    if not w_clean: continue
+                    if len(w_clean) < 2: continue
                     sets[set_key].add(w_clean)
                     if morph:
-                        normal_form = morph.parse(w_clean)[0].normal_form.replace('ё', 'е')
-                        sets[set_key].add(normal_form)
-                    if ' ' in w_clean:
-                        parts = w_clean.split()
-                        for p in parts:
-                            sets[set_key].add(p)
-                            if morph: 
-                                sets[set_key].add(morph.parse(p)[0].normal_form.replace('ё', 'е'))
-        except: pass
+                        # Добавляем сразу нормальную форму
+                        sets[set_key].add(morph.parse(w_clean)[0].normal_form.replace('ё', 'е'))
+        except Exception as e:
+            # Теперь если в JSON будет опечатка, скрипт покажет тебе красную ошибку, а не промолчит!
+            st.error(f"❌ Ошибка загрузки файла {filename}: {e}")
 
-    # Возвращаем 6 наборов
     return sets["products"], sets["commercial"], sets["specs"], sets["geo"], sets["services"], sets["sensitive"]
 
-def classify_semantics_with_api(words_list, yandex_key):
-    # Распаковываем 6 словарей, которые вернула функция загрузки
-    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = load_lemmatized_dictionaries()
-    
-    # Объединяем стоп-слова из файла и из глобального списка в коде
-    FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
 
-    if 'debug_geo_count' not in st.session_state:
-        st.session_state.debug_geo_count = len(GEO_SET)
-    
-    st.sidebar.info(f"Словари (из файлов):\n📦 Товары: {len(PRODUCTS_SET)}\n💰 Коммерция: {len(COMM_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n🌍 Города: {len(GEO_SET)}")
+def classify_semantics_with_api(words_list, yandex_key):
+    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = load_lemmatized_dictionaries()
+    FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
 
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
     grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
@@ -768,22 +749,32 @@ def classify_semantics_with_api(words_list, yandex_key):
                 if len(stop_w) > 3 and stop_w in word_lower: is_sensitive = True; break
         if is_sensitive: categories['sensitive'].add(word_lower); continue
         
-        # Лемматизация
         lemma = word_lower
-        if morph:
-            p = morph.parse(word_lower)[0]
-            lemma = p.normal_form
+        if morph: lemma = morph.parse(word_lower)[0].normal_form
 
-        # 2. РАЗМЕРЫ / ГОСТ
-        if word_lower in SPECS_SET or lemma in SPECS_SET:
+        # === 2. РАЗМЕРЫ / ГОСТ ===
+        if word_lower in SPECS_SET or lemma in SPECS_SET or dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
             categories['dimensions'].add(word_lower); continue
-        if dim_pattern.search(word_lower) or grade_pattern.match(word_lower) or word_lower.isdigit():
-            categories['dimensions'].add(word_lower); continue
+            
+        # === 3. ГЕО (СМЕЩЕНО ВЫШЕ) ===
+        # Раньше гео стояло ниже товаров. Из-за этого город "Екатеринбург" мог 
+        # распознаться как товар из-за корня "кате" (например, от слова "катер").
+        if lemma in GEO_SET or word_lower in GEO_SET:
+            categories['geo'].add(word_lower); continue
 
-        # 3. ТОВАРЫ (Улучшенная логика)
+        # === 4. УСЛУГИ ===
+        if lemma in SERVICES_SET or word_lower in SERVICES_SET or lemma.endswith(('обработка', 'изготовление')) or lemma == "резка":
+            categories['services'].add(word_lower); continue
+
+        # === 5. КОММЕРЦИЯ ===
+        if lemma in COMM_SET or word_lower in COMM_SET:
+            categories['commercial'].add(word_lower); continue
+
+        # === 6. ТОВАРЫ ===
         if word_lower in PRODUCTS_SET or lemma in PRODUCTS_SET:
             categories['products'].add(word_lower); continue
         
+        # Размытый поиск корня перенесен в самый конец, чтобы он не крал чужие слова!
         is_product_root = False
         for prod in PRODUCTS_SET:
             check_root = prod[:-1] if len(prod) > 4 else prod
@@ -792,22 +783,8 @@ def classify_semantics_with_api(words_list, yandex_key):
                 is_product_root = True
                 break
         if is_product_root: continue
-
-        # 4. ГЕО
-        if lemma in GEO_SET or word_lower in GEO_SET:
-            categories['geo'].add(word_lower); continue
-        
-        # 5. УСЛУГИ
-        if lemma in SERVICES_SET or word_lower in SERVICES_SET:
-             categories['services'].add(word_lower); continue
-        if lemma.endswith('обработка') or lemma.endswith('изготовление') or lemma == "резка":
-            categories['services'].add(word_lower); continue
-
-        # 6. КОММЕРЦИЯ
-        if lemma in COMM_SET or word_lower in COMM_SET:
-            categories['commercial'].add(word_lower); continue
             
-        # 7. ОБЩИЕ
+        # === 7. ОБЩИЕ ===
         categories['general'].add(word_lower)
 
     return {k: sorted(list(v)) for k, v in categories.items()}
@@ -7171,6 +7148,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
