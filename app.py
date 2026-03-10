@@ -992,6 +992,23 @@ st.markdown(f"""
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
             background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
         }}
+        /* ФИКС СТИЛЕЙ ДЛЯ ВТОРОЙ ВКЛАДКИ */
+        .review-card {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            border-left: 5px solid #2563eb !important;
+            border-radius: 10px !important;
+            padding: 15px !important;
+            margin-bottom: 15px !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+        }
+        /* Выделение LSI жирным в таблице Streamlit */
+        div[data-testid="stDataFrame"] td [data-testid="stMarkdownContainer"] b,
+        div[data-testid="stDataFrame"] td [data-testid="stMarkdownContainer"] strong {
+            font-weight: 900 !important;
+            color: #000000 !important;
+            background-color: #fff7ed !important; /* легкая подсветка фона для надежности */
+        }
         div[data-testid="stDataFrame"] {{ border: 2px solid {PRIMARY_COLOR} !important; border-radius: 8px !important; }}
         div[data-testid="stDataFrame"] div[role="columnheader"] {{
             background-color: {HEADER_BG} !important; color: {PRIMARY_COLOR} !important; font-weight: 700 !important; border-bottom: 2px solid {PRIMARY_COLOR} !important;
@@ -3022,6 +3039,11 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 СПИСОК LSI: {", ".join(final_lsi)} 
 ОБЯЗАТЕЛЬНО распредели эти слова так, чтобы каждое встретилось ровно 1 раз на всю пачку. Оборачивай в <b>...</b>. 
 СТРОГО СКЛОНЯЙ ключи по падежам и числам по правилам русского языка! Запрещено вставлять их криво. (Например, нельзя писать "взял на каркас для <b>лестница</b>" — нужно писать "на каркас для <b>лестницы</b>").
+7. ЗАПРЕТ НА КАНЦЕЛЯРИТ И "РОБОТНУЮ" ЛОГИКУ:
+   - ЗАПРЕЩЕНЫ слова: "проволочек", "данное изделие", "произвели расчеты", "критично", "в кратчайшие сроки".
+   - ЗАПРЕЩЕНЫ неестественные пояснения причин. Не пиши "заказали тяжелую балку, поэтому было критично". Пиши: "балку ждали долго, из-за этого стройка встала".
+   - Техническая грамотность: люди не говорят "помог с расчетами для монтажа". Люди говорят "помог прикинуть по размерам" или "посчитал, чтоб обрезков не осталось".
+   - Если хвалишь менеджера, не пиши "менеджер был вежлив". Пиши "менеджер адекватный, все разжевал по телефону".
 
 ВВОДНЫЕ ДАННЫЕ ДЛЯ КАЖДОГО ОТЗЫВА:
 {nl.join(authors_listing)}
@@ -7170,6 +7192,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
