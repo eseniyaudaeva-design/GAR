@@ -2942,7 +2942,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 
     # --- НОВОЕ: ИНДЕКСЫ ДЛЯ БУКВЫ Ё (20%) ---
     yo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
-    yo_indices = random.sample(indices, min(yo_count, target_count)) if indices else
+    yo_indices = random.sample(indices, min(yo_count, target_count)) if indices else []
 
     for i in range(target_count):
         author_data = chosen_authors[i] if i < len(chosen_authors) else {}
@@ -7250,6 +7250,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
