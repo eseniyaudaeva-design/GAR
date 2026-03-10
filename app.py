@@ -2926,23 +2926,23 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         name_lower = str(author_name).lower()
         parts = name_lower.split()
         last_word = parts[-1] if parts else ""
-        exceptions_male = ['илья', 'никита', 'данила', 'саша', 'женя', 'миша', 'коля', 'николай', 'кузьма']
+        exceptions_male =['илья', 'никита', 'данила', 'саша', 'женя', 'миша', 'коля', 'николай', 'кузьма']
         if last_word in exceptions_male: return 'Мужской'
         if last_word.endswith(('а', 'я', 'ва', 'на', 'ова', 'ева', 'ина')) and not re.search(r'[a-z0-9]', last_word):
             return 'Женский'
         return 'Мужской'
 
     # Устанавливаем индексы для уникальных фишек
-        indices = list(range(target_count))
-        emoji_index = random.choice(indices) if indices else 0
-        
-        # --- НОВОЕ: ИНДЕКСЫ ДЛЯ ОПЕЧАТОК (20%) ---
-        typo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
-        typo_indices = random.sample(indices, min(typo_count, target_count)) if indices else []
+    indices = list(range(target_count))
+    emoji_index = random.choice(indices) if indices else 0
+    
+    # --- НОВОЕ: ИНДЕКСЫ ДЛЯ ОПЕЧАТОК (20%) ---
+    typo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
+    typo_indices = random.sample(indices, min(typo_count, target_count)) if indices else[]
 
-        # --- НОВОЕ: ИНДЕКСЫ ДЛЯ БУКВЫ Ё (20%) ---
-        yo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
-        yo_indices = random.sample(indices, min(yo_count, target_count)) if indices else []
+    # --- НОВОЕ: ИНДЕКСЫ ДЛЯ БУКВЫ Ё (20%) ---
+    yo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
+    yo_indices = random.sample(indices, min(yo_count, target_count)) if indices else
 
     for i in range(target_count):
         author_data = chosen_authors[i] if i < len(chosen_authors) else {}
@@ -7250,6 +7250,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
