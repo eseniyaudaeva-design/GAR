@@ -5447,7 +5447,7 @@ with tab_wholesale_main:
                             reviews_json = generate_reviews_deepseek(gemini_api_key, h2_header, review_cands, rev_count, chosen_authors)
                         except Exception as rev_err:
                             status_logger.error(f"Сбой при генерации отзывов: {rev_err}")
-                            reviews_json =
+                            reviews_json =[]  # <--- ВОТ ЗДЕСЬ ПУСТОЙ СПИСОК, чтобы скрипт не падал!
                         
                        # --- ВОТ ЭТОТ БЛОК ВСТАВЛЯТЬ СРАЗУ ПОСЛЕ ВЫЗОВА generate_reviews_deepseek ---
 
@@ -7278,6 +7278,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
