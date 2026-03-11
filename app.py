@@ -19,16 +19,42 @@ import csv
 from google import genai
 import os
 import requests
-# proxy_url = "http://QYNjH:Uekp4k@196.18.3.35:8000" 
+proxy_url = "http://QYNjH:Uekp4k@196.18.3.35:8000" 
 
-# os.environ["http_proxy"] = proxy_url
-# os.environ["https_proxy"] = proxy_url
+# 1. Задаем состояние по умолчанию (прокси ВЫКЛЮЧЕН)
+if 'use_proxy' not in st.session_state:
+    st.session_state.use_proxy = False
 
-try:
-    my_ip = requests.get("https://api.ipify.org", timeout=5).text
-    st.info(f"🕵️ ВАШ IP ДЛЯ СКРИПТА: {my_ip}")
-except Exception as e:
-    st.error(f"❌ Прокси не работает: {e}")
+# 2. Логика включения/выключения на уровне системы
+if st.session_state.use_proxy:
+    os.environ["http_proxy"] = proxy_url
+    os.environ["https_proxy"] = proxy_url
+else:
+    # Жестко вычищаем настройки сети, чтобы питон ходил напрямую
+    os.environ.pop("http_proxy", None)
+    os.environ.pop("https_proxy", None)
+    os.environ.pop("HTTP_PROXY", None)
+    os.environ.pop("HTTPS_PROXY", None)
+
+# 3. Выводим красивую панель управления в самом верху
+col_ip1, col_ip2 = st.columns([4, 1])
+
+with col_ip2:
+    # Чекбокс привязан к ключу use_proxy. При клике скрипт сам перегрузится с новыми настройками сети
+    st.checkbox("🌐 Включить Proxy", key="use_proxy")
+
+with col_ip1:
+    try:
+        my_ip = requests.get("https://api.ipify.org", timeout=4).text
+        if st.session_state.use_proxy:
+            st.success(f"🕵️ ВАШ IP (ПРОКСИ В РАБОТЕ): {my_ip}")
+        else:
+            st.info(f"🕵️ ВАШ IP (НАПРЯМУЮ): {my_ip}")
+    except Exception as e:
+        if st.session_state.use_proxy:
+            st.error("❌ Прокси мертв! Отключите галочку справа ➡️")
+        else:
+            st.error(f"❌ Ошибка сети: {e}")
     
 import random
 import streamlit.components.v1 as components
@@ -7295,6 +7321,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
