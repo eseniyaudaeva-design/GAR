@@ -5675,9 +5675,23 @@ with tab_wholesale_main:
     # ==========================================
     # ИНТЕРФЕЙС И НАСТРОЙКИ
     # ==========================================
+    
+    # 0. ПРАВИЛЬНАЯ ИНИЦИАЛИЗАЦИЯ НАСТРОЕК (Чтобы они не сбрасывались)
+    if 'ws_gen_mode' not in st.session_state: st.session_state.ws_gen_mode = "Подфильтровые (ссылки)"
+    if 'ws_global_text' not in st.session_state: st.session_state.ws_global_text = True
+    if 'ws_auto_blocks' not in st.session_state: st.session_state.ws_auto_blocks = True
+    if 'ws_global_tables' not in st.session_state: st.session_state.ws_global_tables = True
+    if 'ws_global_tags' not in st.session_state: st.session_state.ws_global_tags = True
+    if 'ws_global_faq' not in st.session_state: st.session_state.ws_global_faq = True
+    if 'ws_global_promo' not in st.session_state: st.session_state.ws_global_promo = True
+    if 'ws_global_geo' not in st.session_state: st.session_state.ws_global_geo = True
+    if 'ws_global_reviews' not in st.session_state: st.session_state.ws_global_reviews = True
+
     with st.container(border=True):
         st.subheader("1. Режим работы и Валидация")
-        gen_mode = st.radio("Тип страниц:", ["Подфильтровые (ссылки)", "Родительские (URL)", "Родительские (Вручную H1+H2)"], horizontal=True)
+        
+        # ТЕПЕРЬ ТУТ ЕСТЬ KEY, ПЕРЕКЛЮЧАТЕЛЬ БОЛЬШЕ НЕ СБРОСИТСЯ
+        gen_mode = st.radio("Тип страниц:",["Подфильтровые (ссылки)", "Родительские (URL)", "Родительские (Вручную H1+H2)"], horizontal=True, key="ws_gen_mode")
         
         default_reg_val = st.session_state.get('settings_region', 'Москва')
         try: def_index_ws = list(REGION_MAP.keys()).index(default_reg_val)
@@ -5702,12 +5716,10 @@ with tab_wholesale_main:
         try: key_from_secrets = st.secrets["GEMINI_KEY"]
         except: key_from_secrets = ""
         
-        # Железобетонное сохранение ключа в сессию
         ws_gem_key_input = st.text_input("🔑 Google Gemini API Key:", value=st.session_state.get('SUPER_GLOBAL_KEY', key_from_secrets), type="password", key="ws_gem_key_fixed")
         if ws_gem_key_input:
             st.session_state['SUPER_GLOBAL_KEY'] = ws_gem_key_input
         
-    # Упаковываем всё в один контейнер, чтобы настройки не «разлетались»
         with st.container(border=True):
             col_left, col_right = st.columns([1.2, 1], gap="medium")
 
@@ -5716,40 +5728,36 @@ with tab_wholesale_main:
                 if "Подфильтровые" in gen_mode or "URL" in gen_mode:
                     raw_urls = st.text_area("Список ссылок:", height=215, placeholder="https://...", key="ws_area_urls")
                 else:
-                    # H1 и H2 теперь компактно в два столбика
                     h1_c, h2_c = st.columns(2)
                     raw_h1 = h1_c.text_area("H1 (Маркеры):", height=215, key="ws_area_h1")
                     raw_h2 = h2_c.text_area("H2 (Заголовки):", height=215, key="ws_area_h2")
 
             with col_right:
                 st.write("⚙️ **Настройки генерации**")
+                is_running = st.session_state.get('ws_automode_active', False)
                 
-                # Блок текста: чекбокс и количество в одну строку
-                st.checkbox("🤖 AI Тексты", value=True, key="ws_global_text")
+                # ЧЕКБОКСЫ ТЕПЕРЬ БЕЗ ВРЕДНОГО VALUE=TRUE
+                st.checkbox("🤖 AI Тексты", key="ws_global_text")
                 c_b1, c_b2 = st.columns([1, 1])
                 with c_b1:
-                    st.selectbox("Блоков", [1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val", label_visibility="collapsed")
+                    st.selectbox("Блоков",[1, 2, 3, 4, 5], index=4, key="ws_num_blocks_val", label_visibility="collapsed")
                 with c_b2:
-                    st.checkbox("Авто-расчет", value=True, key="ws_auto_blocks")
+                    st.checkbox("Авто-расчет", key="ws_auto_blocks")
                 
-                st.write("---") # Разделитель
+                st.write("---") 
                 
-                # Остальные настройки в два столбика (ровная сетка)
                 st.write("**Доп. элементы:**")
                 grid_1, grid_2 = st.columns(2)
                 with grid_1:
-                    st.checkbox("🧩 Таблицы", value=True, key="ws_global_tables")
-                    st.checkbox("🏷️ Теги", value=True, key="ws_global_tags")
-                    st.checkbox("❓ FAQ", value=True, key="ws_global_faq", disabled=is_running)
-                    # Увеличили лимит вопросов до 50
+                    st.checkbox("🧩 Таблицы", key="ws_global_tables")
+                    st.checkbox("🏷️ Теги", key="ws_global_tags")
+                    st.checkbox("❓ FAQ", key="ws_global_faq", disabled=is_running)
                     st.number_input("Количество вопросов FAQ", min_value=2, max_value=50, value=4, step=1, key="ws_faq_count", disabled=is_running)
                     
                 with grid_2:
-                    st.checkbox("🔥 Промо", value=True, key="ws_global_promo", disabled=is_running)
-                    st.checkbox("🌍 Гео-блок", value=True, key="ws_global_geo", disabled=is_running)
-                    
-                    # Добавлена галочка и счетчик для отзывов
-                    st.checkbox("💬 Отзывы", value=True, key="ws_global_reviews", disabled=is_running)
+                    st.checkbox("🔥 Промо", key="ws_global_promo", disabled=is_running)
+                    st.checkbox("🌍 Гео-блок", key="ws_global_geo", disabled=is_running)
+                    st.checkbox("💬 Отзывы", key="ws_global_reviews", disabled=is_running)
                     st.number_input("Количество отзывов", min_value=1, max_value=50, value=3, step=1, key="ws_reviews_count", disabled=is_running)
                 
             
@@ -7285,6 +7293,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
