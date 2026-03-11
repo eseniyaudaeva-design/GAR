@@ -5035,43 +5035,36 @@ with tab_wholesale_main:
 
                     import random
 
-                   # --- ФУНКЦИЯ ПОИСКА ДЛЯ ТЕГОВ (СТРОГО ИЗ БАЗЫ) ---
-                    # --- ФУНКЦИЯ ПОИСКА ДЛЯ ТЕГОВ (СТРОГО ИЗ БАЗЫ) ---
+                   # --- ФУНКЦИЯ ПОИСКА ДЛЯ ТЕГОВ (СТРОГО 100% ИЗ БАЗЫ) ---
                     def get_tag_data(kw):
-                        kw_clean = kw.lower().strip()
-                        kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
-                        
-                        # Если база пустая или файл не прочитался, ничего не генерируем (никаких фейков)
+                        # Если база пустая или файл не прочитался — ничего не генерируем
                         if not links_data:
                             return None, None
 
-                        matches =[]
-                        if kw_stem:
-                            for item in links_data:
-                                if item['url'].rstrip('/') in used_urls: continue
-                                db_n_low = item['name'].lower()
-                                if kw_stem in db_n_low or kw_clean in db_n_low:
-                                    matches.append(item)
-                                
-                        if matches:
-                            chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
-                            used_urls.add(chosen['url'].rstrip('/'))
-                            # Возвращаем реальный URL и имя из базы
-                            tag_name = chosen['name'] if chosen['name'] else kw.capitalize()
-                            return chosen['url'], tag_name
-                            
-                        # ФОЛБЭК: Если совпадений нет, берем просто РАНДОМНУЮ ССЫЛКУ ИЗ БАЗЫ
-                        available_fallback =[i for i in links_data if i['url'].rstrip('/') not in used_urls]
-                        source_list = available_fallback if available_fallback else links_data
+                        kw_clean = str(kw).lower().strip()
                         
-                        if source_list:
-                            chosen = random.choice(source_list)
+                        # 1. Сначала честно пытаемся найти LSI-слово в твоей базе (в колонке названий)
+                        if kw_clean:
+                            matches = []
+                            for item in links_data:
+                                if item['url'].rstrip('/') in used_urls:
+                                    continue
+                                if kw_clean in str(item['name']).lower():
+                                    matches.append(item)
+                            
+                            # Если нашли совпадение — берем реальную ссылку и реальное имя из базы
+                            if matches:
+                                chosen = random.choice(matches)
+                                used_urls.add(chosen['url'].rstrip('/'))
+                                return chosen['url'], chosen['name']
+
+                        # 2. Если такого LSI в базе НЕТ — просто берем РАНДОМНУЮ строку из Excel
+                        available_fallback = [i for i in links_data if i['url'].rstrip('/') not in used_urls]
+                        if available_fallback:
+                            chosen = random.choice(available_fallback)
                             used_urls.add(chosen['url'].rstrip('/'))
-                            
-                            # В качестве текста тега используем само слово, а ссылку берем из базы
-                            tag_name = chosen['name'] if chosen['name'] else kw.capitalize()
-                            return chosen['url'], tag_name
-                            
+                            return chosen['url'], chosen['name'] # Строго пара из файла, никаких придумок
+
                         return None, None
 
                     # --- ФУНКЦИЯ ПОИСКА И ПАРСИНГА ДЛЯ ПРОМО (Ищет транслит в URL) ---
@@ -7426,6 +7419,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
