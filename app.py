@@ -2490,12 +2490,13 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         "ЗАПРЕТ НА ЛАТИНИЦУ:\n"
         "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать любые слова или буквы на латинице (английском языке). "
         "ЕДИНСТВЕННОЕ ИСКЛЮЧЕНИЕ: разрешено писать на латинице только марки сплавов/сталей (например, AISI 304, Hardox) и международные стандарты (DIN, EN, ISO).\n\n"
-        "ПРИМЕР КАК НАДО ПИСАТЬ: 'Нержавеющая сталь листовая — вид плоского проката. Легирование хромом (от 12%) предотвращает межкристаллитную коррозию.'\n\n"
-        "ПРИМЕР КАК НЕЛЬЗЯ ПИСАТЬ: 'Мы рады представить листовую сталь, которая благодаря добавкам обладает исключительной стойкостью.'\n\n"
+        "ПРАВИЛА НАПИСАНИЯ ЦИФР И РАЗМЕРОВ (КРИТИЧЕСКИ ВАЖНО):\n"
+        "1. ЗАПРЕЩЕНО искусственное увеличение дробей. Пиши целые числа без нулей (строго '6 мм', а не '6.0 мм').\n"
+        "2. ЗАПРЕЩЕНО перечислять длинные ряды размеров (например: '2000 мм, 2500 мм, 3000 мм, 6000 мм'). Если есть ряд параметров, ОБЯЗАТЕЛЬНО объединяй их в диапазон: '2000-6000 мм'.\n"
+        "3. Числовые диапазоны СТРОГО через тире без пробелов: '10-20 мм' (Запрещено: 'от 10 до 20 мм').\n\n"
         "ПРАВИЛА ОФОРМЛЕНИЯ HTML:\n"
         "1. В списках <ul> каждый пункт <li> СТРОГО заканчивается точкой с запятой (;), а последний — точкой (.).\n"
-        "2. Числовые диапазоны СТРОГО через тире без пробелов: '10-20 мм' (Запрещено: 'от 10 до 20 мм').\n"
-        "3. Двоеточия внутри пунктов списка ЗАПРЕЩЕНЫ."
+        "2. Двоеточия внутри пунктов списка ЗАПРЕЩЕНЫ."
     )
 
     user_prompt = f"""
@@ -2510,12 +2511,12 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     (Ты ОБЯЗАН вставить |||BLOCK_SEP||| между каждым блоком).
     
     ТРЕБОВАНИЯ К СТРУКТУРЕ И ЛОГИКЕ КАЖДОГО БЛОКА:
-    Статья должна читаться как единый связный материал.
+    Статья должна читаться как единый связный материал. ОБЪЕМ: Текст должен быть подробным.
     1. Заголовок (<h2> только для 1-го блока, <h3> для остальных). Заголовок H2: <h2>{h2_topic}</h2>. Заголовки H3 придумывай сам: они должны быть короткими (1-3 слова), техническими (например: Классификация, Монтаж, Свойства), строго БЕЗ двоеточий, БЕЗ кавычек и БЕЗ обязательного вписывания в них поисковых ключей.
-    2. Первый абзац (<p>) - сухой технический факт, как из Википедии или учебника, логически вытекающий из заголовка блока.
+    2. Первый абзац (<p>) - сухой технический факт. ВАЖНО: сделай этот абзац объемным (не менее 300 символов). Подробно опиши процесс производства, химию или свойства.
     3. Вводное предложение к списку (Например: "Технические параметры:").
-    4. Список (<ul> c <li>). Только факты.
-    5. Завершающий абзац (<p>) - нюансы логистики, допуска или монтажа, плавно подводящие к следующему блоку.
+    4. Список (<ul> c <li>). Только факты. Помни про правило схлопывания размеров в диапазоны.
+    5. Завершающий абзац (<p>) - нюансы логистики, допуска или монтажа. ВАЖНО: сделай этот абзац объемным (около 300 символов), плавно подводящим читателя к следующему блоку статьи.
     
     ТОЛЬКО HTML-КОД. БЕЗ ```html.
     """
@@ -2527,7 +2528,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.3, # Температура 0.3 для оптимального баланса логики и структуры
+            temperature=0.3, 
             max_tokens=8192
         )
         
@@ -5058,12 +5059,14 @@ with tab_wholesale_main:
                         kw_clean = kw.lower().strip()
                         kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
                     
-                        # Делаем транслит корня (со встроенной подстраховкой)
+                        # Если база пустая, ничего не генерируем
+                        if not images_data:
+                            return None, None, None
+                    
                         try:
                             from transliterate import translit
                             kw_translit = translit(kw_stem, 'ru', reversed=True).replace("'", "")
                         except Exception:
-                            t_dict = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'}
                             kw_translit = "".join([t_dict.get(c, c) for c in kw_stem])
                     
                         matches = []
@@ -5139,6 +5142,196 @@ with tab_wholesale_main:
                             else: unmatched_kws.append(kw)
                     else: unmatched_kws.extend(tags_2_cands)
 
+                    # =================================================================
+                    # УМНЫЙ ПОИСК ПО БАЗАМ И РАСПРЕДЕЛЕНИЕ (ДО ГЕНЕРАЦИИ!)
+                    # =================================================================
+                    
+                    # 1. Загрузка базы для ТЕГОВ (links_base.xlsx)
+                    links_data =[]
+                    if global_promo or global_tags:
+                        db_path = "data/links_base.xlsx" if os.path.exists("data/links_base.xlsx") else "links_base.xlsx"
+                        if not os.path.exists(db_path) and os.path.exists("data/links_base..xlsx"):
+                            db_path = "data/links_base..xlsx"
+                            
+                        if os.path.exists(db_path):
+                            try:
+                                df_links = pd.read_excel(db_path)
+                                for _, r in df_links.iterrows():
+                                    u_link = str(r.iloc[0]).strip().rstrip('/')
+                                    if not u_link or u_link == 'nan': continue
+                                    name_val = str(r.iloc[1]).strip() if len(df_links.columns) > 1 else ""
+                                    links_data.append({'url': u_link, 'name': name_val})
+                            except Exception as e:
+                                status_logger.error(f"Ошибка чтения {db_path}: {e}")
+
+                    # 2. Загрузка базы для ПРОМО (images_db.xlsx)
+                    images_data =[]
+                    if global_promo:
+                        img_db_path = "data/images_db.xlsx" if os.path.exists("data/images_db.xlsx") else "images_db.xlsx"
+                        if os.path.exists(img_db_path):
+                            try:
+                                df_img = pd.read_excel(img_db_path)
+                                for _, r in df_img.iterrows():
+                                    u_link = str(r.iloc[0]).strip().rstrip('/')
+                                    if not u_link or u_link == 'nan': continue
+                                    img_val = str(r.iloc[1]).strip() if len(df_img.columns) > 1 else ""
+                                    images_data.append({'url': u_link, 'img': img_val})
+                            except Exception as e:
+                                status_logger.error(f"Ошибка чтения {img_db_path}: {e}")
+
+                    # --- МЯСОРУБКА ДЛЯ СЛОВ (ДРОБИМ СТРОКИ) ---
+                    raw_candidates = list(set(structure_keywords))
+                    all_candidates =[]
+                    for raw_kw in raw_candidates:
+                        clean_str = re.sub(r'^.*?[--]\s*', '', str(raw_kw))
+                        parts = re.split(r'[,;]', clean_str)
+                        for p in parts:
+                            p = p.strip().strip('.')
+                            if len(p) > 2:
+                                all_candidates.append(p)
+                                
+                    all_candidates = list(set(all_candidates))
+                    
+                    # Разделяем слова на блоки ДО поиска
+                    tags_1_cands = all_candidates[:15]
+                    promo_cands = all_candidates[15:25] # Теперь берем 10 элементов
+                    tags_2_cands = all_candidates[25:]
+                    
+                    used_urls = set([current_task['url'].rstrip('/')])
+                    unmatched_kws = []
+                    tags_block_1 =[]
+                    promo_block = []
+                    tags_block_2 =[]
+                    
+                    import random
+                    
+                    t_dict = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya', ' ':'-'}
+
+                    # --- ФУНКЦИЯ ПОИСКА ДЛЯ ТЕГОВ (Ищет по Названию) ---
+                    def get_tag_data(kw):
+                        kw_clean = kw.lower().strip()
+                        kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
+                        
+                        # Если база пустая, ничего не генерируем
+                        if not links_data:
+                            return None, None
+                    
+                        matches =[]
+                        if kw_stem:
+                            for item in links_data:
+                                if item['url'].rstrip('/') in used_urls: continue
+                                db_n_low = item['name'].lower()
+                                if kw_stem in db_n_low or kw_clean in db_n_low:
+                                    matches.append(item)
+                                
+                        if matches:
+                            chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
+                            used_urls.add(chosen['url'].rstrip('/'))
+                            return chosen['url'], chosen['name']
+                            
+                        # ФОЛБЭК: берем рандом из базы, если совпадений нет
+                        available_fallback =[i for i in links_data if i['url'].rstrip('/') not in used_urls]
+                        source_list = available_fallback if available_fallback else links_data
+                        if source_list:
+                            chosen = random.choice(source_list)
+                            used_urls.add(chosen['url'].rstrip('/'))
+                            return chosen['url'], chosen['name']
+                        return None, None
+
+                    # --- ФУНКЦИЯ ПОИСКА И ПАРСИНГА ДЛЯ ПРОМО (Ищет транслит в URL) ---
+                    def get_promo_data(kw):
+                        kw_clean = kw.lower().strip()
+                        kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
+                    
+                        # Заглушка, если база вообще пустая
+                        if not images_data:
+                            t_name = kw.capitalize() if kw else "Выгодное предложение"
+                            t_slug = "".join([t_dict.get(c, c) for c in t_name.lower() if c in t_dict or c.isalnum()])
+                            return f"/catalog/{t_slug}/", t_name, "https://via.placeholder.com/260"
+
+                        try:
+                            from transliterate import translit
+                            kw_translit = translit(kw_stem, 'ru', reversed=True).replace("'", "")
+                        except Exception:
+                            kw_translit = "".join([t_dict.get(c, c) for c in kw_stem])
+                    
+                        matches =[]
+                        if kw_translit:
+                            for item in images_data:
+                                u_clean = item['url'].rstrip('/')
+                                if u_clean in used_urls:
+                                    continue
+                                if kw_translit in u_clean.lower():
+                                    matches.append(item)
+                                
+                        chosen = None
+                        if matches:
+                            chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
+                        else:
+                            # ФОЛБЭК: берем рандом из базы
+                            available_promo = [i for i in images_data if i['url'].rstrip('/') not in used_urls]
+                            source_promo = available_promo if available_promo else images_data
+                            if source_promo:
+                                chosen = random.choice(source_promo)
+
+                        if chosen:
+                            u_target = chosen['url']
+                            img_target = chosen['img']
+                            if str(img_target) == 'nan' or not img_target:
+                                img_target = "https://via.placeholder.com/260"
+                            
+                            promo_title = kw.capitalize() if kw else "Выгодное предложение"
+                            try:
+                                resp = requests.get(u_target, timeout=5, verify=False)
+                                if resp.status_code == 200:
+                                    soup = BeautifulSoup(resp.text, 'html.parser')
+                                    breadcrumbs = soup.find(['ul', 'div', 'nav'], class_=re.compile(r'breadcrumb|breadcrumbs|nav-path', re.I))
+                                    if breadcrumbs:
+                                        crumbs = breadcrumbs.find_all(['li', 'span', 'a'])
+                                        clean_crumbs =[c.get_text(strip=True) for c in crumbs if len(c.get_text(strip=True)) > 2 and c.get_text(strip=True) not in ['/', '\\', '>', '»', '•', '-']]
+                                        if clean_crumbs: promo_title = clean_crumbs[-1]
+                                    else:
+                                        h1_tag = soup.find('h1')
+                                        if h1_tag: promo_title = h1_tag.get_text(strip=True)
+                            except Exception: pass 
+                                
+                            used_urls.add(u_target.rstrip('/'))
+                            return u_target, promo_title, img_target
+                            
+                        return None, None, None
+
+                    # --- РАСПРЕДЕЛЯЕМ ПО БЛОКАМ (ЖЕСТКО ДОБИВАЕМ КОЛИЧЕСТВО) ---
+                    
+                    # 1. Плитка тегов 1
+                    if global_tags:
+                        cands_1 = list(tags_1_cands)
+                        while len(cands_1) < 10: cands_1.append("") # Добиваем пустыми для рандома
+                        for kw in cands_1[:10]:
+                            u, n = get_tag_data(kw)
+                            if u: tags_block_1.append({"url": u, "name": n, "kw": kw})
+                            elif kw: unmatched_kws.append(kw)
+                    else: unmatched_kws.extend(tags_1_cands)
+
+                    # 2. Промо-блок (с парсингом)
+                    if global_promo:
+                        cands_p = list(promo_cands)
+                        while len(cands_p) < 10: cands_p.append("") # Добиваем пустыми для рандома до 10
+                        for kw in cands_p[:10]: # Ограничиваем цикл 10 итерациями
+                            u, n, img = get_promo_data(kw)
+                            if u: promo_block.append({"url": u, "name": n, "img": img, "kw": kw})
+                            elif kw: unmatched_kws.append(kw)
+                    else: unmatched_kws.extend(promo_cands)
+
+                    # 3. Плитка тегов 2
+                    if global_tags:
+                        cands_2 = list(tags_2_cands)
+                        while len(cands_2) < 10: cands_2.append("") # Добиваем пустыми для рандома
+                        for kw in cands_2[:10]:
+                            u, n = get_tag_data(kw)
+                            if u: tags_block_2.append({"url": u, "name": n, "kw": kw})
+                            elif kw: unmatched_kws.append(kw)
+                    else: unmatched_kws.extend(tags_2_cands)
+
 # =================================================================
                     # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ ОСТАТКОВ (ИЗОЛИРОВАННЫЕ ПОТОКИ)
                     # =================================================================
@@ -5149,8 +5342,8 @@ with tab_wholesale_main:
                     safe_cands = list(set(cat_commercial + unmatched_kws))
                     random.shuffle(safe_cands)
                     
-                    faq_cands = st.session_state.get('categorized_info', []) # Запас для FAQ
-                    review_cands = []
+                    faq_cands = st.session_state.get('categorized_info',[]) # Запас для FAQ
+                    review_cands =[]
                     
                     # Отщипываем слова для FAQ (только из чистых!)
                     if global_faq:
@@ -5185,9 +5378,10 @@ with tab_wholesale_main:
                     # =================================================================
                     # ГЕНЕРАЦИЯ ТЕКСТА
                     # =================================================================
+                    # === ИСПРАВЛЕНИЕ: Отвязываем генерацию блоков от наличия LSI-слов ===
                     curr_use_text = global_text
-                    curr_use_tables = global_tables and (len(cat_dimensions) > 0)
-                    curr_use_geo = global_geo and (len(cat_geo) > 0)
+                    curr_use_tables = global_tables 
+                    curr_use_geo = global_geo 
                     
                     base_text_raw = current_task.get('base_text', '')
                     b_text_str = str(base_text_raw).strip() if base_text_raw is not None else ""
@@ -5223,19 +5417,21 @@ with tab_wholesale_main:
                         if not blocks_raw or "Error" in str(blocks_raw[0]):
                             step_logger.error(f"❌ Нейросеть вернула ошибку: {blocks_raw[0]}")
                         else:
-                            cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
+                            cleaned_blocks =[b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
                             for i_b in range(len(cleaned_blocks)):
                                 if i_b < 5: blocks[i_b] = cleaned_blocks[i_b]
                                 
                             generated_full_text = " ".join(blocks)
-                            # Убрали спам об успешной генерации, статус просто переключится на следующий шаг
 
                     # =================================================================
                     # ГЕНЕРАЦИЯ ТАБЛИЦЫ
                     # =================================================================
                     if curr_use_tables and client:
                         step_logger.warning("🧩 Этап 3: Верстаем таблицу размеров...")
-                        dims_str = ", ".join(cat_dimensions)
+                        
+                        # === ИСПРАВЛЕНИЕ: Если нет размеров, ИИ выдумывает свои ===
+                        dims_str = ", ".join(cat_dimensions) if cat_dimensions else "Придумай 5 самых частых технических характеристик для этого товара (марка стали, вес, размер, ГОСТ и т.д.)"
+                        
                         prompt_tbl = f"""ТЫ - СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
 ВВОДНЫЕ: Контекст текста: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
 ПРАВИЛА: 
@@ -5264,11 +5460,11 @@ with tab_wholesale_main:
                         try:
                             faq_json = generate_faq_gemini(gemini_api_key, h2_header, faq_cands, target_count=current_faq_count)
                             if isinstance(faq_json, list) and len(faq_json) > 0 and "Вопрос" in faq_json[0]:
-                                comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
-                                info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
+                                comm_items =[item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
+                                info_items =[item for item in faq_json if "информац" in item.get("Тип", "").lower()]
                                 
                                 if 'faq_export_data' not in st.session_state:
-                                    st.session_state.faq_export_data = []
+                                    st.session_state.faq_export_data =[]
                                     
                                 # Функция для чистки маркдауна (конвертация в HTML)
                                 def clean_faq_md(text):
@@ -5283,7 +5479,7 @@ with tab_wholesale_main:
                                         'Ответ': clean_faq_md(item.get("Ответ", ""))
                                     })
                                 
-                                faq_html_parts = ['<div class="faq-section">', f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>']
+                                faq_html_parts =['<div class="faq-section">', f'<div class="h2"><h2>Частые вопросы по {h2_header}</h2></div>']
                                 
                                 # --- УМНЫЙ ФИЛЬТР МАРКДАУНА В HTML ---
                                 def md_to_html(text):
@@ -5330,7 +5526,7 @@ with tab_wholesale_main:
                             reviews_json = [] 
                     
                         if isinstance(reviews_json, dict):
-                            reviews_json = [reviews_json]
+                            reviews_json =[reviews_json]
                             
                         # --- СТИЛИ ДЛЯ ОТЗЫВОВ (Добавляем 1 раз) ---
                         st.markdown("""
@@ -5350,10 +5546,10 @@ with tab_wholesale_main:
                         # --- ЦИКЛ ОТРИСОВКИ ---
                         if isinstance(reviews_json, list) and len(reviews_json) > 0:
                             st.write(f"### 📋 Предпросмотр отзывов ({len(reviews_json)} шт.)")
-                            review_sources = ["Яндекс Карты", "Google Карты", "2ГИС", "Flamp", "Blizko"]
+                            review_sources =["Яндекс Карты", "Google Карты", "2ГИС", "Flamp", "Blizko"]
                             
                             # ВШИВАЕМ CSS ПРЯМО В HTML, чтобы он не слетал при перезагрузке Streamlit
-                            rev_html_parts = [
+                            rev_html_parts =[
                                 '<style>',
                                 '.review-card { background: #ffffff !important; border: 1px solid #cbd5e1 !important; border-left: 8px solid #3b82f6 !important; border-radius: 12px !important; padding: 25px !important; margin-bottom: 20px !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important; font-family: sans-serif; }',
                                 '.author-name { font-weight: 700; color: #0f172a; font-size: 1.15rem; }',
@@ -5411,7 +5607,7 @@ with tab_wholesale_main:
                                 
                                 # Экспорт в Excel
                                 if 'ws_reviews_export_data' not in st.session_state:
-                                    st.session_state.ws_reviews_export_data = []
+                                    st.session_state.ws_reviews_export_data =[]
                                 st.session_state.ws_reviews_export_data.append({
                                     'Page URL': current_task['url'] if 'current_task' in locals() else '',
                                     'Product Name': h2_header,
@@ -5432,7 +5628,8 @@ with tab_wholesale_main:
                     if curr_use_geo and client:
                         status_logger.write("🌍 Добавляем гео-доставку...")
                         try:
-                            cities = ", ".join(cat_geo[:15])
+                            # === ИСПРАВЛЕНИЕ: Если нет городов, ИИ использует дефолтные ===
+                            cities = ", ".join(cat_geo[:15]) if cat_geo else "Москва, Санкт-Петербург, Екатеринбург, Новосибирск, Казань, Нижний Новгород, Челябинск, Самара, Уфа, Пермь"
                             prompt_geo = f"Напиши один HTML параграф (<p>) о доставке товара '{h2_header}' в города: {cities}. Выдай только HTML."
                             resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_geo}], temperature=0.5)
                             row_data['IP_PROP4819'] = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
@@ -5545,7 +5742,6 @@ with tab_wholesale_main:
                     else:
                         st.session_state.ws_automode_active = False
                         st.rerun()
-
     # ==========================================
     # ИНТЕРФЕЙС И НАСТРОЙКИ
     # ==========================================
@@ -7169,6 +7365,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
