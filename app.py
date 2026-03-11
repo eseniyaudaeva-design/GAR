@@ -2989,11 +2989,11 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
     emoji_index = random.choice(indices) if indices else 0
     
     typo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
-        typo_indices = random.sample(indices, min(typo_count, target_count)) if indices else[]
+    typo_indices = random.sample(indices, min(typo_count, target_count)) if indices else[]
 
-        yo_count = max(1, round(target_count * 0.2)) if target_count >= 5 else (1 if target_count >= 3 else 0)
-        yo_count = min(yo_count, max(1, int(target_count * 0.2)))  # не более 20% строго
-        yo_indices = random.sample(indices, min(yo_count, len(indices))) if indices else
+    yo_count = max(1, round(target_count * 0.2)) if target_count >= 5 else (1 if target_count >= 3 else 0)
+    yo_count = min(yo_count, max(1, int(target_count * 0.2)))  # не более 20% строго
+    yo_indices = random.sample(indices, min(yo_count, len(indices))) if indices else []
 
     lsi_distribution = [[] for _ in range(target_count)]
     if final_lsi:
@@ -7285,6 +7285,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
