@@ -2594,12 +2594,14 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     2. Написание диапазонов: Числовые диапазоны (длина, вес, размер) пиши через тире и с сокращением единиц измерения.
     Пример: "4-9 м", "10-20 мм". КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ писать "от 4 до 9 метров".
     - Исключение: для температурных диапазонов с минусовыми значениями используй слова (например, "от -10 до +50 °C").
-    3. Игнорирование конкурентов: Если в списке переданных ключевых слов тебе попадется странный мусор на латинице или названия чужих магазинов/компаний, полностью ИГНОРИРУЙ ИХ.
-    Из латиницы разрешается писать только марки сталей и стандарты (AISI 304, DIN и т.д.).
-    4. Характеристики в списках: Если в пункте списка перечисляется свойство (характеристика) и его значения, ОБЯЗАТЕЛЬНО ставь тире (–) между названием свойства и списком значений.
-    5. Максимально сократи использование союза "и". В 90% случаев заменяй его запятой при перечислении или просто перестраивай предложение.
-    Текст должен быть динамичным и лаконичным, без лишнего "нагромождения" связок.
-    """
+    3. Игнорирование конкурентов: Если в списке переданных ключевых слов тебе попадется странный мусор на латинице или названия чужих магазинов/компаний, полностью ИГНОРИРУЙ ИХ. Из латиницы разрешается писать только марки сталей и стандарты (AISI 304, DIN и т.д.).
+    Правило постановки тире в характеристиках:
+       - Если значение характеристики — это ЧИСЛО с единицей измерения, пиши слитно, БЕЗ тире и двоеточий (ПРАВИЛЬНО: "Толщина 2 мм", "Длина 6 м". ОШИБКА: "Толщина - 2 мм").
+       - Если значение характеристики — это ТЕКСТОВОЕ описание или перечисление слов, ОБЯЗАТЕЛЬНО ставь тире (ПРАВИЛЬНО: "Покрытие — оцинкованное, полимерное", "Назначение — для несущих конструкций").
+    5. Максимально сократи использование союза "и". В 90% случаев заменяй его запятой при перечислении или просто перестраивай предложение. Текст должен быть динамичным и лаконичным, без лишнего "нагромождения" связок.
+    6. БЕЗЛИКИЙ ПОСТАВЩИК: Категорически запрещено придумывать названия компаний (типа "ООО Название", "МеталлПром"). Пиши "наша компания", "на складе", "поставляем", "прямые поставки". Никаких имен собственных для юрлиц!
+    7. СТРОГАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ: Ты ОБЯЗАН выводить HTML строго в том порядке, который указан в структуре (от 1.1 до 1.17). Не меняй местами таблицу и заголовки!
+        """
 
     try:
         # === ВЫЗОВ API ===
@@ -3014,9 +3016,10 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         typo_rule = "СДЕЛАЙ 1-2 ЕСТЕСТВЕННЫЕ ОШИБКИ (частая орфография: 'вообщем', 'сдесь', 'зделать', 'извените', ИЛИ промах по соседней клавише: 'тгвар' вместо 'товар'). Ошибка должна быть как у реального человека, который спешил." if i in typo_indices else "Пиши абсолютно грамотно, без ошибок и опечаток."
         yo_rule = "Используй букву 'ё' в словах, где она должна быть (всё, ещё, пошёл)." if i in yo_indices else "Пиши вместо 'ё' букву 'е' (все, еще, пошел)."
         
+        # УМНОЕ ПРАВИЛО ДЛЯ LSI В ОТЗЫВАХ
         lsi_words_for_review = lsi_distribution[i]
         if lsi_words_for_review:
-            lsi_rule = f"СТРОГО впиши эти слова: {', '.join(lsi_words_for_review)}. Оберни их в <b>...</b>. Впиши их максимально естественно в разговорную речь, склоняй (например, не 'заказать розница', а 'брал в розницу', не 'мм', а 'толщина 2 мм')."
+            lsi_rule = f"КАНДИДАТЫ ДЛЯ ВСТАВКИ: {', '.join(lsi_words_for_review)}. Твоя задача: выбери из них ТОЛЬКО те слова, которые органично впишутся в живую речь. Если слово звучит как корпоративный штамп (наименование, ассортимент, каталог, ооо) или не подходит по смыслу — ПРОСТО ИГНОРИРУЙ ЕГО. То, что решишь использовать, оберни в <b>...</b>."
         else:
             lsi_rule = "В этот отзыв не нужно вставлять SEO-ключи."
 
@@ -3046,11 +3049,11 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 3. СТОП-СЛОВА (Маркеры ИИ): Никогда не используй слова: безупречный, высококачественный, настоятельно рекомендую, порадовало, в целом, подводя итог, оптимальный, профессионализм, клиентоориентированность, превзошел ожидания, на высшем уровне, данного.
 4. ЗАПРЕТ НА ШАБЛОНЫ И СТРУКТУРУ: Не используй приветствия ("Всем привет") и прощания. Начинай текст сразу с сути. Не делай обобщающих выводов в конце ("В общем и целом...").
 5. САМОПРОВЕРКА НА ФАЛЬШЬ (ВНУТРЕННИЙ РЕДАКТОР): Перед тем как выдать текст, проверь его. Мужики-строители НЕ говорят "избранный металлопрокат", "огромное преимущество", "отличный элемент для моих задач" или "со своей задачей справляется". Не пиши "заказали тяжелую балку" — это бред. Пиши "взял на навес", "кинул на перекрытия", "надо было обвязать каркас". Если фраза звучит как рекламный буклет — перепиши ее простым бытовым языком стройки.
-6. РАБОТА С LSI И КЛЮЧАМИ (КРИТИЧЕСКИ ВАЖНО):
-   ОБЩИЙ СПИСОК LSI ТОВАРОВ: {", ".join(final_lsi)}
-   - ВНИМАНИЕ: Категорически запрещено пытаться впихнуть весь этот список в один текст! Для каждого отзыва в индивидуальном блоке данных ниже указана своя строчка "Обязательные слова (LSI)". Тебе нужно вписать в отзыв ТОЛЬКО ИХ, а не весь общий список.
-   - Обязательно оборачивай эти слова в <b>...</b>.
-   - СТРОГО СКЛОНЯЙ ключи! Запрещено вставлять их криво. Вписывай их так, чтобы они растворились в разговорной речи. (Например: слово "мм" -> "толщина 2 <b>мм</b>", слово "розница" -> "нашел наконец-то в <b>розницу</b>", "м1" -> "марка <b>м1</b>").
+6. РАБОТА С LSI (УМНЫЙ ФИЛЬТР): 
+   - В задании к каждому отзыву указаны "Кандидаты для вставки". 
+   - ВНИМАНИЕ: Ты НЕ ОБЯЗАН вставлять их все! Выступай в роли редактора: если слово не лезет в бытовой отзыв мужика-строителя (например, слова "различный", "наименование", "оптимальный"), смело ВЫБРАСЫВАЙ его. 
+   - Вставляй только то, что звучит на 100% естественно.
+   - Использованные слова склоняй и оборачивай в <b>...</b>.
 7. ЗАПРЕТ НА КАНЦЕЛЯРИТ И "РОБОТНУЮ" ЛОГИКУ:
    - ЗАПРЕЩЕНЫ слова: "проволочек", "данное изделие", "произвели расчеты", "критично", "в кратчайшие сроки".
    - ЗАПРЕЩЕНЫ неестественные пояснения причин. Не пиши "заказали металл, поэтому было критично". Пиши: "металл ждали долго, из-за этого работа встала".
@@ -3137,12 +3140,6 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
         "Ты умеешь грамотно вписывать ключевые слова, меняя их форму и порядок слов. "
         "Если нужно вписать много ключевых слов — ты увеличиваешь объем текста, чтобы они смотрелись естественно."
     )
-    
-    # В ВАШЕМ ПРОМТЕ:
-    # {exact_h2} в старом коде — это то, про что писать статью. 
-    # В новой логике: 
-    # - {h1_marker} — это предмет статьи (ключевое слово для H3 и текста).
-    # - {h2_topic} — это точный заголовок H2.
     
     user_prompt = f"""
     ЗАДАЧА: Напиши техническую статью.
@@ -5226,11 +5223,13 @@ with tab_wholesale_main:
                         faq_cands.extend(safe_cands[:chunk_size])
                         safe_cands = safe_cands[chunk_size:]
                         
-                    # Отщипываем слова для Отзывов (только из чистых!)
+                    # Отщипываем слова для Отзывов (Нейросеть сама отфильтрует мусор)
                     if st.session_state.get('ws_global_reviews', True):
                         chunk_size = min(7, len(safe_cands))
                         review_cands.extend(safe_cands[:chunk_size])
-                        safe_cands = safe_cands[chunk_size:]
+                        
+                        # Удаляем взятые слова из общего пула
+                        safe_cands = [w for w in safe_cands if w not in review_cands]
                         
                     # 2. Формируем пул для Главного текста (остатки чистых + вся "вода").
                     final_text_seo_list = list(set(safe_cands + cat_general))
@@ -5418,36 +5417,46 @@ with tab_wholesale_main:
                             st.write(f"### 📋 Предпросмотр отзывов ({len(reviews_json)} шт.)")
                             review_sources = ["Яндекс Карты", "Google Карты", "2ГИС", "Flamp", "Blizko"]
                             
+                            # ВШИВАЕМ CSS ПРЯМО В HTML, чтобы он не слетал при перезагрузке Streamlit
                             rev_html_parts = [
+                                '<style>',
+                                '.review-card { background: #ffffff !important; border: 1px solid #cbd5e1 !important; border-left: 8px solid #3b82f6 !important; border-radius: 12px !important; padding: 25px !important; margin-bottom: 20px !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important; font-family: sans-serif; }',
+                                '.author-name { font-weight: 700; color: #0f172a; font-size: 1.15rem; }',
+                                '.star-gold { color: #eab308; font-size: 1.3rem; }',
+                                '.star-gray { color: #d1d5db; font-size: 1.3rem; }',
+                                '.review-date { color: #64748b; font-size: 0.85rem; margin-top: 5px; }',
+                                '.review-body { color: #334155; line-height: 1.6; margin-top: 15px; font-size: 1rem; }',
+                                '.review-body b { color: #1d4ed8; background: #dbeafe; padding: 0 4px; border-radius: 4px; }',
+                                '</style>',
                                 '<div class="reviews-section" style="margin-top: 30px;">',
                                 f'<div class="h2"><h2>Отзывы клиентов: {h2_header}</h2></div>',
                                 '<div class="reviews-container">'
                             ]
                             
                             for i, item in enumerate(reviews_json):
-                                r_name = item.get('Имя', 'Клиент')
-                                r_date = item.get('Дата', '')
-                                raw_rating = str(item.get('Оценка', 5.0)).replace(',', '.')
-                                try:
-                                    r_rating = float(re.search(r'\d+\.?\d*', raw_rating).group())
-                                except:
-                                    r_rating = 5.0
-                                
-                                r_text_raw = item.get('Текст', '')
+                                r_name = item.get('Имя', item.get('имя', f'Клиент {i+1}'))
+                                r_date = item.get('Дата', item.get('дата', '01.02.2026')) 
                                 r_source = random.choice(review_sources)
                                 
-                                # Превращаем **слово** в <b>слово</b>
-                                r_text_html = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', str(r_text_raw))
+                                # Умное извлечение оценки (если ИИ выдаст "Оценка: 5 звезд" или "4,5")
+                                raw_rating = str(item.get('Оценка', item.get('оценка', '5.0'))).replace(',', '.')
+                                try:
+                                    r_rating = float(re.search(r'\d+\.?\d*', raw_rating).group())
+                                    if r_rating > 5: r_rating = 5.0
+                                except:
+                                    r_rating = 5.0
+                                    
+                                r_text_raw = item.get('Текст', item.get('текст', ''))
+                                r_text_html = str(r_text_raw).replace('**', '<b>').replace('**', '</b>')
                                 
-                                # ГЕНЕРАЦИЯ ЗВЕЗД (HTML)
                                 full_stars = int(r_rating)
                                 has_half = 1 if r_rating % 1 != 0 else 0
                                 stars_html = '<span class="star-gold">' + '★' * full_stars + '</span>'
                                 if has_half: stars_html += '<span class="star-gold">½</span>'
                                 stars_html += '<span class="star-gray">' + '☆' * (5 - full_stars - has_half) + '</span>'
                                 
-                                # ВЫВОД КАРТОЧКИ В ИНТЕРФЕЙС
-                                st.markdown(f'''
+                                # Сборка карточки
+                                preview_card = f'''
                                     <div class="review-card">
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             <div>
@@ -5455,33 +5464,21 @@ with tab_wholesale_main:
                                                 <div class="review-date">📅 {r_date} | 📍 {r_source}</div>
                                             </div>
                                             <div style="text-align: right;">
-                                                <div class="star-gold">{stars_html}</div>
-                                                <div style="font-weight: bold; color: #1e293b;">{r_rating}</div>
+                                                <div>{stars_html}</div>
+                                                <div style="font-weight: bold; color: #1e293b; font-size: 0.9rem;">Оценка: {r_rating}</div>
                                             </div>
                                         </div>
                                         <div class="review-body">{r_text_html}</div>
                                     </div>
-                                ''', unsafe_allow_html=True)
+                                '''
+                                st.markdown(preview_card, unsafe_allow_html=True)
+                                rev_html_parts.append(preview_card)
                                 
-                                # Сборка чистого HTML-кода для отправки
-                                rev_html_parts.append(f'''
-                                <div class="review-item" style="padding: 15px; border-left: 4px solid #277EFF; background: #f9fafb; margin-bottom: 15px;">
-                                    <div class="review-header" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                        <div>
-                                            <strong class="review-author">{r_name}</strong>
-                                            <span class="review-date" style="color: #6B7280; font-size: 14px; margin-left: 10px;">{r_date}</span>
-                                        </div>
-                                        <div class="review-rating" style="color: #eab308; font-size: 16px;">{stars_html}</div>
-                                    </div>
-                                    <div class="review-text" style="color: #374151; font-size: 15px;">{r_text_html}</div>
-                                </div>
-                                ''')
-                                
-                                # СОХРАНЕНИЕ ДЛЯ ЭКСПОРТА В EXCEL
+                                # Экспорт в Excel
                                 if 'ws_reviews_export_data' not in st.session_state:
                                     st.session_state.ws_reviews_export_data = []
                                 st.session_state.ws_reviews_export_data.append({
-                                    'Page URL': current_task['url'],
+                                    'Page URL': current_task['url'] if 'current_task' in locals() else '',
                                     'Product Name': h2_header,
                                     'Имя': r_name,
                                     'Источник': r_source,
@@ -5492,8 +5489,7 @@ with tab_wholesale_main:
                                 
                             rev_html_parts.append('</div></div>')
                             final_reviews_html = "\n".join(rev_html_parts)
-                        else:
-                            st.error(f"Генерация для '{h2_header}' вернула пустой список или ошибку.")
+                            st.session_state['saved_reviews_html'] = final_reviews_html
 
                     # =================================================================
                     # ГЕО-ДОСТАВКА
@@ -7201,6 +7197,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
