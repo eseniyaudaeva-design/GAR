@@ -2803,7 +2803,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     except Exception as e:
-        return [{"Имя": "Ошибка", "Оценка": 5.0, "Текст": f"Ошибка инициализации API: {str(e)}", "Дата": date.today().strftime("%d.%m.%Y")}]
+        return [{"Имя": "Ошибка", "Оценка": 5.0, "Текст": f"Ошибка инициализации API: {str(e)}", "Дата": "10.02.2026"}]
 
     try:
         import pymorphy3 as pymorphy2
@@ -2825,11 +2825,11 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
     final_lsi = clean_lsi[:15]
 
     # --- 2. МАТЕМАТИКА ОЦЕНОК ---
-    ratings =[]
+    ratings = []
     if target_count <= 1:
         ratings = [5.0] * target_count
     else:
-        ratings =[3.5] + [5.0] * (target_count - 1)
+        ratings = [3.5] + [5.0] * (target_count - 1)
         if target_count > 3:
             indices = list(range(1, target_count))
             random.shuffle(indices)
@@ -2839,24 +2839,13 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
                 if (sum(ratings) - ratings[idx] + new_val) / target_count >= 4.70:
                     ratings[idx] = new_val
     random.shuffle(ratings)
-    # (Здесь ВЫРЕЗАН мусорный код с ошибкой 'n' и ранним return)
-    for idx in indices:
-        # Останавливаемся если средняя уже упала до минимума
-        if (sum(ratings) / n) <= 4.72: break
-        new_val = random.choice([4.0, 4.5])
-        # Понижаем только если средняя после понижения остаётся >= 4.7
-        if (sum(ratings) - ratings[idx] + new_val) / n >= 4.70:
-            ratings[idx] = new_val
-    
-    random.shuffle(ratings)
-    return ratings
-
-    ratings = get_balanced_ratings(target_count)
 
     # --- 3. РАНДОМНЫЕ ДАТЫ ---
-    start_dt = date(2026, 1, 1)
-    end_dt = date(2026, 2, 10)
+    start_dt = date(2020, 1, 1)  # Начало диапазона: 1 января 2020 года
+    end_dt = date.today()        # Конец диапазона: сегодняшний день
+    
     delta_days = (end_dt - start_dt).days
+    # Генерируем список случайных дат в формате ДД.ММ.ГГГГ
     raw_dates = [(start_dt + timedelta(days=random.randint(0, delta_days))).strftime("%d.%m.%Y") for _ in range(target_count)]
 
     # --- 4. РАСПРЕДЕЛЕНИЕ СТИЛЕЙ ---
@@ -2897,7 +2886,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         name_lower = str(author_name).lower()
         parts = name_lower.split()
         last_word = parts[-1] if parts else ""
-        exceptions_male =['илья', 'никита', 'данила', 'саша', 'женя', 'миша', 'коля', 'николай', 'кузьма']
+        exceptions_male = ['илья', 'никита', 'данила', 'саша', 'женя', 'миша', 'коля', 'николай', 'кузьма']
         if last_word in exceptions_male: return 'Мужской'
         if last_word.endswith(('а', 'я', 'ва', 'на', 'ова', 'ева', 'ина')) and not re.search(r'[a-z0-9]', last_word):
             return 'Женский'
@@ -2907,10 +2896,10 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
     emoji_index = random.choice(indices) if indices else 0
     
     typo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
-    typo_indices = random.sample(indices, min(typo_count, target_count)) if indices else[]
+    typo_indices = random.sample(indices, min(typo_count, target_count)) if indices else []
 
     yo_count = max(1, round(target_count * 0.2)) if target_count >= 5 else (1 if target_count >= 3 else 0)
-    yo_count = min(yo_count, max(1, int(target_count * 0.2)))  # не более 20% строго
+    yo_count = min(yo_count, max(1, int(target_count * 0.2)))  
     yo_indices = random.sample(indices, min(yo_count, len(indices))) if indices else []
 
     lsi_distribution = [[] for _ in range(target_count)]
@@ -2943,10 +2932,6 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
                 "5 звезд: металл нормальный, документы оформили быстро, вопросов нет."
             ])
         elif ratings[i] in [4.0, 4.5]:
-            # Негатив - ТОЛЬКО внешние факторы, не зависящие от компании.
-            # Компания при этом была на связи, извинилась, исправилась.
-            # НЕ ИСПОЛЬЗУЙ эти примеры как шаблон - это просто типы ситуаций.
-            # Придумай свою конкретную ситуацию в рамках этого типа.
             sentiment = random.choice([
                 f"{ratings[i]} звезды: небольшая заминка на складе из-за загруженности (не в сезон такого не бывает), но предупредили заранее и не подвели по итогу.",
                 f"{ratings[i]} звезды: транспортная компания немного задержала груз - это не их вина, но неприятно было. Со стороны продавца всё окей, держали в курсе.",
@@ -2956,10 +2941,6 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
                 f"{ratings[i]} звезды: цены чуть выросли с прошлого раза - но это рынок, не к ним претензии. Работать можно.",
             ])
         else:
-            # 3.5 звезды - неприятная ситуация НЕ по вине компании,
-            # но компания сработала хорошо: была на связи, компенсировала, извинилась.
-            # Человек остался, но осадок есть.
-            # НЕ КОПИРУЙ эти примеры - придумай свою ситуацию в этом духе.
             sentiment = random.choice([
                 "3.5 звезды: подвела транспортная компания, груз завис на терминале на 4 дня. Менеджер постоянно дергал ТК, в итоге дали скидку на следующий заказ. Осадок есть, но не от них.",
                 "3.5 звезды: была путаница с остатками на складе, пришлось ждать подвоза. Не критично, но время поджимало. Скидку предложили сами, не просил.",
@@ -2977,7 +2958,6 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         else:
             yo_rule = "СТРОГО пиши везде букву 'е' вместо 'ё'. Никакого 'всё', 'ещё', 'пошёл' - только 'все', 'еще', 'пошел'."
         
-        # УМНОЕ ПРАВИЛО ДЛЯ LSI В ОТЗЫВАХ
         lsi_words_for_review = lsi_distribution[i]
         if lsi_words_for_review:
             lsi_rule = f"КАНДИДАТЫ ДЛЯ ВСТАВКИ: {', '.join(lsi_words_for_review)}. Твоя задача: выбери из них ТОЛЬКО те слова, которые органично впишутся в живую речь. Если слово звучит как корпоративный штамп (наименование, ассортимент, каталог, ооо) или не подходит по смыслу - ПРОСТО ИГНОРИРУЙ ЕГО. То, что решишь использовать, оберни в <b>...</b>."
@@ -3011,7 +2991,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
        "за пару часов", "довезли на следующий день", "на следующий день уже было".
        Металлопрокат так не возят физически. Минимальный реалистичный срок - 2 рабочих дня.
        Пиши: "привезли в срок", "ждал 3 дня", "доставили через пару дней как договорились".
-СТОП-СЛОВА (Маркеры ИИ): Никогда не используй: безупречный, высококачественный, 
+3. СТОП-СЛОВА (Маркеры ИИ): Никогда не используй: безупречный, высококачественный, 
     настоятельно рекомендую, порадовало, в целом, подводя итог, оптимальный, профессионализм, 
     клиентоориентированность, превзошел ожидания, на высшем уровне, данного.
     ЗАПРЕТ НА ЛАТИНИЦУ: никаких английских слов в тексте отзыва - info, ok, asap, online, 
@@ -3049,7 +3029,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
             messages=[{"role": "user", "content": prompt}],
             temperature=0.85
         )
-        content = re.sub(r'```json\s*|மல்|```', '', resp.choices[0].message.content).strip()
+        content = re.sub(r'```json\s*|```', '', resp.choices[0].message.content).strip()
         reviews = json.loads(content)
         
         # === ПОСТ-ПРОЦЕССИНГ (Регистр и точки) ===
@@ -3057,7 +3037,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
             if i < len(raw_dates):
                 reviews[i]["Дата"] = raw_dates[i]
             else:
-                reviews[i]["Дата"] = date.today().strftime("%d.%m.%Y")
+                reviews[i]["Дата"] = "10.02.2026"
                 
             text = reviews[i].get("Текст", "")
             if text:
@@ -3078,7 +3058,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
                     
         return reviews
     except Exception as e:
-        return [{"Имя": "Ошибка", "Текст": str(e), "Оценка": 5.0, "Дата": date.today().strftime("%d.%m.%Y")}]
+        return [{"Имя": "Ошибка", "Текст": str(e), "Оценка": 5.0, "Дата": "10.02.2026"}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: N API Key"
@@ -7220,6 +7200,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
