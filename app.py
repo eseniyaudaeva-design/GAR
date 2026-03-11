@@ -2467,29 +2467,17 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     lsi_string = ", ".join(seo_words) if seo_words else "Нет дополнительных слов"
 
     if seo_words:
-    # --- ПРЕДВАРИТЕЛЬНАЯ ОЧИСТКА СПИСКА LSI (чтобы ООО даже не попадало в промпт) ---
-        lsi_cleaned = ", ".join([w.strip() for w in lsi_string.split(',') if w.strip().lower() not in ['ооо', 'зао', 'пао', 'ип', 'ао']])
-
         seo_instruction_block = f"""
-    --- КРИТИЧЕСКАЯ ИНСТРУКЦИЯ ДЛЯ ТЕХНИЧЕСКОГО ЭКСПЕРТА ---
-    Твоя роль: Ведущий инженер-технолог. Пиши глубокий, технически насыщенный контент.
+    --- ВАЖНАЯ ИНСТРУКЦИЯ ПО SEO-СЛОВАМ ---
+    Тебе нужно внедрить в текст следующие слова в любой подходящей под контекст лемме: {{{lsi_string}}}
     
-    ТЕБЕ НУЖНО ВНЕДРИТЬ В ТЕКСТ СЛОВА (в любой подходящей лемме): {{{lsi_cleaned}}}
-    
-    ЖЕСТКИЕ ТРЕБОВАНИЯ К ТЕКСТУ И ОБЪЕМУ:
-    1. ТЕХНИЧНОСТЬ: Используй профессиональную терминологию (ГОСТы, допуски, марки сплавов, описания физико-химических свойств). Избегай общих фраз.
-    2. ОБЪЕМ АБЗАЦЕВ: Каждый абзац <p> должен быть развернутым (минимум 5-7 длинных предложений). Никаких коротких отписок. Описывай детали процесса или свойства товара максимально подробно.
-    3. СТОП-ЛИСТ: Категорически ЗАПРЕЩЕНО использовать слово "ООО", названия компаний или рекламные штампы ("лучшая цена", "индивидуальный подход").
-    
-    ПРАВИЛА ВНЕДРЕНИЯ LSI:
-    1. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "согласно <b>ГОСТ</b>..."
-    2. СТРОГИЙ ЗАПРЕТ: Используй <b> ТОЛЬКО для SEO-слов из списка выше. Не выделяй жирным ничего другого.
-    3. ЕСТЕСТВЕННОСТЬ: ЗАПРЕЩЕНО вставлять LSI через запятую или списком. Каждое слово должно быть ГАРМОНИЧНО вписано в технический контекст предложения.
-    4. ГИБКОСТЬ: Обязательно склоняй слова. Если слово звучит как бред в данном контексте — ПРОПУСТИ ЕГО.
-    5. ЗАЩИТА ТЕХНИЧЕСКИХ ДАННЫХ: Запрещено вставлять SEO-слова внутрь маркированных списков <li> с характеристиками. Вписывай их ТОЛЬКО в текстовые абзацы <p>.
-    6. РАСПРЕДЕЛЕНИЕ: Раскидай слова равномерно по всем {num_blocks} блокам текста.
-    
-    Текст должен выглядеть как статья из профессионального инженерного справочника, а не рекламный буклет.
+    ПРАВИЛА ВНЕДРЕНИЯ И ВЫДЕЛЕНИЯ:
+    1. РАСПРЕДЕЛЕНИЕ: Раскидай слова по всем {num_blocks} блокам.
+    2. ВЫДЕЛЕНИЕ: Обязательно выдели внедренные слова тегом <b>. Пример: "Доставка в <b>Москву</b>..."
+    3. СТРОГИЙ ЗАПРЕТ: Используй тег <b> ТОЛЬКО для этих SEO-слов. Не выделяй жирным ничего другого.
+    4. ЕСТЕСТВЕННОСТЬ: Меняй словоформы под контекст. Текст должен быть естественным и логичным, не пиши чушь.
+    5. ЗАЩИТА ТЕХНИЧЕСКИХ ДАННЫХ (КРИТИЧЕСКИ ВАЖНО): Категорически запрещено вставлять SEO-слова внутрь маркированных списков с характеристиками (ГОСТы, марки стали, размеры). SEO-слова можно вписывать ТОЛЬКО в текстовые абзацы <p>.
+    6. ИГНОРИРОВАНИЕ: Если LSI-слово невозможно органично вставить в текст (звучит как бред) — ПРОПУСТИ ЕГО.
     -------------------------------------------
     """
 
@@ -3153,7 +3141,6 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ):
     4-5 строк. Без дублей списка N1.
     ИСПОЛЬЗУЙ ЭТОТ КОД:
-    <div class="table-full-width-wrapper">
     <table class="brand-accent-table">
         <thead>
             <tr>
@@ -3168,7 +3155,6 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
             <tr><td>[Параметр 4]</td><td>[Данные]</td></tr>
         </tbody>
     </table>
-    Выдай только HTML код без маркдаун-разметки (без ```html)."""
     
     1.8. Подзаголовок H3 (ШАБЛОН): 
     "Классификация {h1_marker} (род. падеж, с маленькой буквы)"
@@ -5085,26 +5071,17 @@ with tab_wholesale_main:
                         kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
                         matches = []
                         
-                        # Поиск совпадений
                         for item in links_data:
                             if item['url'].rstrip('/') in used_urls: continue
                             db_n_low = item['name'].lower()
+                            # Ищем корень слова во втором столбце
                             if kw_stem in db_n_low or kw_clean in db_n_low:
                                 matches.append(item)
                                 
                         if matches:
-                            chosen = random.choice(matches)
+                            chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
                             used_urls.add(chosen['url'].rstrip('/'))
                             return chosen['url'], chosen['name']
-                        
-                        # ФОЛБЭК: Если совпадений нет, берем ЛЮБОЙ рандомный товар из базы
-                        if links_data:
-                            available_fallback = [i for i in links_data if i['url'].rstrip('/') not in used_urls]
-                            source_list = available_fallback if available_fallback else links_data
-                            chosen = random.choice(source_list)
-                            used_urls.add(chosen['url'].rstrip('/'))
-                            return chosen['url'], chosen['name']
-                        
                         return None, None
 
                     # --- ФУНКЦИЯ ПОИСКА И ПАРСИНГА ДЛЯ ПРОМО (Ищет транслит в URL) ---
@@ -5112,6 +5089,7 @@ with tab_wholesale_main:
                         kw_clean = kw.lower().strip()
                         kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
                     
+                        # Делаем транслит корня (со встроенной подстраховкой)
                         try:
                             from transliterate import translit
                             kw_translit = translit(kw_stem, 'ru', reversed=True).replace("'", "")
@@ -5122,68 +5100,76 @@ with tab_wholesale_main:
                         matches = []
                         for item in images_data:
                             u_clean = item['url'].rstrip('/')
-                            if u_clean in used_urls: continue
+                            if u_clean in used_urls:
+                                continue
+                            # Ищем транслит в URL (первый столбец)
                             if kw_translit in u_clean.lower():
                                 matches.append(item)
-                        
-                        chosen = None
+                                
                         if matches:
-                            chosen = random.choice(matches)
-                        # ФОЛБЭК ДЛЯ ПРОМО: Берем рандом, если по транслиту пусто
-                        elif images_data:
-                            available_promo = [i for i in images_data if i['url'].rstrip('/') not in used_urls]
-                            source_promo = available_promo if available_promo else images_data
-                            chosen = random.choice(source_promo)
-
-                        if chosen:
+                            chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
                             u_target = chosen['url']
                             img_target = chosen['img']
                             if str(img_target) == 'nan' or not img_target:
                                 img_target = "https://via.placeholder.com/260"
                             
-                            promo_title = kw.capitalize() if kw else "Выгодное предложение"
+                            # ИДЕМ НА САЙТ И ПАРСИМ ХЛЕБНЫЕ КРОШКИ (ДЛЯ НАЗВАНИЯ ПРОМО)
+                            promo_title = kw.capitalize() # Заглушка по умолчанию
                             try:
-                                resp = requests.get(u_target, timeout=5, verify=False)
+                                resp = requests.get(u_target, timeout=5)
                                 if resp.status_code == 200:
                                     soup = BeautifulSoup(resp.text, 'html.parser')
+                                    
+                                    # Ищем контейнер с крошками (стандартные классы)
                                     breadcrumbs = soup.find(['ul', 'div', 'nav'], class_=re.compile(r'breadcrumb|breadcrumbs|nav-path', re.I))
+                                    
                                     if breadcrumbs:
+                                        # Ищем все элементы внутри
                                         crumbs = breadcrumbs.find_all(['li', 'span', 'a'])
+                                        # Чистим от разделителей (/, » и т.д.)
                                         clean_crumbs = [c.get_text(strip=True) for c in crumbs if len(c.get_text(strip=True)) > 2 and c.get_text(strip=True) not in ['/', '\\', '>', '»', '•', '-']]
-                                        if clean_crumbs: promo_title = clean_crumbs[-1]
+                                        if clean_crumbs:
+                                            promo_title = clean_crumbs[-1] # Берем последний пункт
                                     else:
+                                        # Резервный вариант, если крошек нет - берем H1
                                         h1_tag = soup.find('h1')
-                                        if h1_tag: promo_title = h1_tag.get_text(strip=True)
-                            except: pass 
-                            
+                                        if h1_tag: 
+                                            promo_title = h1_tag.get_text(strip=True)
+                            except Exception:
+                                pass 
+                                
                             used_urls.add(u_target.rstrip('/'))
                             return u_target, promo_title, img_target
                             
+                        # ВОТ ЭТОЙ СТРОЧКИ НЕ ХВАТАЛО (Возвращаем 3 пустые переменные, если совпадений нет)
                         return None, None, None
 
                     # --- РАСПРЕДЕЛЯЕМ ПО БЛОКАМ ---
                     
                     # 1. Плитка тегов 1
                     if global_tags:
-                        # Если кандидатов нет, создаем 10 пустых, чтобы сработал рандом
-                        cands_1 = tags_1_cands if tags_1_cands else [""] * 10
-                        for kw in cands_1[:10]:
+                        for kw in tags_1_cands:
                             u, n = get_tag_data(kw)
                             if u: tags_block_1.append({"url": u, "name": n, "kw": kw})
-                    
-                    # 2. Промо-блок
+                            else: unmatched_kws.append(kw)
+                    else: unmatched_kws.extend(tags_1_cands)
+
+                    # 2. Промо-блок (с парсингом)
                     if global_promo:
-                        cands_p = promo_cands if promo_cands else [""] * 2
-                        for kw in cands_p[:2]:
+                        for kw in promo_cands:
                             u, n, img = get_promo_data(kw)
                             if u: promo_block.append({"url": u, "name": n, "img": img, "kw": kw})
+                            else: unmatched_kws.append(kw)
+                    else: unmatched_kws.extend(promo_cands)
 
                     # 3. Плитка тегов 2
                     if global_tags:
-                        cands_2 = tags_2_cands if tags_2_cands else [""] * 10
-                        for kw in cands_2[:10]:
+                        for kw in tags_2_cands:
                             u, n = get_tag_data(kw)
                             if u: tags_block_2.append({"url": u, "name": n, "kw": kw})
+                            else: unmatched_kws.append(kw)
+                    else: unmatched_kws.extend(tags_2_cands)
+
 # =================================================================
                     # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ ОСТАТКОВ (ИЗОЛИРОВАННЫЕ ПОТОКИ)
                     # =================================================================
@@ -5281,15 +5267,14 @@ with tab_wholesale_main:
                     if curr_use_tables and client:
                         step_logger.warning("🧩 Этап 3: Верстаем таблицу размеров...")
                         dims_str = ", ".join(cat_dimensions)
-                        prompt_tbl = f"""ТЫ - СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для '{h2_header}'.
+                        prompt_tbl = f"""ТЫ - СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
 ВВОДНЫЕ: Контекст текста: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
 ПРАВИЛА: 
 1. НЕ дублируй инфу из текста! 
-2. Добавь НОВЫЕ технические характеристики. Если список обязательных параметров пуст, самостоятельно подбери наиболее важные характеристики для '{h2_header}' (например: ГОСТ, марка стали, хим. состав, мех. свойства, применение).
-3. Таблица строго 2 колонки: 'Характеристика' и 'Значение'. Для разделов (например 'Химический состав') используй строку только с одной ячейкой <td> без второй.
-4. Формат строго такой:
-<div class='table-full-width-wrapper'><table class='brand-accent-table'><thead><tr><th>Характеристика</th><th>Значение</th></tr></thead><tbody>... строки <tr><td>...</td><td>...</td></tr> ...</tbody></table></div>
-Выдай ТОЛЬКО HTML код, без markdown, без пояснений."""
+2. Добавь НОВЫЕ технические характеристики.
+3. Максимум 5 колонок.
+4. Формат: <table class="brand-accent-table"><thead><tr>...</tr></thead><tbody>...</tbody></table>
+Выдай только HTML код."""
                         try:
                             resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.25)
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
@@ -5967,7 +5952,7 @@ with tab_wholesale_main:
                 
                 # Стили CSS (переиспользованы из твоего кода)
                 st.markdown("""
-                <style>
+                    <style>
                         .preview-box { border: 1px solid #e2e8f0; background-color: #ffffff; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); }
                         .block-title { color: #277EFF; margin-top: 30px; margin-bottom: 10px; font-size: 1.2em; font-weight: 600; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }
                         .table-scroll-wrapper { width: 100%; overflow-x: auto; margin: 20px 0; }
@@ -5978,56 +5963,10 @@ with tab_wholesale_main:
                         .tag-item { display: inline-block; padding: 6px 12px; margin: 4px; background: #f0f4f8; border-radius: 4px; text-decoration: None; color: #277EFF; font-size: 14px; }
                         .gallery-content-wrapper { background: #F6F7FC; padding: 20px; border-radius: 10px; margin: 20px 0; }
                         .five-col-gallery { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 10px; }
-                        .gallery-item h3 {
-                            font-size: 1.1em !important;
-                            margin-bottom: 8px !important;
-                            font-weight: normal !important;
-                            text-align: center !important;
-                            line-height: 1.1em !important;
-                            display: block;
-                            min-height: 40px;
-                        }
-                        .gallery-item h3 a {
-                            text-decoration: none !important;
-                            color: #333 !important;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            transition: color 0.2s ease;
-                            height: 100%;
-                        }
-                        .gallery-item h3 a:hover {
-                            color: #007bff !important;
-                        }
-                        .gallery-item figure {
-                            width: 100%;
-                            margin: 0;
-                            float: none !important;
-                            height: 260px !important; /* Жестко фиксируем высоту */
-                            overflow: hidden;
-                            margin-bottom: 5px;
-                            border-radius: 8px;
-                        }
-                        .gallery-item figure a {
-                            display: block;
-                            height: 100%;
-                            text-decoration: none;
-                        }
-                        /* ВОТ ЭТОГО БЛОКА НЕ ХВАТАЛО ДЛЯ ТЕГА PICTURE */
-                        .gallery-item figure a picture {
-                            display: block !important;
-                            height: 100% !important;
-                            width: 100% !important;
-                        }
-                        .gallery-item img {
-                            width: 100% !important;
-                            height: 100% !important;
-                            display: block;
-                            margin: 0 auto;
-                            object-fit: cover !important; /* Возвращаем обрезку картинок */
-                            transition: transform 0.3s ease;
-                            border-radius: 8px;
-                        }
+                        .gallery-item { min-width: 200px; background: white; padding: 10px; border-radius: 8px; text-align: center; }
+                        .gallery-item img { width: 100%; height: auto; border-radius: 4px; }
+                        .gallery-item h3 { font-size: 14px; margin-top: 10px; font-weight: normal; }
+                        .gallery-item a { text-decoration: None; color: #333; }
                         .faq-section { margin: 20px 0; padding: 20px; background: #F6F7FC; border-radius: 8px; border: 1px solid #e2e8f0; }
                     </style>
                 """, unsafe_allow_html=True)
@@ -7261,12 +7200,6 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
-
-
-
-
-
 
 
 
