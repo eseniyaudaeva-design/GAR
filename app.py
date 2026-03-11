@@ -5638,6 +5638,9 @@ with tab_wholesale_main:
                     # =================================================================
                     # СБОРКА КОНТЕНТА В БЛОКИ (УМНОЕ РАЗВЕДЕНИЕ HTML-ИНЪЕКЦИЙ)
                     # =================================================================
+                    # =================================================================
+                    # СБОРКА КОНТЕНТА В БЛОКИ (УМНОЕ РАЗВЕДЕНИЕ HTML-ИНЪЕКЦИЙ)
+                    # =================================================================
                     html_injections = {}
                     if curr_use_tables and 'cl_tab' in locals():
                         html_injections['table'] = f'<div class="table-scroll-wrapper">\n{cl_tab}\n</div>'
@@ -5647,8 +5650,46 @@ with tab_wholesale_main:
                         html_injections['tags1'] = f'<div class="popular-tags-text"><div class="popular-tags-inner-text"><div class="tag-items">{"\n".join(html_t1)}</div></div></div>'
                     
                     if global_promo and promo_block:
-                        g_items =[f'<div class="gallery-item"><h3><a href="{i["url"]}" target="_blank">{i["name"]}</a></h3><figure><a href="{i["url"]}" target="_blank"><picture><img src="{i["img"]}" loading="lazy"></picture></a></figure></div>' for i in promo_block]
-                        html_injections['promo'] = f'<div class="outer-full-width-section"><div class="gallery-content-wrapper"><h3 class="gallery-title">Рекомендуем</h3><div class="five-col-gallery">{"".join(g_items)}</div></div></div>'
+                        g_items = [
+                            f'<div class="gallery-item">\n'
+                            f'    <h3><a href="{i["url"]}" target="_blank">{i["name"]}</a></h3>\n'
+                            f'    <figure>\n'
+                            f'        <a href="{i["url"]}" target="_blank">\n'
+                            f'            <picture>\n'
+                            f'                <img src="{i["img"]}" loading="lazy">\n'
+                            f'            </picture>\n'
+                            f'        </a>\n'
+                            f'    </figure>\n'
+                            f'</div>' 
+                            for i in promo_block
+                        ]
+                        
+                        promo_style = """<style>
+.outer-full-width-section { padding: 25px 0; width: 100%; }
+.gallery-content-wrapper { max-width: 1400px; margin: 0 auto; padding: 25px 15px; box-sizing: border-box; border-radius: 10px; overflow: hidden; background-color: #F6F7FC; }
+h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; padding: 0; margin-top: 0; margin-bottom: 15px; text-align: left; }
+.five-col-gallery { display: flex; justify-content: flex-start; align-items: flex-start; gap: 20px; margin-bottom: 0; padding: 0; list-style: none; flex-wrap: nowrap !important; overflow-x: auto !important; padding-bottom: 15px; }
+.gallery-item { flex: 0 0 260px !important; box-sizing: border-box; text-align: center; scroll-snap-align: start; }
+.gallery-item h3 { font-size: 1.1em; margin-bottom: 8px; font-weight: normal; text-align: center; line-height: 1.1em; display: block; min-height: 40px; }
+.gallery-item h3 a { text-decoration: none; color: #333; display: block; height: 100%; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease; }
+.gallery-item h3 a:hover { color: #007bff; }
+.gallery-item figure { width: 100%; margin: 0; float: none !important; height: 260px; overflow: hidden; margin-bottom: 5px; border-radius: 8px; }
+.gallery-item figure a { display: block; height: 100%; text-decoration: none; }
+.gallery-item img { width: 100%; height: 100%; display: block; margin: 0 auto; object-fit: cover; transition: transform 0.3s ease; border-radius: 8px; }
+.gallery-item figure a:hover img { transform: scale(1.05); }
+</style>"""
+                        
+                        html_injections['promo'] = (
+                            f'{promo_style}\n'
+                            f'<div class="outer-full-width-section">\n'
+                            f'    <div class="gallery-content-wrapper">\n'
+                            f'        <h3 class="gallery-title">Смотрите также</h3>\n'
+                            f'        <div class="five-col-gallery">\n'
+                            f'            {"".join(g_items)}\n'
+                            f'        </div>\n'
+                            f'    </div>\n'
+                            f'</div>'
+                        )
                     
                     if global_tags and tags_block_2:
                         html_t2 = [f'<a href="{i["url"]}" class="tag-item">{i["name"]}</a>' for i in tags_block_2]
@@ -7365,6 +7406,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
