@@ -5035,36 +5035,40 @@ with tab_wholesale_main:
 
                     import random
 
-                   # --- ФУНКЦИЯ ПОИСКА ДЛЯ ТЕГОВ (СТРОГО 100% ИЗ БАЗЫ) ---
+                   # --- ФУНКЦИЯ ПОИСКА ДЛЯ ТЕГОВ (СТРОГО ИЗ БАЗЫ) ---
                     def get_tag_data(kw):
-                        # Если база пустая или файл не прочитался — ничего не генерируем
+                        # Если база пустая или не загрузилась — вообще ничего не выводим
                         if not links_data:
                             return None, None
 
                         kw_clean = str(kw).lower().strip()
                         
-                        # 1. Сначала честно пытаемся найти LSI-слово в твоей базе (в колонке названий)
+                        # 1. Пытаемся честно найти LSI-слово в названиях из твоей базы
                         if kw_clean:
                             matches = []
                             for item in links_data:
                                 if item['url'].rstrip('/') in used_urls:
                                     continue
-                                if kw_clean in str(item['name']).lower():
+                                name_in_db = str(item.get('name', '')).lower()
+                                if kw_clean in name_in_db:
                                     matches.append(item)
                             
-                            # Если нашли совпадение — берем реальную ссылку и реальное имя из базы
+                            # Нашли совпадение? Берем ЭТУ ссылку и ЭТО название из базы
                             if matches:
                                 chosen = random.choice(matches)
                                 used_urls.add(chosen['url'].rstrip('/'))
-                                return chosen['url'], chosen['name']
+                                final_name = str(chosen['name']).replace('nan', '').strip()
+                                return chosen['url'], final_name if final_name else kw.capitalize()
 
-                        # 2. Если такого LSI в базе НЕТ — просто берем РАНДОМНУЮ строку из Excel
+                        # 2. Если LSI-слово НЕ НАЙДЕНО в базе — берем ЛЮБУЮ РАНДОМНУЮ строку из файла
                         available_fallback = [i for i in links_data if i['url'].rstrip('/') not in used_urls]
                         if available_fallback:
                             chosen = random.choice(available_fallback)
                             used_urls.add(chosen['url'].rstrip('/'))
-                            return chosen['url'], chosen['name'] # Строго пара из файла, никаких придумок
-
+                            # Возвращаем строго то, что написано во 2-м столбце файла! Никаких придумок.
+                            final_name = str(chosen['name']).replace('nan', '').strip()
+                            return chosen['url'], final_name
+                            
                         return None, None
 
                     # --- ФУНКЦИЯ ПОИСКА И ПАРСИНГА ДЛЯ ПРОМО (Ищет транслит в URL) ---
@@ -7419,6 +7423,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
