@@ -2750,6 +2750,7 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     except Exception as e:
         return [{"Тип": "Ошибка", "Вопрос": "Ошибка инициализации API", "Ответ": str(e)}]
     
+    # Ваш расширенный список мусорных и опасных корней
     forbidden_roots = [
         "украин", "ukrain", "ua", "всу", "зсу", "ато", "сво", "войн",
         "киев", "львов", "харьков", "одесс", "днепр", "мариуполь",
@@ -2758,99 +2759,65 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
         "политик", "спецоперац", "msk", "spb", "мск", "спб", "тк ", "ооо ", "ип "
     ]
     
+    # === ФИЛЬТРАЦИЯ LSI СЛОВ (Улучшенная защита от латиницы) ===
     clean_lsi = []
     for w in lsi_words:
         w_lower = str(w).lower()
         if not any(root in w_lower for root in forbidden_roots):
-            if re.match(r'^[a-z]{2,4}$', w_lower) and w_lower not in ['aisi', 'din', 'iso', 'en']:
+            # Вырезаем случайный код и верстку (div, span, img и т.д.)
+            if re.match(r'^[a-z]{2,4}$', w_lower) and w_lower not in ['aisi', 'din', 'iso', 'en', 'ral']:
                 continue
             clean_lsi.append(w)
             
-    lsi_text = ", ".join(clean_lsi)
+    # Берем топ-20 слов, чтобы не перегрузить нейросеть
+    final_lsi = clean_lsi[:20]
+    lsi_text = ", ".join(final_lsi)
     
+    # === ЭТАП 1: ГЕНЕРАЦИЯ ЧЕРНОВИКА ===
     prompt_1 = f"""
     Ты технический эксперт в металлопрокате и B2B продажах.
     Составь FAQ для страницы "{h1}".
     
-    "КРИТИЧЕСКОЕ ПРАВИЛО КОЛИЧЕСТВА: Ты ОБЯЗАН сгенерировать ровно {target_count} пар Вопрос-Ответ. Ни больше, ни меньше. "
-    "Если информации в исходном тексте не хватает на {target_count} вопросов, ТЫ ДОЛЖЕН самостоятельно придумать реалистичные технические детали "
-    "(о монтаже, ГОСТах, доставке, аналогах, сроках службы), чтобы добить количество строго до {target_count}. "
-    "За выдачу меньшего количества последует системная ошибка."
+    КРИТИЧЕСКОЕ ПРАВИЛО КОЛИЧЕСТВА: Ты ОБЯЗАН сгенерировать ровно {target_count} пар Вопрос-Ответ. Ни больше, ни меньше.
+    Если информации не хватает на {target_count} вопросов, ТЫ ДОЛЖЕН самостоятельно придумать реалистичные технические детали 
+    (о монтаже, ГОСТах, доставке, аналогах, сроках службы), чтобы добить количество строго до {target_count}.
 
     СТРУКТУРА ВОПРОСОВ (ОБЯЗАТЕЛЬНО):
     1. 50% — КОММЕРЧЕСКИЕ: доставка по РФ, способы оплаты, наличие, отгрузка, резка в размер.
     2. 50% — ИНФОРМАЦИОННЫЕ: технические характеристики, ГОСТы, марки стали и их отличия.
 
-    ТЕХНИЧЕСКАЯ ГРАМОТНОСТЬ:
+    ТЕХНИЧЕСКАЯ ГРАМОТНОСТЬ И ОФОРМЛЕНИЕ:
     - ГОСТ всегда пиши заглавными буквами (напр. ГОСТ 10704-91).
     - Исправляй названия марок стали (AISI 304, Ст3сп), даже если в LSI они написаны с ошибками.
-    - Диапазоны параметров пиши через тире без пробелов (напр. 10-20 мм).
+    - ВАЖНО: Диапазоны параметров пиши строго через тире без пробелов (напр. 10-20 мм, 5-7 метров).
     
     СТРОЖАЙШИЙ ЗАПРЕТ:
     Категорически запрещено использовать любые упоминания Украины, политики, войны, конкурентов или сокращений типа 'msk', 'спб'.
+    Не используй канцелярские вводные слова ("Важно отметить", "Следует подчеркнуть").
     
-    УСЛОВИЯ:
-    1. Список LSI-слов: {lsi_text}.
-    2. ВЫДЕЛИ ЖИРНЫМ ШРИФТОМ (**слово**) все использованные LSI-слова!
-    3. Напиши ровно {target_count} вопросов и ответов.
-    4. ВЕРНИ СТРОГО В JSON, добавив поле "Тип": [{{"Тип": "Коммерческий" или "Информационный", "Вопрос": "...", "Ответ": "..."}}]
+    РАБОТА С LSI:
+    1. Список обязательных слов: {lsi_text}.
+    2. Впиши эти слова максимально органично. Склоняй их! 
+    3. ВЫДЕЛИ ЖИРНЫМ ШРИФТОМ (**слово**) все использованные LSI-слова!
+    4. ВЕРНИ СТРОГО В JSON: [{{"Тип": "Коммерческий" или "Информационный", "Вопрос": "...", "Ответ": "..."}}]
     """
     
     try:
         res_1 = client.chat.completions.create(
             model="google/gemini-2.5-pro",
             messages=[{"role": "user", "content": prompt_1}],
-            temperature=0.3,
+            temperature=0.4, # Чуть понизили температуру для точности фактов
             max_tokens=8192
         )
         draft_text = res_1.choices[0].message.content.strip()
         
-        if draft_text.startswith("```json"): draft_text = draft_text[7:]
-        if draft_text.startswith("```"): draft_text = draft_text[3:]
-        if draft_text.endswith("```"): draft_text = draft_text[:-3]
-        draft_text = draft_text.strip()
-        
-        prompt_2 = f"""
-        Я сгенерировал черновик FAQ для страницы "{h1}". Вот он (JSON):
-        {draft_text}
-
-        Выступи в роли строгого коммерческого редактора.
-        ПРАВИЛА:
-        1. СТРОГИЙ ЗАПРЕТ: Вычисти любые следы политики, Украины или мусорных сокращений (msk, спб).
-        2. ФАКТЧЕКИНГ: Убедись, что все ГОСТы написаны заглавными, а марки стали корректно.
-        3. Удали фразы ИИ ("Важно отметить", "Конечно").
-        4. Ответы должны быть короткими и полезными.
-        5. Сохрани заданное количество вопросов ({target_count}).
-        6. ОБЯЗАТЕЛЬНО СОХРАНИ выделение жирным шрифтом (**слово**) для LSI!
-        7. ВЕРНИ ТОЛЬКО ГОЛЫЙ JSON-МАССИВ строго в таком формате:
-        [{{"Тип": "Коммерческий" или "Информационный", "Вопрос": "...", "Ответ": "..."}}]
-        """
-        
-        res_2 = client.chat.completions.create(
-            model="google/gemini-2.5-pro",
-            messages=[{"role": "user", "content": prompt_2}],
-            temperature=0.3,
-            max_tokens=8192
-        )
-        final_text = res_2.choices[0].message.content.strip()
-        
-        if final_text.startswith("```json"): final_text = final_text[7:]
-        if final_text.startswith("```"): final_text = final_text[3:]
-        if final_text.endswith("```"): final_text = final_text[:-3]
-        final_text = final_text.strip()
-        
-        parsed_data = json.loads(final_text)
-        
-        for item in parsed_data:
-            if "Вопрос" in item:
-                item["Вопрос"] = item["Вопрос"].replace('—', '&ndash;').replace('–', '&ndash;').replace('&mdash;', '&ndash;')
-            if "Ответ" in item:
-                item["Ответ"] = item["Ответ"].replace('—', '&ndash;').replace('–', '&ndash;').replace('&mdash;', '&ndash;')
-                
-        return parsed_data
-        
-    except Exception as e:
-        return [{"Тип": "Ошибка", "Вопрос": "Ошибка генерации", "Ответ": str(e)}]
+        if draft_text.startswith("
+http://googleusercontent.com/immersive_entry_chip/0
+http://googleusercontent.com/immersive_entry_chip/1
+http://googleusercontent.com/immersive_entry_chip/2
+http://googleusercontent.com/immersive_entry_chip/3
+http://googleusercontent.com/immersive_entry_chip/4
+http://googleusercontent.com/immersive_entry_chip/5
 
 def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chosen_authors):
     import json
@@ -7189,5 +7156,6 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
