@@ -2804,7 +2804,7 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     
     # Фильтрация LSI слов (Улучшенная защита от латиницы)
     clean_lsi = []
-    for w in lsi_words:
+    for w in (lsi_words or []):
         w_lower = str(w).lower()
         if not any(root in w_lower for root in forbidden_roots):
             # Вырезаем случайный код и верстку (div, span, img и т.д.)
@@ -2930,7 +2930,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
 
     # --- 1. ФИЛЬТРАЦИЯ LSI СЛОВ ---
     clean_lsi = []
-    for word in lsi_words:
+    for word in (lsi_words or []):
         try:
             parsed = morph.parse(word)[0]
             if any(tag in parsed.tag for tag in ['Geox', 'VERB', 'INFN', 'PREP', 'CONJ', 'PRCL', 'INTJ']) or len(word) < 3:
@@ -3340,6 +3340,8 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
 3. Игнорирование конкурентов: Если в списке переданных ключевых слов тебе попадется странный мусор на латинице или названия чужих магазинов/компаний, полностью ИГНОРИРУЙ ИХ. Из латиницы разрешается писать только марки сталей и стандарты (AISI 304, DIN и т.д.).
 4. Характеристики в списках: Если в пункте списка перечисляется свойство (характеристика) и его значения, ОБЯЗАТЕЛЬНО ставь тире (-) между названием свойства и списком значений.
 5. Максимально сократи использование союза "и". В 90% случаев заменяй его запятой при перечислении или просто перестраивай предложение. Текст должен быть динамичным и лаконичным, без лишнего "нагромождения" связок.
+СТРОГАЯ СТРУКТУРА: Заголовок -> Абзац -> Подводка к списку -> Список -> Завершающий абзац -> [Доп. блок, если нужен].
+ПОСЛЕ последнего абзаца (или доп. блока) СТРОГО ОБЯЗАТЕЛЬНО ставь два переноса строки (\n\n), чтобы отделить этот раздел от следующего!
     """
     
     try:
@@ -7327,6 +7329,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
