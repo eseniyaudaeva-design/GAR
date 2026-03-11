@@ -19,7 +19,7 @@ import csv
 from google import genai
 import os
 import requests
-proxy_url = "http://QYnojH:Uekp4k@196.18.3.35:8000" 
+proxy_url = "http://QYNjH:Uekp4k@196.18.3.35:8000" 
 
 os.environ["http_proxy"] = proxy_url
 os.environ["https_proxy"] = proxy_url
@@ -47,7 +47,7 @@ def init_seo_db():
     conn = sqlite3.connect('seo_cache.db', timeout=10)
     c = conn.cursor()
     c.execute('''
-        CREATE TABLE IF NOT EXISTS seo_analysis (
+        CREATE TABLE IF NT EXISTS seo_analysis (
             query TEXT PRIMARY KEY,
             timestamp TEXT,
             parsed_data TEXT
@@ -59,13 +59,13 @@ def init_seo_db():
 init_seo_db()
 
 def get_cached_analysis(query, region="Москва"):
-    if not query: return None
+    if Nt query: return Nne
     try:
         conn = sqlite3.connect('seo_cache.db', timeout=10)
         c = conn.cursor()
         
         # Авто-чистка старья (90 дней)
-        expiry_date = (datetime.datetime.now() - datetime.timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
+        expiry_date = (datetime.datetime.Nw() - datetime.timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
         c.execute('DELETE FROM seo_analysis WHERE timestamp < ?', (expiry_date,))
         conn.commit()
         
@@ -79,14 +79,14 @@ def get_cached_analysis(query, region="Москва"):
         if row:
             return json.loads(row[1])
     except sqlite3.OperationalError:
-        return None 
-    return None
+        return Nne 
+    return Nne
 
 def save_cached_analysis(query, region, data_for_graph):
     try:
         conn = sqlite3.connect('seo_cache.db', timeout=10)
         c = conn.cursor()
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.datetime.Nw().strftime("%Y-%m-%d %H:%M:%S")
         
         # Составляем уникальный ключ: запрос + регион
         db_key = f"{query.lower().strip()}_{region.lower().strip()}"
@@ -119,7 +119,7 @@ LSI_BRIDGES = [
     {"template": "Также порадовало наличие **{}**.", "case": "gent"},
     {"template": "Обратили внимание на **{}** – всё отлично.", "case": "accs"},
     {"template": "Кстати, с **{}** тоже никаких проблем не возникло.", "case": "ablt"},
-    {"template": "К слову, **{}** тут на высшем уровне.", "case": "nomn"}
+    {"template": "К слову, **{}** тут на высшем уровне.", "case": "Nmn"}
 ]
 
 def inflect_lsi_phrase(phrase, target_case):
@@ -161,7 +161,7 @@ def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
         "бердянск", "бахмут", "запорожь", "херсон", "крым",
         "политик", "спецоперац"
     ]
-    clean_lsi = [w for w in lsi_words if not any(root in str(w).lower() for root in forbidden_roots) and len(str(w)) > 2]
+    clean_lsi = [w for w in lsi_words if Nt any(root in str(w).lower() for root in forbidden_roots) and len(str(w)) > 2]
     
     used_lsi = []
     if clean_lsi:
@@ -201,7 +201,7 @@ def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
 # ==========================================
 # FIX FOR PYTHON 3.11+
 # ==========================================
-if not hasattr(inspect, 'getargspec'):
+if Nt hasattr(inspect, 'getargspec'):
     def getargspec(func):
         spec = inspect.getfullargspec(func)
         return (spec.args, spec.varargs, spec.varkw, spec.defaults)
@@ -221,25 +221,25 @@ except ImportError:
         USE_NLP = True
     except Exception as e:
         st.error(f"❌ ОШИБКА: Не удалось загрузить pymorphy. Детали: {e}")
-        morph = None
+        morph = Nne
         USE_NLP = False
 
 try:
     import openai
 except ImportError:
-    openai = None
+    openai = Nne
 
 try:
     from google import genai
 except ImportError:
-    genai = None
+    genai = Nne
 
 
 # ... (тут идут импорты) ...
 import datetime
 
 # === ВСТАВИТЬ СЮДА (СТРОКА ~40) ===
-if 'SUPER_GLOBAL_KEY' not in st.session_state:
+if 'SUPER_GLOBAL_KEY' Nt in st.session_state:
     st.session_state.SUPER_GLOBAL_KEY = ""
     # Пробуем подтянуть из secrets сразу при старте
     try: st.session_state.SUPER_GLOBAL_KEY = st.secrets["GEMINI_KEY"]
@@ -307,12 +307,12 @@ def force_cyrillic_name_global(slug_text):
         'vtulka': 'втулка', 'kabel': 'кабель', 'panel': 'панель',
         'detal': 'деталь', 'set': 'сеть', 'cep': 'цепь', 'svyaz': 'связь',
         'rezba': 'резьба', 'gost': 'ГОСТ',
-        'polipropilenovye': 'полипропиленовые', 'truby': 'трубы',
+        'polipropileNvye': 'полипропиленовые', 'truby': 'трубы',
         'ocinkovannaya': 'оцинкованная', 'riflenyy': 'рифленый'
     }
 
     for w in words:
-        if not w: continue
+        if Nt w: continue
         if w in exact_map:
             rus_words.append(exact_map[w])
             continue
@@ -361,26 +361,26 @@ def get_breadcrumb_only(url, ua_settings="Mozilla/5.0"):
         headers = {'User-Agent': ua_settings}
         r = session.get(url, headers=headers, timeout=25)
         if r.status_code != 200: 
-            return None
+            return Nne
         
         soup = BeautifulSoup(r.text, 'html.parser')
         
         breadcrumbs = soup.find(class_=re.compile(r'breadcrumb|breadcrumbs|nav-path|nav-chain|bx-breadcrumb', re.I))
-        if not breadcrumbs:
+        if Nt breadcrumbs:
             breadcrumbs = soup.find(id=re.compile(r'breadcrumb|breadcrumbs|nav-path', re.I))
 
         if breadcrumbs:
             full_text = breadcrumbs.get_text(separator='|||', strip=True)
             parts = [p.strip() for p in full_text.split('|||') if p.strip()]
-            clean_parts = [p for p in parts if p not in ['/', '\\', '>', '»', '•', '-', '|']]
+            clean_parts = [p for p in parts if p Nt in ['/', '\\', '>', '»', '•', '-', '|']]
             
             if clean_parts:
                 last_item = clean_parts[-1]
                 if len(last_item) > 2 and last_item.lower() != "главная":
                     return last_item
     except:
-        return None
-    return None
+        return Nne
+    return Nne
 
 def render_clean_block(title, icon, words_list):
     unique_words = sorted(list(set(words_list))) if words_list else []
@@ -417,12 +417,12 @@ def render_clean_block(title, icon, words_list):
     st.markdown(html_code, unsafe_allow_html=True)
 
 def render_relevance_chart(df_rel, unique_key="default"):
-    # Добавляем проверку на None, чтобы график не падал при переключении категорий
-    if df_rel is None or (isinstance(df_rel, pd.DataFrame) and df_rel.empty):
+    # Добавляем проверку на Nne, чтобы график не падал при переключении категорий
+    if df_rel is Nne or (isinstance(df_rel, pd.DataFrame) and df_rel.empty):
         return
 
     # Защита от пустых колонок
-    if 'Позиция' not in df_rel.columns:
+    if 'Позиция' Nt in df_rel.columns:
         return
     
 
@@ -562,19 +562,19 @@ def render_relevance_chart(df_rel, unique_key="default"):
     # use_container_width=True растягивает график на всю ширину страницы
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"rel_chart_{unique_key}")
 
-def analyze_serp_anomalies(df_rel):
+def analyze_serp_aNmalies(df_rel):
     """
     Анализирует таблицу релевантности (Версия v5 - Robust).
     Порог: 75% от лидера. Принудительная типизация.
     """
     if df_rel.empty:
-        return [], [], {"type": "none", "msg": ""}
+        return [], [], {"type": "Nne", "msg": ""}
 
     # Исключаем "Ваш сайт" из расчетов эталона
     df = df_rel[~df_rel['Домен'].str.contains("\(Вы\)", na=False)].copy()
     
     if df.empty:
-        return [], [], {"type": "none", "msg": ""}
+        return [], [], {"type": "Nne", "msg": ""}
 
     # Принудительно делаем числами (защита от сбоев)
     df['Ширина (балл)'] = pd.to_numeric(df['Ширина (балл)'], errors='coerce').fillna(0)
@@ -591,15 +591,15 @@ def analyze_serp_anomalies(df_rel):
     # Если Лидер=100, порог=75. Все что < 75 - удаляем.
     threshold = max(max_score * 0.75, 40) 
     
-    anomalies = []
-    normal_urls = []
+    aNmalies = []
+    Nrmal_urls = []
     
     debug_counts = 0
     
     for _, row in df.iterrows():
         # Достаем ссылку. Защита от пробелов.
         current_url = str(row.get('URL', '')).strip()
-        if not current_url or current_url.lower() == 'nan':
+        if Nt current_url or current_url.lower() == 'nan':
              current_url = f"https://{row['Домен']}" 
 
         score = row['Total']
@@ -607,14 +607,14 @@ def analyze_serp_anomalies(df_rel):
         # АНАЛИЗ
         if score < threshold:
             reason = f"Скор {int(score)} < {int(threshold)} (Лидер {int(max_score)})"
-            anomalies.append({'url': current_url, 'reason': reason, 'score': score})
+            aNmalies.append({'url': current_url, 'reason': reason, 'score': score})
             debug_counts += 1
         else:
-            normal_urls.append(current_url)
+            Nrmal_urls.append(current_url)
 
     # Уведомление с деталями
-    if anomalies:
-        st.toast(f"🗑️ Фильтр (Лидер {int(max_score)} / Порог {int(threshold)}). Исключено: {len(anomalies)}", icon="⚠️")
+    if aNmalies:
+        st.toast(f"🗑️ Фильтр (Лидер {int(max_score)} / Порог {int(threshold)}). Исключено: {len(aNmalies)}", icon="⚠️")
     else:
         # Если никого не исключили, пишем почему
         st.toast(f"✅ Все конкуренты ок. (Лидер {int(max_score)} / Порог {int(threshold)}). Мин. балл: {int(df['Total'].min())}", icon="ℹ️")
@@ -624,7 +624,7 @@ def analyze_serp_anomalies(df_rel):
     slope = np.polyfit(x, y, 1)[0] if len(x) > 1 else 0
     trend_msg = "📉 Нормальный топ" if slope < -1 else ("📈 Перевернутый топ" if slope > 1 else "➡️ Ровный топ")
 
-    return normal_urls, anomalies, {"type": "info", "msg": trend_msg}
+    return Nrmal_urls, aNmalies, {"type": "info", "msg": trend_msg}
 
 @st.cache_data
 def load_lemmatized_dictionaries():
@@ -665,14 +665,14 @@ def load_names_db():
 def get_diverse_authors(n):
     """Выбор авторов: ровно 1 аноним, остальные равномерно распределены"""
     df = load_names_db()
-    if df.empty: return [{"name": "Имя скрыто", "type": "anonymous", "gender": "Н"}] * n
+    if df.empty: return [{"name": "Имя скрыто", "type": "aNnymous", "gender": "Н"}] * n
     
-    df_anon = df[df['template_type'] == 'anonymous']
-    df_others = df[df['template_type'] != 'anonymous']
+    df_aNn = df[df['template_type'] == 'aNnymous']
+    df_others = df[df['template_type'] != 'aNnymous']
     
     res = []
-    if not df_anon.empty:
-        res.append(df_anon.sample(1).iloc[0].to_dict())
+    if Nt df_aNn.empty:
+        res.append(df_aNn.sample(1).iloc[0].to_dict())
     
     needed = n - len(res)
     other_types = df_others['template_type'].unique()
@@ -683,7 +683,7 @@ def get_diverse_authors(n):
             count = per_type + (1 if rem > 0 else 0)
             if rem > 0: rem -= 1
             slice_dt = df_others[df_others['template_type'] == t]
-            if not slice_dt.empty:
+            if Nt slice_dt.empty:
                 res.extend(slice_dt.sample(min(len(slice_dt), count)).to_dict('records'))
     
     random.shuffle(res)
@@ -691,7 +691,7 @@ def get_diverse_authors(n):
 
     for filename, set_key in files_map.items():
         full_path = os.path.join(base_path, filename)
-        if not os.path.exists(full_path):
+        if Nt os.path.exists(full_path):
             continue
         
         try:
@@ -707,17 +707,17 @@ def get_diverse_authors(n):
                 
                 for phrase in words_bucket:
                     w_clean = str(phrase).lower().strip().replace('ё', 'е')
-                    if not w_clean: continue
+                    if Nt w_clean: continue
                     sets[set_key].add(w_clean)
                     if morph:
-                        normal_form = morph.parse(w_clean)[0].normal_form.replace('ё', 'е')
-                        sets[set_key].add(normal_form)
+                        Nrmal_form = morph.parse(w_clean)[0].Nrmal_form.replace('ё', 'е')
+                        sets[set_key].add(Nrmal_form)
                     if ' ' in w_clean:
                         parts = w_clean.split()
                         for p in parts:
                             sets[set_key].add(p)
                             if morph: 
-                                sets[set_key].add(morph.parse(p)[0].normal_form.replace('ё', 'е'))
+                                sets[set_key].add(morph.parse(p)[0].Nrmal_form.replace('ё', 'е'))
         except: pass
 
     # Возвращаем 6 наборов
@@ -730,13 +730,13 @@ def classify_semantics_with_api(words_list, yandex_key):
     # Объединяем стоп-слова из файла и из глобального списка в коде
     FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
 
-    if 'debug_geo_count' not in st.session_state:
+    if 'debug_geo_count' Nt in st.session_state:
         st.session_state.debug_geo_count = len(GEO_SET)
     
     st.sidebar.info(f"Словари (из файлов):\n📦 Товары: {len(PRODUCTS_SET)}\n💰 Коммерция: {len(COMM_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n🌍 Города: {len(GEO_SET)}")
 
-    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
-    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
+    dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNRECASE)
+    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNRECASE)
     
     categories = {'products': set(), 'services': set(), 'commercial': set(), 
                   'dimensions': set(), 'geo': set(), 'general': set(), 'sensitive': set()}
@@ -756,7 +756,7 @@ def classify_semantics_with_api(words_list, yandex_key):
         lemma = word_lower
         if morph:
             p = morph.parse(word_lower)[0]
-            lemma = p.normal_form
+            lemma = p.Nrmal_form
 
         # 2. РАЗМЕРЫ / ГОСТ
         if word_lower in SPECS_SET or lemma in SPECS_SET:
@@ -799,43 +799,43 @@ def classify_semantics_with_api(words_list, yandex_key):
 # ==========================================
 # STATE INIT
 # ==========================================
-if 'sidebar_gen_df' not in st.session_state: st.session_state.sidebar_gen_df = None
-if 'sidebar_excel_bytes' not in st.session_state: st.session_state.sidebar_excel_bytes = None
-if 'analysis_results' not in st.session_state: st.session_state.analysis_results = None
-if 'analysis_done' not in st.session_state: st.session_state.analysis_done = False
-if 'ai_generated_df' not in st.session_state: st.session_state.ai_generated_df = None
-if 'ai_excel_bytes' not in st.session_state: st.session_state.ai_excel_bytes = None
-if 'tags_html_result' not in st.session_state: st.session_state.tags_html_result = None
-if 'table_html_result' not in st.session_state: st.session_state.table_html_result = None
-if 'tags_generated_df' not in st.session_state: st.session_state.tags_generated_df = None
-if 'tags_excel_data' not in st.session_state: st.session_state.tags_excel_data = None
-if 'reviews_results' not in st.session_state: st.session_state.reviews_results = []
-if 'reviews_queue' not in st.session_state: st.session_state.reviews_queue = []
-if 'reviews_automode_active' not in st.session_state: st.session_state.reviews_automode_active = False
-if 'reviews_current_index' not in st.session_state: st.session_state.reviews_current_index = 0
-if 'reviews_per_query' not in st.session_state: st.session_state.reviews_per_query = 3
-if 'pending_widget_updates' not in st.session_state: st.session_state.pending_widget_updates = {}
+if 'sidebar_gen_df' Nt in st.session_state: st.session_state.sidebar_gen_df = Nne
+if 'sidebar_excel_bytes' Nt in st.session_state: st.session_state.sidebar_excel_bytes = Nne
+if 'analysis_results' Nt in st.session_state: st.session_state.analysis_results = Nne
+if 'analysis_done' Nt in st.session_state: st.session_state.analysis_done = False
+if 'ai_generated_df' Nt in st.session_state: st.session_state.ai_generated_df = Nne
+if 'ai_excel_bytes' Nt in st.session_state: st.session_state.ai_excel_bytes = Nne
+if 'tags_html_result' Nt in st.session_state: st.session_state.tags_html_result = Nne
+if 'table_html_result' Nt in st.session_state: st.session_state.table_html_result = Nne
+if 'tags_generated_df' Nt in st.session_state: st.session_state.tags_generated_df = Nne
+if 'tags_excel_data' Nt in st.session_state: st.session_state.tags_excel_data = Nne
+if 'reviews_results' Nt in st.session_state: st.session_state.reviews_results = []
+if 'reviews_queue' Nt in st.session_state: st.session_state.reviews_queue = []
+if 'reviews_automode_active' Nt in st.session_state: st.session_state.reviews_automode_active = False
+if 'reviews_current_index' Nt in st.session_state: st.session_state.reviews_current_index = 0
+if 'reviews_per_query' Nt in st.session_state: st.session_state.reviews_per_query = 3
+if 'pending_widget_updates' Nt in st.session_state: st.session_state.pending_widget_updates = {}
 
 # Current lists
-if 'categorized_products' not in st.session_state: st.session_state.categorized_products = []
-if 'categorized_services' not in st.session_state: st.session_state.categorized_services = []
-if 'categorized_commercial' not in st.session_state: st.session_state.categorized_commercial = []
-if 'categorized_dimensions' not in st.session_state: st.session_state.categorized_dimensions = []
-if 'categorized_geo' not in st.session_state: st.session_state.categorized_geo = []
-if 'categorized_general' not in st.session_state: st.session_state.categorized_general = []
-if 'categorized_sensitive' not in st.session_state: st.session_state.categorized_sensitive = []
+if 'categorized_products' Nt in st.session_state: st.session_state.categorized_products = []
+if 'categorized_services' Nt in st.session_state: st.session_state.categorized_services = []
+if 'categorized_commercial' Nt in st.session_state: st.session_state.categorized_commercial = []
+if 'categorized_dimensions' Nt in st.session_state: st.session_state.categorized_dimensions = []
+if 'categorized_geo' Nt in st.session_state: st.session_state.categorized_geo = []
+if 'categorized_general' Nt in st.session_state: st.session_state.categorized_general = []
+if 'categorized_sensitive' Nt in st.session_state: st.session_state.categorized_sensitive = []
 
 # Original lists (for restoration)
-if 'orig_products' not in st.session_state: st.session_state.orig_products = []
-if 'orig_services' not in st.session_state: st.session_state.orig_services = []
-if 'orig_commercial' not in st.session_state: st.session_state.orig_commercial = []
-if 'orig_dimensions' not in st.session_state: st.session_state.orig_dimensions = []
-if 'orig_geo' not in st.session_state: st.session_state.orig_geo = []
-if 'orig_general' not in st.session_state: st.session_state.orig_general = []
+if 'orig_products' Nt in st.session_state: st.session_state.orig_products = []
+if 'orig_services' Nt in st.session_state: st.session_state.orig_services = []
+if 'orig_commercial' Nt in st.session_state: st.session_state.orig_commercial = []
+if 'orig_dimensions' Nt in st.session_state: st.session_state.orig_dimensions = []
+if 'orig_geo' Nt in st.session_state: st.session_state.orig_geo = []
+if 'orig_general' Nt in st.session_state: st.session_state.orig_general = []
 
-if 'auto_tags_words' not in st.session_state: st.session_state.auto_tags_words = []
-if 'auto_promo_words' not in st.session_state: st.session_state.auto_promo_words = []
-if 'persistent_urls' not in st.session_state: st.session_state['persistent_urls'] = ""
+if 'auto_tags_words' Nt in st.session_state: st.session_state.auto_tags_words = []
+if 'auto_promo_words' Nt in st.session_state: st.session_state.auto_promo_words = []
+if 'persistent_urls' Nt in st.session_state: st.session_state['persistent_urls'] = ""
 
 st.set_page_config(layout="wide", page_title="GAR PRO v2.6 (Mass Promo)", page_icon="📊")
 
@@ -878,20 +878,20 @@ def check_password():
                 st.error("❌ Неверный пароль")
     return False
 
-if not check_password():
+if Nt check_password():
     st.stop()
 
 if "arsenkin_token" in st.session_state:
     ARSENKIN_TOKEN = st.session_state.arsenkin_token
 else:
     try: ARSENKIN_TOKEN = st.secrets["api"]["arsenkin_token"]
-    except (FileNotFoundError, KeyError): ARSENKIN_TOKEN = None
+    except (FileNtFoundError, KeyError): ARSENKIN_TOKEN = Nne
 
 if "yandex_dict_key" in st.session_state:
     YANDEX_DICT_KEY = st.session_state.yandex_dict_key
 else:
     try: YANDEX_DICT_KEY = st.secrets["api"]["yandex_dict_key"]
-    except (FileNotFoundError, KeyError): YANDEX_DICT_KEY = None
+    except (FileNtFoundError, KeyError): YANDEX_DICT_KEY = Nne
 
 REGION_MAP = {
     "Москва": {"ya": 213, "go": 1011969},
@@ -973,7 +973,7 @@ st.markdown(f"""
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         .stApp {{ background-color: #FFFFFF !important; color: {TEXT_COLOR} !important; }}
         html, body, p, li, h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {TEXT_COLOR} !important; }}
-        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: none; border-radius: 6px; }}
+        .stButton button {{ background-color: {PRIMARY_COLOR} !important; color: white !important; border: Nne; border-radius: 6px; }}
         .stButton button:hover {{ background-color: {PRIMARY_DARK} !important; }}
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
             background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; border: 1px solid {BORDER_COLOR} !important;
@@ -996,12 +996,12 @@ st.markdown(f"""
             opacity: 1 !important; background-color: {LIGHT_BG_MAIN} !important; color: {TEXT_COLOR} !important; cursor: text !important; -webkit-text-fill-color: {TEXT_COLOR} !important; border-color: {BORDER_COLOR} !important;
         }}
         .stButton button:disabled {{ opacity: 1 !important; background-color: {PRIMARY_COLOR} !important; color: white !important; cursor: progress !important; }}
-        div[data-testid="stAppViewContainer"] {{ filter: none !important; opacity: 1 !important; transition: none !important; }}
+        div[data-testid="stAppViewContainer"] {{ filter: Nne !important; opacity: 1 !important; transition: Nne !important; }}
         /* Стили для ссылок внутри графика Plotly */
         .chart-link {{
             color: #277EFF !important;
             font-weight: 600 !important;
-            text-decoration: none !important;
+            text-decoration: Nne !important;
             border-bottom: 4px solid #CBD5E1 !important; 
             display: inline-block !important;
             transition: border-color 0.2s ease !important;
@@ -1019,7 +1019,7 @@ st.markdown(f"""
 # ... (Остальной код функций без изменений)
 
 def get_yandex_dict_info(text, api_key):
-    if not api_key: return {'lemma': text, 'pos': 'unknown'}
+    if Nt api_key: return {'lemma': text, 'pos': 'unkNwn'}
     url = "https://dictionary.yandex.net/api/v1/dicservice.json/lookup"
     params = {'key': api_key, 'lang': 'ru-ru', 'text': text, 'ui': 'ru'}
     try:
@@ -1028,9 +1028,9 @@ def get_yandex_dict_info(text, api_key):
             data = r.json()
             if data.get('def'):
                 first_def = data['def'][0]
-                return {'lemma': first_def.get('text', text), 'pos': first_def.get('pos', 'unknown')}
+                return {'lemma': first_def.get('text', text), 'pos': first_def.get('pos', 'unkNwn')}
     except: pass
-    return {'lemma': text, 'pos': 'unknown'}
+    return {'lemma': text, 'pos': 'unkNwn'}
 
 def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
     url_set = "https://arsenkin.ru/api/tools/set"
@@ -1042,11 +1042,11 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
     if "Яндекс" in engine_type: se_params.append({"type": 2, "region": reg_ids['ya']})
     if "Google" in engine_type: se_params.append({"type": 11, "region": reg_ids['go']})
 
-    payload = {"tools_name": "check-top", "data": {"queries": [query], "is_snippet": False, "noreask": True, "se": se_params, "depth": depth_val}}
+    payload = {"tools_name": "check-top", "data": {"queries": [query], "is_snippet": False, "Nreask": True, "se": se_params, "depth": depth_val}}
     try:
         r = requests.post(url_set, headers=headers, json=payload, timeout=60)
         resp_json = r.json()
-        if "error" in resp_json or "task_id" not in resp_json: st.error(f"❌ Ошибка API: {resp_json}"); return []
+        if "error" in resp_json or "task_id" Nt in resp_json: st.error(f"❌ Ошибка API: {resp_json}"); return []
         task_id = resp_json["task_id"]
         st.toast(f"Задача ID {task_id} запущена")
     except Exception as e: st.error(f"❌ Ошибка сети: {e}"); return []
@@ -1072,7 +1072,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
     results_list = []
     try:
         collect = res_data.get('result', {}).get('result', {}).get('collect')
-        if not collect: return []
+        if Nt collect: return []
         final_url_list = []
         if isinstance(collect, list) and len(collect) > 0 and isinstance(collect[0], list): final_url_list = collect[0][0]
         else:
@@ -1081,7 +1081,7 @@ def get_arsenkin_urls(query, engine_type, region_name, api_token, depth_val=10):
                  if isinstance(engine_data, dict):
                      for _, serps in engine_data.items():
                          for item in serps:
-                             if item.get('url') and item.get('url') not in unique_urls:
+                             if item.get('url') and item.get('url') Nt in unique_urls:
                                  results_list.append({'url': item['url'], 'pos': item['pos']})
                                  unique_urls.add(item['url'])
              return results_list
@@ -1108,7 +1108,7 @@ def process_text_detailed(text, settings, n_gram=1):
             continue
             
         # 2. Фильтр цифр и кастомных стоп-слов
-        if not settings['numbers'] and w.isdigit(): continue
+        if Nt settings['numbers'] and w.isdigit(): continue
         if w in stops: continue
         
         lemma = w
@@ -1117,7 +1117,7 @@ def process_text_detailed(text, settings, n_gram=1):
             # Если часть речи в списке мусора (STOP_POS) - пропускаем слово
             if p.tag.POS in STOP_POS: 
                 continue
-            lemma = p.normal_form.replace('ё', 'е')
+            lemma = p.Nrmal_form.replace('ё', 'е')
             # Дополнительная проверка: если лемма стала слишком короткой после очистки
             if len(lemma) < 3:
                 continue
@@ -1127,7 +1127,7 @@ def process_text_detailed(text, settings, n_gram=1):
         
     return lemmas, forms_map # Не забудь про return, если он был в конце
 
-def check_positions_NO_ALT(query, target_url, region_name, api_token):
+def check_positions_N_ALT(query, target_url, region_name, api_token):
     """
     Абсолютно новая функция.
     Гарантированно не отправляет alt_urls.
@@ -1166,7 +1166,7 @@ def check_positions_NO_ALT(query, target_url, region_name, api_token):
         if "error" in resp: return 0, resp
         
         task_id = resp.get("task_id")
-        if not task_id: return 0, {"error": "No Task ID", "resp": resp}
+        if Nt task_id: return 0, {"error": "N Task ID", "resp": resp}
         
         # 2. ОЖИДАНИЕ
         for i in range(40):
@@ -1187,16 +1187,16 @@ def check_positions_NO_ALT(query, target_url, region_name, api_token):
         data = r_g.json()
         
         res_list = data.get("result", [])
-        if not res_list: return 0, data
+        if Nt res_list: return 0, data
             
         item = res_list[0]
         pos = item.get('position')
-        if pos is None: pos = item.get('pos')
+        if pos is Nne: pos = item.get('pos')
         
-        if str(pos) in ['0', '-', '', 'None']:
+        if str(pos) in ['0', '-', '', 'Nne']:
             return 0, item 
             
-        return int(pos), None
+        return int(pos), Nne
 
     except Exception as e:
         return 0, {"error": f"Crash: {str(e)}"}
@@ -1211,7 +1211,7 @@ def parse_page(url, settings, query_context=""):
         }
         r = cffi_requests.get(url, headers=headers, timeout=20, impersonate="chrome110")
         if r.status_code == 403: raise Exception("CURL_CFFI получил 403 Forbidden")
-        if r.status_code != 200: return None
+        if r.status_code != 200: return Nne
         content = r.content
         encoding = r.encoding if r.encoding else 'utf-8'
     except Exception:
@@ -1222,10 +1222,10 @@ def parse_page(url, settings, query_context=""):
             session = requests.Session()
             headers = {'User-Agent': settings['ua']}
             r = session.get(url, headers=headers, timeout=20, verify=False)
-            if r.status_code != 200: return None
+            if r.status_code != 200: return Nne
             content = r.content
             encoding = r.apparent_encoding
-        except Exception: return None
+        except Exception: return Nne
 
     try:
         # 1. Создаем объект Soup (Полная страница)
@@ -1264,9 +1264,9 @@ def parse_page(url, settings, query_context=""):
             
             is_child_path = href_path_clean.startswith(current_path_clean)
             is_deeper = len(href_path_clean) > len(current_path_clean)
-            is_not_query_param_only = (href_path_clean != current_path_clean)
+            is_Nt_query_param_only = (href_path_clean != current_path_clean)
 
-            if is_child_path and is_deeper and is_not_query_param_only:
+            if is_child_path and is_deeper and is_Nt_query_param_only:
                 txt_lower = txt.lower()
                 href_lower = abs_href.lower()
                 has_keywords = False
@@ -1278,8 +1278,8 @@ def parse_page(url, settings, query_context=""):
                     if re.search(r'\d', txt): has_keywords = True
 
                 is_buy_button = txt_lower in {'купить', 'подробнее', 'в корзину', 'заказать', 'цена'}
-                if has_keywords and not is_buy_button:
-                    if txt not in seen_titles:
+                if has_keywords and Nt is_buy_button:
+                    if txt Nt in seen_titles:
                         product_titles.append(txt)
                         seen_titles.add(txt)
         # ========================================================
@@ -1288,19 +1288,19 @@ def parse_page(url, settings, query_context=""):
         h1_text = h1_tag.get_text(strip=True) if h1_tag else ""
 
         # 2. Создаем копию для Таблицы 2 (Удаляем блок товаров)
-        soup_no_grid = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
-        grid_div = soup_no_grid.find('div', class_='an-container-fluid an-container-xl')
+        soup_N_grid = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
+        grid_div = soup_N_grid.find('div', class_='an-container-fluid an-container-xl')
         if grid_div: grid_div.decompose()
         
         # === [ВАЖНО] ФИЛЬТРАЦИЯ КОНТЕНТА ПО ГАЛОЧКАМ ===
         tags_to_remove = []
-        if settings['noindex']: tags_to_remove.append('noindex')
+        if settings['Nindex']: tags_to_remove.append('Nindex')
         
-        for s in [soup, soup_no_grid]:
+        for s in [soup, soup_N_grid]:
             for c in s.find_all(string=lambda text: isinstance(text, Comment)): c.extract()
             if tags_to_remove:
                 for t in s.find_all(tags_to_remove): t.decompose()
-            for script in s(["script", "style", "svg", "path", "noscript"]): script.decompose()
+            for script in s(["script", "style", "svg", "path", "Nscript"]): script.decompose()
 
         # Текст ссылок (анкоры)
         anchors_list = [a.get_text(strip=True) for a in soup.find_all('a') if a.get_text(strip=True)]
@@ -1319,16 +1319,16 @@ def parse_page(url, settings, query_context=""):
         body_text_raw = soup.get_text(separator=' ') + " " + " ".join(extra_text)
         body_text = re.sub(r'\s+', ' ', body_text_raw).strip()
 
-        body_text_no_grid_raw = soup_no_grid.get_text(separator=' ') + " " + " ".join(extra_text)
-        body_text_no_grid = re.sub(r'\s+', ' ', body_text_no_grid_raw).strip()
+        body_text_N_grid_raw = soup_N_grid.get_text(separator=' ') + " " + " ".join(extra_text)
+        body_text_N_grid = re.sub(r'\s+', ' ', body_text_N_grid_raw).strip()
 
-        if not body_text: return None
+        if Nt body_text: return Nne
             
         return {
             'url': url, 
             'domain': urlparse(url).netloc, 
             'body_text': body_text, 
-            'body_text_no_grid': body_text_no_grid,
+            'body_text_N_grid': body_text_N_grid,
             'anchor_text': anchor_text,
             'h1': h1_text,
             'product_titles': product_titles,
@@ -1337,7 +1337,7 @@ def parse_page(url, settings, query_context=""):
             'meta_desc': page_desc
         }
     except Exception:
-        return None
+        return Nne
 
 def analyze_meta_gaps(comp_data_full, my_data, settings):
     """
@@ -1346,7 +1346,7 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
     2. Порог вхождения: СТРОГО 50% (слово должно быть у половины конкурентов).
     3. Фильтрует предлоги и союзы.
     """
-    if not comp_data_full: return None
+    if Nt comp_data_full: return Nne
     
     # === 1. НАСТРОЙКИ АЛГОРИТМА ===
     TOTAL_COMPS = len(comp_data_full)
@@ -1359,7 +1359,7 @@ def analyze_meta_gaps(comp_data_full, my_data, settings):
 
     # Вспомогательная функция токенизации (Чистка мусора)
 def fast_tokenize(text):
-    if not text: return set()
+    if Nt text: return set()
     
     # 1. Твой расширенный список + единицы измерения
     stop_garbage = {
@@ -1399,18 +1399,18 @@ def fast_tokenize(text):
                 if p.tag.POS in {'PREP', 'CONJ', 'PRCL', 'NPRO', 'INTJ'}:
                     continue
                 
-                normal_form = p.normal_form
+                Nrmal_form = p.Nrmal_form
                 # Проверка ПОСЛЕ лемматизации (на случай "рублей" -> "рубль")
                 # Чтобы "рубль" тоже отсекался, если в списке есть "руб"
-                if normal_form in stop_garbage:
+                if Nrmal_form in stop_garbage:
                     continue
                 
                 # Дополнительная проверка на сокращения (р., руб. и т.д.)
-                if any(normal_form.startswith(s) for s in ['рубл', 'метр', 'сантим', 'килогр']):
-                    if w in stop_garbage or normal_form in stop_garbage:
+                if any(Nrmal_form.startswith(s) for s in ['рубл', 'метр', 'сантим', 'килогр']):
+                    if w in stop_garbage or Nrmal_form in stop_garbage:
                         continue
 
-                lemmas.add(normal_form)
+                lemmas.add(Nrmal_form)
             except: 
                 lemmas.add(w)
         else:
@@ -1481,7 +1481,7 @@ def fast_tokenize(text):
         # Оставляем только ядро (Топ-15 слов, прошедших фильтр 50%)
         core_semantics = [x[0] for x in important_words[:15]]
         
-        if not core_semantics:
+        if Nt core_semantics:
             return 100, [] 
             
         matches = 0
@@ -1523,13 +1523,13 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     import re
     from urllib.parse import urlparse
 
-    if morph is None:
+    if morph is Nne:
         st.error("CRITICAL: Лемматизация не работает!")
         return { "depth": pd.DataFrame(), "hybrid": pd.DataFrame(), "relevance_top": pd.DataFrame(), "my_score": {"width": 0, "depth": 0}, "missing_semantics_high": [], "missing_semantics_low": [] }
 
     # Карта частей речи
     POS_MAP = {
-        'NOUN': 'Сущ', 'ADJF': 'Прил', 'ADJS': 'Прил',
+        'NUN': 'Сущ', 'ADJF': 'Прил', 'ADJS': 'Прил',
         'VERB': 'Гл', 'INFN': 'Гл', 'PRTF': 'Прич', 'PRTS': 'Прич',
         'GRND': 'Деепр', 'NUMR': 'Числ', 'ADVB': 'Нареч',
         'NPRO': 'Местоим', 'PREP': 'Предлог', 'CONJ': 'Союз', 'PRCL': 'Частица', 'INTJ': 'Междом'
@@ -1537,7 +1537,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     # === 1. АНАЛИЗАТОР (С ЧИСТКОЙ МУСОРА) ===
     def analyze_text_structure(text):
-        if not text: return [], {}, 0
+        if Nt text: return [], {}, 0
         
         # ЧЕРНЫЙ СПИСОК (Технический мусор)
         trash_stop_list = {
@@ -1559,12 +1559,12 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
         for w in words:
             if len(w) < 3 or w in trash_stop_list: continue
-            if not settings['numbers'] and w.isdigit(): continue
+            if Nt settings['numbers'] and w.isdigit(): continue
             
             p = morph.parse(w)[0]
             if p.tag.POS in {'PREP', 'CONJ', 'PRCL', 'INTJ', 'NPRO'}: continue
             
-            lemma = p.normal_form.replace('ё', 'е')
+            lemma = p.Nrmal_form.replace('ё', 'е')
             if lemma in trash_stop_list or len(lemma) < 3: continue
 
             pos_tag = p.tag.POS
@@ -1590,7 +1590,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     PASSAGE_SIZE = 20 
 
     for p in comp_data_full:
-        if not p.get('body_text'): 
+        if Nt p.get('body_text'): 
             # Если текста нет, добавляем пустые данные, чтобы длина counts_list была корректной
             continue
             
@@ -1622,14 +1622,14 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     doc_lengths = [0] * N_sites
 
     for idx, p in enumerate(comp_data_full):
-        if not p.get('body_text'): continue
+        if Nt p.get('body_text'): continue
         doc_tokens, doc_forms, doc_len = analyze_text_structure(p['body_text'])
         
         # === СОХРАНЯЕМ ДЛИНУ ===
         doc_lengths[idx] = doc_len
 
     for idx, p in enumerate(comp_data_full):
-        if not p.get('body_text'): continue
+        if Nt p.get('body_text'): continue
         doc_tokens, doc_forms, doc_len = analyze_text_structure(p['body_text'])
         
         if doc_len > 0:
@@ -1662,7 +1662,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     final_stats = {}
 
     for lemma, pos_list in grouped_keys.items():
-        if not pos_list: continue
+        if Nt pos_list: continue
         
         # 1. Определяем победителя по суммарной частоте (sum_tf)
         # Сортируем части речи: у кого sum_tf больше
@@ -1750,7 +1750,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         rec_median = int(np.median(raw_counts) + 0.5)
         obs_max = max(raw_counts) if raw_counts else 0
         
-        if not (obs_max == 0 and my_total_count == 0):
+        if Nt (obs_max == 0 and my_total_count == 0):
             if rec_median >= 1:
                 words_with_median_gt_0.add(lemma)
                 if my_total_count > 0: my_found_words.add(lemma)
@@ -1775,7 +1775,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     # --- 4. ФИНАЛ ---
     df_hybrid = pd.DataFrame(table_hybrid)
-    if not df_hybrid.empty:
+    if Nt df_hybrid.empty:
         df_hybrid = df_hybrid.sort_values(by="TF-IDF ТОП", ascending=False).head(1000)
         df_hybrid["TF-IDF ТОП"] = df_hybrid["TF-IDF ТОП"].apply(lambda x: float(f"{x:.6f}"))
         df_hybrid["IDF"] = df_hybrid["IDF"].round(2)
@@ -1785,11 +1785,11 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     my_width_score = int(min(100, (total_found / total_needed) * 105)) if total_needed > 0 else 0
 
     # ==== НОВЫЙ БЛОК: РАСЧЕТ ГЛУБИНЫ (С УЧЕТОМ НОРМИРОВАНИЯ) ====
-    use_norm = settings.get('norm', True)
+    use_Nrm = settings.get('Nrm', True)
     
     # Функция для пересчета вхождений: сырые штуки ИЛИ плотность на 1000 слов
     def get_weighted_count(raw_c, d_len):
-        if not use_norm: return raw_c
+        if Nt use_Nrm: return raw_c
         if d_len == 0: return 0
         return (raw_c / d_len) * 1000
 
@@ -1865,7 +1865,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
             "Ширина (балл)": width_val, "Глубина (балл)": depth_val 
         })
 
-    if not my_site_found:
+    if Nt my_site_found:
         my_u_val = my_data.get('url', '#') if my_data else '#'
         table_rel.append({ 
             "Домен": "Ваш сайт", "URL": my_u_val, "Позиция": my_serp_pos, 
@@ -1875,7 +1875,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
     missing_semantics_high.sort(key=lambda x: x['weight'], reverse=True)
     missing_semantics_low.sort(key=lambda x: x['weight'], reverse=True)
     
-    good_urls, bad_urls_dicts, trend_info = analyze_serp_anomalies(pd.DataFrame(table_rel))
+    good_urls, bad_urls_dicts, trend_info = analyze_serp_aNmalies(pd.DataFrame(table_rel))
 
     return { 
         "depth": pd.DataFrame(table_depth), 
@@ -1888,7 +1888,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
         "bad_urls": bad_urls_dicts
     }
     
-def get_hybrid_word_type(word, main_marker_root, specs_dict=None):
+def get_hybrid_word_type(word, main_marker_root, specs_dict=Nne):
     """
     Классификатор 3.1 (Фикс диапазонов).
     """
@@ -1898,8 +1898,8 @@ def get_hybrid_word_type(word, main_marker_root, specs_dict=None):
     # 1. МАРКЕР
     if w == main_marker_root: return "1. 💎 Маркер (Товар)"
     if morph:
-        norm = morph.parse(w)[0].normal_form
-        if norm == main_marker_root: return "1. 💎 Маркер (Товар)"
+        Nrm = morph.parse(w)[0].Nrmal_form
+        if Nrm == main_marker_root: return "1. 💎 Маркер (Товар)"
 
     # 2. СТАНДАРТЫ
     if re.search(r'(gost|din|iso|en|tu|astm|aisi|гост|ост|ту|дин)', w):
@@ -1929,7 +1929,7 @@ def get_hybrid_word_type(word, main_marker_root, specs_dict=None):
         tag = p.tag
         if {'PREP'} in tag or {'CONJ'} in tag: return "SKIP"
         if {'ADJF'} in tag or {'PRTF'} in tag or {'ADJS'} in tag: return "2. 🎨 Свойства"
-        if {'NOUN'} in tag: return "4. 🔗 Дополнения"
+        if {'NUN'} in tag: return "4. 🔗 Дополнения"
 
     if w.endswith(('ий', 'ый', 'ая', 'ое', 'ые', 'ая')): return "2. 🎨 Свойства"
     return "4. 🔗 Дополнения"
@@ -1940,17 +1940,17 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
     """
     # Подгрузка словаря
     SPECS_SET = st.session_state.get('categorized_dimensions', set())
-    if not SPECS_SET: _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
+    if Nt SPECS_SET: _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
 
     # 1. Мой сайт
     my_tokens = []
-    if my_data and my_data.get('body_text_no_grid'):
+    if my_data and my_data.get('body_text_N_grid'):
         # Своя токенизация, чтобы сохранить Ду50
-        raw_w = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', my_data['body_text_no_grid'].lower())
+        raw_w = re.findall(r'[а-яА-Яa-zA-Z0-9\-]+', my_data['body_text_N_grid'].lower())
         for w in raw_w:
             # Лемматизируем только чисто текстовые слова
-            if not re.search(r'\d', w) and morph:
-                my_tokens.append(morph.parse(w)[0].normal_form)
+            if Nt re.search(r'\d', w) and morph:
+                my_tokens.append(morph.parse(w)[0].Nrmal_form)
             else:
                 my_tokens.append(w)
 
@@ -1962,7 +1962,7 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
         titles = p.get('product_titles', [])
         valid_titles = [t for t in titles if 5 < len(t) < 150]
         
-        if not valid_titles:
+        if Nt valid_titles:
             site_vocab_map.append(set())
             continue
             
@@ -1979,7 +1979,7 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
                 elif re.search(r'^[a-z]+$', w): # Латиница -> как есть
                     token = w
                 elif morph: # Русские слова -> лемматизируем (стальная -> стальной)
-                    token = morph.parse(w)[0].normal_form
+                    token = morph.parse(w)[0].Nrmal_form
                 else:
                     token = w
                 
@@ -1988,16 +1988,16 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
                 
         site_vocab_map.append(curr_site_tokens)
 
-    if not all_words_flat: return pd.DataFrame()
+    if Nt all_words_flat: return pd.DataFrame()
     N_sites = len(site_vocab_map)
 
     # 3. Маркер (Самое частое текстовое слово)
-    counts = Counter([w for w in all_words_flat if not re.search(r'\d', w)])
+    counts = Counter([w for w in all_words_flat if Nt re.search(r'\d', w)])
     main_marker_root = ""
     # Ищем существительное
     for w, c in counts.most_common(10):
-        if morph and 'NOUN' in morph.parse(w)[0].tag: main_marker_root = w; break
-    if not main_marker_root and counts: main_marker_root = counts.most_common(1)[0][0]
+        if morph and 'NUN' in morph.parse(w)[0].tag: main_marker_root = w; break
+    if Nt main_marker_root and counts: main_marker_root = counts.most_common(1)[0][0]
 
     # 4. Сбор таблицы
     vocab = sorted(list(set(all_words_flat)))
@@ -2021,7 +2021,7 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
         if is_spec and freq_percent < 5: continue
         
         # Обычные слова от 15%
-        if not is_spec and "Размеры" not in cat and freq_percent < 15: continue
+        if Nt is_spec and "Размеры" Nt in cat and freq_percent < 15: continue
         
         # Размеры показываем только если они реально частые (например, ходовой диаметр)
         # Иначе таблица будет забита цифрами 10, 11, 12...
@@ -2044,7 +2044,7 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
         })
         
     df = pd.DataFrame(table_rows)
-    if not df.empty:
+    if Nt df.empty:
         df = df.sort_values(by=["cat_sort", "raw_freq"], ascending=[True, False])
         
     return df
@@ -2055,14 +2055,14 @@ def analyze_ideal_name(comp_data_full):
     """
     # Подгружаем словарь
     SPECS_SET = st.session_state.get('categorized_dimensions', set())
-    if not SPECS_SET: _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
+    if Nt SPECS_SET: _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
 
     titles = []
     for d in comp_data_full:
         ts = d.get('product_titles', [])
         titles.extend([t for t in ts if 5 < len(t) < 150])
     
-    if not titles: return "Нет данных", []
+    if Nt titles: return "Нет данных", []
 
     # Маркер
     all_w = []
@@ -2070,10 +2070,10 @@ def analyze_ideal_name(comp_data_full):
     c = Counter(all_w)
     main_marker_root = ""
     for w, _ in c.most_common(5):
-        if not re.search(r'\d', w):
-             if morph and 'NOUN' in morph.parse(w)[0].tag: main_marker_root = w; break
-             elif not morph: main_marker_root = w; break
-    if not main_marker_root and c: main_marker_root = c.most_common(1)[0][0]
+        if Nt re.search(r'\d', w):
+             if morph and 'NUN' in morph.parse(w)[0].tag: main_marker_root = w; break
+             elif Nt morph: main_marker_root = w; break
+    if Nt main_marker_root and c: main_marker_root = c.most_common(1)[0][0]
 
     # Анализ паттернов
     structure_counter = Counter()
@@ -2101,7 +2101,7 @@ def analyze_ideal_name(comp_data_full):
             
             vocab_by_type[cat_short][w] += 1
             
-            if not pattern or pattern[-1] != cat_short:
+            if Nt pattern or pattern[-1] != cat_short:
                 pattern.append(cat_short)
         
         if pattern:
@@ -2109,7 +2109,7 @@ def analyze_ideal_name(comp_data_full):
             structure_counter[structure_str] += 1
             
     # Сборка
-    if not structure_counter: return "Структура не найдена", []
+    if Nt structure_counter: return "Структура не найдена", []
     
     best_struct_str, _ = structure_counter.most_common(1)[0]
     best_struct_list = best_struct_str.split(" + ")
@@ -2131,7 +2131,7 @@ def analyze_ideal_name(comp_data_full):
         # Для слов (Маркер, Свойства) берем ТОП-1
         candidates = vocab_by_type[block].most_common(3)
         for w, cnt in candidates:
-            if w not in used_words:
+            if w Nt in used_words:
                 if "Маркер" in block: w = w.capitalize()
                 final_parts.append(w)
                 used_words.add(w)
@@ -2158,10 +2158,10 @@ def run_seo_analysis_background(query, api_token):
     """
     # 1. Используем ТЕ ЖЕ настройки, что и на вкладке 1 по умолчанию
     settings = {
-        'noindex': True, 
+        'Nindex': True, 
         'alt_title': False, 
         'numbers': False, 
-        'norm': True, 
+        'Nrm': True, 
         'ua': "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", 
         'custom_stops': []
     }
@@ -2169,16 +2169,16 @@ def run_seo_analysis_background(query, api_token):
     # Режим "Без страницы"
     my_data = {'url': 'Local', 'domain': 'local', 'body_text': '', 'anchor_text': ''}
     
-    if not api_token: return []
+    if Nt api_token: return []
     
     try:
         # === 1. ИМИТАЦИЯ НАЖАТИЯ "Поиск через API" ===
         raw_top = get_arsenkin_urls(query, "Яндекс", "Москва", api_token, depth_val=10)
-        if not raw_top: return []
+        if Nt raw_top: return []
         
-        candidates = [item for item in raw_top if not any(x in item['url'] for x in ["avito", "ozon", "wildberries", "market", "tiu"])]
+        candidates = [item for item in raw_top if Nt any(x in item['url'] for x in ["avito", "ozon", "wildberries", "market", "tiu"])]
         candidates = candidates[:10]
-        if not candidates: return []
+        if Nt candidates: return []
 
         comp_data = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -2191,7 +2191,7 @@ def run_seo_analysis_background(query, api_token):
                         comp_data.append(res)
                 except: pass
         
-        if not comp_data: return []
+        if Nt comp_data: return []
 
         # === 2. РАСЧЕТ МЕТРИК (с очисткой от дублей, как мы настроили выше) ===
         targets = [{'url': d['url'], 'pos': d['pos']} for d in comp_data]
@@ -2209,7 +2209,7 @@ def run_seo_analysis_background(query, api_token):
         st.session_state['query_input'] = query
         
         # 2. Переключаем режим "Ваша страница" -> "Без страницы"
-        if 'my_page_source_radio' not in st.session_state:
+        if 'my_page_source_radio' Nt in st.session_state:
             st.session_state['my_page_source_radio'] = "Без страницы"
         
         # 3. Переключаем источник конкурентов -> "API"
@@ -2222,14 +2222,14 @@ def run_seo_analysis_background(query, api_token):
         st.session_state['full_graph_data'] = results['relevance_top']
         
         # 5. Тренды
-        _, _, trend = analyze_serp_anomalies(results['relevance_top'])
+        _, _, trend = analyze_serp_aNmalies(results['relevance_top'])
         st.session_state['serp_trend_info'] = trend
 
         # =========================================================
 
         # Возвращаем 15 лучших слов (TF-IDF) для LSI генератора
         df_hybrid = results.get('hybrid')
-        if df_hybrid is not None and not df_hybrid.empty:
+        if df_hybrid is Nt Nne and Nt df_hybrid.empty:
             return df_hybrid.head(15)['Слово'].tolist()
             
     except Exception as e:
@@ -2238,16 +2238,16 @@ def run_seo_analysis_background(query, api_token):
     
     return []
 
-def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, use_abs_sort_default=False, default_sort_order="Убывание", show_controls=True):
+def render_paginated_table(df, title_text, key_prefix, default_sort_col=Nne, use_abs_sort_default=False, default_sort_order="Убывание", show_controls=True):
     if df.empty: st.info(f"{title_text}: Нет данных."); return
     col_t1, col_t2 = st.columns([7, 3])
     with col_t1: st.markdown(f"### {title_text}")
     
     # Инициализация дефолтов в Session State
-    if f'{key_prefix}_sort_col' not in st.session_state: 
+    if f'{key_prefix}_sort_col' Nt in st.session_state: 
         st.session_state[f'{key_prefix}_sort_col'] = default_sort_col if (default_sort_col and default_sort_col in df.columns) else df.columns[0]
     
-    if f'{key_prefix}_sort_order' not in st.session_state: 
+    if f'{key_prefix}_sort_order' Nt in st.session_state: 
         st.session_state[f'{key_prefix}_sort_order'] = default_sort_order
 
     search_query = st.text_input(f"🔍 Поиск ({title_text})", key=f"{key_prefix}_search")
@@ -2265,7 +2265,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
             col_s1, col_s2, col_sp = st.columns([2, 2, 4])
             with col_s1:
                 current_sort = st.session_state[f'{key_prefix}_sort_col']
-                if current_sort not in df_filtered.columns: current_sort = df_filtered.columns[0]
+                if current_sort Nt in df_filtered.columns: current_sort = df_filtered.columns[0]
                 sort_col = st.selectbox("🗂 Сортировать по:", df_filtered.columns, key=f"{key_prefix}_sort_box", index=list(df_filtered.columns).index(current_sort))
                 st.session_state[f'{key_prefix}_sort_col'] = sort_col
             with col_s2:
@@ -2308,7 +2308,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
 
     # Пагинация
     ROWS_PER_PAGE = 20
-    if f'{key_prefix}_page' not in st.session_state: st.session_state[f'{key_prefix}_page'] = 1
+    if f'{key_prefix}_page' Nt in st.session_state: st.session_state[f'{key_prefix}_page'] = 1
     total_rows = len(df_filtered); total_pages = math.ceil(total_rows / ROWS_PER_PAGE)
     if total_pages == 0: total_pages = 1
     current_page = st.session_state[f'{key_prefix}_page']
@@ -2335,7 +2335,7 @@ def render_paginated_table(df, title_text, key_prefix, default_sort_col=None, us
     cols_to_hide = [c for c in ["is_missing", "sort_val"] if c in df_view.columns]
     try: styled_df = df_view.style.apply(highlight_rows, axis=1)
     except: styled_df = df_view
-    st.dataframe(styled_df, use_container_width=True, height=(len(df_view) * 35) + 40, column_config={c: None for c in cols_to_hide})
+    st.dataframe(styled_df, use_container_width=True, height=(len(df_view) * 35) + 40, column_config={c: Nne for c in cols_to_hide})
     
     c_spacer, c_btn_prev, c_info, c_btn_next = st.columns([6, 1, 1, 1])
     with c_btn_prev:
@@ -2378,27 +2378,27 @@ def get_page_data_for_gen(url):
         if response.encoding != 'utf-8':
             response.encoding = response.apparent_encoding
     except Exception as e: 
-        return None, None, None, f"Ошибка соединения: {e}"
+        return Nne, Nne, Nne, f"Ошибка соединения: {e}"
     
     if response.status_code != 200: 
-        return None, None, None, f"Ошибка статуса: {response.status_code}"
+        return Nne, Nne, Nne, f"Ошибка статуса: {response.status_code}"
     
     try:
         soup = BeautifulSoup(response.text, 'html.parser')
     except:
-        return None, None, None, "Ошибка парсинга"
+        return Nne, Nne, Nne, "Ошибка парсинга"
     
     # 1. ЗАГОЛОВОК
     description_div = soup.find('div', class_='description-container')
-    target_h2 = None
+    target_h2 = Nne
     if description_div:
         target_h2 = description_div.find('h2')
     
-    if not target_h2:
+    if Nt target_h2:
         target_h2 = soup.find('h2')
     
-    # ИЗМЕНЕНИЕ: Если H2 нет, возвращаем None, чтобы скрипт взял имя товара из ссылки
-    page_header = target_h2.get_text(strip=True) if target_h2 else None
+    # ИЗМЕНЕНИЕ: Если H2 нет, возвращаем Nne, чтобы скрипт взял имя товара из ссылки
+    page_header = target_h2.get_text(strip=True) if target_h2 else Nne
 
     # 2. Фактура (текст)
     if description_div:
@@ -2414,13 +2414,13 @@ def get_page_data_for_gen(url):
     if tags_container:
         links = tags_container.find_all('a')
         for link in links:
-            tag_url = urljoin(url, link.get('href')) if link.get('href') else None
+            tag_url = urljoin(url, link.get('href')) if link.get('href') else Nne
             if tag_url: tags_data.append({'name': link.get_text(strip=True), 'url': tag_url})
             
-    return base_text, tags_data, page_header, None
+    return base_text, tags_data, page_header, Nne
 
-def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_blocks=5, seo_words=None):
-    if not base_text: return ["Error: No base text"] * num_blocks
+def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_blocks=5, seo_words=Nne):
+    if Nt base_text: return ["Error: N base text"] * num_blocks
     
     from openai import OpenAI
     import re
@@ -2445,7 +2445,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
 
     contact_html_block = (
         'Предлагаем консультацию с менеджером по номеру '
-        '<nobr><a href="tel:#PHONE#" class="a_404 ct_phone">#PHONE#</a></nobr>, '
+        '<Nbr><a href="tel:#PHONE#" class="a_404 ct_phone">#PHONE#</a></Nbr>, '
         'либо пишите на почту <a href="mailto:#EMAIL#" class="a_404">#EMAIL#</a>.'
     )
     
@@ -2532,7 +2532,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     1.6. Абзац 2. Описание производства.
     
     1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ):
-    4-5 строк. Без дублей списка №1.
+    4-5 строк. Без дублей списка N1.
     ИСПОЛЬЗУЙ ЭТОТ КОД:
     <table class="brand-accent-table">
         <thead>
@@ -2558,7 +2558,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     1.10. Подводка к списку 2 (:).
     
     1.11.
-    Список №2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ.
+    Список N2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ.
     (Формат: <ul>).
        
     1.12. Абзац 4. Условия эксплуатации.
@@ -2573,7 +2573,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     
     1.15. Подводка к списку 3 (:).
     
-    1.16. Список №3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА.
+    1.16. Список N3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА.
     (Без союзов "и").
     Формат: <ul>.
        
@@ -2625,7 +2625,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
         
         raw_content = response.choices[0].message.content
         
-        if not raw_content:
+        if Nt raw_content:
             return ["Error: API вернул пустой ответ (возможно, сработал фильтр безопасности)"] * num_blocks
 
         # === БРОНЕБОЙНАЯ ОБРАБОТКА (ЧТОБЫ НЕ ТЕРЯТЬ ДЕНЬГИ) ===
@@ -2638,7 +2638,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
             blocks = [b.strip() for b in content.split("|||BLOCK_SEP|||") if b.strip()]
             
             # Если нейросеть проигнорировала разделитель, отдаем весь текст в первом блоке
-            if not blocks:
+            if Nt blocks:
                 blocks = [content]
                 
             cleaned_blocks = []
@@ -2653,7 +2653,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
                 
             # Обработка ТОЛЬКО первого блока (без риска стереть весь текст)
             first_block = cleaned_blocks[0]
-            first_block = re.sub(r'^<h[23][^>]*>.*?</h[23]>', '', first_block, flags=re.IGNORECASE).strip()
+            first_block = re.sub(r'^<h[23][^>]*>.*?</h[23]>', '', first_block, flags=re.IGNRECASE).strip()
             final_h2_text = forced_header if forced_header else tag_name
             cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{first_block}"
 
@@ -2703,7 +2703,7 @@ def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
         
         # Ищем подходящие плейсхолдеры (например, {товар_сущ_муж})
         placeholders = re.findall(r'\{([^}]+)\}', template)
-        found_slot = None
+        found_slot = Nne
         for p in placeholders:
             is_product = any(x in p for x in ['товар', 'сущ', 'вид_проката'])
             # Проверяем род и число, чтобы не было "купили труба (муж.род слот)"
@@ -2718,8 +2718,8 @@ def build_review_from_repo(template, variables_dict, repo_fio, lsi_words):
         
         if found_slot:
             # Склоняем LSI под падеж слота
-            target_case = 'nomn'
-            case_map = {'_вин': 'accs', '_ВП': 'accs', '_род': 'gent', '_творит': 'ablt', '_им': 'nomn'}
+            target_case = 'Nmn'
+            case_map = {'_вин': 'accs', '_ВП': 'accs', '_род': 'gent', '_творит': 'ablt', '_им': 'Nmn'}
             for sfx, c in case_map.items():
                 if sfx in found_slot:
                     target_case = c
@@ -2774,9 +2774,9 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     clean_lsi = []
     for w in lsi_words:
         w_lower = str(w).lower()
-        if not any(root in w_lower for root in forbidden_roots):
+        if Nt any(root in w_lower for root in forbidden_roots):
             # Вырезаем случайный код и верстку (div, span, img и т.д.)
-            if re.match(r'^[a-z]{2,4}$', w_lower) and w_lower not in ['aisi', 'din', 'iso', 'en', 'ral']:
+            if re.match(r'^[a-z]{2,4}$', w_lower) and w_lower Nt in ['aisi', 'din', 'iso', 'en', 'ral']:
                 continue
             clean_lsi.append(w)
             
@@ -2981,7 +2981,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         last_word = parts[-1] if parts else ""
         exceptions_male =['илья', 'никита', 'данила', 'саша', 'женя', 'миша', 'коля', 'николай', 'кузьма']
         if last_word in exceptions_male: return 'Мужской'
-        if last_word.endswith(('а', 'я', 'ва', 'на', 'ова', 'ева', 'ина')) and not re.search(r'[a-z0-9]', last_word):
+        if last_word.endswith(('а', 'я', 'ва', 'на', 'ова', 'ева', 'ина')) and Nt re.search(r'[a-z0-9]', last_word):
             return 'Женский'
         return 'Мужской'
 
@@ -3144,7 +3144,7 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
                 
             text = reviews[i].get("Текст", "")
             if text:
-                if i not in yo_indices:
+                if i Nt in yo_indices:
                     text = text.replace('ё', 'е').replace('Ё', 'Е')
                 
                 if case_pool[i] == 'lower':
@@ -3164,11 +3164,11 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         return [{"Имя": "Ошибка", "Текст": str(e), "Оценка": 5.0, "Дата": date.today().strftime("%d.%m.%Y")}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
-    if not api_key: return "Error: No API Key"
+    if Nt api_key: return "Error: N API Key"
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
-    except ImportError: return "Error: Library 'openai' not installed"
+    except ImportError: return "Error: Library 'openai' Nt installed"
     
     lsi_string = ", ".join(lsi_list)
     
@@ -3182,7 +3182,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
 
     contact_html_block = (
         'Предлагаем консультацию с менеджером по номеру '
-        '<nobr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po nomeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po nomeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></nobr>, '
+        '<Nbr><a href="tel:#PHONE#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'tel\');gtag(\'event\', \'Click po Nmeru telefona\', {{\'event_category\' : \'Click\', \'event_label\' : \'po Nmeru telefona\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404 ct_phone">#PHONE#</a></Nbr>, '
         'либо пишите на почту <a href="mailto:#EMAIL#" onclick="ym(document.querySelector(\'#ya_counter\').getAttribute(\'data-counter\'),\'reachGoal\',\'email\');gtag(\'event\', \'Click napisat nam\', {{\'event_category\' : \'Click\', \'event_label\' : \'napisat nam\'}});gtag(\'event\', \'Lead_Goal\', {{\'event_category\' : \'Click\', \'event_label\' : \'Leads Goal\'}});" class="a_404">#EMAIL#</a>.'
     )
 
@@ -3242,7 +3242,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     1.6. Абзац 2. Описание производства.
     
     1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ):
-    4-5 строк. Без дублей списка №1.
+    4-5 строк. Без дублей списка N1.
     ИСПОЛЬЗУЙ ЭТОТ КОД:
     <table class="brand-accent-table">
         <thead>
@@ -3267,7 +3267,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     
     1.10. Подводка к списку 2 (:).
     
-    1.11. Список №2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ.
+    1.11. Список N2 (6 пунктов): СФЕРЫ ПРИМЕНЕНИЯ.
     (Формат: <ul>).
        
     1.12. Абзац 4. Условия эксплуатации.
@@ -3280,7 +3280,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     
     1.15. Подводка к списку 3 (:).
     
-    1.16. Список №3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА.
+    1.16. Список N3 (6 пунктов): ЭКСПЛУАТАЦИОННЫЕ СВОЙСТВА.
     (Без союзов "и"). Формат: <ul>.
        
     1.17. Абзац 6. Резюме и отгрузка.
@@ -3359,10 +3359,10 @@ def scrape_h1_h2_from_url(url):
             content = r.content
             encoding = r.apparent_encoding
         except Exception as e:
-            return None, None, f"Ошибка соединения: {e}"
+            return Nne, Nne, f"Ошибка соединения: {e}"
 
     if r.status_code != 200:
-        return None, None, f"HTTP Error {r.status_code}"
+        return Nne, Nne, f"HTTP Error {r.status_code}"
 
     try:
         soup = BeautifulSoup(content, 'html.parser', from_encoding=encoding)
@@ -3380,21 +3380,21 @@ def scrape_h1_h2_from_url(url):
             if h2_tag: h2_text = h2_tag.get_text(strip=True)
         
         # Если не нашли в контенте, берем просто первый попавшийся H2 на странице
-        if not h2_text:
+        if Nt h2_text:
             h2_tag = soup.find('h2')
             if h2_tag: h2_text = h2_tag.get_text(strip=True)
             
         # Если H2 вообще нет, используем H1 как тему (fallback)
-        if not h2_text:
+        if Nt h2_text:
             h2_text = h1_text
 
-        if not h1_text:
-            return None, None, "H1 не найден"
+        if Nt h1_text:
+            return Nne, Nne, "H1 не найден"
 
         return h1_text, h2_text, "OK"
 
     except Exception as e:
-        return None, None, f"Ошибка парсинга: {e}"
+        return Nne, Nne, f"Ошибка парсинга: {e}"
 
 # === ФИКС ОШИБКИ ВИДЖЕТОВ (StreamlitAPIException) ===
 if 'pending_widget_updates' in st.session_state:
@@ -3406,7 +3406,7 @@ if 'pending_widget_updates' in st.session_state:
 # ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ (ТУРГЕНЕВ И TEXT.RU)
 # ==========================================
 def check_turgenev_sync(text, key): # <-- добавили key
-    url = 'https://turgenev.ashmanov.com/'
+    url = 'https://turgenev.ashmaNv.com/'
     params = {
         'api': 'risk',
         'key': key, # <-- теперь ключ берется из переменной
@@ -3433,7 +3433,7 @@ def send_textru_sync(text, key):
         res = r.json()
         return res.get('text_uid')
     except:
-        return None
+        return Nne
 
 def check_textru_status_sync(uid, key):
     url = 'https://api.text.ru/post'
@@ -3450,13 +3450,13 @@ def check_textru_status_sync(uid, key):
         elif res.get('error_code') == 181:
             return "processing"
         else:
-            return f"Ошибка: {res.get('error_desc', res.get('error_code', 'Unknown'))}"
+            return f"Ошибка: {res.get('error_desc', res.get('error_code', 'UnkNwn'))}"
     except:
         return "error"
 
 def validate_topic_deepseek(api_key, h1, h2, text):
     """Проверяет соответствие текста теме через DeepSeek-v3.2"""
-    if not api_key or not text: return True
+    if Nt api_key or Nt text: return True
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
@@ -3469,7 +3469,7 @@ def validate_topic_deepseek(api_key, h1, h2, text):
 
         Бывает, что нейросеть ошибается и пишет про смежные категории или вообще о другом товаре/услуге.
         Если текст точно раскрывает заявленную тему, ответь строго одним словом: YES
-        Если текст написан про другое или тема не раскрыта, ответь строго одним словом: NO
+        Если текст написан про другое или тема не раскрыта, ответь строго одним словом: N
         """
         # Обрезаем текст для экономии токенов (суть ясна по первым 3000 символам)
         user_msg = f"Текст для проверки:\n{text[:3000]}"
@@ -3484,7 +3484,7 @@ def validate_topic_deepseek(api_key, h1, h2, text):
             max_tokens=10
         )
         ans = response.choices[0].message.content.strip().upper()
-        if "NO" in ans: return False
+        if "N" in ans: return False
         return True
     except Exception as e:
         return True # При ошибке API пропускаем, чтобы не блочить весь процесс
@@ -3550,13 +3550,13 @@ with tab_seo_main:
                 col_reset, _ = st.columns([1, 4])
                 with col_reset:
                     if st.button("🔄 Новый поиск (Сброс)", type="secondary"):
-                        keys_to_clear = ['analysis_done', 'analysis_results', 'persistent_urls', 'excluded_urls_auto', 'detected_anomalies']
+                        keys_to_clear = ['analysis_done', 'analysis_results', 'persistent_urls', 'excluded_urls_auto', 'detected_aNmalies']
                         for k in keys_to_clear:
                             if k in st.session_state: del st.session_state[k]
                         st.rerun()
 
             # Инициализация переменной (если нет)
-            if 'persistent_urls' not in st.session_state:
+            if 'persistent_urls' Nt in st.session_state:
                 st.session_state['persistent_urls'] = ""
 
             has_exclusions = st.session_state.get('excluded_urls_auto') and len(st.session_state.get('excluded_urls_auto')) > 5
@@ -3709,7 +3709,7 @@ with tab_seo_main:
                 st.download_button(
                     label="📥 Скачать готовый отчет",
                     data=excel_buffer.getvalue(),
-                    file_name=f"SEO_Отчет_{datetime.datetime.now().strftime('%d_%m_%H%M')}.xlsx",
+                    file_name=f"SEO_Отчет_{datetime.datetime.Nw().strftime('%d_%m_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
@@ -3727,7 +3727,7 @@ with tab_seo_main:
                 st.download_button(
                     label="📥 Скачать JSON",
                     data=json_data,
-                    file_name=f"SEO_Raw_{datetime.datetime.now().strftime('%d_%m_%H%M')}.json",
+                    file_name=f"SEO_Raw_{datetime.datetime.Nw().strftime('%d_%m_%H%M')}.json",
                     mime="application/json",
                     use_container_width=True
                 )
@@ -3735,7 +3735,7 @@ with tab_seo_main:
         # ==========================================
         # НИЖЕ ИДУТ ТВОИ ГРАФИКИ И ТАБЛИЦЫ
         # ==========================================
-            if 'relevance_top' in results and not results['relevance_top'].empty:
+            if 'relevance_top' in results and Nt results['relevance_top'].empty:
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander("📊 График релевантности (Нажмите, чтобы раскрыть)", expanded=False):                    
                     graph_data = st.session_state.get('full_graph_data', results['relevance_top'])
@@ -3748,7 +3748,7 @@ with tab_seo_main:
             keys_to_clear = [
                 'analysis_results', 'analysis_done', 'naming_table_df',
                 'ideal_h1_result', 'gen_result_df', 'unified_excel_data',
-                'detected_anomalies', 'serp_trend_info',
+                'detected_aNmalies', 'serp_trend_info',
                 'excluded_urls_auto'
             ]
             for k in keys_to_clear:
@@ -3769,10 +3769,10 @@ with tab_seo_main:
 
     # === ПРАВАЯ КОЛОНКА (САЙДБАР) ===
     with col_sidebar:
-        if not ARSENKIN_TOKEN:
+        if Nt ARSENKIN_TOKEN:
              new_arsenkin = st.text_input("Arsenkin Token", type="password", key="input_arsenkin")
              if new_arsenkin: st.session_state.arsenkin_token = new_arsenkin; ARSENKIN_TOKEN = new_arsenkin 
-        if not YANDEX_DICT_KEY:
+        if Nt YANDEX_DICT_KEY:
              new_yandex = st.text_input("Yandex Dict Key", type="password", key="input_yandex")
              if new_yandex: st.session_state.yandex_dict_key = new_yandex; YANDEX_DICT_KEY = new_yandex
         
@@ -3783,25 +3783,25 @@ with tab_seo_main:
         st.selectbox("Кол-во конкурентов для анализа", [10, 20], index=0, key="settings_top_n")
         
         # Инициализация чекбоксов
-        if "settings_noindex" not in st.session_state: st.session_state.settings_noindex = True
-        if "settings_alt" not in st.session_state: st.session_state.settings_alt = False
-        if "settings_numbers" not in st.session_state: st.session_state.settings_numbers = False
-        if "settings_norm" not in st.session_state: st.session_state.settings_norm = True
-        if "settings_auto_filter" not in st.session_state: st.session_state.settings_auto_filter = True
+        if "settings_Nindex" Nt in st.session_state: st.session_state.settings_Nindex = True
+        if "settings_alt" Nt in st.session_state: st.session_state.settings_alt = False
+        if "settings_numbers" Nt in st.session_state: st.session_state.settings_numbers = False
+        if "settings_Nrm" Nt in st.session_state: st.session_state.settings_Nrm = True
+        if "settings_auto_filter" Nt in st.session_state: st.session_state.settings_auto_filter = True
 
         is_running = st.session_state.get('start_analysis_flag', False)
-        st.checkbox("Исключать <noindex>", key="settings_noindex", disabled=is_running)
+        st.checkbox("Исключать <Nindex>", key="settings_Nindex", disabled=is_running)
         st.checkbox("Учитывать Alt/Title", key="settings_alt", disabled=is_running)
         st.checkbox("Учитывать числа", key="settings_numbers", disabled=is_running)
-        st.checkbox("Нормировать по длине", key="settings_norm", disabled=is_running)
+        st.checkbox("Нормировать по длине", key="settings_Nrm", disabled=is_running)
         st.checkbox("Авто-фильтр слабых сайтов", key="settings_auto_filter", help="Сайты с низкой релевантностью будут автоматически перенесены в список исключенных.", disabled=is_running)
         
         # === [ИЗМЕНЕНИЕ] СПИСКИ ПЕРЕНЕСЕНЫ СЮДА ===
         st.markdown("---")
         st.markdown("🛑 **Исключения**")
         
-        if "settings_excludes" not in st.session_state: st.session_state.settings_excludes = DEFAULT_EXCLUDE
-        if "settings_stops" not in st.session_state: st.session_state.settings_stops = DEFAULT_STOPS
+        if "settings_excludes" Nt in st.session_state: st.session_state.settings_excludes = DEFAULT_EXCLUDE
+        if "settings_stops" Nt in st.session_state: st.session_state.settings_stops = DEFAULT_STOPS
 
         st.text_area("Не учитывать домены", height=100, key="settings_excludes", help="Домены, которые парсер пропустит сразу.")
         st.text_area("Стоп-слова", height=100, key="settings_stops", help="Слова, которые не попадут в анализ.")
@@ -3831,8 +3831,8 @@ with tab_seo_main:
         # Стили
         st.markdown("""
         <style>
-            details > summary { list-style: none; }
-            details > summary::-webkit-details-marker { display: none; }
+            details > summary { list-style: Nne; }
+            details > summary::-webkit-details-marker { display: Nne; }
             .details-card { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 10px; }
             .card-summary { padding: 12px 15px; cursor: pointer; font-weight: 700; display: flex; justify-content: space-between; }
             .count-tag { background: #e5e7eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
@@ -3861,19 +3861,19 @@ with tab_seo_main:
             </div>
             <div style='flex: 1; background:{LIGHT_BG_MAIN}; padding:15px; border-radius:8px; border-left: 5px solid {d_color};'>
                 <div style='font-size: 12px; color: #666;'>ГЛУБИНА (Цель: ~80)</div>
-                <div style='font-size: 24px; font-weight: bold; color: {d_color};'>{d_score}/100 <span style='font-size:14px; font-weight:normal;'>({d_status})</span></div>
+                <div style='font-size: 24px; font-weight: bold; color: {d_color};'>{d_score}/100 <span style='font-size:14px; font-weight:Nrmal;'>({d_status})</span></div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
         # --- РАСЧЕТ META (Чтобы показать их первыми) ---
         my_data_saved = st.session_state.get('saved_my_data')
-        meta_res = None
+        meta_res = Nne
         
         if 'raw_comp_data' in st.session_state and my_data_saved:
             # Настройки для анализатора
             s_meta = {
-                'noindex': True, 'alt_title': False, 'numbers': False, 'norm': True, 
+                'Nindex': True, 'alt_title': False, 'numbers': False, 'Nrm': True, 
                 'ua': "Mozilla/5.0", 'custom_stops': st.session_state.get('settings_stops', "").split()
             }
             meta_res = analyze_meta_gaps(st.session_state['raw_comp_data'], my_data_saved, s_meta)
@@ -3933,7 +3933,7 @@ with tab_seo_main:
 
 # 1. СЕМАНТИЧЕСКОЕ ЯДРО
         with st.expander("🛒 Семантическое ядро", expanded=True):
-            if not st.session_state.get('orig_products') and not st.session_state.get('categorized_general'):
+            if Nt st.session_state.get('orig_products') and Nt st.session_state.get('categorized_general'):
                 st.info("⚠️ Данные отсутствуют. Запустите анализ.")
             else:
                 # --- ФУНКЦИЯ ПЕРЕСЧЕТА (CALLBACK) ---
@@ -3945,12 +3945,12 @@ with tab_seo_main:
 
                     # 2. Пересобираем отображаемые списки из Мастер-списков (orig_...)
                     # Проверяем: если слова нет в стоп-листе - оно идет в работу
-                    st.session_state.categorized_products = [w for w in st.session_state.orig_products if w.lower() not in current_stop_set]
-                    st.session_state.categorized_services = [w for w in st.session_state.orig_services if w.lower() not in current_stop_set]
-                    st.session_state.categorized_commercial = [w for w in st.session_state.orig_commercial if w.lower() not in current_stop_set]
-                    st.session_state.categorized_geo = [w for w in st.session_state.orig_geo if w.lower() not in current_stop_set]
-                    st.session_state.categorized_dimensions = [w for w in st.session_state.orig_dimensions if w.lower() not in current_stop_set]
-                    st.session_state.categorized_general = [w for w in st.session_state.orig_general if w.lower() not in current_stop_set]
+                    st.session_state.categorized_products = [w for w in st.session_state.orig_products if w.lower() Nt in current_stop_set]
+                    st.session_state.categorized_services = [w for w in st.session_state.orig_services if w.lower() Nt in current_stop_set]
+                    st.session_state.categorized_commercial = [w for w in st.session_state.orig_commercial if w.lower() Nt in current_stop_set]
+                    st.session_state.categorized_geo = [w for w in st.session_state.orig_geo if w.lower() Nt in current_stop_set]
+                    st.session_state.categorized_dimensions = [w for w in st.session_state.orig_dimensions if w.lower() Nt in current_stop_set]
+                    st.session_state.categorized_general = [w for w in st.session_state.orig_general if w.lower() Nt in current_stop_set]
 
                     # 3. Синхронизируем с генератором (чтобы мусор не попал в теги)
                     all_active_products = st.session_state.categorized_products
@@ -4011,7 +4011,7 @@ with tab_seo_main:
 
         # 3. НАЙМИНГ
         with st.expander("🏷️ Рекомендации по названию товаров", expanded=False):
-            if 'naming_table_df' in st.session_state and not st.session_state.naming_table_df.empty:
+            if 'naming_table_df' in st.session_state and Nt st.session_state.naming_table_df.empty:
                 st.dataframe(st.session_state.naming_table_df, use_container_width=True, hide_index=True)
             else:
                 st.info("Нет данных.")
@@ -4028,7 +4028,7 @@ with tab_seo_main:
                     'Description': meta_res['my_data']['Description'], 
                     'H1': meta_res['my_data']['H1']
                 }])
-                df_meta_table = pd.concat([my_row, df_meta_table], ignore_index=True)
+                df_meta_table = pd.concat([my_row, df_meta_table], igNre_index=True)
                 
                 st.dataframe(
                     df_meta_table, 
@@ -4052,7 +4052,7 @@ with tab_seo_main:
                 current_idx = st.session_state.get('lsi_processing_task_id')
                 
                 # Защита: проверяем существование очереди и индекса
-                if 'bg_tasks_queue' not in st.session_state or current_idx is None or current_idx >= len(st.session_state.bg_tasks_queue):
+                if 'bg_tasks_queue' Nt in st.session_state or current_idx is Nne or current_idx >= len(st.session_state.bg_tasks_queue):
                     st.session_state.lsi_automode_active = False
                     st.success("Все задачи выполнены (или очередь пуста)!")
                     st.stop()
@@ -4065,7 +4065,7 @@ with tab_seo_main:
                 # --- ИСПРАВЛЕНИЕ: БЕРЕМ ИЗ SESSION_STATE, А НЕ ИЗ ЛОКАЛЬНОЙ ПЕРЕМЕННОЙ ---
                 results_data = st.session_state.get('analysis_results')
                 
-                if results_data and results_data.get('hybrid') is not None and not results_data['hybrid'].empty:
+                if results_data and results_data.get('hybrid') is Nt Nne and Nt results_data['hybrid'].empty:
                     # Берем топ-15 слов
                     lsi_words = results_data['hybrid'].head(15)['Слово'].tolist()
                 # --------------------------------------------------------------------------
@@ -4077,16 +4077,16 @@ with tab_seo_main:
 # 4. ГЕНЕРИРУЕМ СТАТЬЮ
                 # --- ИСПРАВЛЕНИЕ: Ищем ключ везде ---
                 api_key_gen = st.session_state.get('gemini_key_persistent')
-                if not api_key_gen:
+                if Nt api_key_gen:
                     api_key_gen = st.session_state.get('bulk_api_key_v3')
-                if not api_key_gen:
+                if Nt api_key_gen:
                     try: api_key_gen = st.secrets["GEMINI_KEY"]
                     except: pass
                 
                 html_out = ""
                 status_code = "Error"
                 
-                if not api_key_gen:
+                if Nt api_key_gen:
                     html_out = "Ошибка: Нет API ключа Gemini (введите на вкладке 5). Нажмите Enter после ввода ключа!"
                     status_code = "Key Error"
                 else:
@@ -4098,7 +4098,7 @@ with tab_seo_main:
                         status_code = "Gen Error"
 
                 # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
-                if 'bg_results' not in st.session_state:
+                if 'bg_results' Nt in st.session_state:
                     st.session_state.bg_results = []
                     
                 found_existing = False
@@ -4110,7 +4110,7 @@ with tab_seo_main:
                         found_existing = True
                         break
                 
-                if not found_existing:
+                if Nt found_existing:
                     st.session_state.bg_results.append({
                         "h1": task['h1'],
                         "h2": task['h2'],
@@ -4130,7 +4130,7 @@ with tab_seo_main:
                     
                     # === ПРИНУДИТЕЛЬНОЕ ВОССТАНОВЛЕНИЕ ===
                     # Если ключ вдруг удалился, но есть в secrets или другой переменной - восстанавливаем
-                    if 'bulk_api_key_v3' not in st.session_state:
+                    if 'bulk_api_key_v3' Nt in st.session_state:
                          # Пытаемся найти в persist или secrets
                          recovered = st.session_state.get('gemini_key_persistent') or st.secrets.get("GEMINI_KEY", "")
                          if recovered:
@@ -4140,10 +4140,10 @@ with tab_seo_main:
                     keys_to_clear = [
                         'analysis_results', 'analysis_done', 'naming_table_df', 
                         'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
-                        'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                        'detected_aNmalies', 'serp_trend_info', 'excluded_urls_auto'
                     ]
                     for k in keys_to_clear:
-                        st.session_state.pop(k, None)
+                        st.session_state.pop(k, Nne)
                         
                     # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
                     st.session_state['pending_widget_updates'] = {
@@ -4206,7 +4206,7 @@ with tab_seo_main:
                             "date": "10.02.2026"
                         }
                         
-                        if 'bg_results' not in st.session_state:
+                        if 'bg_results' Nt in st.session_state:
                             st.session_state.bg_results = []
                         
                         # Проверка на дубли
@@ -4216,7 +4216,7 @@ with tab_seo_main:
                                 r['lsi_added'] = current_lsi_words
                                 is_exist = True
                                 break
-                        if not is_exist:
+                        if Nt is_exist:
                             st.session_state.bg_results.append(new_rec)
                         
                         # 4. ГЕНЕРАЦИЯ (Сразу здесь!)
@@ -4267,7 +4267,7 @@ with tab_seo_main:
                 task_id = st.session_state.get('lsi_processing_task_id', 0)
                 task = st.session_state.bg_tasks_queue[task_id]
                 
-                # 3. Формируем запись для Вкладки №5
+                # 3. Формируем запись для Вкладки N5
                 st.write(f"💾 Переношу данные для ключа: **{task['h1']}**")
                 
                 new_entry = {
@@ -4279,13 +4279,13 @@ with tab_seo_main:
                     "date": "05.02.2026" # Установлено согласно вашим правилам
                 }
                 
-                if 'bg_results' not in st.session_state:
+                if 'bg_results' Nt in st.session_state:
                     st.session_state.bg_results = []
                 
                 # Добавляем в результаты (или обновляем, если уже есть)
                 # Чтобы не было дублей при случайном реране
-                existing_idx = next((i for i, r in enumerate(st.session_state.bg_results) if r['h1'] == task['h1']), None)
-                if existing_idx is not None:
+                existing_idx = next((i for i, r in enumerate(st.session_state.bg_results) if r['h1'] == task['h1']), Nne)
+                if existing_idx is Nt Nne:
                     st.session_state.bg_results[existing_idx] = new_entry
                     res_idx = existing_idx
                 else:
@@ -4352,22 +4352,22 @@ with tab_seo_main:
         
         # Настройки парсинга
         settings = {
-            'noindex': st.session_state.settings_noindex, 
+            'Nindex': st.session_state.settings_Nindex, 
             'alt_title': st.session_state.settings_alt, 
             'numbers': st.session_state.settings_numbers, 
-            'norm': st.session_state.settings_norm, 
+            'Nrm': st.session_state.settings_Nrm, 
             'ua': st.session_state.settings_ua, 
             'custom_stops': st.session_state.settings_stops.split()
         }
         
-        my_data, my_domain, my_serp_pos = None, "", 0
+        my_data, my_domain, my_serp_pos = Nne, "", 0
         current_input_type = st.session_state.get("my_page_source_radio")
         
         # 1. Обработка ВАШЕЙ страницы
         if current_input_type == "Релевантная страница на вашем сайте":
             with st.spinner("Скачивание вашей страницы..."):
                 my_data = parse_page(st.session_state.my_url_input, settings, st.session_state.query_input)
-                if not my_data: st.error("Ошибка скачивания вашей страницы."); st.stop()
+                if Nt my_data: st.error("Ошибка скачивания вашей страницы."); st.stop()
                 my_domain = urlparse(st.session_state.my_url_input).netloc
         elif current_input_type == "Исходный код страницы или текст":
             my_data = {'url': 'Local', 'domain': 'local', 'body_text': st.session_state.my_content_input, 'anchor_text': ''}
@@ -4382,7 +4382,7 @@ with tab_seo_main:
         # Получаем текущий регион
         current_region = st.session_state.get('settings_region', 'Москва')
         
-        cached_data_for_graph = None
+        cached_data_for_graph = Nne
         if "API" in current_source_val and current_input_type == "Без страницы":
             # Передаем регион в функцию
             cached_data_for_graph = get_cached_analysis(st.session_state.query_input, current_region)
@@ -4394,17 +4394,17 @@ with tab_seo_main:
         else:
             candidates_pool = []
             if "API" in current_source_val:
-                if not ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
+                if Nt ARSENKIN_TOKEN: st.error("Отсутствует API токен Arsenkin."); st.stop()
                 with st.spinner(f"API Arsenkin (Запрос Топ-30)..."):
                     raw_top = get_arsenkin_urls(st.session_state.query_input, st.session_state.settings_search_engine, st.session_state.settings_region, ARSENKIN_TOKEN, depth_val=30)
-                    if not raw_top: st.stop()
+                    if Nt raw_top: st.stop()
                     
                     excl = [d.strip() for d in st.session_state.settings_excludes.split('\n') if d.strip()]
                     agg_list = [
                         "avito", "ozon", "wildberries", "market.yandex", "tiu", "youtube", "vk.com", "yandex",
                         "leroymerlin", "petrovich", "satom", "pulscen", "blizko", "deal.by", "satu.kz", "prom.ua",
-                        "wikipedia", "dzen", "rutube", "kino", "otzovik", "irecommend", "profi.ru", "zoon", "2gis",
-                        "megamarket.ru", "lamoda.ru", "utkonos.ru", "vprok.ru", "allbiz.ru", "all-companies.ru",
+                        "wikipedia", "dzen", "rutube", "kiN", "otzovik", "irecommend", "profi.ru", "zoon", "2gis",
+                        "megamarket.ru", "lamoda.ru", "utkoNs.ru", "vprok.ru", "allbiz.ru", "all-companies.ru",
                         "orgpage.ru", "list-org.com", "rusprofile.ru", "e-katalog.ru", "kufar.by", "wildberries.kz",
                         "ozon.kz", "kaspi.kz", "pulscen.kz", "allbiz.kz", "wildberries.uz", "olx.uz", "pulscen.uz",
                         "allbiz.uz", "wildberries.kg", "pulscen.kg", "allbiz.kg", "all.biz", "b2b-center.ru"
@@ -4426,7 +4426,7 @@ with tab_seo_main:
                 raw_input_urls = st.session_state.get("persistent_urls", "")
                 candidates_pool = [{'url': u.strip(), 'pos': i+1} for i, u in enumerate(raw_input_urls.split('\n')) if u.strip()]
 
-            if not candidates_pool: st.error("После фильтрации не осталось кандидатов."); st.stop()
+            if Nt candidates_pool: st.error("После фильтрации не осталось кандидатов."); st.stop()
             
             # 3. СКАЧИВАНИЕ (Всех 30)
             comp_data_valid = []
@@ -4468,7 +4468,7 @@ with tab_seo_main:
             
             # Анализ аномалий по полному списку
             df_rel_check = results_full['relevance_top']
-            good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
+            good_urls, bad_urls_dicts, trend = analyze_serp_aNmalies(df_rel_check)
             st.session_state['serp_trend_info'] = trend
             
             # --- ЭТАП 2: Отбор чистовых (Топ-10/20 без мусора) ---
@@ -4480,7 +4480,7 @@ with tab_seo_main:
             # Если это API - мы фильтруем и режем топ.
             # Если это РУЧНОЙ режим - мы НЕ фильтруем (доверяем пользователю).
             if "API" in current_source_val:
-                clean_data_pool = [d for d in data_for_graph if d['url'] not in bad_urls_set]
+                clean_data_pool = [d for d in data_for_graph if d['url'] Nt in bad_urls_set]
                 final_clean_data = clean_data_pool[:user_target_top_n]
             else:
                 # В ручном режиме используем ВСЕХ скачанных, не фильтруем "слабых"
@@ -4526,22 +4526,22 @@ with tab_seo_main:
                 # ===================================
                 
                 # Подтягиваем категории (если они были определены на вкладке 1)
-                known_products = set(st.session_state.get('categorized_products', []))
-                known_services = set(st.session_state.get('categorized_services', [])) # <-- Добавили услуги
+                kNwn_products = set(st.session_state.get('categorized_products', []))
+                kNwn_services = set(st.session_state.get('categorized_services', [])) # <-- Добавили услуги
                 
                 # === БЛОКИРОВКА ГЕО И МУСОРА ===
-                known_geo = set(st.session_state.get('categorized_geo', []))
-                known_geo.update(st.session_state.get('orig_geo', []))
+                kNwn_geo = set(st.session_state.get('categorized_geo', []))
+                kNwn_geo.update(st.session_state.get('orig_geo', []))
                 
                 try:
                     _, _, _, dict_geo, _, _ = load_lemmatized_dictionaries()
-                    known_geo.update(dict_geo)
+                    kNwn_geo.update(dict_geo)
                 except:
                     pass
                 
-                lsi_nouns = []
+                lsi_Nuns = []
                 
-                STOP_NOUNS = {
+                STOP_NUNS = {
                     'код', 'сайт', 'каталог', 'меню', 'корзина', 'поиск', 'ссылка', 'страница', 
                     'версия', 'ошибка', 'руб', 'грн', 'шт', 'раз', 'два', 'три', 'номер', 
                     'телефон', 'адрес', 'email', 'фильтр', 'сортировка', 'артикул', 'наличие',
@@ -4555,27 +4555,27 @@ with tab_seo_main:
                         w_clean = str(w).lower().strip()
                         
                         if (len(w_clean) > 2 
-                            and not re.search(r'[a-zA-Z0-9]', w_clean) 
-                            and w_clean not in STOP_NOUNS
-                            and w_clean not in known_geo):
+                            and Nt re.search(r'[a-zA-Z0-9]', w_clean) 
+                            and w_clean Nt in STOP_NUNS
+                            and w_clean Nt in kNwn_geo):
                             
                             parsed = morph.parse(w_clean)[0]
                             is_name_or_geo = any(tag in parsed.tag for tag in ['Name', 'Surn', 'Patr', 'Geox'])
                             is_orphan_modifier = any(tag in parsed.tag for tag in ['ADJF', 'ADJS', 'PRTF', 'PRTS', 'ADVB', 'GRND'])
                             
-                            is_noun = 'NOUN' in parsed.tag
-                            is_known_product = w_clean in known_products
-                            is_known_service = w_clean in known_services
+                            is_Nun = 'NUN' in parsed.tag
+                            is_kNwn_product = w_clean in kNwn_products
+                            is_kNwn_service = w_clean in kNwn_services
                             
-                            if is_known_product or (is_noun and not is_name_or_geo and not is_orphan_modifier):
-                                priority = 1 if is_known_product else 0
+                            if is_kNwn_product or (is_Nun and Nt is_name_or_geo and Nt is_orphan_modifier):
+                                priority = 1 if is_kNwn_product else 0
                                 
                                 # === ОПРЕДЕЛЯЕМ ТИП СЛОВА ДЛЯ ШАБЛОНА ===
-                                if is_known_product: w_type = 'product'
-                                elif is_known_service: w_type = 'service'
+                                if is_kNwn_product: w_type = 'product'
+                                elif is_kNwn_service: w_type = 'service'
                                 else: w_type = 'general'
                                 
-                                lsi_nouns.append({
+                                lsi_Nuns.append({
                                     'word': w_clean,
                                     'parse': parsed,
                                     'priority': priority,
@@ -4584,13 +4584,13 @@ with tab_seo_main:
                 
                 # СОРТИРОВКА: Сначала слова из категории "Товары", потом просто существительные из упущенного
                 # Shuffle делаем внутри групп, чтобы сохранять рандом, но соблюдать приоритет
-                lsi_nouns.sort(key=lambda x: x['priority'], reverse=True)
+                lsi_Nuns.sort(key=lambda x: x['priority'], reverse=True)
                 
                 # Если слов мало, можно перемешать топ-20, чтобы не шли всегда одни и те же товары
-                if len(lsi_nouns) > 5:
-                    top_slice = lsi_nouns[:10]
+                if len(lsi_Nuns) > 5:
+                    top_slice = lsi_Nuns[:10]
                     random.shuffle(top_slice)
-                    lsi_nouns[:10] = top_slice
+                    lsi_Nuns[:10] = top_slice
 
                 curr_idx = st.session_state.get('reviews_current_index', 0)
                 queue = st.session_state.get('reviews_queue', [])
@@ -4622,10 +4622,10 @@ with tab_seo_main:
                     df_vars = pd.read_csv("dicts/vars.csv", sep=";")
                     for _, row in df_vars.iterrows():
                         v_name = str(row['Переменная']).strip()
-                        if pd.notna(row['Значения']):
+                        if pd.Ntna(row['Значения']):
                             var_dict[f"{{{v_name}}}"] = [v.strip() for v in str(row['Значения']).split('|')]
                             
-                if "{товар}" not in var_dict:
+                if "{товар}" Nt in var_dict:
                     var_dict["{товар}"] = ["заказ", "товар", "продукцию"]
 
                 # Умные фразы-конструкторы по категориям
@@ -4634,14 +4634,14 @@ with tab_seo_main:
                     {"tpl": "Заказывали {} оптом.", "case": "accs"},       
                     {"tpl": "Партия {} пришла без брака.", "case": "gent"},        
                     {"tpl": "Проблем с {} не возникло.", "case": "ablt"},    
-                    {"tpl": "Сейчас {} в наличии.", "case": "nomn"}          
+                    {"tpl": "Сейчас {} в наличии.", "case": "Nmn"}          
                 ]
                 
                 LSI_SENTENCES_SERV = [
-                    {"tpl": "Также потребовалась {}.", "case": "nomn"},
+                    {"tpl": "Также потребовалась {}.", "case": "Nmn"},
                     {"tpl": "Отдельное спасибо за {}.", "case": "accs"},
                     {"tpl": "С {} справились на отлично.", "case": "ablt"},
-                    {"tpl": "Кстати, {} здесь на хорошем уровне.", "case": "nomn"}
+                    {"tpl": "Кстати, {} здесь на хорошем уровне.", "case": "Nmn"}
                 ]
                 
                 LSI_SENTENCES_GEN = [
@@ -4656,16 +4656,16 @@ with tab_seo_main:
                         # ФИО
                         f_row = df_fio.sample(n=1).iloc[0]
                         c_fio = f"{f_row.get('Имя', '')} {f_row.get('Фамилия', '')}".strip()
-                        if not c_fio: c_fio = "Клиент"
+                        if Nt c_fio: c_fio = "Клиент"
 
                         # Шаблон
                         final_text = random.choice(df_templates['Шаблон'].values)
-                        used_lsi_word = None
+                        used_lsi_word = Nne
                         
                         # --- ВНЕДРЕНИЕ LSI (С ПРИОРИТЕТОМ ТОВАРОВ) ---
-                        if "{товар}" in final_text and lsi_nouns:
-                            top_n = min(len(lsi_nouns), 10)
-                            lsi_obj = lsi_nouns[random.randint(0, top_n - 1)]
+                        if "{товар}" in final_text and lsi_Nuns:
+                            top_n = min(len(lsi_Nuns), 10)
+                            lsi_obj = lsi_Nuns[random.randint(0, top_n - 1)]
                             replacement = f"**{lsi_obj['word']}**"
                             final_text = final_text.replace("{товар}", replacement, 1)
                             used_lsi_word = True
@@ -4676,13 +4676,13 @@ with tab_seo_main:
                             if t in var_dict:
                                 final_text = final_text.replace(t, random.choice(var_dict[t]), 1)
                             elif t == "{дата}":
-                                dt = (datetime.datetime.now() - datetime.timedelta(days=random.randint(1, 60))).strftime("%d.%m.%Y")
+                                dt = (datetime.datetime.Nw() - datetime.timedelta(days=random.randint(1, 60))).strftime("%d.%m.%Y")
                                 final_text = final_text.replace("{дата}", dt)
                                 
                         # 2. Если {товар} не был заменен, вставляем отдельное предложение
-                        if not used_lsi_word and lsi_nouns:
-                            top_n = min(len(lsi_nouns), 10)
-                            lsi_obj = lsi_nouns[random.randint(0, top_n - 1)]
+                        if Nt used_lsi_word and lsi_Nuns:
+                            top_n = min(len(lsi_Nuns), 10)
+                            lsi_obj = lsi_Nuns[random.randint(0, top_n - 1)]
                             
                             parsed_word = lsi_obj['parse']
                             w_type = lsi_obj.get('type', 'general')
@@ -4753,10 +4753,10 @@ with tab_seo_main:
                     keys_to_clear = [
                         'analysis_results', 'analysis_done', 'naming_table_df', 
                         'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
-                        'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                        'detected_aNmalies', 'serp_trend_info', 'excluded_urls_auto'
                     ]
                     for k in keys_to_clear:
-                        st.session_state.pop(k, None)
+                        st.session_state.pop(k, Nne)
                     
                     st.session_state['pending_widget_updates'] = {
                         'query_input': nxt.get('q'),
@@ -4783,7 +4783,7 @@ with tab_seo_main:
         if len(words_to_check) < 5:
             words_to_check.extend([x['word'] for x in results_final.get('missing_semantics_low', [])[:20]])
 
-        if not words_to_check:
+        if Nt words_to_check:
             st.session_state.categorized_products = []
             st.session_state.categorized_services = []
             st.session_state.categorized_commercial = []
@@ -4792,7 +4792,7 @@ with tab_seo_main:
             st.session_state.categorized_general = []
             st.session_state.categorized_sensitive = []
         else:
-            if 'categorized_products' not in st.session_state or not st.session_state.categorized_products:
+            if 'categorized_products' Nt in st.session_state or Nt st.session_state.categorized_products:
                 with st.spinner("Классификация семантики..."):
                     categorized = classify_semantics_with_api(words_to_check, YANDEX_DICT_KEY)
                 
@@ -4812,7 +4812,7 @@ with tab_seo_main:
                 st.session_state.orig_general = categorized['general'] + categorized['sensitive']
 
         # Готовим обновления для виджетов
-        if 'pending_widget_updates' not in st.session_state:
+        if 'pending_widget_updates' Nt in st.session_state:
             st.session_state['pending_widget_updates'] = {}
         
         updates = st.session_state['pending_widget_updates']
@@ -4847,14 +4847,14 @@ with tab_seo_main:
             df_rel_check = st.session_state.analysis_results['relevance_top']
         
         # 2. Анализ аномалий
-        good_urls, bad_urls_dicts, trend = analyze_serp_anomalies(df_rel_check)
+        good_urls, bad_urls_dicts, trend = analyze_serp_aNmalies(df_rel_check)
         st.session_state['serp_trend_info'] = trend
         
         # Настройка фильтра
         is_filter_enabled = st.session_state.get("settings_auto_filter", True)
         
         def get_strict_key(u):
-            if not u: return ""
+            if Nt u: return ""
             return str(u).lower().strip().replace("https://", "").replace("http://", "").replace("www.", "").rstrip('/')
 
         final_clean_text = ""
@@ -4862,7 +4862,7 @@ with tab_seo_main:
         # --- ЛОГИКА РАСПРЕДЕЛЕНИЯ ---
         if is_filter_enabled and bad_urls_dicts:
             # 1. Сохраняем плохих
-            st.session_state['detected_anomalies'] = bad_urls_dicts
+            st.session_state['detected_aNmalies'] = bad_urls_dicts
             
             blacklist_keys = set()
             excluded_display_list = []
@@ -4879,7 +4879,7 @@ with tab_seo_main:
             seen_keys = set()
             for u in good_urls:
                 key = get_strict_key(u)
-                if key and key not in blacklist_keys and key not in seen_keys:
+                if key and key Nt in blacklist_keys and key Nt in seen_keys:
                     clean_active_list.append(str(u).strip())
                     seen_keys.add(key)
             
@@ -4893,14 +4893,14 @@ with tab_seo_main:
             combined_pool = good_urls + [x['url'] for x in (bad_urls_dicts or [])]
             for u in combined_pool:
                 key = get_strict_key(u)
-                if key and key not in seen_all:
+                if key and key Nt in seen_all:
                     clean_all.append(str(u).strip())
                     seen_all.add(key)
             
             final_clean_text = "\n".join(clean_all)
             # Чистим старые ошибки
-            st.session_state.pop('excluded_urls_auto', None)
-            st.session_state.pop('detected_anomalies', None)
+            st.session_state.pop('excluded_urls_auto', Nne)
+            st.session_state.pop('detected_aNmalies', Nne)
 
         # === ФИНАЛЬНАЯ ЗАПИСЬ И ПЕРЕЗАГРУЗКА ===
         # Сохраняем во ВРЕМЕННУЮ переменную
@@ -4921,7 +4921,7 @@ with tab_seo_main:
             
             # 2. Достаем LSI (TF-IDF) из результатов анализа Вкладки 1
             lsi_words = []
-            if results_final.get('hybrid') is not None and not results_final['hybrid'].empty:
+            if results_final.get('hybrid') is Nt Nne and Nt results_final['hybrid'].empty:
                 lsi_words = results_final['hybrid'].head(15)['Слово'].tolist()
             
             # 3. Добавляем общие слова из настроек (нужно сохранить их в session_state во вкладке 5)
@@ -4936,7 +4936,7 @@ with tab_seo_main:
             api_key_gen = st.session_state.get('SUPER_GLOBAL_KEY')
             
             # Фолбэк: если вдруг его нет, пробуем старый метод
-            if not api_key_gen:
+            if Nt api_key_gen:
                 api_key_gen = st.session_state.get('bulk_api_key_v3')
             
             try:
@@ -4962,7 +4962,7 @@ with tab_seo_main:
             
             for i, t in enumerate(st.session_state.bg_tasks_queue):
                 unique_id = f"{t['h1']}|{t['h2']}"
-                if unique_id not in finished_ids:
+                if unique_id Nt in finished_ids:
                     next_task_idx = i
                     break
             
@@ -4973,10 +4973,10 @@ with tab_seo_main:
                 keys_to_clear = [
                     'analysis_results', 'analysis_done', 'naming_table_df', 
                     'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
-                    'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                    'detected_aNmalies', 'serp_trend_info', 'excluded_urls_auto'
                 ]
                 for k in keys_to_clear:
-                    st.session_state.pop(k, None)
+                    st.session_state.pop(k, Nne)
 
                 # 3. БЕРЕМ НОВУЮ ЗАДАЧУ
                 next_task = st.session_state.bg_tasks_queue[next_task_idx]
@@ -4988,10 +4988,10 @@ with tab_seo_main:
                 keys_to_clear = [
                     'analysis_results', 'analysis_done', 'naming_table_df', 
                     'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
-                    'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                    'detected_aNmalies', 'serp_trend_info', 'excluded_urls_auto'
                 ]
                 for k in keys_to_clear:
-                    st.session_state.pop(k, None)
+                    st.session_state.pop(k, Nne)
                     
                 # УСТАНОВКА ПАРАМЕТРОВ ДЛЯ СЛЕДУЮЩЕГО
                     st.session_state['pending_widget_updates'] = {
@@ -5011,7 +5011,7 @@ with tab_seo_main:
                 time.sleep(1)
                 st.rerun()
 
-        if not st.session_state.get('lsi_automode_active'):
+        if Nt st.session_state.get('lsi_automode_active'):
             st.rerun()
 
 # ==========================================
@@ -5019,7 +5019,7 @@ with tab_seo_main:
 # ==========================================
 with tab_wholesale_main:
     # 0. Инициализация расширенного датафрейма
-    if 'gen_result_df' not in st.session_state or st.session_state.gen_result_df is None:
+    if 'gen_result_df' Nt in st.session_state or st.session_state.gen_result_df is Nne:
          st.session_state.gen_result_df = pd.DataFrame(columns=[
             'Page URL', 'Product Name', 'IP_PROP4839', 'IP_PROP4817', 'IP_PROP4818', 
             'IP_PROP4819', 'IP_PROP4820', 'IP_PROP4821', 'IP_PROP4822', 'IP_PROP4823', 
@@ -5035,7 +5035,7 @@ with tab_wholesale_main:
     else:
         # Безопасное добавление колонок, если сессия уже запущена
         for col in ['FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ']:
-            if col not in st.session_state.gen_result_df.columns:
+            if col Nt in st.session_state.gen_result_df.columns:
                 st.session_state.gen_result_df[col] = ""
 
     st.header("🏭 Умный Оптовый Конвейер (V11 - Бронебойный текст)")
@@ -5105,7 +5105,7 @@ with tab_wholesale_main:
                     links_data = []
                     if global_promo or global_tags:
                         db_path = "data/links_base.xlsx" if os.path.exists("data/links_base.xlsx") else "links_base.xlsx"
-                        if not os.path.exists(db_path) and os.path.exists("data/links_base..xlsx"):
+                        if Nt os.path.exists(db_path) and os.path.exists("data/links_base..xlsx"):
                             db_path = "data/links_base..xlsx"
                             
                         if os.path.exists(db_path):
@@ -5113,7 +5113,7 @@ with tab_wholesale_main:
                                 df_links = pd.read_excel(db_path)
                                 for _, r in df_links.iterrows():
                                     u_link = str(r.iloc[0]).strip().rstrip('/')
-                                    if not u_link or u_link == 'nan': continue
+                                    if Nt u_link or u_link == 'nan': continue
                                     name_val = str(r.iloc[1]).strip() if len(df_links.columns) > 1 else ""
                                     links_data.append({'url': u_link, 'name': name_val})
                             except Exception as e:
@@ -5128,7 +5128,7 @@ with tab_wholesale_main:
                                 df_img = pd.read_excel(img_db_path)
                                 for _, r in df_img.iterrows():
                                     u_link = str(r.iloc[0]).strip().rstrip('/')
-                                    if not u_link or u_link == 'nan': continue
+                                    if Nt u_link or u_link == 'nan': continue
                                     img_val = str(r.iloc[1]).strip() if len(df_img.columns) > 1 else ""
                                     images_data.append({'url': u_link, 'img': img_val})
                             except Exception as e:
@@ -5177,7 +5177,7 @@ with tab_wholesale_main:
                             chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
                             used_urls.add(chosen['url'].rstrip('/'))
                             return chosen['url'], chosen['name']
-                        return None, None
+                        return Nne, Nne
 
                     # --- ФУНКЦИЯ ПОИСКА И ПАРСИНГА ДЛЯ ПРОМО (Ищет транслит в URL) ---
                     def get_promo_data(kw):
@@ -5205,7 +5205,7 @@ with tab_wholesale_main:
                             chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
                             u_target = chosen['url']
                             img_target = chosen['img']
-                            if str(img_target) == 'nan' or not img_target:
+                            if str(img_target) == 'nan' or Nt img_target:
                                 img_target = "https://via.placeholder.com/260"
                             
                             # ИДЕМ НА САЙТ И ПАРСИМ ХЛЕБНЫЕ КРОШКИ (ДЛЯ НАЗВАНИЯ ПРОМО)
@@ -5222,7 +5222,7 @@ with tab_wholesale_main:
                                         # Ищем все элементы внутри
                                         crumbs = breadcrumbs.find_all(['li', 'span', 'a'])
                                         # Чистим от разделителей (/, » и т.д.)
-                                        clean_crumbs = [c.get_text(strip=True) for c in crumbs if len(c.get_text(strip=True)) > 2 and c.get_text(strip=True) not in ['/', '\\', '>', '»', '•', '-']]
+                                        clean_crumbs = [c.get_text(strip=True) for c in crumbs if len(c.get_text(strip=True)) > 2 and c.get_text(strip=True) Nt in ['/', '\\', '>', '»', '•', '-']]
                                         if clean_crumbs:
                                             promo_title = clean_crumbs[-1] # Берем последний пункт
                                     else:
@@ -5237,7 +5237,7 @@ with tab_wholesale_main:
                             return u_target, promo_title, img_target
                             
                         # ВОТ ЭТОЙ СТРОЧКИ НЕ ХВАТАЛО (Возвращаем 3 пустые переменные, если совпадений нет)
-                        return None, None, None
+                        return Nne, Nne, Nne
 
                     # --- РАСПРЕДЕЛЯЕМ ПО БЛОКАМ ---
                     
@@ -5290,7 +5290,7 @@ with tab_wholesale_main:
                         review_cands.extend(safe_cands[:chunk_size])
                         
                         # Удаляем взятые слова из общего пула
-                        safe_cands = [w for w in safe_cands if w not in review_cands]
+                        safe_cands = [w for w in safe_cands if w Nt in review_cands]
                         
                     # 2. Формируем пул для Главного текста (остатки чистых + вся "вода").
                     final_text_seo_list = list(set(safe_cands + cat_general))
@@ -5316,8 +5316,8 @@ with tab_wholesale_main:
                     curr_use_geo = global_geo and (len(cat_geo) > 0)
                     
                     base_text_raw = current_task.get('base_text', '')
-                    b_text_str = str(base_text_raw).strip() if base_text_raw is not None else ""
-                    if not b_text_str or b_text_str == "None":
+                    b_text_str = str(base_text_raw).strip() if base_text_raw is Nt Nne else ""
+                    if Nt b_text_str or b_text_str == "Nne":
                         safe_base_text = "Техническая информация о товаре. Основные параметры и характеристики для профессионалов."
                     else:
                         safe_base_text = base_text_raw
@@ -5326,11 +5326,11 @@ with tab_wholesale_main:
                     generated_full_text = ""
                     gemini_api_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
                     
-                    if not gemini_api_key:
+                    if Nt gemini_api_key:
                         status_logger.error("❌ ОШИБКА: Отсутствует API-ключ Gemini!")
                     
                     from openai import OpenAI
-                    client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1") if gemini_api_key else None
+                    client = OpenAI(api_key=gemini_api_key, base_url="https://litellm.tokengate.ru/v1") if gemini_api_key else Nne
                     
                     if curr_use_text and client:
                         words_count = len(final_text_seo_list)
@@ -5346,7 +5346,7 @@ with tab_wholesale_main:
                         status_logger.write(f"🤖 Пишем SEO-текст (Слов: {words_count} ➔ Блоков: {auto_num_blocks})...")
                         blocks_raw = generate_ai_content_blocks(gemini_api_key, safe_base_text, h1_marker, h2_header, auto_num_blocks, final_text_seo_list)
                         
-                        if not blocks_raw or "Error" in str(blocks_raw[0]):
+                        if Nt blocks_raw or "Error" in str(blocks_raw[0]):
                             step_logger.error(f"❌ Нейросеть вернула ошибку: {blocks_raw[0]}")
                         else:
                             cleaned_blocks = [b.replace("```html", "").replace("```", "").strip() for b in blocks_raw]
@@ -5375,7 +5375,7 @@ with tab_wholesale_main:
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
                             if "<table" in raw_table:
                                 cl_tab = raw_table[raw_table.find("<table"):raw_table.find("</table>")+8]
-                                if "brand-accent-table" not in cl_tab: cl_tab = cl_tab.replace("<table", "<table class='brand-accent-table'", 1)
+                                if "brand-accent-table" Nt in cl_tab: cl_tab = cl_tab.replace("<table", "<table class='brand-accent-table'", 1)
                         except Exception as e:
                             status_logger.error(f"Ошибка таблицы: {e}")
 
@@ -5393,7 +5393,7 @@ with tab_wholesale_main:
                                 comm_items = [item for item in faq_json if "коммерч" in item.get("Тип", "").lower()]
                                 info_items = [item for item in faq_json if "информац" in item.get("Тип", "").lower()]
                                 
-                                if 'faq_export_data' not in st.session_state:
+                                if 'faq_export_data' Nt in st.session_state:
                                     st.session_state.faq_export_data = []
                                     
                                 # Функция для чистки маркдауна (конвертация в HTML)
@@ -5536,7 +5536,7 @@ with tab_wholesale_main:
                                 rev_html_parts.append(preview_card)
                                 
                                 # Экспорт в Excel
-                                if 'ws_reviews_export_data' not in st.session_state:
+                                if 'ws_reviews_export_data' Nt in st.session_state:
                                     st.session_state.ws_reviews_export_data = []
                                 st.session_state.ws_reviews_export_data.append({
                                     'Page URL': current_task['url'] if 'current_task' in locals() else '',
@@ -5612,14 +5612,14 @@ with tab_wholesale_main:
                     pure_text_for_check = BeautifulSoup(generated_full_text, "html.parser").get_text(separator=" ").strip()
                     row_data['DeepSeek Контекст'] = "-"; row_data['DeepSeek Комментарий'] = "-"
                     row_data['Риск Тургенев'] = "-"; row_data['Тургенев Комментарий'] = "-"
-                    row_data['Уникальность'] = "-"; row_data['Text.ru Комментарий'] = "-"; row_data['Text.ru UID'] = None
+                    row_data['Уникальность'] = "-"; row_data['Text.ru Комментарий'] = "-"; row_data['Text.ru UID'] = Nne
                     
                     step_logger.warning("🔍 Этап 6: Отправляем на проверки (Антиспам и Уникальность)...")
                     
                     if use_ds_chk and gemini_api_key and pure_text_for_check:
                         try:
                             is_valid = validate_topic_deepseek(gemini_api_key, h1_marker, h2_header, pure_text_for_check)
-                            row_data['DeepSeek Контекст'] = "YES" if is_valid else "NO"
+                            row_data['DeepSeek Контекст'] = "YES" if is_valid else "N"
                             row_data['DeepSeek Комментарий'] = "Ок" if is_valid else "Ошибка: не по теме"
                         except: row_data['DeepSeek Комментарий'] = "Сбой API"
                         
@@ -5648,7 +5648,7 @@ with tab_wholesale_main:
                     status_logger.error(f"Сбой: {e}")
                     
                 finally:
-                    st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, pd.DataFrame([row_data])], ignore_index=True)
+                    st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, pd.DataFrame([row_data])], igNre_index=True)
                     st.session_state.auto_current_index += 1
                     st.session_state.last_stopped_index = st.session_state.auto_current_index
                     st.session_state.ws_waiting_for_analysis = False
@@ -5664,8 +5664,8 @@ with tab_wholesale_main:
                             'settings_region': st.session_state.get('ws_settings_region', 'Москва')
                         }
                         st.session_state.start_analysis_flag = True
-                        st.session_state.pop('analysis_done', None)
-                        st.session_state.pop('analysis_results', None)
+                        st.session_state.pop('analysis_done', Nne)
+                        st.session_state.pop('analysis_results', Nne)
                         st.session_state.ws_waiting_for_analysis = True
                         st.rerun()
                     else:
@@ -5756,7 +5756,7 @@ with tab_wholesale_main:
     c_start, c_stop = st.columns([2, 1])
     with c_start:
         is_running = st.session_state.get('ws_automode_active', False)
-        if not is_running:
+        if Nt is_running:
             if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ И ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
                 
                 # --- ЗАМОРАЖИВАЕМ ВСЕ НАСТРОЙКИ, КЛЮЧИ И ГАЛОЧКИ (СПАСЕНИЕ ОТ СБРОСА) ---
@@ -5812,8 +5812,8 @@ with tab_wholesale_main:
                         'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                         'settings_region': st.session_state.get('ws_settings_region', 'Москва')
                     }
-                    st.session_state.pop('analysis_done', None)
-                    st.session_state.pop('analysis_results', None)
+                    st.session_state.pop('analysis_done', Nne)
+                    st.session_state.pop('analysis_results', Nne)
                     st.rerun() # Теперь обновляем страницу, когда все данные подготовлены
                 else:
                     st.error("❌ Очередь пуста! Проверьте введенные данные.")
@@ -5830,11 +5830,11 @@ with tab_wholesale_main:
                 st.rerun()
 
     # --- ФОНОВЫЙ ОПРОС TEXT.RU И ПРЕДПРОСМОТР ---
-    if not st.session_state.gen_result_df.empty:
+    if Nt st.session_state.gen_result_df.empty:
         has_pending = any("⏳" in str(row.get('Уникальность', '')) for _, row in st.session_state.gen_result_df.iterrows())
         st.markdown("---")
         
-        if has_pending and not is_running:
+        if has_pending and Nt is_running:
                 st.warning("⚠️ Есть тексты в очереди Text.ru. Обновите статусы вручную:")
                 if st.button("🔄 ОБНОВИТЬ СТАТУСЫ TEXT.RU", type="primary", use_container_width=True):
                     txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
@@ -5844,9 +5844,9 @@ with tab_wholesale_main:
                                 uid = row.get('Text.ru UID')
                                 if uid:
                                     stts = check_textru_status_sync(uid, txtru_key_active)
-                                    if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                                    if stts Nt in ["processing", "error"] and "Ошибка" Nt in stts:
                                         st.session_state.gen_result_df.at[idx, 'Уникальность'] = stts
-                                        st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
+                                        st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = Nne
                                         try:
                                             u_num = float(re.search(r'\d+\.?\d*', str(stts)).group())
                                             st.session_state.gen_result_df.at[idx, 'Text.ru Комментарий'] = "Ок" if u_num >= 95 else "Уникальность < 95%"
@@ -5862,9 +5862,9 @@ with tab_wholesale_main:
                         uid = row.get('Text.ru UID')
                         if uid:
                             stts = check_textru_status_sync(uid, txtru_key_active)
-                            if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                            if stts Nt in ["processing", "error"] and "Ошибка" Nt in stts:
                                 st.session_state.gen_result_df.at[idx, 'Уникальность'] = stts
-                                st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
+                                st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = Nne
                                 try:
                                     u_num = float(re.search(r'\d+\.?\d*', str(stts)).group())
                                     st.session_state.gen_result_df.at[idx, 'Text.ru Комментарий'] = "Ок" if u_num >= 95 else "Уникальность < 95%"
@@ -5883,9 +5883,9 @@ with tab_wholesale_main:
                         uid = row.get('Text.ru UID')
                         if uid:
                             stts = check_textru_status_sync(uid, txtru_key_active)
-                            if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                            if stts Nt in ["processing", "error"] and "Ошибка" Nt in stts:
                                 st.session_state.gen_result_df.at[idx, 'Уникальность'] = stts
-                                st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
+                                st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = Nne
                                 try:
                                     u_num = float(re.search(r'\d+\.?\d*', str(stts)).group())
                                     st.session_state.gen_result_df.at[idx, 'Text.ru Комментарий'] = "Ок" if u_num >= 95 else "Уникальность < 95%"
@@ -5900,7 +5900,7 @@ with tab_wholesale_main:
             col_idx = {name: i for i, name in enumerate(row.index)}
             
             # Подсветка DeepSeek (если БРАК)
-            if str(row.get('DeepSeek Контекст')) == "NO" and 'DeepSeek Контекст' in col_idx:
+            if str(row.get('DeepSeek Контекст')) == "N" and 'DeepSeek Контекст' in col_idx:
                 styles[col_idx['DeepSeek Контекст']] = err_style
             # Подсветка Тургенева
             try:
@@ -5926,7 +5926,7 @@ with tab_wholesale_main:
         
         def build_unified_comment(row):
             errs = []
-            if str(row.get('DeepSeek Контекст')) == "NO": 
+            if str(row.get('DeepSeek Контекст')) == "N": 
                 errs.append("Текст должен быть строго по теме")
             try:
                 t_val = str(row.get('Риск Тургенев', '0'))
@@ -5947,7 +5947,7 @@ with tab_wholesale_main:
             'Text.ru UID', 'FAQ HTML', 'DeepSeek Комментарий', 'Тургенев Комментарий', 'Text.ru Комментарий',
             'FAQ Коммерческий вопрос', 'FAQ Коммерческий ответ', 'FAQ Информационный вопрос', 'FAQ Информационный ответ'
         ]
-        df_export_clean = df_export.drop(columns=[c for c in cols_to_drop_excel if c in df_export.columns], errors='ignore')
+        df_export_clean = df_export.drop(columns=[c for c in cols_to_drop_excel if c in df_export.columns], errors='igNre')
 
         # --- 3. ПОСТОЯННОЕ РЕШЕНИЕ: АВТО-ОПРОС TEXT.RU (БЕЗ КНОПКИ) ---
         has_pending_uids = False
@@ -5955,7 +5955,7 @@ with tab_wholesale_main:
             has_pending_uids = any("⏳" in str(row.get('Уникальность', '')) for _, row in st.session_state.gen_result_df.iterrows())
 
         # Если генератор НЕ работает, но есть тексты в очереди - опрашиваем API автоматически
-        if has_pending_uids and not st.session_state.get('ws_automode_active', False):
+        if has_pending_uids and Nt st.session_state.get('ws_automode_active', False):
             txtru_key_active = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
             if txtru_key_active:
                 st.info("🔄 Автоматическое обновление статусов Text.ru...")
@@ -5965,9 +5965,9 @@ with tab_wholesale_main:
                         uid = row.get('Text.ru UID')
                         if uid:
                             stts = check_textru_status_sync(uid, txtru_key_active)
-                            if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                            if stts Nt in ["processing", "error"] and "Ошибка" Nt in stts:
                                 st.session_state.gen_result_df.at[idx, 'Уникальность'] = stts
-                                st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = None
+                                st.session_state.gen_result_df.at[idx, 'Text.ru UID'] = Nne
                                 updated_any = True
                 if updated_any:
                     st.rerun()
@@ -6024,7 +6024,7 @@ with tab_wholesale_main:
         # --- 6. ВИЗУАЛЬНЫЙ ПРЕДПРОСМОТР (ВКЛАДКИ) ---
         st.markdown("### 🖥️ Визуальный предпросмотр")
         
-        if not df_export.empty and 'Product Name' in df_export.columns:
+        if Nt df_export.empty and 'Product Name' in df_export.columns:
             all_products = df_export['Product Name'].tolist()
             sel_p = st.selectbox("Выберите товар:", all_products, index=len(all_products)-1, key="ws_preview_final_sel")
             
@@ -6042,16 +6042,16 @@ with tab_wholesale_main:
                         .block-title { color: #277EFF; margin-top: 30px; margin-bottom: 10px; font-size: 1.2em; font-weight: 600; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }
                         .table-scroll-wrapper { width: 100%; overflow-x: auto; margin: 20px 0; }
                         .brand-accent-table { width: 100%; border-collapse: collapse; text-align: left; font-family: sans-serif; }
-                        .brand-accent-table th { background-color: #277EFF; color: white; padding: 12px; font-weight: 500; border: none; }
+                        .brand-accent-table th { background-color: #277EFF; color: white; padding: 12px; font-weight: 500; border: Nne; }
                         .brand-accent-table td { padding: 12px; border-bottom: 1px solid #eee; color: #333; }
                         .popular-tags-text { margin: 20px 0; }
-                        .tag-item { display: inline-block; padding: 6px 12px; margin: 4px; background: #f0f4f8; border-radius: 4px; text-decoration: none; color: #277EFF; font-size: 14px; }
+                        .tag-item { display: inline-block; padding: 6px 12px; margin: 4px; background: #f0f4f8; border-radius: 4px; text-decoration: Nne; color: #277EFF; font-size: 14px; }
                         .gallery-content-wrapper { background: #F6F7FC; padding: 20px; border-radius: 10px; margin: 20px 0; }
                         .five-col-gallery { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 10px; }
                         .gallery-item { min-width: 200px; background: white; padding: 10px; border-radius: 8px; text-align: center; }
                         .gallery-item img { width: 100%; height: auto; border-radius: 4px; }
-                        .gallery-item h3 { font-size: 14px; margin-top: 10px; font-weight: normal; }
-                        .gallery-item a { text-decoration: none; color: #333; }
+                        .gallery-item h3 { font-size: 14px; margin-top: 10px; font-weight: Nrmal; }
+                        .gallery-item a { text-decoration: Nne; color: #333; }
                         .faq-section { margin: 20px 0; padding: 20px; background: #F6F7FC; border-radius: 8px; border: 1px solid #e2e8f0; }
                     </style>
                 """, unsafe_allow_html=True)
@@ -6069,7 +6069,7 @@ with tab_wholesale_main:
                 with tabs_v[1]:
                     # ВЫВОДИМ FAQ HTML
                     f_html = str(row_p.get('FAQ HTML', '')).strip()
-                    if f_html and f_html != "None":
+                    if f_html and f_html != "Nne":
                         st.markdown(f"<div class='faq-section'>{f_html}</div>", unsafe_allow_html=True)
                     else:
                         st.warning("FAQ для этого товара не генерировался.")
@@ -6153,19 +6153,19 @@ with tab_projects:
         with st.container(border=True):
             st.subheader("💾 Сохранить проект")
             
-            if not st.session_state.get('analysis_done'):
+            if Nt st.session_state.get('analysis_done'):
                 st.warning("⚠️ Сначала проведите анализ (Вкладка SEO), чтобы было что сохранять.")
             else:
                 st.info("Будут сохранены: все таблицы, списки семантики, настройки, ссылки конкурентов и результаты генерации.")
                 
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+                timestamp = datetime.datetime.Nw().strftime("%Y-%m-%d_%H-%M")
                 query_slug = transliterate_text(st.session_state.get('query_input', 'project'))[:20]
                 default_filename = f"GAR_PRO_{query_slug}_{timestamp}.pkl"
                 
                 project_snapshot = {
                     "meta": {
                         "version": "2.6",
-                        "date": str(datetime.datetime.now())
+                        "date": str(datetime.datetime.Nw())
                     },
                     "state": {}
                 }
@@ -6173,7 +6173,7 @@ with tab_projects:
                 # Ключи для сохранения
                 keys_to_save = [
                     'analysis_results', 'analysis_done', 'naming_table_df', 'ideal_h1_result',
-                    'detected_anomalies', 'serp_trend_info', 'full_graph_data',
+                    'detected_aNmalies', 'serp_trend_info', 'full_graph_data',
                     'categorized_products', 'categorized_services', 'categorized_commercial',
                     'categorized_dimensions', 'categorized_geo', 'categorized_general', 'categorized_sensitive',
                     'orig_products', 'orig_services', 'orig_commercial', 
@@ -6183,7 +6183,7 @@ with tab_projects:
                     'competitor_source_radio', 'persistent_urls', 'excluded_urls_auto',
                     'settings_excludes', 'settings_stops', 'arsenkin_token', 'yandex_dict_key',
                     'settings_ua', 'settings_search_engine', 'settings_region', 'settings_top_n',
-                    'settings_noindex', 'settings_alt', 'settings_numbers', 'settings_norm',
+                    'settings_Nindex', 'settings_alt', 'settings_numbers', 'settings_Nrm',
                     'gen_result_df', 'unified_excel_data'
                 ]
                 
@@ -6211,7 +6211,7 @@ with tab_projects:
             
             uploaded_file = st.file_uploader("Выберите файл .pkl", type=["pkl"], key="project_loader")
             
-            if uploaded_file is not None:
+            if uploaded_file is Nt Nne:
                 try:
                     loaded_data = pickle.load(uploaded_file)
                     
@@ -6248,7 +6248,7 @@ from urllib.parse import urlparse
 TRACK_FILE = "monitoring.csv"
 
 def add_to_tracking(url, keyword):
-    if not os.path.exists(TRACK_FILE):
+    if Nt os.path.exists(TRACK_FILE):
         with open(TRACK_FILE, "w", encoding="utf-8") as f:
             f.write("URL;Keyword;Date;Position\n")
     try:
@@ -6256,12 +6256,12 @@ def add_to_tracking(url, keyword):
         if ((existing['URL'] == url) & (existing['Keyword'] == keyword)).any(): return
     except: pass
     with open(TRACK_FILE, "a", encoding="utf-8") as f:
-        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        today = datetime.datetime.Nw().strftime("%Y-%m-%d")
         f.write(f"{url};{keyword};{today};0\n")
 
 # Функция нормализации (убирает www и http для сравнения)
-def normalize_url(u):
-    if not u: return ""
+def Nrmalize_url(u):
+    if Nt u: return ""
     u = str(u).lower().strip()
     u = u.replace("https://", "").replace("http://", "").replace("www.", "")
     if u.endswith("/"): u = u[:-1]
@@ -6295,7 +6295,7 @@ with tab_monitoring:
                 else:
                     st.error("Заполните оба поля")
 
-    if not os.path.exists(TRACK_FILE):
+    if Nt os.path.exists(TRACK_FILE):
         st.info("Список пуст.")
     else:
         try: df_mon = pd.read_csv(TRACK_FILE, sep=";")
@@ -6306,7 +6306,7 @@ with tab_monitoring:
         else:
             with col_btn:
                 if st.button("🚀 ОБНОВИТЬ ПОЗИЦИИ", type="primary", use_container_width=True):
-                    if not ARSENKIN_TOKEN:
+                    if Nt ARSENKIN_TOKEN:
                         st.error("❌ ОШИБКА: Нет токена!")
                     else:
                         status_container = st.status("🚀 Начинаем...", expanded=True)
@@ -6325,7 +6325,7 @@ with tab_monitoring:
                             # API в поле "url" хочет "site.ru", а не "site.ru/page"
                             parsed_url = urlparse(target_url_raw)
                             clean_domain = parsed_url.netloc.replace("www.", "")
-                            if not clean_domain: clean_domain = target_url_raw.split('/')[0]
+                            if Nt clean_domain: clean_domain = target_url_raw.split('/')[0]
 
                             status_container.write(f"📡 Запрос: **{kw}** (Домен: {clean_domain})...")
 
@@ -6348,8 +6348,8 @@ with tab_monitoring:
                                     continue
                                 
                                 tid = r_set.json().get("task_id")
-                                if not tid: 
-                                    st.error(f"No Task ID: {r_set.json()}")
+                                if Nt tid: 
+                                    st.error(f"N Task ID: {r_set.json()}")
                                     continue
 
                                 # CHECK
@@ -6385,7 +6385,7 @@ with tab_monitoring:
                                     
                                     for key in keys_to_check:
                                         val = item.get(key)
-                                        if val is not None:
+                                        if val is Nt Nne:
                                             # Арсенкин может вернуть число 11 или строку "11"
                                             if str(val).isdigit():
                                                 found_pos_val = int(val)
@@ -6396,7 +6396,7 @@ with tab_monitoring:
                                                 break
                                 
                                 df_mon.at[i, 'Position'] = found_pos_val
-                                df_mon.at[i, 'Date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+                                df_mon.at[i, 'Date'] = datetime.datetime.Nw().strftime("%Y-%m-%d")
                                 df_mon.to_csv(TRACK_FILE, sep=";", index=False)
                                 
                             except Exception as e:
@@ -6441,21 +6441,21 @@ with tab_lsi_gen:
     st.markdown("Авто-цикл: **H1 (Маркер) -> SEO Анализ (фон) -> LSI -> Генерация текста под H2**.")
 
     # --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
-    if 'bg_tasks_queue' not in st.session_state: st.session_state.bg_tasks_queue = []
-    if 'bg_results' not in st.session_state: st.session_state.bg_results = []
-    if 'bg_is_running' not in st.session_state: st.session_state.bg_is_running = False
-    if 'bg_batch_size' not in st.session_state: st.session_state.bg_batch_size = 3
+    if 'bg_tasks_queue' Nt in st.session_state: st.session_state.bg_tasks_queue = []
+    if 'bg_results' Nt in st.session_state: st.session_state.bg_results = []
+    if 'bg_is_running' Nt in st.session_state: st.session_state.bg_is_running = False
+    if 'bg_batch_size' Nt in st.session_state: st.session_state.bg_batch_size = 3
 
 # --- 1. НАСТРОЙКИ (ИСПРАВЛЕННОЕ СОХРАНЕНИЕ КЛЮЧА) ---
     with st.expander("⚙️ Настройки API и LSI", expanded=True):
         
 # === ЖЕЛЕЗОБЕТОННОЕ СОХРАНЕНИЕ КЛЮЧА ===
         # 1. Создаем переменную, которая НЕ зависит от виджета
-        if 'FINAL_GEMINI_KEY' not in st.session_state:
+        if 'FINAL_GEMINI_KEY' Nt in st.session_state:
             st.session_state.FINAL_GEMINI_KEY = ""
             
         # 2. Пытаемся найти ключ в секретах или в старых переменных
-        if not st.session_state.FINAL_GEMINI_KEY:
+        if Nt st.session_state.FINAL_GEMINI_KEY:
             try: st.session_state.FINAL_GEMINI_KEY = st.secrets["GEMINI_KEY"]
             except: pass
             
@@ -6533,13 +6533,13 @@ with tab_lsi_gen:
                 placeholder="Технические характеристики трубы\nПреимущества оцинкованного листа",
                 key="manual_h2_input"
             )
-        raw_urls_input = None
+        raw_urls_input = Nne
 
     # 2.2 ПАРСИНГ ССЫЛОК
     else:
         st.info("Скрипт зайдет на каждую ссылку, найдет там H1 (станет маркером) и H2 (станет заголовком).")
         raw_urls_input = st.text_area("Список ссылок (каждая с новой строки)", height=200, placeholder="https://site.ru/catalog/tovar1\nhttps://site.ru/catalog/tovar2", key="url_list_input")
-        raw_h1_input = None; raw_h2_input = None
+        raw_h1_input = Nne; raw_h2_input = Nne
 
     # КНОПКА ЗАГРУЗКИ В ОЧЕРЕДЬ
     if st.button("📥 Загрузить задачи в очередь", use_container_width=True):
@@ -6554,7 +6554,7 @@ with tab_lsi_gen:
             
             if len(lines_h1) != len(lines_h2):
                 st.error(f"❌ Ошибка: Несовпадение строк! H1: {len(lines_h1)}, H2: {len(lines_h2)}")
-            elif not lines_h1:
+            elif Nt lines_h1:
                 st.error("❌ Списки пусты!")
             else:
                 for h1, h2 in zip(lines_h1, lines_h2):
@@ -6571,7 +6571,7 @@ with tab_lsi_gen:
         # ЛОГИКА ЗАГРУЗКИ (ССЫЛКИ)
         else:
             urls_list = [u.strip() for u in raw_urls_input.split('\n') if u.strip()]
-            if not urls_list:
+            if Nt urls_list:
                 st.error("❌ Список ссылок пуст!")
             else:
                 progress_bar = st.progress(0)
@@ -6605,7 +6605,7 @@ with tab_lsi_gen:
     pending_indices = []
     for i, t in enumerate(st.session_state.bg_tasks_queue):
         unique_id = f"{t['h1']}|{t['h2']}"
-        if unique_id not in finished_ids:
+        if unique_id Nt in finished_ids:
             pending_indices.append(i)
             
     remaining_q = len(pending_indices)
@@ -6641,24 +6641,24 @@ with tab_lsi_gen:
                 
                 st.session_state.lsi_processing_task_id = idx
                 st.session_state.start_analysis_flag = True
-                st.session_state.pop('analysis_results', None)
-                st.session_state.pop('analysis_done', None)
+                st.session_state.pop('analysis_results', Nne)
+                st.session_state.pop('analysis_done', Nne)
         # -------------------------------------
         c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
         with c_act1:
-            if not st.session_state.get('lsi_automode_active'):
+            if Nt st.session_state.get('lsi_automode_active'):
                 btn_label = "▶️ СТАРТ ЧЕРЕЗ ВКЛАДКУ 1" if remaining_q > 0 else "✅ ВСЕ ГОТОВО"
                 lsi_api_key = st.session_state.get('SUPER_GLOBAL_KEY')
                 keys_valid = bool(lsi_api_key and ARSENKIN_TOKEN)
                 
                 if st.button(btn_label, type="primary", disabled=(remaining_q == 0), 
                              use_container_width=True,
-                             on_click=start_automode_callback if keys_valid else None,
-                             args=(pending_indices,) if keys_valid else None):
+                             on_click=start_automode_callback if keys_valid else Nne,
+                             args=(pending_indices,) if keys_valid else Nne):
                     
-                    if not keys_valid:
-                        if not lsi_api_key: st.error("Введите API ключ Gemini!")
-                        if not ARSENKIN_TOKEN: st.error("Нужен токен Arsenkin!")
+                    if Nt keys_valid:
+                        if Nt lsi_api_key: st.error("Введите API ключ Gemini!")
+                        if Nt ARSENKIN_TOKEN: st.error("Нужен токен Arsenkin!")
                     else:
                         st.toast("🚀 Запуск... Переход на Вкладку 1")
             else:
@@ -6690,14 +6690,14 @@ with tab_lsi_gen:
                             rec['textru'] = "⏳ Проверяется..."
                         elif "Ошибка" in t_stat or t_stat == "error":
                             rec['textru'] = t_stat
-                            rec['textru_uid'] = None
+                            rec['textru_uid'] = Nne
                         else:
                             rec['textru'] = t_stat
-                            rec['textru_uid'] = None
+                            rec['textru_uid'] = Nne
                             
             current_idx = st.session_state.get('lsi_processing_task_id')
             
-            if 'bg_tasks_queue' not in st.session_state or current_idx is None or current_idx >= len(st.session_state.bg_tasks_queue):
+            if 'bg_tasks_queue' Nt in st.session_state or current_idx is Nne or current_idx >= len(st.session_state.bg_tasks_queue):
                 st.session_state.lsi_automode_active = False
                 st.success("Очередь пуста или завершена.")
                 st.stop()
@@ -6706,7 +6706,7 @@ with tab_lsi_gen:
             
             lsi_words = []
             results_data = st.session_state.get('analysis_results')
-            if results_data and results_data.get('hybrid') is not None and not results_data['hybrid'].empty:
+            if results_data and results_data.get('hybrid') is Nt Nne and Nt results_data['hybrid'].empty:
                 lsi_words = results_data['hybrid'].head(15)['Слово'].tolist()
             
 # Читаем общие LSI из поля ввода и объединяем с парсингом
@@ -6722,10 +6722,10 @@ with tab_lsi_gen:
             # Переменные для результатов
             turgenev_res = "-"
             textru_res = "-"
-            textru_uid = None
+            textru_uid = Nne
             ai_match_res = True # По умолчанию True
 
-            if not api_key_gen:
+            if Nt api_key_gen:
                 html_out = "ОШИБКА: Ключ не найден. Введите ключ на Вкладке 5!"
                 st.error(html_out)
             else:
@@ -6734,7 +6734,7 @@ with tab_lsi_gen:
                     status_code = "OK"
                     
                     # === ЗАПУСК ПРОВЕРОК ===
-                    if html_out and "Error" not in status_code:
+                    if html_out and "Error" Nt in status_code:
                         plain_text = BeautifulSoup(html_out, "html.parser").get_text(separator=" ")
                         
                         # Проверка на соответствие темы через DeepSeek
@@ -6767,7 +6767,7 @@ with tab_lsi_gen:
                     status_code = "Gen Error"
 
             # 5. СОХРАНЯЕМ РЕЗУЛЬТАТ В СПИСОК ВКЛАДКИ 5
-            if 'bg_results' not in st.session_state:
+            if 'bg_results' Nt in st.session_state:
                 st.session_state.bg_results = []
                 
             found_existing = False
@@ -6783,7 +6783,7 @@ with tab_lsi_gen:
                     found_existing = True
                     break
             
-            if not found_existing:
+            if Nt found_existing:
                 st.session_state.bg_results.append({
                     "h1": task['h1'],
                     "h2": task['h2'],
@@ -6807,10 +6807,10 @@ with tab_lsi_gen:
                 keys_to_clear = [
                     'analysis_results', 'analysis_done', 'naming_table_df', 
                     'ideal_h1_result', 'raw_comp_data', 'full_graph_data',
-                    'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto'
+                    'detected_aNmalies', 'serp_trend_info', 'excluded_urls_auto'
                 ]
                 for k in keys_to_clear:
-                    st.session_state.pop(k, None)
+                    st.session_state.pop(k, Nne)
                 
 # Сохраняем обновления виджетов в буфер, чтобы применить ДО их отрисовки
                 st.session_state['pending_widget_updates'] = {
@@ -6926,12 +6926,12 @@ with tab_lsi_gen:
                         for r in st.session_state.bg_results:
                             if r.get('textru_uid') and "⏳" in str(r.get('textru')):
                                 stts = check_textru_status_sync(r['textru_uid'], tk)
-                                if stts not in ["processing", "error"] and "Ошибка" not in stts:
+                                if stts Nt in ["processing", "error"] and "Ошибка" Nt in stts:
                                     r['textru'] = stts
-                                    r['textru_uid'] = None
+                                    r['textru_uid'] = Nne
                                 elif "Ошибка" in stts or stts == "error":
                                     r['textru'] = stts
-                                    r['textru_uid'] = None
+                                    r['textru_uid'] = Nne
                                     
                     st.rerun()
             else:
@@ -7051,11 +7051,11 @@ with tab_faq_gen:
     with c_fstart1:
         st.markdown(f"**В очереди:** {faq_q_count} шт. | **Готово:** {len(st.session_state.get('faq_results', []))} шт.")
         
-        if not st.session_state.get('faq_automode_active'):
+        if Nt st.session_state.get('faq_automode_active'):
             btn_lbl = "▶️ СТАРТ ГЕНЕРАЦИИ FAQ" if faq_q_count > 0 else "✅ ВСЕ FAQ ГОТОВЫ"
             if st.button(btn_lbl, type="primary", disabled=(faq_q_count == 0), use_container_width=True, key="faq_start_btn_unique"):
                 api_key_check = st.session_state.get('SUPER_GLOBAL_KEY')
-                if not api_key_check:
+                if Nt api_key_check:
                     st.error("Введите API ключ Gemini (на Вкладке 5)!")
                 else:
                     st.session_state.faq_automode_active = True
@@ -7088,7 +7088,7 @@ with tab_faq_gen:
     # ==================================================================
     if st.session_state.get('faq_automode_active'):
         curr_idx = st.session_state.get('faq_processing_task_id')
-        if 'faq_tasks_queue' not in st.session_state or curr_idx is None or curr_idx >= len(st.session_state.faq_tasks_queue):
+        if 'faq_tasks_queue' Nt in st.session_state or curr_idx is Nne or curr_idx >= len(st.session_state.faq_tasks_queue):
             st.session_state.faq_automode_active = False
             st.stop()
 
@@ -7097,7 +7097,7 @@ with tab_faq_gen:
         
         lsi_words = []
         res_data = st.session_state.get('analysis_results')
-        if res_data and res_data.get('hybrid') is not None and not res_data['hybrid'].empty:
+        if res_data and res_data.get('hybrid') is Nt Nne and Nt res_data['hybrid'].empty:
             # Жестко берем ТОП-150 слов, чтобы не перегружать нейросеть мусором
             lsi_words = res_data['hybrid'].head(150)['Слово'].tolist()
         
@@ -7105,14 +7105,14 @@ with tab_faq_gen:
         api_key_gen = str(st.session_state.get('SUPER_GLOBAL_KEY', '')).strip()
         faq_json_result = generate_faq_gemini(api_key_gen, task['h1'], lsi_words, target_q_count)
         
-        if 'faq_results' not in st.session_state: st.session_state.faq_results = []
+        if 'faq_results' Nt in st.session_state: st.session_state.faq_results = []
 
     # Инициализация для отзывов
-        if 'reviews_results' not in st.session_state: st.session_state.reviews_results = []
-        if 'reviews_queue' not in st.session_state: st.session_state.reviews_queue = []
-        if 'reviews_automode_active' not in st.session_state: st.session_state.reviews_automode_active = False
-        if 'reviews_current_index' not in st.session_state: st.session_state.reviews_current_index = 0
-        if 'reviews_per_query' not in st.session_state: st.session_state.reviews_per_query = 3
+        if 'reviews_results' Nt in st.session_state: st.session_state.reviews_results = []
+        if 'reviews_queue' Nt in st.session_state: st.session_state.reviews_queue = []
+        if 'reviews_automode_active' Nt in st.session_state: st.session_state.reviews_automode_active = False
+        if 'reviews_current_index' Nt in st.session_state: st.session_state.reviews_current_index = 0
+        if 'reviews_per_query' Nt in st.session_state: st.session_state.reviews_per_query = 3
         
         st.session_state.faq_results.append({
             "h1": task['h1'],
@@ -7128,8 +7128,8 @@ with tab_faq_gen:
             st.toast(f"✅ FAQ готов: {task['h1']}")
             
             # Очистка мусора
-            keys_to_clear = ['analysis_results', 'analysis_done', 'naming_table_df', 'ideal_h1_result', 'raw_comp_data', 'full_graph_data', 'detected_anomalies', 'serp_trend_info', 'excluded_urls_auto']
-            for k in keys_to_clear: st.session_state.pop(k, None)
+            keys_to_clear = ['analysis_results', 'analysis_done', 'naming_table_df', 'ideal_h1_result', 'raw_comp_data', 'full_graph_data', 'detected_aNmalies', 'serp_trend_info', 'excluded_urls_auto']
+            for k in keys_to_clear: st.session_state.pop(k, Nne)
             
             # Буфер виджетов
             st.session_state['pending_widget_updates'] = {
@@ -7226,7 +7226,7 @@ with tab_reviews_gen:
                 if rev_mode == "Список URL":
                     for u in lines:
                         h1_text = get_h1_from_url(u) 
-                        if not h1_text:
+                        if Nt h1_text:
                             h1_text = u.split('/')[-1].replace('-', ' ').capitalize()
                         queue.append({'q': h1_text, 'url': u})
                 else:
@@ -7259,8 +7259,8 @@ with tab_reviews_gen:
                 st.session_state.start_analysis_flag = True
                 
                 # === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: СБРОС СТАРОГО АНАЛИЗА ПРИ СТАРТЕ ===
-                st.session_state.pop('analysis_done', None)
-                st.session_state.pop('analysis_results', None)
+                st.session_state.pop('analysis_done', Nne)
+                st.session_state.pop('analysis_results', Nne)
                 # =================================================================
                 
                 st.rerun()
@@ -7285,3 +7285,4 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
