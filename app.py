@@ -3214,7 +3214,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     
     1. СПИСКИ:
        - <ol>: ТОЛЬКО для пошаговых процессов.
-       - <ul>: ДЛЯ ХАРАКТЕРИСТИК, СФЕР, СВОЙСТВ (Списки №1, №2, №3 - СТРОГО <ul>).
+       - <ul>: ДЛЯ ХАРАКТЕРИСТИК, СФЕР, СВОЙСТВ (Списки N1, N2, N3 - СТРОГО <ul>).
        - ВАЖНО: Не используй двоеточие (:) ВНУТРИ пунктов списка.
        
     2. ТАБЛИЦА:
@@ -7285,6 +7285,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
