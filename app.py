@@ -651,6 +651,44 @@ def load_lemmatized_dictionaries():
         "SENSITIVE_STOPLIST.json": "sensitive"
     }
 
+import os
+import pandas as pd
+import random
+
+@st.cache_data
+def load_names_db():
+    """Загрузка миллионника из папки data"""
+    if os.path.exists("data/users_db.csv.gz"):
+        return pd.read_csv("data/users_db.csv.gz", compression='gzip')
+    return pd.DataFrame(columns=['template_type', 'username', 'gender'])
+
+def get_diverse_authors(n):
+    """Выбор авторов: ровно 1 аноним, остальные равномерно распределены"""
+    df = load_names_db()
+    if df.empty: return [{"name": "Имя скрыто", "type": "anonymous", "gender": "Н"}] * n
+    
+    df_anon = df[df['template_type'] == 'anonymous']
+    df_others = df[df['template_type'] != 'anonymous']
+    
+    res = []
+    if not df_anon.empty:
+        res.append(df_anon.sample(1).iloc[0].to_dict())
+    
+    needed = n - len(res)
+    other_types = df_others['template_type'].unique()
+    if len(other_types) > 0:
+        per_type = needed // len(other_types)
+        rem = needed % len(other_types)
+        for t in other_types:
+            count = per_type + (1 if rem > 0 else 0)
+            if rem > 0: rem -= 1
+            slice_dt = df_others[df_others['template_type'] == t]
+            if not slice_dt.empty:
+                res.extend(slice_dt.sample(min(len(slice_dt), count)).to_dict('records'))
+    
+    random.shuffle(res)
+    return [{"name": r['username'], "type": r['template_type'], "gender": r['gender']} for r in res[:n]]
+
     for filename, set_key in files_map.items():
         full_path = os.path.join(base_path, filename)
         if not os.path.exists(full_path):
@@ -2814,71 +2852,249 @@ def generate_faq_gemini(api_key, h1, lsi_words, target_count=5):
     except Exception as e:
         return [{"Тип": "Ошибка", "Вопрос": "Ошибка генерации", "Ответ": str(e)}]
 
-def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, df_fio, df_templates, var_dict):
+def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chosen_authors):
     import json
     import random
+    import re
     from datetime import date, timedelta
     
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url="https://litellm.tokengate.ru/v1")
     except Exception as e:
-        return[{"Имя": "Ошибка", "Текст": f"Ошибка инициализации API: {str(e)}"}]
+        return [{"Имя": "Ошибка", "Оценка": 5.0, "Текст": f"Ошибка инициализации API: {str(e)}", "Дата": date.today().strftime("%d.%m.%Y")}]
+
+    try:
+        import pymorphy3 as pymorphy2
+    except ImportError:
+        import pymorphy2
+    morph = pymorphy2.MorphAnalyzer()
+
+    # --- 1. ФИЛЬТРАЦИЯ LSI СЛОВ ---
+    clean_lsi = []
+    for word in lsi_words:
+        try:
+            parsed = morph.parse(word)[0]
+            if any(tag in parsed.tag for tag in ['Geox', 'VERB', 'INFN', 'PREP', 'CONJ', 'PRCL', 'INTJ']) or len(word) < 3:
+                continue
+            clean_lsi.append(word)
+        except:
+            if len(word) >= 3: clean_lsi.append(word)
+            
+    final_lsi = clean_lsi[:15]
+
+    # --- 2. МАТЕМАТИКА ОЦЕНОК ---
+    def get_balanced_ratings(n):
+        if n <= 1: return [5.0] * n
+        ratings = [3.5]
+        for _ in range(n - 1): ratings.append(5.0)
         
-    start_date = date(2026, 1, 1)
-    end_date = date(2026, 2, 10)
-    delta = end_date - start_date
+        indices = list(range(1, n))
+        random.shuffle(indices)
+        for idx in indices:
+            if (sum(ratings) / n) <= 4.75: break
+            new_val = random.choice([4.0, 4.5])
+            if (sum(ratings) - ratings[idx] + new_val) / n >= 4.71:
+                ratings[idx] = new_val
+        random.shuffle(ratings)
+        return ratings
+
+    ratings = get_balanced_ratings(target_count)
+
+    # --- 3. РАНДОМНЫЕ ДАТЫ ---
+    start_dt = date(2026, 1, 1)
+    end_dt = date(2026, 2, 10)
+    delta_days = (end_dt - start_dt).days
+    raw_dates = [(start_dt + timedelta(days=random.randint(0, delta_days))).strftime("%d.%m.%Y") for _ in range(target_count)]
+
+    # --- 4. РАСПРЕДЕЛЕНИЕ СТИЛЕЙ ---
+    lower_count = int(target_count * 0.5)
+    upper_count = target_count - lower_count
+    case_pool = ['lower'] * lower_count + ['upper'] * upper_count
+    random.shuffle(case_pool)
+
+    # --- 5. УНИВЕРСАЛЬНЫЕ СПИСКИ ПЕРЕМЕННЫХ ---
+    male_personas = [
+        "Частный сварщик, варит лестницы, каркасы, заборы, ограждения на заказ",
+        "Прораб, закупает металл на объект",
+        "Мелкий подрядчик, делает забор или навес клиенту",
+        "Владелец участка, строит для себя (навес, гараж, сарай)",
+        "Мастер цеха, нужно было быстро перехватить объем, пока едет фура"
+    ]
     
-    random_dates =[]
-    for _ in range(target_count):
-        random_days = random.randrange(delta.days + 1)
-        rand_date = start_date + timedelta(days=random_days)
-        random_dates.append(rand_date.strftime("%d.%m.%Y"))
-            
-    names_sample =[]
-    if not df_fio.empty:
-        for _ in range(min(10, len(df_fio))):
-            f_row = df_fio.sample(n=1).iloc[0]
-            names_sample.append(f"{f_row.get('Имя', '')} {f_row.get('Фамилия', '')}".strip())
-            
-    prompt = f"""Ты — реальный покупатель (снабженец, прораб, строитель, клиент металлобазы).
-Тема отзыва (что купили): "{h2_header}".
+    focus_points = [
+        "На складе погрузили нормально, металл чистый (без сильной ржавчины), быстро оформили доки",
+        "Менеджер по телефону толково проконсультировал и помог рассчитать остатки или раскрой",
+        "Удобно, что можно взять не только трубу/лист, но и всю сопутствующую мелочевку в одном месте",
+        "Заказывал резку (в размер/габарит машины), порезали ровно",
+        "Адекватная доставка, водитель заранее набрал, выгрузили без проблем",
+        "Цены актуальные, счет выставили быстро"
+    ]
+    focus_weights = [25, 25, 15, 15, 10, 10]
 
-ИНСТРУКЦИИ (ЧИТАЙ ВНИМАТЕЛЬНО, ЭТО КРИТИЧЕСКИ ВАЖНО):
-"КРИТИЧЕСКОЕ ПРАВИЛО КОЛИЧЕСТВА: Сгенерируй ровно {target_count} уникальных отзывов. "
-"Если в исходном тексте нет данных, придумывай реалистичные сценарии использования: закупка на завод, проверка качества сварных швов, "
-"общение с менеджером, скорость отгрузки, допуски по размерам. "
-"Главное условие — в итоговом JSON должно быть ровно {target_count} объектов. Не смей останавливаться раньше!"
+    styles_and_lengths = [
+        "Короткий (1-2 предложения). Максимально сухо и по делу. Пишет с телефона.",
+        "Разговорный (3-4 предложения). Простой слог, как сообщение в мессенджере. Пару раз пропущены запятые перед 'что' или 'а'.",
+        "Ультракороткий (до 5 слов). Формальная отписка занятого человека.",
+        "Разговорный (2-3 предложения). Грамотный, но без сложных деепричастных оборотов."
+    ]
 
-1. Напиши ровно {target_count} отзывов от разных людей. Имена бери из списка: {", ".join(names_sample)}.
-2. ЕСТЕСТВЕННОСТЬ И РЕАЛИЗМ (САМОЕ ВАЖНОЕ): 
-   - Пиши так, как пишут ЖИВЫЕ люди. Никаких рассуждений в стиле Википедии или ИИ. 
-   - ЗАПРЕЩЕНЫ канцеляриты и искусственные фразы типа: "главный компонент конструкции", "отличительная особенность", "оптимальное решение", "данный товар". 
-   - Пиши просто и по делу: "брали на навес", "металл нормальный", "геометрия ровная", "привезли вовремя", "менеджер помог", "закрыли объект".
-   - Отзывы должны быть разного объема: один очень короткий (1-2 предложения), остальные чуть подробнее, но без "воды".
-3. ГРАММАТИКА И ПУНКТУАЦИЯ:
-   - Текст должен быть грамматически ПРАВИЛЬНЫМ (без откровенных ошибок и опечаток).
-   - СТРОЖАЙШИЙ ЗАПРЕТ НА ЛЮБЫЕ ТИРЕ И ДЕФИСЫ (-, —, –). Вообще не используй этот знак! Нигде! Если хочется поставить тире — перефразируй предложение или поставь запятую.
-4. LSI СЛОВА: ОБЯЗАТЕЛЬНО используй эти слова, вплетая их максимально естественно. ВЫДЕЛИ ИХ ЖИРНЫМ (**слово**): {", ".join(lsi_words)}
-5. ДАТЫ (СТРОГИЙ ЗАПРЕТ): КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ писать дату ВНУТРИ самого текста отзыва! Дату передавай ТОЛЬКО как значение ключа "Дата" в JSON. Список дат для выбора: {", ".join(random_dates)}.
-6. ВЕРНИ СТРОГО В ФОРМАТЕ JSON-МАССИВА:[
-  {{"Имя": "Имя Фамилия", "Дата": "ДД.ММ.ГГГГ", "Текст": "Живой текст отзыва СТРОГО без даты и СТРОГО без тире..."}}
-]
+    authors_listing = []
+
+    def guess_gender(author_name):
+        name_lower = str(author_name).lower()
+        parts = name_lower.split()
+        last_word = parts[-1] if parts else ""
+        exceptions_male =['илья', 'никита', 'данила', 'саша', 'женя', 'миша', 'коля', 'николай', 'кузьма']
+        if last_word in exceptions_male: return 'Мужской'
+        if last_word.endswith(('а', 'я', 'ва', 'на', 'ова', 'ева', 'ина')) and not re.search(r'[a-z0-9]', last_word):
+            return 'Женский'
+        return 'Мужской'
+
+    indices = list(range(target_count))
+    emoji_index = random.choice(indices) if indices else 0
+    
+    typo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
+    typo_indices = random.sample(indices, min(typo_count, target_count)) if indices else []
+
+    yo_count = max(1, int(target_count * 0.2)) if target_count >= 3 else (1 if random.random() > 0.5 else 0)
+    yo_indices = random.sample(indices, min(yo_count, target_count)) if indices else []
+    
+    lsi_distribution = [[] for _ in range(target_count)]
+    if final_lsi:
+        shuffled_lsi = final_lsi.copy()
+        random.shuffle(shuffled_lsi)
+        for idx, word in enumerate(shuffled_lsi):
+            lsi_distribution[idx % target_count].append(word)
+
+    for i in range(target_count):
+        author_data = chosen_authors[i] if i < len(chosen_authors) else {}
+        name = author_data.get('name', f'Автор_{i}')
+        
+        passed_gender = author_data.get('gender')
+        if passed_gender in ['Ж', 'Женский', 'F', 'female']: assigned_gender = 'Женский'
+        elif passed_gender in ['М', 'Мужской', 'M', 'male']: assigned_gender = 'Мужской'
+        else: assigned_gender = guess_gender(name)
+        
+        if assigned_gender == 'Женский':
+            persona = "Женщина, заказывает металл или стройматериалы на участок по списку от мужа или строителей"
+        else:
+            persona = random.choice(male_personas)
+
+        if ratings[i] == 5.0:
+            sentiment = random.choice([
+                "5 звезд: все прошло гладко, обычная рабочая покупка, без лишних восторгов",
+                "5 звезд: очень помог человеческий фактор (менеджер вошел в положение, подсказал по характеристикам или остаткам)"
+            ])
+        elif ratings[i] in [4.0, 4.5]:
+            sentiment = random.choice([
+                f"{ratings[i]} звезды: товар и цена отличные, но пришлось подождать выдачу минут 30-40. Менеджер извинился за задержку.",
+                f"{ratings[i]} звезды: привезли все, но забыли мелкую позицию (заглушки/электроды). Менеджер был на связи и быстро решил вопрос."
+            ])
+        else:
+            sentiment = "3.5 звезды: была реальная задержка по срокам доставки или резки на пару дней, НО менеджер постоянно был на связи, вырулил казус и сделал хорошую скидку (или бонус), поэтому оценка не двойка."
+
+        focus = random.choices(focus_points, weights=focus_weights, k=1)[0]
+        style = random.choice(styles_and_lengths)
+
+        case_rule = "(ВНИМАНИЕ: пиши весь текст с маленькой буквы)" if case_pool[i] == 'lower' else ""
+        emoji_rule = "СТРОГО ОБЯЗАТЕЛЬНО добавь в конец текста 1 смайлик (👍, 👌 или 🔥)." if i == emoji_index else "СМАЙЛИКИ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ."
+        typo_rule = "СДЕЛАЙ 1-2 ЕСТЕСТВЕННЫЕ ОШИБКИ (частая орфография: 'вообщем', 'сдесь', 'зделать', 'извените', ИЛИ промах по соседней клавише: 'тгвар' вместо 'товар'). Ошибка должна быть как у реального человека, который спешил." if i in typo_indices else "Пиши абсолютно грамотно, без ошибок и опечаток."
+        yo_rule = "Используй букву 'ё' в словах, где она должна быть (всё, ещё, пошёл)." if i in yo_indices else "Пиши вместо 'ё' букву 'е' (все, еще, пошел)."
+        
+        lsi_words_for_review = lsi_distribution[i]
+        if lsi_words_for_review:
+            lsi_rule = f"СТРОГО впиши эти слова: {', '.join(lsi_words_for_review)}. Оберни их в <b>...</b>. Впиши их максимально естественно в разговорную речь, склоняй (например, не 'заказать розница', а 'брал в розницу', не 'мм', а 'толщина 2 мм')."
+        else:
+            lsi_rule = "В этот отзыв не нужно вставлять SEO-ключи."
+
+        authors_listing.append(
+            f"--- ОТЗЫВ #{i+1} ---\n"
+            f"Имя: {name}\n"
+            f"Кто пишет (Персонаж): {persona}\n"
+            f"Что купили (Товары): товар '{h2_header}' (основной) и немного сопутствующей мелочевки.\n"
+            f"Суть отзыва (Фокус): {focus}\n"
+            f"Оценка (Эмоция): {sentiment}\n"
+            f"Стиль и объем текста: {style} {case_rule}\n"
+            f"Смайлики: {emoji_rule}\n"
+            f"Опечатки: {typo_rule}\n"
+            f"Буква Ё: {yo_rule}\n"
+            f"Обязательные слова (LSI): {lsi_rule}\n"
+        )
+
+    nl = chr(10)
+    
+    prompt = f"""Твоя задача — сгенерировать пачку гиперреалистичных отзывов покупателей металлобазы.
+Тематика товара: {h2_header}.
+Тексты должны выглядеть так, будто их оставили суровые мужики на Яндекс Карты или строительном форуме.
+
+СТРОГИЕ ПРАВИЛА ГЕНЕРАЦИИ (НЕ НАРУШАТЬ):
+1. ЗАПРЕТ НА КОМПАНИИ: Категорически запрещено использовать слова "компания", "фирма", "конкуренты", "поставщик", а также любые названия магазинов. Пиши "на базе", "на складе", "у ребят".
+2. РЕАЛИСТИЧНАЯ ДОСТАВКА: Жесткий запрет писать, что доставили "в тот же день", "сегодня", "за пару часов". Металл так не возят. Доставка занимает минимум день-два. Пиши "привезли в назначенный срок", "ждал пару дней".
+3. СТОП-СЛОВА (Маркеры ИИ): Никогда не используй слова: безупречный, высококачественный, настоятельно рекомендую, порадовало, в целом, подводя итог, оптимальный, профессионализм, клиентоориентированность, превзошел ожидания, на высшем уровне, данного.
+4. ЗАПРЕТ НА ШАБЛОНЫ И СТРУКТУРУ: Не используй приветствия ("Всем привет") и прощания. Начинай текст сразу с сути. Не делай обобщающих выводов в конце ("В общем и целом...").
+5. САМОПРОВЕРКА НА ФАЛЬШЬ (ВНУТРЕННИЙ РЕДАКТОР): Перед тем как выдать текст, проверь его. Мужики-строители НЕ говорят "избранный металлопрокат", "огромное преимущество", "отличный элемент для моих задач" или "со своей задачей справляется". Не пиши "заказали тяжелую балку" — это бред. Пиши "взял на навес", "кинул на перекрытия", "надо было обвязать каркас". Если фраза звучит как рекламный буклет — перепиши ее простым бытовым языком стройки.
+6. РАБОТА С LSI И КЛЮЧАМИ (КРИТИЧЕСКИ ВАЖНО):
+   ОБЩИЙ СПИСОК LSI ТОВАРОВ: {", ".join(final_lsi)}
+   - ВНИМАНИЕ: Категорически запрещено пытаться впихнуть весь этот список в один текст! Для каждого отзыва в индивидуальном блоке данных ниже указана своя строчка "Обязательные слова (LSI)". Тебе нужно вписать в отзыв ТОЛЬКО ИХ, а не весь общий список.
+   - Обязательно оборачивай эти слова в <b>...</b>.
+   - СТРОГО СКЛОНЯЙ ключи! Запрещено вставлять их криво. Вписывай их так, чтобы они растворились в разговорной речи. (Например: слово "мм" -> "толщина 2 <b>мм</b>", слово "розница" -> "нашел наконец-то в <b>розницу</b>", "м1" -> "марка <b>м1</b>").
+7. ЗАПРЕТ НА КАНЦЕЛЯРИТ И "РОБОТНУЮ" ЛОГИКУ:
+   - ЗАПРЕЩЕНЫ слова: "проволочек", "данное изделие", "произвели расчеты", "критично", "в кратчайшие сроки".
+   - ЗАПРЕЩЕНЫ неестественные пояснения причин. Не пиши "заказали металл, поэтому было критично". Пиши: "металл ждали долго, из-за этого работа встала".
+   - Техническая грамотность: люди не говорят "помог с расчетами для монтажа". Люди говорят "помог прикинуть по размерам" или "посчитал, чтоб лишнего не осталось".
+   - Если хвалишь менеджера, не пиши "менеджер был вежлив". Пиши "менеджер адекватный, все разжевал по телефону".
+8. ИМЕНА СОТРУДНИКОВ (ДЛЯ РЕАЛИСТИЧНОСТИ):
+   - Примерно в 20% отзывов, если ты хвалишь или упоминаешь менеджера, логиста или водителя, называй его по имени. Используй обычные русские имена (Алексей, Сергей, Александр, Елена, Анна, Дмитрий, Михаил, Екатерина и т.д.).
+   - Примеры естественного упоминания: "Спасибо менеджеру Алексею, быстро всё оформил", "Елена по телефону помогла прикинуть по размерам", "Водитель Саня вообще красавчик, заехал куда просили".
+   - В остальных 80% случаев используй общие слова: "менеджер", "ребята", "кладовщик", "водитель".
+9. ЖИВЫЕ ОПЕЧАТКИ И ОШИБКИ:
+   - В задании к конкретному отзыву может быть требование сделать опечатку. Выполни его строго! Разрешенные частые орфографические ошибки: "вообщем", "сдесь", "зделать", "симпАтичный", "извЕните", "как то". Разрешенные промахи по клавиатуре (соседние клавиши): "нормлаьно", "хорошоо", "тгвар", "мнн".
+   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО делать опечатки в LSI-словах (они обернуты в <b>)! LSI-слова должны быть написаны идеально грамотно. Не коверкай текст до состояния бреда. Ошибка должна быть одна-две на весь отзыв, остальной текст читаемый.
+
+ВВОДНЫЕ ДАННЫЕ ДЛЯ КАЖДОГО ОТЗЫВА:
+{nl.join(authors_listing)}
+
+ВЕРНИ СТРОГО JSON МАССИВ:
+[{{ "Имя": "...", "Оценка": ..., "Текст": "..." }}]
 """
+        
     try:
         resp = client.chat.completions.create(
-            model="deepseek/deepseek-v3.2",
+            model="google/gemini-2.5-pro",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=8192
+            temperature=0.85
         )
-        content = resp.choices[0].message.content
-        if content.startswith("```json"): content = content[7:]
-        if content.startswith("```"): content = content[3:]
-        if content.endswith("```"): content = content[:-3]
-        return json.loads(content.strip())
+        content = re.sub(r'```json\s*|மல்|```', '', resp.choices[0].message.content).strip()
+        reviews = json.loads(content)
+        
+        # === ПОСТ-ПРОЦЕССИНГ (Регистр и точки) ===
+        for i in range(len(reviews)):
+            if i < len(raw_dates):
+                reviews[i]["Дата"] = raw_dates[i]
+            else:
+                reviews[i]["Дата"] = date.today().strftime("%d.%m.%Y")
+                
+            text = reviews[i].get("Текст", "")
+            if text:
+                if i not in yo_indices:
+                    text = text.replace('ё', 'е').replace('Ё', 'Е')
+                
+                if case_pool[i] == 'lower':
+                    text = text[0].lower() + text[1:]
+                elif case_pool[i] == 'upper':
+                    text = text[0].upper() + text[1:]
+                
+                # Удаляем точки на конце в 60% случаев. Смайлики при этом не трогаются.
+                if random.random() <= 0.60:
+                    while text and text[-1] in ['.', '!', '?', ',', ';']:
+                        text = text[:-1]
+                        
+                reviews[i]["Текст"] = text
+                    
+        return reviews
     except Exception as e:
-        return [{"Имя": "Ошибка", "Дата": "", "Текст": str(e)}]
+        return [{"Имя": "Ошибка", "Текст": str(e), "Оценка": 5.0, "Дата": date.today().strftime("%d.%m.%Y")}]
 
 def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     if not api_key: return "Error: No API Key"
@@ -4980,33 +5196,34 @@ with tab_wholesale_main:
                     else: unmatched_kws.extend(tags_2_cands)
 
 # =================================================================
-                    # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ ОСТАТКОВ (ТЕКСТ, FAQ, ОТЗЫВЫ)
+                    # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ ОСТАТКОВ (ИЗОЛИРОВАННЫЕ ПОТОКИ)
                     # =================================================================
-                    # Собираем все неиспользованные слова в единый котел
-                    all_initial_lsi = list(set(cat_commercial + cat_general + unmatched_kws))
                     import random
-                    random.shuffle(all_initial_lsi)
                     
-                    faq_cands = st.session_state.get('categorized_info',[]) # Запас для FAQ
-                    review_cands =[]
+                    # 1. Формируем "Чистый пул" (Только коммерция и остатки товаров/услуг).
+                    # Сюда НЕ ПОПАДАЕТ корпоративный SEO-мусор из cat_general!
+                    safe_cands = list(set(cat_commercial + unmatched_kws))
+                    random.shuffle(safe_cands)
                     
-                    leftover_lsi = all_initial_lsi.copy()
-            
-                    # Отщипываем слова для FAQ
+                    faq_cands = st.session_state.get('categorized_info', []) # Запас для FAQ
+                    review_cands = []
+                    
+                    # Отщипываем слова для FAQ (только из чистых!)
                     if global_faq:
-                        chunk_size = min(7, len(leftover_lsi))
-                        faq_cands.extend(leftover_lsi[:chunk_size])
-                        leftover_lsi = leftover_lsi[chunk_size:]
+                        chunk_size = min(7, len(safe_cands))
+                        faq_cands.extend(safe_cands[:chunk_size])
+                        safe_cands = safe_cands[chunk_size:]
                         
-                    # Отщипываем слова для Отзывов
+                    # Отщипываем слова для Отзывов (только из чистых!)
                     if st.session_state.get('ws_global_reviews', True):
-                        chunk_size = min(7, len(leftover_lsi))
-                        review_cands.extend(leftover_lsi[:chunk_size])
-                        leftover_lsi = leftover_lsi[chunk_size:]
-            
-                    # Весь остаток отправляем в основной текст
-                    final_text_seo_list = leftover_lsi
-            
+                        chunk_size = min(7, len(safe_cands))
+                        review_cands.extend(safe_cands[:chunk_size])
+                        safe_cands = safe_cands[chunk_size:]
+                        
+                    # 2. Формируем пул для Главного текста (остатки чистых + вся "вода").
+                    final_text_seo_list = list(set(safe_cands + cat_general))
+                    random.shuffle(final_text_seo_list)
+                    
                     # Правильный подсчет вообще всех собранных слов
                     total_collected = len(cat_commercial) + len(cat_general) + len(structure_keywords) + len(cat_dimensions) + len(cat_geo)
             
@@ -5146,71 +5363,125 @@ with tab_wholesale_main:
                                 final_faq_html = "\n".join(faq_html_parts)
                         except Exception as e:
                             status_logger.error(f"Ошибка FAQ: {e}")
-# =================================================================
-                    # ГЕНЕРАЦИЯ ОТЗЫВОВ (DEEPSEEK) И СБОРКА ИХ В HTML
+
+                    # ОБНОВЛЕННАЯ ГЕНЕРАЦИЯ ОТЗЫВОВ С ОЦЕНКАМИ И МИЛЛИОННИКОМ
                     # =================================================================
-                    # 🔥 БЕРЕМ СОХРАНЕННУЮ ГАЛОЧКУ ОТЗЫВОВ
                     global_reviews = st.session_state.get('safe_ws_global_reviews', True)
                     final_reviews_html = ""
+                    
                     if global_reviews and gemini_api_key:
-                        # 🔥 БЕРЕМ СОХРАНЕННОЕ КОЛИЧЕСТВО ОТЗЫВОВ
-                        rev_count = st.session_state.get('safe_ws_reviews_count', 3)
-                        status_logger.write(f"💬 Генерируем {rev_count} отзывов (DeepSeek)...")
+                        rev_count = st.session_state.get('safe_ws_reviews_count', 10)
+                        status_logger.write(f"💬 Работаем над категорией: {h2_header}...")
                         
-                        import os
-                        import pandas as pd
-                        df_fio = pd.read_csv("dicts/fio.csv", sep=";") if os.path.exists("dicts/fio.csv") else pd.DataFrame()
-                        df_templates = pd.read_csv("dicts/templates.csv", sep=";") if os.path.exists("dicts/templates.csv") else pd.DataFrame()
+                        # 1. Получаем уникальных авторов (1 аноним + остальные)
+                        chosen_authors = get_diverse_authors(rev_count)
                         
-                        var_dict = {}
-                        if os.path.exists("dicts/vars.csv"):
-                            df_vars = pd.read_csv("dicts/vars.csv", sep=";")
-                            for _, rv in df_vars.iterrows():
-                                v_name = str(rv['Переменная']).strip()
-                                if pd.notna(rv['Значения']):
-                                    var_dict[f"{{{v_name}}}"] = [v.strip() for v in str(rv['Значения']).split('|')]
-                                    
-                        reviews_json = generate_reviews_deepseek(gemini_api_key, h2_header, review_cands, rev_count, df_fio, df_templates, var_dict)
-                        
-                        if 'ws_reviews_export_data' not in st.session_state:
-                            st.session_state.ws_reviews_export_data =[]
+                        # 2. Генерируем отзывы (С ПОДУШКОЙ БЕЗОПАСНОСТИ)
+                        try:
+                            reviews_json = generate_reviews_deepseek(gemini_api_key, h2_header, review_cands, rev_count, chosen_authors)
+                        except Exception as rev_err:
+                            status_logger.error(f"Сбой при генерации отзывов: {rev_err}")
+                            reviews_json = [] 
+                    
+                        if isinstance(reviews_json, dict):
+                            reviews_json = [reviews_json]
                             
-                        # Если нейросеть вернула нормальный массив
-                        if isinstance(reviews_json, list) and len(reviews_json) > 0 and "Текст" in reviews_json[0]:
-                            rev_html_parts =[
-                                '<div class="reviews-section" style="margin-top: 30px;">', 
-                                f'<div class="h2"><h2>Отзывы клиентов: {h2_header}</h2></div>', 
+                        # --- СТИЛИ ДЛЯ ОТЗЫВОВ (Добавляем 1 раз) ---
+                        st.markdown("""
+                            <style>
+                            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+                            .stReviewContainer { font-family: 'Inter', sans-serif; background: #f1f5f9; padding: 20px; border-radius: 15px; }
+                            .review-card { background: #ffffff !important; border: 1px solid #cbd5e1 !important; border-left: 8px solid #3b82f6 !important; border-radius: 12px !important; padding: 25px !important; margin-bottom: 20px !important; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important; }
+                            .author-name { font-weight: 700; color: #0f172a; font-size: 1.15rem; }
+                            .star-gold { color: #eab308; font-size: 1.3rem; }
+                            .star-gray { color: #d1d5db; font-size: 1.3rem; }
+                            .review-date { color: #64748b; font-size: 0.85rem; margin-top: 5px; }
+                            .review-body { color: #334155; line-height: 1.6; margin-top: 15px; font-size: 1rem; }
+                            .review-body strong { color: #1d4ed8; background: #dbeafe; padding: 0 3px; border-radius: 4px; }
+                            </style>
+                        """, unsafe_allow_html=True)
+                        
+                        # --- ЦИКЛ ОТРИСОВКИ ---
+                        if isinstance(reviews_json, list) and len(reviews_json) > 0:
+                            st.write(f"### 📋 Предпросмотр отзывов ({len(reviews_json)} шт.)")
+                            review_sources = ["Яндекс Карты", "Google Карты", "2ГИС", "Flamp", "Blizko"]
+                            
+                            rev_html_parts = [
+                                '<div class="reviews-section" style="margin-top: 30px;">',
+                                f'<div class="h2"><h2>Отзывы клиентов: {h2_header}</h2></div>',
                                 '<div class="reviews-container">'
                             ]
                             
-                            def md_to_html(text):
-                                # Превращаем маркдаун DeepSeek в HTML-теги strong
-                                return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', str(text))
-                            
-                            for item in reviews_json:
+                            for i, item in enumerate(reviews_json):
                                 r_name = item.get('Имя', 'Клиент')
                                 r_date = item.get('Дата', '')
+                                raw_rating = str(item.get('Оценка', 5.0)).replace(',', '.')
+                                try:
+                                    r_rating = float(re.search(r'\d+\.?\d*', raw_rating).group())
+                                except:
+                                    r_rating = 5.0
                                 
-                                # Оборачиваем в HTML-теги для таблицы Excel
-                                r_text_html = f"<p>{md_to_html(item.get('Текст', ''))}</p>"
+                                r_text_raw = item.get('Текст', '')
+                                r_source = random.choice(review_sources)
                                 
-                                # Верстаем отзыв для предпросмотра и вставки на сайт
-                                rev_html_parts.append(f'<div class="review-item" style="padding: 15px; border-left: 4px solid #277EFF; background: #f9fafb; margin-bottom: 15px;">')
-                                rev_html_parts.append(f'<div class="review-header" style="margin-bottom: 8px;"><strong class="review-author">{r_name}</strong> <span class="review-date" style="color: #6b7280; font-size: 13px; margin-left: 10px;">{r_date}</span></div>')
-                                rev_html_parts.append(f'<div class="review-text" style="color: #374151; font-size: 15px;">{r_text_html}</div>')
-                                rev_html_parts.append(f'</div>')
+                                # Превращаем **слово** в <b>слово</b>
+                                r_text_html = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', str(r_text_raw))
                                 
-                                # Сохраняем в таблицу
+                                # ГЕНЕРАЦИЯ ЗВЕЗД (HTML)
+                                full_stars = int(r_rating)
+                                has_half = 1 if r_rating % 1 != 0 else 0
+                                stars_html = '<span class="star-gold">' + '★' * full_stars + '</span>'
+                                if has_half: stars_html += '<span class="star-gold">½</span>'
+                                stars_html += '<span class="star-gray">' + '☆' * (5 - full_stars - has_half) + '</span>'
+                                
+                                # ВЫВОД КАРТОЧКИ В ИНТЕРФЕЙС
+                                st.markdown(f'''
+                                    <div class="review-card">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div>
+                                                <div class="author-name">{r_name}</div>
+                                                <div class="review-date">📅 {r_date} | 📍 {r_source}</div>
+                                            </div>
+                                            <div style="text-align: right;">
+                                                <div class="star-gold">{stars_html}</div>
+                                                <div style="font-weight: bold; color: #1e293b;">{r_rating}</div>
+                                            </div>
+                                        </div>
+                                        <div class="review-body">{r_text_html}</div>
+                                    </div>
+                                ''', unsafe_allow_html=True)
+                                
+                                # Сборка чистого HTML-кода для отправки
+                                rev_html_parts.append(f'''
+                                <div class="review-item" style="padding: 15px; border-left: 4px solid #277EFF; background: #f9fafb; margin-bottom: 15px;">
+                                    <div class="review-header" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                        <div>
+                                            <strong class="review-author">{r_name}</strong>
+                                            <span class="review-date" style="color: #6B7280; font-size: 14px; margin-left: 10px;">{r_date}</span>
+                                        </div>
+                                        <div class="review-rating" style="color: #eab308; font-size: 16px;">{stars_html}</div>
+                                    </div>
+                                    <div class="review-text" style="color: #374151; font-size: 15px;">{r_text_html}</div>
+                                </div>
+                                ''')
+                                
+                                # СОХРАНЕНИЕ ДЛЯ ЭКСПОРТА В EXCEL
+                                if 'ws_reviews_export_data' not in st.session_state:
+                                    st.session_state.ws_reviews_export_data = []
                                 st.session_state.ws_reviews_export_data.append({
                                     'Page URL': current_task['url'],
                                     'Product Name': h2_header,
                                     'Имя': r_name,
-                                    'Дата': r_date, # Отдельная колонка для даты
-                                    'Отзыв': r_text_html # Чистый HTML текст: <p>Текст <strong>LSI</strong> текст</p>
+                                    'Источник': r_source,
+                                    'Оценка': r_rating,
+                                    'Дата': r_date,
+                                    'Отзыв': r_text_html
                                 })
                                 
                             rev_html_parts.append('</div></div>')
                             final_reviews_html = "\n".join(rev_html_parts)
+                        else:
+                            st.error(f"Генерация для '{h2_header}' вернула пустой список или ошибку.")
 
                     # =================================================================
                     # ГЕО-ДОСТАВКА
@@ -6918,4 +7189,5 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
