@@ -5071,6 +5071,7 @@ with tab_wholesale_main:
                         kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
                         matches = []
                         
+                        # Поиск совпадений
                         for item in links_data:
                             if item['url'].rstrip('/') in used_urls: continue
                             db_n_low = item['name'].lower()
@@ -5082,12 +5083,10 @@ with tab_wholesale_main:
                             used_urls.add(chosen['url'].rstrip('/'))
                             return chosen['url'], chosen['name']
                         
-                        # 3. ФОЛБЭК: Если совпадений нет, берем ЛЮБОЙ рандомный товар из базы
+                        # ФОЛБЭК: Если совпадений нет, берем ЛЮБОЙ рандомный товар из базы
                         if links_data:
-                            # Пытаемся взять тот, который еще не использовали, если список не пуст
                             available_fallback = [i for i in links_data if i['url'].rstrip('/') not in used_urls]
                             source_list = available_fallback if available_fallback else links_data
-                            
                             chosen = random.choice(source_list)
                             used_urls.add(chosen['url'].rstrip('/'))
                             return chosen['url'], chosen['name']
@@ -5099,7 +5098,6 @@ with tab_wholesale_main:
                         kw_clean = kw.lower().strip()
                         kw_stem = kw_clean[:4] if len(kw_clean) > 4 else kw_clean
                     
-                        # Делаем транслит корня (со встроенной подстраховкой)
                         try:
                             from transliterate import translit
                             kw_translit = translit(kw_stem, 'ru', reversed=True).replace("'", "")
@@ -5110,76 +5108,68 @@ with tab_wholesale_main:
                         matches = []
                         for item in images_data:
                             u_clean = item['url'].rstrip('/')
-                            if u_clean in used_urls:
-                                continue
-                            # Ищем транслит в URL (первый столбец)
+                            if u_clean in used_urls: continue
                             if kw_translit in u_clean.lower():
                                 matches.append(item)
-                                
+                        
+                        chosen = None
                         if matches:
-                            chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
+                            chosen = random.choice(matches)
+                        # ФОЛБЭК ДЛЯ ПРОМО: Берем рандом, если по транслиту пусто
+                        elif images_data:
+                            available_promo = [i for i in images_data if i['url'].rstrip('/') not in used_urls]
+                            source_promo = available_promo if available_promo else images_data
+                            chosen = random.choice(source_promo)
+
+                        if chosen:
                             u_target = chosen['url']
                             img_target = chosen['img']
                             if str(img_target) == 'nan' or not img_target:
                                 img_target = "https://via.placeholder.com/260"
                             
-                            # ИДЕМ НА САЙТ И ПАРСИМ ХЛЕБНЫЕ КРОШКИ (ДЛЯ НАЗВАНИЯ ПРОМО)
-                            promo_title = kw.capitalize() # Заглушка по умолчанию
+                            promo_title = kw.capitalize() if kw else "Выгодное предложение"
                             try:
-                                resp = requests.get(u_target, timeout=5)
+                                resp = requests.get(u_target, timeout=5, verify=False)
                                 if resp.status_code == 200:
                                     soup = BeautifulSoup(resp.text, 'html.parser')
-                                    
-                                    # Ищем контейнер с крошками (стандартные классы)
                                     breadcrumbs = soup.find(['ul', 'div', 'nav'], class_=re.compile(r'breadcrumb|breadcrumbs|nav-path', re.I))
-                                    
                                     if breadcrumbs:
-                                        # Ищем все элементы внутри
                                         crumbs = breadcrumbs.find_all(['li', 'span', 'a'])
-                                        # Чистим от разделителей (/, » и т.д.)
                                         clean_crumbs = [c.get_text(strip=True) for c in crumbs if len(c.get_text(strip=True)) > 2 and c.get_text(strip=True) not in ['/', '\\', '>', '»', '•', '-']]
-                                        if clean_crumbs:
-                                            promo_title = clean_crumbs[-1] # Берем последний пункт
+                                        if clean_crumbs: promo_title = clean_crumbs[-1]
                                     else:
-                                        # Резервный вариант, если крошек нет - берем H1
                                         h1_tag = soup.find('h1')
-                                        if h1_tag: 
-                                            promo_title = h1_tag.get_text(strip=True)
-                            except Exception:
-                                pass 
-                                
+                                        if h1_tag: promo_title = h1_tag.get_text(strip=True)
+                            except: pass 
+                            
                             used_urls.add(u_target.rstrip('/'))
                             return u_target, promo_title, img_target
                             
-                        # ВОТ ЭТОЙ СТРОЧКИ НЕ ХВАТАЛО (Возвращаем 3 пустые переменные, если совпадений нет)
                         return None, None, None
 
                     # --- РАСПРЕДЕЛЯЕМ ПО БЛОКАМ ---
                     
                     # 1. Плитка тегов 1
                     if global_tags:
-                        for kw in tags_1_cands:
+                        # Если кандидатов нет, создаем 10 пустых, чтобы сработал рандом
+                        cands_1 = tags_1_cands if tags_1_cands else [""] * 10
+                        for kw in cands_1[:10]:
                             u, n = get_tag_data(kw)
                             if u: tags_block_1.append({"url": u, "name": n, "kw": kw})
-                            else: unmatched_kws.append(kw)
-                    else: unmatched_kws.extend(tags_1_cands)
-
-                    # 2. Промо-блок (с парсингом)
+                    
+                    # 2. Промо-блок
                     if global_promo:
-                        for kw in promo_cands:
+                        cands_p = promo_cands if promo_cands else [""] * 2
+                        for kw in cands_p[:2]:
                             u, n, img = get_promo_data(kw)
                             if u: promo_block.append({"url": u, "name": n, "img": img, "kw": kw})
-                            else: unmatched_kws.append(kw)
-                    else: unmatched_kws.extend(promo_cands)
 
                     # 3. Плитка тегов 2
                     if global_tags:
-                        for kw in tags_2_cands:
+                        cands_2 = tags_2_cands if tags_2_cands else [""] * 10
+                        for kw in cands_2[:10]:
                             u, n = get_tag_data(kw)
                             if u: tags_block_2.append({"url": u, "name": n, "kw": kw})
-                            else: unmatched_kws.append(kw)
-                    else: unmatched_kws.extend(tags_2_cands)
-
 # =================================================================
                     # 4. УМНОЕ РАСПРЕДЕЛЕНИЕ ОСТАТКОВ (ИЗОЛИРОВАННЫЕ ПОТОКИ)
                     # =================================================================
@@ -7210,6 +7200,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
