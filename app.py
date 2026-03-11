@@ -19,10 +19,10 @@ import csv
 from google import genai
 import os
 import requests
-proxy_url = "http://QYNjH:Uekp4k@196.18.3.35:8000" 
+# proxy_url = "http://QYNjH:Uekp4k@196.18.3.35:8000" 
 
-os.environ["http_proxy"] = proxy_url
-os.environ["https_proxy"] = proxy_url
+# os.environ["http_proxy"] = proxy_url
+# os.environ["https_proxy"] = proxy_url
 
 try:
     my_ip = requests.get("https://api.ipify.org", timeout=5).text
@@ -7285,6 +7285,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
