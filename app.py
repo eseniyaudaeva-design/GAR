@@ -2502,7 +2502,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
     
     1. СПИСКИ:
        - <ol>: ТОЛЬКО для пошаговых процессов.
-       - <ul>: ДЛЯ ХАРАКТЕРИСТИК, СФЕР, СВОЙСТВ (Списки №1, №2, №3 - СТРОГО <ul>).
+       - <ul>: ДЛЯ ХАРАКТЕРИСТИК, СФЕР, СВОЙСТВ (Списки N1, N2, N3 - СТРОГО <ul>).
        - ВАЖНО: Не используй двоеточие (:) ВНУТРИ пунктов списка.
        
     2. ТАБЛИЦА:
@@ -7285,6 +7285,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
