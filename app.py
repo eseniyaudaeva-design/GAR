@@ -5281,14 +5281,15 @@ with tab_wholesale_main:
                     if curr_use_tables and client:
                         step_logger.warning("🧩 Этап 3: Верстаем таблицу размеров...")
                         dims_str = ", ".join(cat_dimensions)
-                        prompt_tbl = f"""ТЫ - СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для "{h2_header}".
+                        prompt_tbl = f"""ТЫ - СТРОГИЙ ТЕХНОЛОГ. Задача: Сгенерировать HTML-таблицу для '{h2_header}'.
 ВВОДНЫЕ: Контекст текста: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
 ПРАВИЛА: 
 1. НЕ дублируй инфу из текста! 
-2. Добавь НОВЫЕ технические характеристики. Если список обязательных параметров пуст, самостоятельно подбери 5 наиболее важных характеристик для "{h2_header}" (например: ГОСТ, марка стали, вес, размер, допуски).
-3. Максимум 5 колонок.
-4. Формат: <table class="brand-accent-table"><thead><tr>...</tr></thead><tbody>...</tbody></table>
-Выдай только HTML код."""
+2. Добавь НОВЫЕ технические характеристики. Если список обязательных параметров пуст, самостоятельно подбери наиболее важные характеристики для '{h2_header}' (например: ГОСТ, марка стали, хим. состав, мех. свойства, применение).
+3. Таблица строго 2 колонки: 'Характеристика' и 'Значение'. Для разделов (например 'Химический состав') используй строку только с одной ячейкой <td> без второй.
+4. Формат строго такой:
+<div class='table-full-width-wrapper'><table class='brand-accent-table'><thead><tr><th>Характеристика</th><th>Значение</th></tr></thead><tbody>... строки <tr><td>...</td><td>...</td></tr> ...</tbody></table></div>
+Выдай ТОЛЬКО HTML код, без markdown, без пояснений."""
                         try:
                             resp = client.chat.completions.create(model="google/gemini-2.5-pro", messages=[{"role": "user", "content": prompt_tbl}], temperature=0.25)
                             raw_table = resp.choices[0].message.content.replace("```html", "").replace("```", "").strip()
@@ -5966,7 +5967,7 @@ with tab_wholesale_main:
                 
                 # Стили CSS (переиспользованы из твоего кода)
                 st.markdown("""
-                    <style>
+                <style>
                         .preview-box { border: 1px solid #e2e8f0; background-color: #ffffff; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); }
                         .block-title { color: #277EFF; margin-top: 30px; margin-bottom: 10px; font-size: 1.2em; font-weight: 600; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }
                         .table-scroll-wrapper { width: 100%; overflow-x: auto; margin: 20px 0; }
@@ -7260,6 +7261,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
