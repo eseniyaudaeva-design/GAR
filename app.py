@@ -1557,7 +1557,7 @@ def calculate_metrics(comp_data_full, my_data, settings, my_serp_pos, original_r
 
     # Карта частей речи
     POS_MAP = {
-        'NUN': 'Сущ', 'ADJF': 'Прил', 'ADJS': 'Прил',
+        'NOUN': 'Сущ', 'ADJF': 'Прил', 'ADJS': 'Прил',
         'VERB': 'Гл', 'INFN': 'Гл', 'PRTF': 'Прич', 'PRTS': 'Прич',
         'GRND': 'Деепр', 'NUMR': 'Числ', 'ADVB': 'Нареч',
         'NPRO': 'Местоим', 'PREP': 'Предлог', 'CONJ': 'Союз', 'PRCL': 'Частица', 'INTJ': 'Междом'
@@ -1957,7 +1957,7 @@ def get_hybrid_word_type(word, main_marker_root, specs_dict=None):
         tag = p.tag
         if {'PREP'} in tag or {'CONJ'} in tag: return "SKIP"
         if {'ADJF'} in tag or {'PRTF'} in tag or {'ADJS'} in tag: return "2. 🎨 Свойства"
-        if {'NUN'} in tag: return "4. 🔗 Дополнения"
+        if {'NOUN'} in tag: return "4. 🔗 Дополнения"
 
     if w.endswith(('ий', 'ый', 'ая', 'ое', 'ые', 'ая')): return "2. 🎨 Свойства"
     return "4. 🔗 Дополнения"
@@ -2026,7 +2026,7 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
     main_marker_root = ""
     # Ищем существительное
     for w, c in counts.most_common(10):
-        if morph and 'NUN' in morph.parse(w)[0].tag: main_marker_root = w; break
+        if morph and 'NOUN' in morph.parse(w)[0].tag: main_marker_root = w; break
     if not main_marker_root and counts: main_marker_root = counts.most_common(1)[0][0]
 
     # 4. Сбор таблицы
@@ -2103,7 +2103,7 @@ def analyze_ideal_name(comp_data_full):
     main_marker_root = ""
     for w, _ in c.most_common(5):
         if not re.search(r'\d', w):
-             if morph and 'NUN' in morph.parse(w)[0].tag: main_marker_root = w; break
+             if morph and 'NOUN' in morph.parse(w)[0].tag: main_marker_root = w; break
              elif not morph: main_marker_root = w; break
     if not main_marker_root and c: main_marker_root = c.most_common(1)[0][0]
 
@@ -4595,7 +4595,7 @@ with tab_seo_main:
                             is_name_or_geo = any(tag in parsed.tag for tag in ['Name', 'Surn', 'Patr', 'Geox'])
                             is_orphan_modifier = any(tag in parsed.tag for tag in ['ADJF', 'ADJS', 'PRTF', 'PRTS', 'ADVB', 'GRND'])
                             
-                            is_Nun = 'NUN' in parsed.tag
+                            is_Nun = 'NOUN' in parsed.tag
                             is_kNwn_product = w_clean in kNwn_products
                             is_kNwn_service = w_clean in kNwn_services
                             
@@ -7327,6 +7327,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
