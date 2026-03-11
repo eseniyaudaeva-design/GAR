@@ -3829,21 +3829,22 @@ with tab_seo_main:
         st.success("Анализ готов!")
         
         # Стили
-        st.markdown("""
-        <style>
-            details > summary { list-style: Nne; }
-            details > summary::-webkit-details-marker { display: Nne; }
-            .details-card { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 10px; }
-            .card-summary { padding: 12px 15px; cursor: pointer; font-weight: 700; display: flex; justify-content: space-between; }
-            .count-tag { background: #e5e7eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
-            .flat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; height: 340px; display: flex; flex-direction: column; }
-            .flat-header { height: 50px; padding: 0 20px; font-weight: 700; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }
-            .flat-content { flex-grow: 1; padding: 15px 20px; overflow-y: auto; font-size: 13px; line-height: 1.4; }
-            .flat-footer { height: 150px; padding: 12px 20px; border-top: 1px solid #f3f4f6; background: #fafafa; }
-            .flat-len-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; }
-            .flat-miss-tag { border: 1px solid #fecaca; color: #991b1b; padding: 2px 6px; font-size: 11px; border-radius: 4px; margin: 2px; display: inline-block; }
-        </style>
-        """, unsafe_allow_html=True)
+        css_styles = (
+            "<style>"
+            "details > summary { list-style: none; }"
+            "details > summary::-webkit-details-marker { display: none; }"
+            ".details-card { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 10px; }"
+            ".card-summary { padding: 12px 15px; cursor: pointer; font-weight: 700; display: flex; justify-content: space-between; }"
+            ".count-tag { background: #e5e7eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; }"
+            ".flat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; height: 340px; display: flex; flex-direction: column; }"
+            ".flat-header { height: 50px; padding: 0 20px; font-weight: 700; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }"
+            ".flat-content { flex-grow: 1; padding: 15px 20px; overflow-y: auto; font-size: 13px; line-height: 1.4; }"
+            ".flat-footer { height: 150px; padding: 12px 20px; border-top: 1px solid #f3f4f6; background: #fafafa; }"
+            ".flat-len-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 10px; }"
+            ".flat-miss-tag { border: 1px solid #fecaca; color: #991b1b; padding: 2px 6px; font-size: 11px; border-radius: 4px; margin: 2px; display: inline-block; }"
+            "</style>"
+        )
+        st.markdown(css_styles, unsafe_allow_html=True)
 
 # Вывод ОТЛАДКИ для Ширины (чтобы понять, почему 95)
         if 'debug_width' in results:
@@ -7285,5 +7286,6 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
