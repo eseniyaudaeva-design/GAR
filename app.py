@@ -3153,6 +3153,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
     1.7. ТАБЛИЦА ХАРАКТЕРИСТИК (СПРАВОЧНАЯ):
     4-5 строк. Без дублей списка N1.
     ИСПОЛЬЗУЙ ЭТОТ КОД:
+    <div class="table-full-width-wrapper">
     <table class="brand-accent-table">
         <thead>
             <tr>
@@ -3167,6 +3168,7 @@ def generate_full_article_v2(api_key, h1_marker, h2_topic, lsi_list):
             <tr><td>[Параметр 4]</td><td>[Данные]</td></tr>
         </tbody>
     </table>
+    Выдай только HTML код без маркдаун-разметки (без ```html)."""
     
     1.8. Подзаголовок H3 (ШАБЛОН): 
     "Классификация {h1_marker} (род. падеж, с маленькой буквы)"
@@ -5975,10 +5977,56 @@ with tab_wholesale_main:
                         .tag-item { display: inline-block; padding: 6px 12px; margin: 4px; background: #f0f4f8; border-radius: 4px; text-decoration: None; color: #277EFF; font-size: 14px; }
                         .gallery-content-wrapper { background: #F6F7FC; padding: 20px; border-radius: 10px; margin: 20px 0; }
                         .five-col-gallery { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 10px; }
-                        .gallery-item { min-width: 200px; background: white; padding: 10px; border-radius: 8px; text-align: center; }
-                        .gallery-item img { width: 100%; height: auto; border-radius: 4px; }
-                        .gallery-item h3 { font-size: 14px; margin-top: 10px; font-weight: normal; }
-                        .gallery-item a { text-decoration: None; color: #333; }
+                        .gallery-item h3 {
+                            font-size: 1.1em !important;
+                            margin-bottom: 8px !important;
+                            font-weight: normal !important;
+                            text-align: center !important;
+                            line-height: 1.1em !important;
+                            display: block;
+                            min-height: 40px;
+                        }
+                        .gallery-item h3 a {
+                            text-decoration: none !important;
+                            color: #333 !important;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: color 0.2s ease;
+                            height: 100%;
+                        }
+                        .gallery-item h3 a:hover {
+                            color: #007bff !important;
+                        }
+                        .gallery-item figure {
+                            width: 100%;
+                            margin: 0;
+                            float: none !important;
+                            height: 260px !important; /* Жестко фиксируем высоту */
+                            overflow: hidden;
+                            margin-bottom: 5px;
+                            border-radius: 8px;
+                        }
+                        .gallery-item figure a {
+                            display: block;
+                            height: 100%;
+                            text-decoration: none;
+                        }
+                        /* ВОТ ЭТОГО БЛОКА НЕ ХВАТАЛО ДЛЯ ТЕГА PICTURE */
+                        .gallery-item figure a picture {
+                            display: block !important;
+                            height: 100% !important;
+                            width: 100% !important;
+                        }
+                        .gallery-item img {
+                            width: 100% !important;
+                            height: 100% !important;
+                            display: block;
+                            margin: 0 auto;
+                            object-fit: cover !important; /* Возвращаем обрезку картинок */
+                            transition: transform 0.3s ease;
+                            border-radius: 8px;
+                        }
                         .faq-section { margin: 20px 0; padding: 20px; background: #F6F7FC; border-radius: 8px; border: 1px solid #e2e8f0; }
                     </style>
                 """, unsafe_allow_html=True)
@@ -7212,6 +7260,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
