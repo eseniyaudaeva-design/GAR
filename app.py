@@ -5074,14 +5074,24 @@ with tab_wholesale_main:
                         for item in links_data:
                             if item['url'].rstrip('/') in used_urls: continue
                             db_n_low = item['name'].lower()
-                            # Ищем корень слова во втором столбце
                             if kw_stem in db_n_low or kw_clean in db_n_low:
                                 matches.append(item)
                                 
                         if matches:
-                            chosen = random.choice(matches) # БЕРЕМ РАНДОМНОЕ СОВПАДЕНИЕ
+                            chosen = random.choice(matches)
                             used_urls.add(chosen['url'].rstrip('/'))
                             return chosen['url'], chosen['name']
+                        
+                        # 3. ФОЛБЭК: Если совпадений нет, берем ЛЮБОЙ рандомный товар из базы
+                        if links_data:
+                            # Пытаемся взять тот, который еще не использовали, если список не пуст
+                            available_fallback = [i for i in links_data if i['url'].rstrip('/') not in used_urls]
+                            source_list = available_fallback if available_fallback else links_data
+                            
+                            chosen = random.choice(source_list)
+                            used_urls.add(chosen['url'].rstrip('/'))
+                            return chosen['url'], chosen['name']
+                        
                         return None, None
 
                     # --- ФУНКЦИЯ ПОИСКА И ПАРСИНГА ДЛЯ ПРОМО (Ищет транслит в URL) ---
@@ -5271,7 +5281,7 @@ with tab_wholesale_main:
 ВВОДНЫЕ: Контекст текста: {generated_full_text[:3000]}. Обязательные параметры: [{dims_str}].
 ПРАВИЛА: 
 1. НЕ дублируй инфу из текста! 
-2. Добавь НОВЫЕ технические характеристики.
+2. Добавь НОВЫЕ технические характеристики. Если список обязательных параметров пуст, самостоятельно подбери 5 наиболее важных характеристик для "{h2_header}" (например: ГОСТ, марка стали, вес, размер, допуски).
 3. Максимум 5 колонок.
 4. Формат: <table class="brand-accent-table"><thead><tr>...</tr></thead><tbody>...</tbody></table>
 Выдай только HTML код."""
@@ -7200,6 +7210,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
