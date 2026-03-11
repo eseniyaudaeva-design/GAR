@@ -5686,6 +5686,8 @@ with tab_wholesale_main:
     if 'ws_global_promo' not in st.session_state: st.session_state.ws_global_promo = True
     if 'ws_global_geo' not in st.session_state: st.session_state.ws_global_geo = True
     if 'ws_global_reviews' not in st.session_state: st.session_state.ws_global_reviews = True
+    if 'ws_faq_count' not in st.session_state: st.session_state.ws_faq_count = 10
+    if 'ws_reviews_count' not in st.session_state: st.session_state.ws_reviews_count = 10
 
     with st.container(border=True):
         st.subheader("1. Режим работы и Валидация")
@@ -5752,13 +5754,13 @@ with tab_wholesale_main:
                     st.checkbox("🧩 Таблицы", key="ws_global_tables")
                     st.checkbox("🏷️ Теги", key="ws_global_tags")
                     st.checkbox("❓ FAQ", key="ws_global_faq", disabled=is_running)
-                    st.number_input("Количество вопросов FAQ", min_value=2, max_value=50, value=4, step=1, key="ws_faq_count", disabled=is_running)
+                    st.number_input("Количество вопросов FAQ", min_value=2, max_value=50, step=1, key="ws_faq_count", disabled=is_running)
                     
                 with grid_2:
                     st.checkbox("🔥 Промо", key="ws_global_promo", disabled=is_running)
                     st.checkbox("🌍 Гео-блок", key="ws_global_geo", disabled=is_running)
                     st.checkbox("💬 Отзывы", key="ws_global_reviews", disabled=is_running)
-                    st.number_input("Количество отзывов", min_value=1, max_value=50, value=3, step=1, key="ws_reviews_count", disabled=is_running)
+                    st.number_input("Количество отзывов", min_value=1, max_value=50, step=1, key="ws_reviews_count", disabled=is_running)
                 
             
     c_start, c_stop = st.columns([2, 1])
@@ -7293,6 +7295,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
