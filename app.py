@@ -764,7 +764,7 @@ def classify_semantics_with_api(words_list, yandex_key):
     st.sidebar.info(f"Словари (из файлов):\n📦 Товары: {len(PRODUCTS_SET)}\n💰 Коммерция: {len(COMM_SET)}\n🛠️ Услуги: {len(SERVICES_SET)}\n🌍 Города: {len(GEO_SET)}")
 
     dim_pattern = re.compile(r'\d+(?:[\.\,]\d+)?\s?[хx\*×]\s?\d+', re.IGNORECASE)
-    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNRECASE)
+    grade_pattern = re.compile(r'^([а-яa-z]{1,4}\-?\d+[а-яa-z0-9]*)$', re.IGNORECASE)
     
     categories = {'products': set(), 'services': set(), 'commercial': set(), 
                   'dimensions': set(), 'geo': set(), 'general': set(), 'sensitive': set()}
@@ -2685,7 +2685,7 @@ def generate_ai_content_blocks(api_key, base_text, tag_name, forced_header, num_
                 
             # Обработка ТОЛЬКО первого блока (без риска стереть весь текст)
             first_block = cleaned_blocks[0]
-            first_block = re.sub(r'^<h[23][^>]*>.*?</h[23]>', '', first_block, flags=re.IGNRECASE).strip()
+            first_block = re.sub(r'^<h[23][^>]*>.*?</h[23]>', '', first_block, flags=re.IGNORECASE).strip()
             final_h2_text = forced_header if forced_header else tag_name
             cleaned_blocks[0] = f"<h2>{final_h2_text}</h2>\n{first_block}"
 
@@ -7327,6 +7327,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
