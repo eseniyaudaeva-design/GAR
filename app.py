@@ -750,10 +750,12 @@ def get_diverse_authors(n):
     return sets["products"], sets["commercial"], sets["specs"], sets["geo"], sets["services"], sets["sensitive"]
 
 def classify_semantics_with_api(words_list, yandex_key):
-    # Распаковываем 6 словарей, которые вернула функция загрузки
-    PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = load_lemmatized_dictionaries()
-    
-    # Объединяем стоп-слова из файла и из глобального списка в коде
+    _dicts = load_lemmatized_dictionaries()
+    if _dicts and len(_dicts) == 6:
+        PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = _dicts
+    else:
+        PRODUCTS_SET, COMM_SET, SPECS_SET, GEO_SET, SERVICES_SET, SENS_SET = set(), set(), set(), set(), set(), set()
+        
     FULL_SENSITIVE = SENS_SET.union(SENSITIVE_STOPLIST)
 
     if 'debug_geo_count' not in st.session_state:
@@ -1966,7 +1968,9 @@ def calculate_naming_metrics(comp_data_full, my_data, settings):
     """
     # Подгрузка словаря
     SPECS_SET = st.session_state.get('categorized_dimensions', set())
-    if not SPECS_SET: _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
+    if not SPECS_SET:
+        _dicts = load_lemmatized_dictionaries()
+        SPECS_SET = _dicts[2] if _dicts and len(_dicts) == 6 else set()
 
     # 1. Мой сайт
     my_tokens = []
@@ -2081,7 +2085,9 @@ def analyze_ideal_name(comp_data_full):
     """
     # Подгружаем словарь
     SPECS_SET = st.session_state.get('categorized_dimensions', set())
-    if not SPECS_SET: _, _, SPECS_SET, _, _, _ = load_lemmatized_dictionaries()
+    if not SPECS_SET:
+        _dicts = load_lemmatized_dictionaries()
+        SPECS_SET = _dicts[2] if _dicts and len(_dicts) == 6 else set()
 
     titles = []
     for d in comp_data_full:
@@ -7321,6 +7327,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
