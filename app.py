@@ -5581,9 +5581,9 @@ with tab_wholesale_main:
                                     'Product Name': h2_header,
                                     'Имя': r_name,
                                     'Источник': r_source,
+                                    'Отзыв': r_text_html,
                                     'Оценка': r_rating,
-                                    'Дата': r_date,
-                                    'Отзыв': r_text_html
+                                    'Дата': r_date
                                 })
                                 
                             rev_html_parts.append('</div></div>')
@@ -6077,13 +6077,21 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                 df_faq.to_excel(writer, sheet_name='База FAQ', index=False)
                 
             # ЛИСТ 3: Выгрузка Отзывов на отдельный лист (НОВОЕ)
-            if 'ws_reviews_export_data' in st.session_state and st.session_state.ws_reviews_export_data:
-                df_rev_export = pd.DataFrame(st.session_state.ws_reviews_export_data)
-                df_rev_export.to_excel(writer, sheet_name='Отзывы', index=False)
-                w_rev = writer.sheets['Отзывы']
-                w_rev.set_column('A:B', 30)
-                w_rev.set_column('C:D', 20)  # Сюда попадут "Имя" и "Дата"
-                w_rev.set_column('E:E', 80)  # Сюда попадет сам "Отзыв"
+                    if 'ws_reviews_export_data' in st.session_state and st.session_state.ws_reviews_export_data:
+                        df_rev_export = pd.DataFrame(st.session_state.ws_reviews_export_data)
+                        
+                        # Принудительно задаем правильный порядок колонок
+                        cols_order = ['Page URL', 'Product Name', 'Имя', 'Источник', 'Отзыв', 'Оценка', 'Дата']
+                        df_rev_export = df_rev_export[[c for c in cols_order if c in df_rev_export.columns]]
+                        
+                        df_rev_export.to_excel(writer, sheet_name='Отзывы', index=False)
+                        w_rev = writer.sheets['Отзывы']
+                        
+                        # Настраиваем ширину колонок под новый формат
+                        w_rev.set_column('A:B', 30) # URL и Название
+                        w_rev.set_column('C:D', 15) # Имя и Источник
+                        w_rev.set_column('E:E', 80) # Отзыв (Колонка E)
+                        w_rev.set_column('F:G', 15) # Оценка и Дата (Колонки F и G)
 
         col_dl, col_cl = st.columns([2, 1])
         with col_dl:
@@ -7374,6 +7382,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
