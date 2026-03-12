@@ -689,40 +689,39 @@ def load_names_db():
     return pd.DataFrame(columns=['template_type', 'username', 'gender'])
 
 def get_diverse_authors(n):
+    import random
+    df = load_names_db()
+    if df.empty: return [{"name": "Имя скрыто", "type": "aNnymous", "gender": "Н"}] * n
+    
+    df_aNn = df[df['template_type'] == 'aNnymous']
+    df_others = df[df['template_type'] != 'aNnymous']
+    
+    res = []
+    if not df_aNn.empty:
+        res.append(df_aNn.sample(1).iloc[0].to_dict())
+    
+    needed = n - len(res)
+    other_types = df_others['template_type'].unique()
+    
+    if len(other_types) > 0 and needed > 0:
+        per_type = needed // len(other_types)
+        rem = needed % len(other_types)
+        for t in other_types:
+            count = per_type + (1 if rem > 0 else 0)
+            if rem > 0: rem -= 1
+            slice_dt = df_others[df_others['template_type'] == t]
+            if not slice_dt.empty:
+                sampled = slice_dt.sample(min(len(slice_dt), count))
+                res.extend(sampled.to_dict('records'))
+                df_others = df_others.drop(sampled.index)
 
-    for filename, set_key in files_map.items():
-        full_path = os.path.join(base_path, filename)
-        if not os.path.exists(full_path):
-            continue
-        
-        try:
-            with open(full_path, 'r', encoding='utf-8') as f:
-                data = json.load(f) 
-                
-                words_bucket = []
-                if isinstance(data, dict):
-                    for cat_list in data.values():
-                        words_bucket.extend(cat_list)
-                elif isinstance(data, list):
-                    words_bucket = data
-                
-                for phrase in words_bucket:
-                    w_clean = str(phrase).lower().strip().replace('ё', 'е')
-                    if not w_clean: continue
-                    sets[set_key].add(w_clean)
-                    if morph:
-                        normal_form = morph.parse(w_clean)[0].normal_form.replace('ё', 'е')
-                        sets[set_key].add(normal_form)
-                    if ' ' in w_clean:
-                        parts = w_clean.split()
-                        for p in parts:
-                            sets[set_key].add(p)
-                            if morph: 
-                                sets[set_key].add(morph.parse(p)[0].normal_form.replace('ё', 'е'))
-        except: pass
+    shortage = n - len(res)
+    if shortage > 0 and not df_others.empty:
+        extra = df_others.sample(min(len(df_others), shortage))
+        res.extend(extra.to_dict('records'))
 
-    # Возвращаем 6 наборов
-    return sets["products"], sets["commercial"], sets["specs"], sets["geo"], sets["services"], sets["sensitive"]
+    random.shuffle(res)
+    return [{"name": r.get('username', 'Покупатель'), "type": r.get('template_type', ''), "gender": r.get('gender', 'М')} for r in res[:n]]
 
 def classify_semantics_with_api(words_list, yandex_key):
     _dicts = load_lemmatized_dictionaries()
@@ -7375,6 +7374,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
