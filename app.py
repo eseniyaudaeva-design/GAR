@@ -689,31 +689,6 @@ def load_names_db():
     return pd.DataFrame(columns=['template_type', 'username', 'gender'])
 
 def get_diverse_authors(n):
-    """Выбор авторов: ровно 1 аноним, остальные равномерно распределены"""
-    df = load_names_db()
-    if df.empty: return [{"name": "Имя скрыто", "type": "aNnymous", "gender": "Н"}] * n
-    
-    df_aNn = df[df['template_type'] == 'aNnymous']
-    df_others = df[df['template_type'] != 'aNnymous']
-    
-    res = []
-    if not df_aNn.empty:
-        res.append(df_aNn.sample(1).iloc[0].to_dict())
-    
-    needed = n - len(res)
-    other_types = df_others['template_type'].unique()
-    if len(other_types) > 0:
-        per_type = needed // len(other_types)
-        rem = needed % len(other_types)
-        for t in other_types:
-            count = per_type + (1 if rem > 0 else 0)
-            if rem > 0: rem -= 1
-            slice_dt = df_others[df_others['template_type'] == t]
-            if not slice_dt.empty:
-                res.extend(slice_dt.sample(min(len(slice_dt), count)).to_dict('records'))
-    
-    random.shuffle(res)
-    return [{"name": r['username'], "type": r['template_type'], "gender": r['gender']} for r in res[:n]]
 
     for filename, set_key in files_map.items():
         full_path = os.path.join(base_path, filename)
@@ -7400,6 +7375,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
