@@ -2889,11 +2889,10 @@ def generate_reviews_deepseek(api_key, h2_header, lsi_words, target_count, chose
         else: assigned_gender = guess_gender(name)
         
         if assigned_gender == 'Женский':
-            persona = "Женщина, заказывает металл или стройматериалы на участок по списку от мужа или строителей"
+            persona = "Женщина, заказывает металл или стройматериалы"
         else:
             persona = random.choice(male_personas)
-
-       if ratings[i] == 5.0:
+        if ratings[i] == 5.0:
             sentiment = "Оценка: 5 звезд. Суть: закупка прошла успешно, клиенту всё понравилось. Детали и ситуацию придумай сам. АНТИПРИМЕРЫ (НЕ ПИСАТЬ): 'всё прошло штатно', 'обычная рабочая закупка', 'никаких проблем не возникло', 'всё отлично', 'помогли разобраться', 'всё чётко', 'без лишних слов', 'брал не первый раз', 'стабильно нормально'."
             
         elif ratings[i] in [4.0, 4.5]:
@@ -7401,6 +7400,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
