@@ -5910,12 +5910,12 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
 
                 if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ И ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
                     
-                    # --- ДОБАВЛЕНО: ЗАМОРОЗКА ПАЧКИ ПРИ СТАРТЕ ---
+                    # Замораживаем настройки пачки
                     st.session_state.safe_ws_batch_size = ws_batch_size
                     st.session_state.safe_ws_auto_next = ws_auto_next
                     st.session_state.current_batch_count = 0
                     
-                    # --- ЗАМОРАЖИВАЕМ ВСЕ НАСТРОЙКИ, КЛЮЧИ И ГАЛОЧКИ (СПАСЕНИЕ ОТ СБРОСА) ---
+                    # Замораживаем ключи и настройки
                     st.session_state.safe_ws_global_text = st.session_state.get('ws_global_text', True)
                     st.session_state.safe_ws_global_tables = st.session_state.get('ws_global_tables', True)
                     st.session_state.safe_ws_global_tags = st.session_state.get('ws_global_tags', True)
@@ -5929,61 +5929,62 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                     st.session_state.safe_ws_num_blocks_val = st.session_state.get('ws_num_blocks_val', 5)
                     st.session_state.safe_ws_auto_blocks = st.session_state.get('ws_auto_blocks', True)
 
-                    # ЗАМОРАЖИВАЕМ API-КЛЮЧИ И ГАЛОЧКИ
                     st.session_state.safe_gemini_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
                     st.session_state.safe_turgenev_key = st.session_state.get('TURGENEV_GLOBAL_KEY', '')
                     st.session_state.safe_textru_key = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
-
                     st.session_state.safe_use_turgenev = st.session_state.get('use_turgenev_bulk', False)
                     st.session_state.safe_use_textru = st.session_state.get('use_textru_bulk', False)
                     st.session_state.safe_use_ds = st.session_state.get('use_ds_bulk', True)
-                    # ----------------------------------------------------------------------
-                queue =[]
-                if "URL" in gen_mode or "Подфильтровые" in gen_mode:
-                    urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
-                    # ИСПРАВЛЕНИЕ: Добавляем ссылки быстро, БЕЗ парсинга, чтобы не висло
-                    for u in urls:
-                        queue.append({'url': u, 'h1': '', 'h2': '', 'base_text': '', 'name': u.split('/')[-1]})
-                else:
-                    h1s =[x.strip() for x in raw_h1.split('\n') if x.strip()]
-                    h2s =[x.strip() for x in raw_h2.split('\n') if x.strip()]
-                    for h1, h2 in zip(h1s, h2s): queue.append({'url': 'manual', 'h1': h1, 'h2': h2, 'base_text': '', 'name': h1})
-                
-                if queue:
-                    # === АКТИВИРУЕМ ЗАПУСК ===
-                    st.session_state.ws_bg_tasks_queue = queue
-                    st.session_state.auto_current_index = 0
-                    st.session_state.ws_automode_active = True
-                    st.session_state.ws_waiting_for_analysis = True
-                    st.session_state.start_analysis_flag = True
                     
-                    # ИСПРАВЛЕНИЕ: Парсим только ПЕРВУЮ ссылку прямо перед стартом
-                    if queue[0]['url'] != 'manual' and not queue[0]['h1']:
-                        with st.spinner(f"Сканируем первую страницу: {queue[0]['url']}..."):
-                            h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[0]['url']) if "URL" in gen_mode else ("", "", "")
-                            b_text, _, _, _ = get_page_data_for_gen(queue[0]['url']) if queue[0]['url'] else ("", "", "", "")
-                            queue[0]['h1'] = h1_s or queue[0]['url'].split('/')[-1]
-                            queue[0]['h2'] = h2_s or queue[0]['url'].split('/')[-1]
-                            queue[0]['base_text'] = b_text
+                    # ======================================================================
+                    # ВАЖНО: Весь сбор очереди теперь СДВИНУТ ВПРАВО (строго внутри кнопки)
+                    # ======================================================================
+                    queue = []
+                    if "URL" in gen_mode or "Подфильтровые" in gen_mode:
+                        urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
+                        for u in urls:
+                            queue.append({'url': u, 'h1': '', 'h2': '', 'base_text': '', 'name': u.split('/')[-1]})
+                    else:
+                        h1s = [x.strip() for x in raw_h1.split('\n') if x.strip()]
+                        h2s = [x.strip() for x in raw_h2.split('\n') if x.strip()]
+                        for h1, h2 in zip(h1s, h2s): 
+                            queue.append({'url': 'manual', 'h1': h1, 'h2': h2, 'base_text': '', 'name': h1})
                     
-                    first_task = queue[0]
-                    f_source = "Релевантная страница на вашем сайте" if first_task.get('url') and first_task['url'] != 'manual' else "Без страницы"
-                    st.session_state['pending_widget_updates'] = {
-                        'query_input': first_task.get('h1', first_task['name']),
-                        'my_page_source_radio': f_source,
-                        'my_url_input': first_task.get('url', ''),
-                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                        'settings_region': st.session_state.get('ws_settings_region', 'Москва')
-                    }
-                    st.session_state.pop('analysis_done', None)
-                    st.session_state.pop('analysis_results', None)
-                    st.rerun() # Теперь обновляем страницу, когда все данные подготовлены
+                    if queue:
+                        # === АКТИВИРУЕМ ЗАПУСК ===
+                        st.session_state.ws_bg_tasks_queue = queue
+                        st.session_state.auto_current_index = 0
+                        st.session_state.ws_automode_active = True
+                        st.session_state.ws_waiting_for_analysis = True
+                        st.session_state.start_analysis_flag = True
+                        
+                        # Парсим только ПЕРВУЮ ссылку перед стартом
+                        if queue[0]['url'] != 'manual' and not queue[0]['h1']:
+                            with st.spinner(f"Сканируем первую страницу: {queue[0]['url']}..."):
+                                h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[0]['url']) if "URL" in gen_mode else ("", "", "")
+                                b_text, _, _, _ = get_page_data_for_gen(queue[0]['url']) if queue[0]['url'] else ("", "", "", "")
+                                queue[0]['h1'] = h1_s or queue[0]['url'].split('/')[-1]
+                                queue[0]['h2'] = h2_s or queue[0]['url'].split('/')[-1]
+                                queue[0]['base_text'] = b_text
+                        
+                        first_task = queue[0]
+                        f_source = "Релевантная страница на вашем сайте" if first_task.get('url') and first_task['url'] != 'manual' else "Без страницы"
+                        st.session_state['pending_widget_updates'] = {
+                            'query_input': first_task.get('h1', first_task['name']),
+                            'my_page_source_radio': f_source,
+                            'my_url_input': first_task.get('url', ''),
+                            'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                            'settings_region': st.session_state.get('ws_settings_region', 'Москва')
+                        }
+                        st.session_state.pop('analysis_done', None)
+                        st.session_state.pop('analysis_results', None)
+                        st.rerun() 
+                    else:
+                        st.error("❌ Очередь пуста! Проверьте введенные данные.")
                 else:
-                    st.error("❌ Очередь пуста! Проверьте введенные данные.")
-            else:
-                q_len = len(st.session_state.get('ws_bg_tasks_queue', []))
-                curr = st.session_state.get('auto_current_index', 0)
-                st.info(f"⏳ Конвейер в работе: Обработка {curr + 1} из {q_len} ... (Смотри предпросмотр внизу)")
+                    q_len = len(st.session_state.get('ws_bg_tasks_queue', []))
+                    curr = st.session_state.get('auto_current_index', 0)
+                    st.info(f"⏳ Конвейер в работе: Обработка {curr + 1} из {q_len} ... (Смотри предпросмотр внизу)")
 
     with c_stop:
         if is_running:
@@ -7456,6 +7457,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
