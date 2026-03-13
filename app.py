@@ -5728,17 +5728,14 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                     status_logger.error(f"Сбой: {e}")
                     
                 finally:
-                    st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, pd.DataFrame([row_data])], ignore_index=True)
-                    st.session_state.auto_current_index += 1
-                    st.session_state.last_stopped_index = st.session_state.auto_current_index
-                    st.session_state.ws_waiting_for_analysis = False
-                    
-                   if st.session_state.auto_current_index < len(queue):
-                
+                        st.session_state.auto_current_index += 1
+                        st.session_state.start_analysis_flag = False
+
+                    if st.session_state.auto_current_index < len(queue):
+                        
                         # --- ПАРСИМ СЛЕДУЮЩУЮ ССЫЛКУ ТОЛЬКО СЕЙЧАС ---
                         idx_n = st.session_state.auto_current_index
                         
-                        # Блок парсинга (сдвинут вправо)
                         if queue[idx_n]['url'] != 'manual' and not queue[idx_n]['h1']:
                             gen_m = st.session_state.get('ws_gen_mode', '')
                             h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[idx_n]['url']) if "URL" in gen_m else ("", "", "")
@@ -5747,18 +5744,17 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                             queue[idx_n]['h2'] = h2_s or queue[idx_n]['url'].split('/')[-1]
                             queue[idx_n]['base_text'] = b_text
                             st.session_state.ws_bg_tasks_queue = queue
-                
-                    # ВАЖНО: Эти строки должны быть на одном уровне с if, а НЕ внутри него!
-                    next_task = queue[st.session_state.auto_current_index]
-                    p_source = "Релевантная страница на вашем сайте" if next_task.get('url') and next_task['url'] != 'manual' else "Без страницы"
-                
-                    st.session_state['pending_widget_updates'] = {
-                        'query_input': next_task.get('h1', next_task['name']),
-                        'my_page_source_radio': p_source,
-                        'my_url_input': next_task.get('url', ''),
-                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                        'settings_region': st.session_state.get('ws_settings_region', 'Москва')
-                    }
+                        
+                        next_task = queue[st.session_state.auto_current_index]
+                        p_source = "Релевантная страница на вашем сайте" if next_task.get('url') and next_task['url'] != 'manual' else "Без страницы"
+                        
+                        st.session_state['pending_widget_updates'] = {
+                            'query_input': next_task.get('h1', next_task['name']),
+                            'my_page_source_radio': p_source,
+                            'my_url_input': next_task.get('url', ''),
+                            'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                            'settings_region': st.session_state.get('ws_settings_region', 'Москва')
+                        }
                         st.session_state.start_analysis_flag = True
                         st.session_state.pop('analysis_done', None)
                         st.session_state.pop('analysis_results', None)
@@ -7426,6 +7422,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
