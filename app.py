@@ -5728,6 +5728,9 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                     status_logger.error(f"Сбой: {e}")
                     
                 finally:
+                    if row_data:
+                        df_new = pd.DataFrame([row_data])
+                        st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, df_new], ignore_index=True)
                     st.session_state.auto_current_index += 1
                     st.session_state.current_batch_count = st.session_state.get('current_batch_count', 0) + 1
                     st.session_state.start_analysis_flag = False
@@ -7470,6 +7473,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
