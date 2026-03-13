@@ -5728,68 +5728,89 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                     status_logger.error(f"Сбой: {e}")
                     
                 finally:
+                    # Сохраняем результат текущей генерации
                     if row_data:
                         df_new = pd.DataFrame([row_data])
                         st.session_state.gen_result_df = pd.concat([st.session_state.gen_result_df, df_new], ignore_index=True)
+                    
                     st.session_state.auto_current_index += 1
                     st.session_state.current_batch_count = st.session_state.get('current_batch_count', 0) + 1
                     st.session_state.start_analysis_flag = False
 
+                # ==========================================================
+                # БРОНЕБОЙНЫЙ БЛОК ПЕРЕХОДА (ЗАЩИТА ОТ ВЫЛЕТОВ И БЕЛЫХ ЭКРАНОВ)
+                # ==========================================================
                 if st.session_state.auto_current_index < len(queue):
-                    
-                    idx_n = st.session_state.auto_current_index
-                    
-                    # --- 1. ПАРСИМ СЛЕДУЮЩУЮ ССЫЛКУ С БЕЗОПАСНЫМ БЛОКОМ (ОТ БЕЛОГО ЭКРАНА) ---
-                    if queue[idx_n]['url'] != 'manual' and not queue[idx_n]['h1']:
-                        try:
-                            gen_m = st.session_state.get('ws_gen_mode', 'Генерация по URL')
-                            h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[idx_n]['url']) if "URL" in gen_m else ("", "", "")
-                            b_text, _, _, _ = get_page_data_for_gen(queue[idx_n]['url']) if queue[idx_n]['url'] else ("", "", "", "")
-                            queue[idx_n]['h1'] = h1_s or queue[idx_n]['url'].split('/')[-1]
-                            queue[idx_n]['h2'] = h2_s or queue[idx_n]['url'].split('/')[-1]
-                            queue[idx_n]['base_text'] = b_text
-                        except Exception as e:
-                            # Если ссылка битая или парсер упал - подставляем заглушки, чтобы конвейер не умер
-                            queue[idx_n]['h1'] = queue[idx_n]['url'].split('/')[-1]
-                            queue[idx_n]['h2'] = queue[idx_n]['url'].split('/')[-1]
-                            queue[idx_n]['base_text'] = ""
+                    try:
+                        idx_n = st.session_state.auto_current_index
+                        limit = st.session_state.get('safe_ws_batch_size', 5)
+                        auto_next = st.session_state.get('safe_ws_auto_next', False)
                         
-                        st.session_state.ws_bg_tasks_queue = queue
-                    
-                    # --- 2. ПРОВЕРКА ПАЧКИ (ОСТАНОВКА) ---
-                    limit = st.session_state.get('safe_ws_batch_size', 5)
-                    auto_next = st.session_state.get('safe_ws_auto_next', False)
-                    
-                    if st.session_state.current_batch_count >= limit:
-                        if auto_next:
-                            st.toast(f"📦 Пачка из {limit} ссылок готова. Переходим к следующей...")
-                            st.session_state.current_batch_count = 0 
+                        # --- 1. ПРОВЕРКА ПАЧКИ ---
+                        if st.session_state.current_batch_count >= limit:
+                            if auto_next:
+                                st.toast(f"📦 Пачка из {limit} ссылок готова. Переходим к следующей...", icon="🚀")
+                                st.session_state.current_batch_count = 0 
+                            else:
+                                st.session_state.ws_automode_active = False
+                                st.success(f"✅ Пачка ({limit} шт.) обработана! Нажмите 'ПРОДОЛЖИТЬ', когда будете готовы.")
+                                st.rerun() 
+                        
+                        st.toast(f"🔄 Готовим ссылку {idx_n + 1}...", icon="⏳")
+                        
+                        # --- 2. БЕЗОПАСНЫЙ ПАРСИНГ ---
+                        if queue[idx_n]['url'] != 'manual' and not queue[idx_n]['h1']:
+                            try:
+                                gen_m = st.session_state.get('ws_gen_mode', 'Генерация по URL')
+                                h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[idx_n]['url']) if "URL" in gen_m else ("", "", "")
+                                b_text, _, _, _ = get_page_data_for_gen(queue[idx_n]['url']) if queue[idx_n]['url'] else ("", "", "", "")
+                                queue[idx_n]['h1'] = h1_s or queue[idx_n]['url'].split('/')[-1]
+                                queue[idx_n]['h2'] = h2_s or queue[idx_n]['url'].split('/')[-1]
+                                queue[idx_n]['base_text'] = b_text
+                            except Exception as parse_err:
+                                # Если парсер подавился, ставим заглушки и едем дальше
+                                queue[idx_n]['h1'] = queue[idx_n]['url'].split('/')[-1]
+                                queue[idx_n]['h2'] = queue[idx_n]['url'].split('/')[-1]
+                                queue[idx_n]['base_text'] = ""
+                            
+                            st.session_state.ws_bg_tasks_queue = queue
+                        
+                        # --- 3. ЖЁСТКИЙ СБРОС ФЛАГОВ И ПЕРЕХОД ---
+                        next_task = queue[st.session_state.auto_current_index]
+                        
+                        updates = {
+                            'query_input': next_task.get('h1', next_task['name']),
+                            'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                            'settings_region': st.session_state.get('ws_settings_region', 'Москва')
+                        }
+                        if next_task.get('url') and next_task['url'] != 'manual':
+                            updates['my_page_source_radio'] = "Релевантная страница на вашем сайте"
+                            updates['my_url_input'] = next_task['url']
                         else:
-                            st.session_state.ws_automode_active = False
-                            st.success(f"✅ Пачка ({limit} шт.) обработана! Нажмите 'ПРОДОЛЖИТЬ', когда будете готовы.")
-                            st.rerun() 
-                    
-                    # --- 3. ПОДГОТОВКА ПЕРЕХОДА ---
-                    next_task = queue[st.session_state.auto_current_index]
-                    
-                    updates = {
-                        'query_input': next_task.get('h1', next_task['name']),
-                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                        'settings_region': st.session_state.get('ws_settings_region', 'Москва')
-                    }
-                    if next_task.get('url') and next_task['url'] != 'manual':
-                        updates['my_page_source_radio'] = "Релевантная страница на вашем сайте"
-                        updates['my_url_input'] = next_task['url']
-                    else:
-                        updates['my_page_source_radio'] = "Без страницы"
-                        updates['my_url_input'] = ""
+                            updates['my_page_source_radio'] = "Без страницы"
+                            updates['my_url_input'] = ""
+                            
+                        st.session_state['pending_widget_updates'] = updates
                         
-                    st.session_state['pending_widget_updates'] = updates
-                    st.session_state.start_analysis_flag = True
-                    st.session_state.pop('analysis_done', None)
-                    st.session_state.pop('analysis_results', None)
-                    st.session_state.ws_waiting_for_analysis = True
-                    st.rerun()
+                        # Команда на старт
+                        st.session_state.start_analysis_flag = True
+                        st.session_state.ws_waiting_for_analysis = True
+                        
+                        # Вычищаем мусор предыдущего анализа
+                        for key in ['analysis_done', 'analysis_results', 'arsenkin_data']:
+                            st.session_state.pop(key, None)
+                        
+                        import time
+                        time.sleep(1) # Даем Streamlit время сохранить состояние
+                        st.rerun()
+
+                    except Exception as critical_err:
+                        # ЕСЛИ ЧТО-ТО СЛОМАЛОСЬ ВНЕЗАПНО - СПАСАЕМ СЕССИЮ
+                        st.error(f"⚠️ Ошибка при переходе к следующей ссылке. Пропускаем...")
+                        st.session_state.auto_current_index += 1
+                        import time
+                        time.sleep(2)
+                        st.rerun()
                 
                 else:
                     st.session_state.ws_automode_active = False
@@ -5925,6 +5946,13 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                         st.rerun()
 
                 if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ И ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
+                    
+                    # === ТОТАЛЬНАЯ ЗАЧИСТКА ПАМЯТИ ОТ ПРОШЛЫХ СЕССИЙ ===
+                    for key in ['analysis_done', 'analysis_results', 'arsenkin_data', 'ws_bg_tasks_queue', 'auto_current_index', 'current_batch_count']:
+                        st.session_state.pop(key, None)
+                    st.session_state.ws_waiting_for_analysis = False
+                    st.session_state.start_analysis_flag = False
+                    # ===================================================
                     
                     # Замораживаем настройки пачки
                     st.session_state.safe_ws_batch_size = ws_batch_size
@@ -7473,6 +7501,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
