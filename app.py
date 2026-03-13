@@ -5734,6 +5734,16 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                     st.session_state.ws_waiting_for_analysis = False
                     
                     if st.session_state.auto_current_index < len(queue):
+                    # --- ПАРСИМ СЛЕДУЮЩУЮ ССЫЛКУ ТОЛЬКО СЕЙЧАС ---
+                    idx_n = st.session_state.auto_current_index
+                    if queue[idx_n]['url'] != 'manual' and not queue[idx_n]['h1']:
+                        gen_m = st.session_state.get('ws_gen_mode', '')
+                        h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[idx_n]['url']) if "URL" in gen_m else ("", "", "")
+                        b_text, _, _, _ = get_page_data_for_gen(queue[idx_n]['url']) if queue[idx_n]['url'] else ("", "", "", "")
+                        queue[idx_n]['h1'] = h1_s or queue[idx_n]['url'].split('/')[-1]
+                        queue[idx_n]['h2'] = h2_s or queue[idx_n]['url'].split('/')[-1]
+                        queue[idx_n]['base_text'] = b_text
+                        st.session_state.ws_bg_tasks_queue = queue
                         next_task = queue[st.session_state.auto_current_index]
                         p_source = "Релевантная страница на вашем сайте" if next_task.get('url') and next_task['url'] != 'manual' else "Без страницы"
                         st.session_state['pending_widget_updates'] = {
@@ -5845,7 +5855,28 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
     c_start, c_stop = st.columns([2, 1])
     with c_start:
         is_running = st.session_state.get('ws_automode_active', False)
+        q_len = len(st.session_state.get('ws_bg_tasks_queue', []))
+        curr = st.session_state.get('auto_current_index', 0)
+        
         if not is_running:
+            # --- НОВОЕ: КНОПКА ПРОДОЛЖИТЬ ---
+            if q_len > 0 and curr < q_len:
+                if st.button("▶️ ПРОДОЛЖИТЬ ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
+                    st.session_state.ws_automode_active = True
+                    next_task = st.session_state.ws_bg_tasks_queue[curr]
+                    p_source = "Релевантная страница на вашем сайте" if next_task.get('url') and next_task['url'] != 'manual' else "Без страницы"
+                    st.session_state['pending_widget_updates'] = {
+                        'query_input': next_task.get('h1', next_task['name']),
+                        'my_page_source_radio': p_source,
+                        'my_url_input': next_task.get('url', ''),
+                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                    }
+                    st.session_state.start_analysis_flag = True
+                    st.session_state.pop('analysis_done', None)
+                    st.session_state.pop('analysis_results', None)
+                    st.session_state.ws_waiting_for_analysis = True
+                    st.rerun()
+
             if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ И ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
                 
                 # --- ЗАМОРАЖИВАЕМ ВСЕ НАСТРОЙКИ, КЛЮЧИ И ГАЛОЧКИ (СПАСЕНИЕ ОТ СБРОСА) ---
@@ -5874,23 +5905,30 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                 queue =[]
                 if "URL" in gen_mode or "Подфильтровые" in gen_mode:
                     urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
-                    with st.spinner("Сбор данных со ссылок (ожидайте)..."):
-                        for u in urls:
-                            h1_s, h2_s, _ = scrape_h1_h2_from_url(u) if "URL" in gen_mode else ("", "", "")
-                            b_text, _, _, _ = get_page_data_for_gen(u) if u else ("", "", "", "")
-                            queue.append({'url': u, 'h1': h1_s or u.split('/')[-1], 'h2': h2_s or u.split('/')[-1], 'base_text': b_text, 'name': h1_s or u})
+                    # ИСПРАВЛЕНИЕ: Добавляем ссылки быстро, БЕЗ парсинга, чтобы не висло
+                    for u in urls:
+                        queue.append({'url': u, 'h1': '', 'h2': '', 'base_text': '', 'name': u.split('/')[-1]})
                 else:
                     h1s =[x.strip() for x in raw_h1.split('\n') if x.strip()]
                     h2s =[x.strip() for x in raw_h2.split('\n') if x.strip()]
                     for h1, h2 in zip(h1s, h2s): queue.append({'url': 'manual', 'h1': h1, 'h2': h2, 'base_text': '', 'name': h1})
                 
                 if queue:
-                    # === АКТИВИРУЕМ ЗАПУСК ТОЛЬКО ПОСЛЕ УСПЕШНОГО СБОРА ОЧЕРЕДИ ===
+                    # === АКТИВИРУЕМ ЗАПУСК ===
                     st.session_state.ws_bg_tasks_queue = queue
                     st.session_state.auto_current_index = 0
                     st.session_state.ws_automode_active = True
                     st.session_state.ws_waiting_for_analysis = True
                     st.session_state.start_analysis_flag = True
+                    
+                    # ИСПРАВЛЕНИЕ: Парсим только ПЕРВУЮ ссылку прямо перед стартом
+                    if queue[0]['url'] != 'manual' and not queue[0]['h1']:
+                        with st.spinner(f"Сканируем первую страницу: {queue[0]['url']}..."):
+                            h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[0]['url']) if "URL" in gen_mode else ("", "", "")
+                            b_text, _, _, _ = get_page_data_for_gen(queue[0]['url']) if queue[0]['url'] else ("", "", "", "")
+                            queue[0]['h1'] = h1_s or queue[0]['url'].split('/')[-1]
+                            queue[0]['h2'] = h2_s or queue[0]['url'].split('/')[-1]
+                            queue[0]['base_text'] = b_text
                     
                     first_task = queue[0]
                     f_source = "Релевантная страница на вашем сайте" if first_task.get('url') and first_task['url'] != 'manual' else "Без страницы"
@@ -7382,6 +7420,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
