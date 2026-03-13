@@ -5729,9 +5729,24 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                     
                 finally:
                     st.session_state.auto_current_index += 1
+                    st.session_state.current_batch_count = st.session_state.get('current_batch_count', 0) + 1
                     st.session_state.start_analysis_flag = False
 
                 if st.session_state.auto_current_index < len(queue):
+                    
+                    # --- ПРОВЕРКА ПАЧКИ ---
+                    limit = st.session_state.get('safe_ws_batch_size', 5)
+                    auto_next = st.session_state.get('safe_ws_auto_next', False)
+                    
+                    if st.session_state.current_batch_count >= limit:
+                        if auto_next:
+                            st.toast(f"📦 Пачка из {limit} ссылок готова. Идем дальше...")
+                            st.session_state.current_batch_count = 0 # Сброс для следующей пачки
+                        else:
+                            # ОСТАНАВЛИВАЕМ КОНВЕЙЕР ДЛЯ ПРЕДПРОСМОТРА
+                            st.session_state.ws_automode_active = False
+                            st.success(f"✅ Пачка ({limit} шт.) обработана! Посмотрите результаты внизу.")
+                            st.rerun()
                     
                     # --- ПАРСИМ СЛЕДУЮЩУЮ ССЫЛКУ ТОЛЬКО СЕЙЧАС ---
                     idx_n = st.session_state.auto_current_index
@@ -5762,6 +5777,7 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                     st.rerun()
                 else:
                     st.session_state.ws_automode_active = False
+                    st.success("🎉 Вся очередь полностью обработана!")
                     st.rerun()
     # ==========================================
     # ИНТЕРФЕЙС И НАСТРОЙКИ
@@ -5853,57 +5869,75 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                     st.checkbox("💬 Отзывы", key="ws_global_reviews", disabled=is_running)
                     st.number_input("Количество отзывов", min_value=1, max_value=50, step=1, key="ws_reviews_count", disabled=is_running)
                 
+
+    # --- ДОБАВЛЕНО: НАСТРОЙКИ ПАЧКИ ПЕРЕД КНОПКАМИ ---
+        st.markdown("### 📦 Настройки пачковой генерации")
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            ws_batch_size = st.number_input("Размер пачки (ссылок за раз):", min_value=1, value=5, key="ws_batch_size_ui")
+        with col_b2:
+            st.write("")
+            st.write("")
+            ws_auto_next = st.checkbox("Автопереход к следующей пачке", value=False, key="ws_auto_next_ui")
+        st.write("") # Небольшой отступ
+
+        c_start, c_stop = st.columns([2, 1])
+        with c_start:
+            is_running = st.session_state.get('ws_automode_active', False)
+            q_len = len(st.session_state.get('ws_bg_tasks_queue', []))
+            curr = st.session_state.get('auto_current_index', 0)
             
-    c_start, c_stop = st.columns([2, 1])
-    with c_start:
-        is_running = st.session_state.get('ws_automode_active', False)
-        q_len = len(st.session_state.get('ws_bg_tasks_queue', []))
-        curr = st.session_state.get('auto_current_index', 0)
-        
-        if not is_running:
-            # --- НОВОЕ: КНОПКА ПРОДОЛЖИТЬ ---
-            if q_len > 0 and curr < q_len:
-                if st.button("▶️ ПРОДОЛЖИТЬ ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
-                    st.session_state.ws_automode_active = True
-                    next_task = st.session_state.ws_bg_tasks_queue[curr]
-                    p_source = "Релевантная страница на вашем сайте" if next_task.get('url') and next_task['url'] != 'manual' else "Без страницы"
-                    st.session_state['pending_widget_updates'] = {
-                        'query_input': next_task.get('h1', next_task['name']),
-                        'my_page_source_radio': p_source,
-                        'my_url_input': next_task.get('url', ''),
-                        'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
-                    }
-                    st.session_state.start_analysis_flag = True
-                    st.session_state.pop('analysis_done', None)
-                    st.session_state.pop('analysis_results', None)
-                    st.session_state.ws_waiting_for_analysis = True
-                    st.rerun()
+            if not is_running:
+                # --- НОВОЕ: КНОПКА ПРОДОЛЖИТЬ ---
+                if q_len > 0 and curr < q_len:
+                    if st.button("▶️ ПРОДОЛЖИТЬ ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
+                        st.session_state.ws_automode_active = True
+                        st.session_state.current_batch_count = 0  # <--- ДОБАВЛЕНО: Сброс счетчика
+                        
+                        next_task = st.session_state.ws_bg_tasks_queue[curr]
+                        p_source = "Релевантная страница на вашем сайте" if next_task.get('url') and next_task['url'] != 'manual' else "Без страницы"
+                        st.session_state['pending_widget_updates'] = {
+                            'query_input': next_task.get('h1', next_task['name']),
+                            'my_page_source_radio': p_source,
+                            'my_url_input': next_task.get('url', ''),
+                            'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
+                        }
+                        st.session_state.start_analysis_flag = True
+                        st.session_state.pop('analysis_done', None)
+                        st.session_state.pop('analysis_results', None)
+                        st.session_state.ws_waiting_for_analysis = True
+                        st.rerun()
 
-            if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ И ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
-                
-                # --- ЗАМОРАЖИВАЕМ ВСЕ НАСТРОЙКИ, КЛЮЧИ И ГАЛОЧКИ (СПАСЕНИЕ ОТ СБРОСА) ---
-                st.session_state.safe_ws_global_text = st.session_state.get('ws_global_text', True)
-                st.session_state.safe_ws_global_tables = st.session_state.get('ws_global_tables', True)
-                st.session_state.safe_ws_global_tags = st.session_state.get('ws_global_tags', True)
-                st.session_state.safe_ws_global_promo = st.session_state.get('ws_global_promo', True)
-                st.session_state.safe_ws_global_geo = st.session_state.get('ws_global_geo', True)
-                st.session_state.safe_ws_global_faq = st.session_state.get('ws_global_faq', True)
-                st.session_state.safe_ws_global_reviews = st.session_state.get('ws_global_reviews', True)
-                
-                st.session_state.safe_ws_faq_count = st.session_state.get('ws_faq_count', 4)
-                st.session_state.safe_ws_reviews_count = st.session_state.get('ws_reviews_count', 3)
-                st.session_state.safe_ws_num_blocks_val = st.session_state.get('ws_num_blocks_val', 5)
-                st.session_state.safe_ws_auto_blocks = st.session_state.get('ws_auto_blocks', True)
+                if st.button("🚀 ЗАПУСТИТЬ АНАЛИЗ И ГЕНЕРАЦИЮ", type="primary", use_container_width=True):
+                    
+                    # --- ДОБАВЛЕНО: ЗАМОРОЗКА ПАЧКИ ПРИ СТАРТЕ ---
+                    st.session_state.safe_ws_batch_size = ws_batch_size
+                    st.session_state.safe_ws_auto_next = ws_auto_next
+                    st.session_state.current_batch_count = 0
+                    
+                    # --- ЗАМОРАЖИВАЕМ ВСЕ НАСТРОЙКИ, КЛЮЧИ И ГАЛОЧКИ (СПАСЕНИЕ ОТ СБРОСА) ---
+                    st.session_state.safe_ws_global_text = st.session_state.get('ws_global_text', True)
+                    st.session_state.safe_ws_global_tables = st.session_state.get('ws_global_tables', True)
+                    st.session_state.safe_ws_global_tags = st.session_state.get('ws_global_tags', True)
+                    st.session_state.safe_ws_global_promo = st.session_state.get('ws_global_promo', True)
+                    st.session_state.safe_ws_global_geo = st.session_state.get('ws_global_geo', True)
+                    st.session_state.safe_ws_global_faq = st.session_state.get('ws_global_faq', True)
+                    st.session_state.safe_ws_global_reviews = st.session_state.get('ws_global_reviews', True)
+                    
+                    st.session_state.safe_ws_faq_count = st.session_state.get('ws_faq_count', 4)
+                    st.session_state.safe_ws_reviews_count = st.session_state.get('ws_reviews_count', 3)
+                    st.session_state.safe_ws_num_blocks_val = st.session_state.get('ws_num_blocks_val', 5)
+                    st.session_state.safe_ws_auto_blocks = st.session_state.get('ws_auto_blocks', True)
 
-                # ЗАМОРАЖИВАЕМ API-КЛЮЧИ И ГАЛОЧКИ
-                st.session_state.safe_gemini_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
-                st.session_state.safe_turgenev_key = st.session_state.get('TURGENEV_GLOBAL_KEY', '')
-                st.session_state.safe_textru_key = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
+                    # ЗАМОРАЖИВАЕМ API-КЛЮЧИ И ГАЛОЧКИ
+                    st.session_state.safe_gemini_key = st.session_state.get('SUPER_GLOBAL_KEY', '')
+                    st.session_state.safe_turgenev_key = st.session_state.get('TURGENEV_GLOBAL_KEY', '')
+                    st.session_state.safe_textru_key = st.session_state.get('TEXTRU_GLOBAL_KEY', '')
 
-                st.session_state.safe_use_turgenev = st.session_state.get('use_turgenev_bulk', False)
-                st.session_state.safe_use_textru = st.session_state.get('use_textru_bulk', False)
-                st.session_state.safe_use_ds = st.session_state.get('use_ds_bulk', True)
-                # ----------------------------------------------------------------------
+                    st.session_state.safe_use_turgenev = st.session_state.get('use_turgenev_bulk', False)
+                    st.session_state.safe_use_textru = st.session_state.get('use_textru_bulk', False)
+                    st.session_state.safe_use_ds = st.session_state.get('use_ds_bulk', True)
+                    # ----------------------------------------------------------------------
                 queue =[]
                 if "URL" in gen_mode or "Подфильтровые" in gen_mode:
                     urls = [u.strip() for u in raw_urls.split('\n') if u.strip()]
@@ -7422,6 +7456,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
