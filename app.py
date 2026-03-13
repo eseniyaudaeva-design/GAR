@@ -5980,10 +5980,10 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                     st.rerun() # Теперь обновляем страницу, когда все данные подготовлены
                 else:
                     st.error("❌ Очередь пуста! Проверьте введенные данные.")
-        else:
-            q_len = len(st.session_state.get('ws_bg_tasks_queue', []))
-            curr = st.session_state.get('auto_current_index', 0)
-            st.info(f"⏳ Конвейер в работе: Обработка {curr + 1} из {q_len} ... (Смотри предпросмотр внизу)")
+                else:
+                    q_len = len(st.session_state.get('ws_bg_tasks_queue', []))
+                    curr = st.session_state.get('auto_current_index', 0)
+                    st.info(f"⏳ Конвейер в работе: Обработка {curr + 1} из {q_len} ... (Смотри предпросмотр внизу)")
 
     with c_stop:
         if is_running:
@@ -7456,6 +7456,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
