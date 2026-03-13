@@ -5734,47 +5734,60 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
 
                 if st.session_state.auto_current_index < len(queue):
                     
-                    # --- ПРОВЕРКА ПАЧКИ ---
+                    idx_n = st.session_state.auto_current_index
+                    
+                    # --- 1. ПАРСИМ СЛЕДУЮЩУЮ ССЫЛКУ С БЕЗОПАСНЫМ БЛОКОМ (ОТ БЕЛОГО ЭКРАНА) ---
+                    if queue[idx_n]['url'] != 'manual' and not queue[idx_n]['h1']:
+                        try:
+                            gen_m = st.session_state.get('ws_gen_mode', 'Генерация по URL')
+                            h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[idx_n]['url']) if "URL" in gen_m else ("", "", "")
+                            b_text, _, _, _ = get_page_data_for_gen(queue[idx_n]['url']) if queue[idx_n]['url'] else ("", "", "", "")
+                            queue[idx_n]['h1'] = h1_s or queue[idx_n]['url'].split('/')[-1]
+                            queue[idx_n]['h2'] = h2_s or queue[idx_n]['url'].split('/')[-1]
+                            queue[idx_n]['base_text'] = b_text
+                        except Exception as e:
+                            # Если ссылка битая или парсер упал - подставляем заглушки, чтобы конвейер не умер
+                            queue[idx_n]['h1'] = queue[idx_n]['url'].split('/')[-1]
+                            queue[idx_n]['h2'] = queue[idx_n]['url'].split('/')[-1]
+                            queue[idx_n]['base_text'] = ""
+                        
+                        st.session_state.ws_bg_tasks_queue = queue
+                    
+                    # --- 2. ПРОВЕРКА ПАЧКИ (ОСТАНОВКА) ---
                     limit = st.session_state.get('safe_ws_batch_size', 5)
                     auto_next = st.session_state.get('safe_ws_auto_next', False)
                     
                     if st.session_state.current_batch_count >= limit:
                         if auto_next:
-                            st.toast(f"📦 Пачка из {limit} ссылок готова. Идем дальше...")
-                            st.session_state.current_batch_count = 0 # Сброс для следующей пачки
+                            st.toast(f"📦 Пачка из {limit} ссылок готова. Переходим к следующей...")
+                            st.session_state.current_batch_count = 0 
                         else:
-                            # ОСТАНАВЛИВАЕМ КОНВЕЙЕР ДЛЯ ПРЕДПРОСМОТРА
                             st.session_state.ws_automode_active = False
-                            st.success(f"✅ Пачка ({limit} шт.) обработана! Посмотрите результаты внизу.")
-                            st.rerun()
+                            st.success(f"✅ Пачка ({limit} шт.) обработана! Нажмите 'ПРОДОЛЖИТЬ', когда будете готовы.")
+                            st.rerun() 
                     
-                    # --- ПАРСИМ СЛЕДУЮЩУЮ ССЫЛКУ ТОЛЬКО СЕЙЧАС ---
-                    idx_n = st.session_state.auto_current_index
-                    
-                    if queue[idx_n]['url'] != 'manual' and not queue[idx_n]['h1']:
-                        gen_m = st.session_state.get('ws_gen_mode', '')
-                        h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[idx_n]['url']) if "URL" in gen_m else ("", "", "")
-                        b_text, _, _, _ = get_page_data_for_gen(queue[idx_n]['url']) if queue[idx_n]['url'] else ("", "", "", "")
-                        queue[idx_n]['h1'] = h1_s or queue[idx_n]['url'].split('/')[-1]
-                        queue[idx_n]['h2'] = h2_s or queue[idx_n]['url'].split('/')[-1]
-                        queue[idx_n]['base_text'] = b_text
-                        st.session_state.ws_bg_tasks_queue = queue
-                    
+                    # --- 3. ПОДГОТОВКА ПЕРЕХОДА ---
                     next_task = queue[st.session_state.auto_current_index]
-                    p_source = "Релевантная страница на вашем сайте" if next_task.get('url') and next_task['url'] != 'manual' else "Без страницы"
                     
-                    st.session_state['pending_widget_updates'] = {
+                    updates = {
                         'query_input': next_task.get('h1', next_task['name']),
-                        'my_page_source_radio': p_source,
-                        'my_url_input': next_task.get('url', ''),
                         'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                         'settings_region': st.session_state.get('ws_settings_region', 'Москва')
                     }
+                    if next_task.get('url') and next_task['url'] != 'manual':
+                        updates['my_page_source_radio'] = "Релевантная страница на вашем сайте"
+                        updates['my_url_input'] = next_task['url']
+                    else:
+                        updates['my_page_source_radio'] = "Без страницы"
+                        updates['my_url_input'] = ""
+                        
+                    st.session_state['pending_widget_updates'] = updates
                     st.session_state.start_analysis_flag = True
                     st.session_state.pop('analysis_done', None)
                     st.session_state.pop('analysis_results', None)
                     st.session_state.ws_waiting_for_analysis = True
                     st.rerun()
+                
                 else:
                     st.session_state.ws_automode_active = False
                     st.success("🎉 Вся очередь полностью обработана!")
@@ -7457,6 +7470,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
