@@ -6002,14 +6002,21 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                         st.session_state.ws_waiting_for_analysis = True
                         st.session_state.start_analysis_flag = True
                         
-                        # Парсим только ПЕРВУЮ ссылку перед стартом
+                        # --- БРОНЕБОЙНЫЙ ПАРСИНГ ПЕРВОЙ ССЫЛКИ ---
                         if queue[0]['url'] != 'manual' and not queue[0]['h1']:
                             with st.spinner(f"Сканируем первую страницу: {queue[0]['url']}..."):
-                                h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[0]['url']) if "URL" in gen_mode else ("", "", "")
-                                b_text, _, _, _ = get_page_data_for_gen(queue[0]['url']) if queue[0]['url'] else ("", "", "", "")
-                                queue[0]['h1'] = h1_s or queue[0]['url'].split('/')[-1]
-                                queue[0]['h2'] = h2_s or queue[0]['url'].split('/')[-1]
-                                queue[0]['base_text'] = b_text
+                                try:
+                                    h1_s, h2_s, _ = scrape_h1_h2_from_url(queue[0]['url']) if "URL" in gen_mode else ("", "", "")
+                                    b_text, _, _, _ = get_page_data_for_gen(queue[0]['url']) if queue[0]['url'] else ("", "", "", "")
+                                    queue[0]['h1'] = h1_s or queue[0]['url'].split('/')[-1]
+                                    queue[0]['h2'] = h2_s or queue[0]['url'].split('/')[-1]
+                                    queue[0]['base_text'] = b_text
+                                except Exception as e:
+                                    # Если первая ссылка убивает скрипт - перехватываем ошибку и ставим заглушку!
+                                    st.warning(f"⚠️ Не удалось спарсить первую ссылку. Едем дальше. Ошибка: {e}")
+                                    queue[0]['h1'] = queue[0]['url'].split('/')[-1]
+                                    queue[0]['h2'] = queue[0]['url'].split('/')[-1]
+                                    queue[0]['base_text'] = ""
                         
                         first_task = queue[0]
                         f_source = "Релевантная страница на вашем сайте" if first_task.get('url') and first_task['url'] != 'manual' else "Без страницы"
@@ -6020,8 +6027,12 @@ h3.gallery-title { color: #3D4858; font-size: 1.8em; font-weight: normal; paddin
                             'competitor_source_radio': "Поиск через API Arsenkin (TOP-30)",
                             'settings_region': st.session_state.get('ws_settings_region', 'Москва')
                         }
+                        
+                        # Очищаем старые данные анализа
                         st.session_state.pop('analysis_done', None)
                         st.session_state.pop('analysis_results', None)
+                        st.session_state.pop('arsenkin_data', None)
+                        
                         st.rerun() 
                     else:
                         st.error("❌ Очередь пуста! Проверьте введенные данные.")
@@ -7501,6 +7512,7 @@ with tab_reviews_gen:
             file_name="reviews.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 
